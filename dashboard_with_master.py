@@ -2,8 +2,9 @@ import pandas as pd
 import numpy as np
 import pickle
 import os
+import json
 from sqlalchemy import create_engine, text
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 import dash
 from dash import dcc, html, Input, Output, State, dash_table
@@ -18,6 +19,7 @@ from auto_classify import auto_classify_item
 # 0) Parameters
 # =========================
 CONN_STR = "mysql+pymysql://solution:Solution123!@192.168.195.55/dt?charset=utf8"
+CONN_STR_SCIP = "mysql+pymysql://solution:Solution123!@192.168.195.55/SCIP?charset=utf8mb4"
 START_STD_DT = "20241201"
 MASTER_FILE = "master_asset_mapping.pkl"
 
@@ -146,6 +148,209 @@ def classify_with_master(holding_df, master_df):
     return result, unmapped, master_df  # 🔥 업데이트된 master 반환!
 
 # =========================
+# 1-2) 수익률 데이터 처리
+# =========================
+def parse_data_blob(blob):
+    """
+    Parse FactSet data blob into numeric value
+    Handles JSON format: {"USD": value, "KRW": value}
+    """
+    if blob is None:
+        return None
+
+    # Convert bytes to string
+    if isinstance(blob, (bytes, bytearray)):
+        s = blob.decode('utf-8')
+    else:
+        s = str(blob)
+
+    s = s.strip()
+
+    # Try JSON parsing
+    if s.startswith('{') or s.startswith('['):
+        try:
+            obj = json.loads(s)
+            # If dict, return USD value (or KRW if USD not available)
+            if isinstance(obj, dict):
+                return float(obj.get('USD', obj.get('KRW', None)))
+            return float(obj)
+        except (json.JSONDecodeError, ValueError, TypeError):
+            pass
+
+    # Try direct numeric conversion
+    try:
+        return float(s.replace(',', ''))
+    except (ValueError, AttributeError):
+        return None
+
+def should_exclude_for_return(item_nm):
+    """
+    Determine if item should be excluded from return calculation
+    Excludes: cash, futures, REPO, deposits, receivables, etc.
+    """
+    item_nm_upper = str(item_nm).upper()
+
+    # 모펀드
+    if '모투자신탁' in item_nm:
+        return True
+    # 콜론
+    if '콜론' in item_nm_upper:
+        return True
+    # 선물
+    if ('달러 F' in item_nm_upper or 'USD F' in item_nm_upper or
+        ('코스피' in item_nm_upper and ' F ' in item_nm_upper)):
+        return True
+    # REPO
+    if 'REPO' in item_nm_upper:
+        return True
+    # 예금/증거금
+    if any(word in item_nm_upper for word in ['예금', '증거금', 'DEPOSIT']):
+        return True
+    # 미수/미지급
+    if any(word in item_nm_upper for word in ['미수', '미지급', '청약금', '원천세', '분배금', '기타자산']):
+        return True
+
+    return False
+
+def fetch_factset_returns(master_df, latest_date):
+    """
+    Fetch FactSet FG Return data for items in master
+    Returns DataFrame with columns: ITEM_CD, date, return_index
+    """
+    # Filter items that should have return data
+    items_for_return = master_df[~master_df['ITEM_NM'].apply(should_exclude_for_return)].copy()
+
+    if len(items_for_return) == 0:
+        print("[INFO] No items for return calculation")
+        return pd.DataFrame(columns=['ITEM_CD', 'date', 'return_index'])
+
+    # Get ISIN list
+    isin_list = items_for_return['ITEM_CD'].tolist()
+
+    # Calculate lookback period (1 year + buffer)
+    start_date = latest_date - timedelta(days=400)
+
+    print(f"[INFO] Fetching FactSet returns for {len(isin_list)} items...")
+    print(f"[INFO] Date range: {start_date} to {latest_date}")
+
+    # Connect to SCIP database
+    engine_scip = create_engine(CONN_STR_SCIP)
+
+    # Query FG Return data (dataseries_id = 6)
+    # Also try Total Return Index (dataseries_id = 39) as fallback
+    query = text("""
+    SELECT
+        d.ISIN as ITEM_CD,
+        DATE(dp.timestamp_observation) as date,
+        dp.dataseries_id,
+        dp.data
+    FROM SCIP.back_datapoint dp
+    INNER JOIN SCIP.back_dataset d ON dp.dataset_id = d.id
+    WHERE d.ISIN IN :isin_list
+      AND dp.dataseries_id IN (6, 39)
+      AND dp.timestamp_observation >= :start_date
+      AND dp.timestamp_observation <= :end_date
+    ORDER BY d.ISIN, dp.timestamp_observation
+    """)
+
+    try:
+        with engine_scip.connect() as conn:
+            df_raw = pd.read_sql(
+                query, conn,
+                params={
+                    'isin_list': tuple(isin_list),
+                    'start_date': start_date,
+                    'end_date': latest_date
+                }
+            )
+
+        print(f"[INFO] Retrieved {len(df_raw)} raw datapoints")
+
+        if df_raw.empty:
+            print("[WARNING] No FactSet data found for any items")
+            return pd.DataFrame(columns=['ITEM_CD', 'date', 'return_index'])
+
+        # Parse data blobs
+        df_raw['return_index'] = df_raw['data'].apply(parse_data_blob)
+        df_raw = df_raw.dropna(subset=['return_index'])
+
+        # Prefer dataseries_id = 6, fallback to 39
+        df_raw = df_raw.sort_values(['ITEM_CD', 'date', 'dataseries_id'])
+        df_raw = df_raw.drop_duplicates(subset=['ITEM_CD', 'date'], keep='first')
+
+        # Keep only necessary columns
+        result = df_raw[['ITEM_CD', 'date', 'return_index']].copy()
+
+        print(f"[INFO] Parsed {len(result)} return datapoints for {result['ITEM_CD'].nunique()} items")
+
+        return result
+
+    except Exception as e:
+        print(f"[ERROR] Failed to fetch FactSet returns: {e}")
+        return pd.DataFrame(columns=['ITEM_CD', 'date', 'return_index'])
+
+def calculate_return_periods(return_df, reference_date):
+    """
+    Calculate returns for multiple periods: 1D, 1W, 1M, 3M, 6M, 1Y, YTD
+    Returns DataFrame with ITEM_CD and return columns
+    """
+    if return_df.empty:
+        return pd.DataFrame(columns=['ITEM_CD', '1D', '1W', '1M', '3M', '6M', '1Y', 'YTD'])
+
+    # Ensure date is datetime
+    return_df['date'] = pd.to_datetime(return_df['date'])
+    reference_date = pd.to_datetime(reference_date)
+
+    # Define period endpoints
+    ytd_start = datetime(reference_date.year, 1, 1)
+    periods = {
+        '1D': reference_date - timedelta(days=1),
+        '1W': reference_date - timedelta(days=7),
+        '1M': reference_date - timedelta(days=30),
+        '3M': reference_date - timedelta(days=90),
+        '6M': reference_date - timedelta(days=180),
+        '1Y': reference_date - timedelta(days=365),
+        'YTD': ytd_start
+    }
+
+    results = []
+
+    for item_cd in return_df['ITEM_CD'].unique():
+        item_data = return_df[return_df['ITEM_CD'] == item_cd].sort_values('date')
+
+        # Get latest value
+        latest = item_data[item_data['date'] <= reference_date]
+        if latest.empty:
+            continue
+
+        latest_value = latest.iloc[-1]['return_index']
+        latest_date = latest.iloc[-1]['date']
+
+        row = {'ITEM_CD': item_cd}
+
+        # Calculate each period
+        for period_name, period_start in periods.items():
+            # Find closest date on or before period_start
+            period_data = item_data[item_data['date'] <= period_start]
+
+            if period_data.empty:
+                row[period_name] = np.nan
+            else:
+                period_value = period_data.iloc[-1]['return_index']
+                # Return calculation: (latest / period - 1) * 100
+                if period_value > 0:
+                    row[period_name] = round((latest_value / period_value - 1) * 100, 2)
+                else:
+                    row[period_name] = np.nan
+
+        results.append(row)
+
+    result_df = pd.DataFrame(results)
+    print(f"[INFO] Calculated returns for {len(result_df)} items")
+
+    return result_df
+
+# =========================
 # 2) 데이터 로드
 # =========================
 print("[INFO] Loading master mapping...")
@@ -238,15 +443,24 @@ print("[INFO] Classifying assets with master mapping...")
 holding, unmapped, master_mapping = classify_with_master(holding, master_mapping)
 print(f"[INFO] Master now contains {len(master_mapping)} items")
 
-# 수익률 계산
+# 날짜 리스트 (수익률 계산 전에 latest_date 필요)
+available_dates = sorted(holding['STD_DT'].unique())
+latest_date = available_dates[-1]
+
+# 🆕 수익률 데이터 로드
+print("[INFO] Fetching FactSet return data...")
+factset_returns = fetch_factset_returns(master_mapping, latest_date)
+return_periods = calculate_return_periods(factset_returns, latest_date)
+print(f"[INFO] Return data loaded for {len(return_periods)} items")
+
+# Merge return data with holding
+holding = holding.merge(return_periods, on='ITEM_CD', how='left')
+
+# 수익률 계산 (펀드)
 metrics = metrics.sort_values(['FUND_CD', 'STD_DT'])
 metrics['RET'] = metrics.groupby('FUND_CD')['MOD_STPR'].transform(
     lambda x: (x / x.iloc[0] - 1) * 100
 )
-
-# 날짜 리스트
-available_dates = sorted(holding['STD_DT'].unique())
-latest_date = available_dates[-1]
 
 print(f"[INFO] Latest date: {latest_date}")
 print(f"[INFO] Unmapped items: {len(unmapped)}")
@@ -425,6 +639,13 @@ def render_content(tab):
                         {'name': '대분류', 'id': '대분류'},
                         {'name': '지역', 'id': '지역'},
                         {'name': '소분류', 'id': '소분류'},
+                        {'name': '1D(%)', 'id': '1D'},
+                        {'name': '1W(%)', 'id': '1W'},
+                        {'name': '1M(%)', 'id': '1M'},
+                        {'name': '3M(%)', 'id': '3M'},
+                        {'name': '6M(%)', 'id': '6M'},
+                        {'name': '1Y(%)', 'id': '1Y'},
+                        {'name': 'YTD(%)', 'id': 'YTD'},
                     ],
                     data=[],
                     style_cell={'textAlign': 'center', 'padding': '10px', 'fontSize': '13px'},
@@ -495,45 +716,82 @@ def update_dashboard(selected_date, selected_fund):
     holdings_list = []
     current_category = None
     category_pct = 0
-    
+
+    # Check if return columns exist
+    return_cols = ['1D', '1W', '1M', '3M', '6M', '1Y', 'YTD']
+    has_return_data = all(col in df_holding_selected.columns for col in return_cols)
+
+    def format_return(value):
+        """Format return value for display"""
+        if pd.isna(value):
+            return ''
+        try:
+            return round(float(value), 2)
+        except (ValueError, TypeError):
+            return ''
+
     for idx, row in df_holding_selected.iterrows():
         # 대분류가 바뀌면 이전 대분류 소계 추가
         if current_category and row['대분류'] != current_category:
-            holdings_list.append({
+            subtotal_row = {
                 '대분류': f'▶ {current_category} 소계',
                 'ITEM_NM': '',
                 '비중(%)': round(category_pct, 2),
                 '_is_subtotal': True
-            })
+            }
+            # Add empty return columns
+            for col in return_cols:
+                subtotal_row[col] = ''
+            holdings_list.append(subtotal_row)
             category_pct = 0
-        
+
         # 현재 행 추가
         current_category = row['대분류']
         pct = (row['EVL_AMT'] / total_amt * 100) if total_amt > 0 else 0
         category_pct += pct
-        
-        holdings_list.append({
+
+        item_row = {
             '대분류': row['대분류'],
             'ITEM_NM': row['ITEM_NM'],
             '비중(%)': round(pct, 2),
             '_is_subtotal': False
-        })
-    
+        }
+
+        # Add return columns if available
+        if has_return_data:
+            for col in return_cols:
+                item_row[col] = format_return(row.get(col))
+        else:
+            for col in return_cols:
+                item_row[col] = ''
+
+        holdings_list.append(item_row)
+
     # 마지막 대분류 소계 추가
     if current_category and category_pct > 0:
-        holdings_list.append({
+        subtotal_row = {
             '대분류': f'▶ {current_category} 소계',
             'ITEM_NM': '',
             '비중(%)': round(category_pct, 2),
             '_is_subtotal': True
-        })
-    
+        }
+        for col in return_cols:
+            subtotal_row[col] = ''
+        holdings_list.append(subtotal_row)
+
     holdings_table_data = holdings_list
-    
+
     holdings_table_columns = [
         {'name': '대분류', 'id': '대분류'},
         {'name': '종목명', 'id': 'ITEM_NM'},
-        {'name': '비중(%)', 'id': '비중(%)'}
+        {'name': '비중(%)', 'id': '비중(%)'},
+        {'name': '1D(%)', 'id': '1D'},
+        {'name': '1W(%)', 'id': '1W'},
+        {'name': '1M(%)', 'id': '1M'},
+        {'name': '3M(%)', 'id': '3M'},
+        {'name': '6M(%)', 'id': '6M'},
+        {'name': '1Y(%)', 'id': '1Y'},
+        {'name': 'YTD(%)', 'id': 'YTD'}
     ]
     
     # 소분류별 집계 (allocation table용)
@@ -638,10 +896,18 @@ def update_item_list(tab):
         )
         return [], status
     
+    # Merge return data if available
+    master_with_returns = master.merge(return_periods, on='ITEM_CD', how='left')
+
     # 종목 리스트 데이터 준비
-    item_list = master[['ITEM_CD', 'ITEM_NM', '대분류', '지역', '소분류']].copy()
+    item_list = master_with_returns[['ITEM_CD', 'ITEM_NM', '대분류', '지역', '소분류',
+                                       '1D', '1W', '1M', '3M', '6M', '1Y', 'YTD']].copy()
     item_list = item_list.sort_values(['대분류', '지역', '소분류', 'ITEM_NM'])
-    
+
+    # Replace NaN with empty string for display
+    for col in ['1D', '1W', '1M', '3M', '6M', '1Y', 'YTD']:
+        item_list[col] = item_list[col].apply(lambda x: x if pd.notna(x) else '')
+
     data = item_list.to_dict('records')
     
     status = html.Div(
