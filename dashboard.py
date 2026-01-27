@@ -955,6 +955,64 @@ pivot_data_for_table = pivot_data_global[[c for c in pivot_cols if c in pivot_da
 # =========================
 # 9) Dash App
 # =========================
+
+# 파스텔 톤 테이블 스타일 정의
+PASTEL_TABLE = {
+    "style_table": {
+        "borderRadius": "12px",
+        "overflow": "hidden",
+        "border": "1px solid #E6E8EE",
+        "boxShadow": "0 1px 6px rgba(20, 20, 20, 0.06)",
+    },
+    "style_header": {
+        "backgroundColor": "#F3F5F9",
+        "color": "#1F2937",
+        "fontWeight": "700",
+        "borderBottom": "1px solid #DCE1EA",
+        "fontSize": "12.5px",
+        "letterSpacing": "0.2px",
+        "padding": "10px",
+        "textAlign": "center",
+    },
+    "style_cell": {
+        "backgroundColor": "#FFFFFF",
+        "color": "#2B2F36",
+        "padding": "10px",
+        "fontSize": "12px",
+        "fontFamily": '"Inter","Apple SD Gothic Neo","Noto Sans KR",sans-serif',
+        "borderBottom": "1px solid #EEF1F6",
+        "borderLeft": "0px",
+        "borderRight": "0px",
+        "whiteSpace": "nowrap",
+        "textAlign": "left",
+    },
+}
+
+# 숫자 컬럼 목록 (우측 정렬 대상)
+NUMERIC_COLS = ['비중(%)', '1D', '1W', '1M', '3M', '6M', 'YTD']
+
+PASTEL_DATA_COND = [
+    # 지브라 스트라이프
+    {"if": {"row_index": "odd"}, "backgroundColor": "#FBFCFE"},
+    # hover/selected 상태
+    {"if": {"state": "active"}, "backgroundColor": "#EEF3FF", "border": "1px solid #D6E4FF"},
+    {"if": {"state": "selected"}, "backgroundColor": "#E9F0FF", "border": "1px solid #C7DAFF"},
+    # subtotal 행: _is_subtotal = "subtotal"
+    {"if": {"filter_query": '{_is_subtotal} = "subtotal"'},
+     "backgroundColor": "#EEF2F7", "fontWeight": "700", "color": "#243044", "borderTop": "1px solid #D8DEE9"},
+    # total 행: _is_subtotal = "total"
+    {"if": {"filter_query": '{_is_subtotal} = "total"'},
+     "backgroundColor": "#E3E9F5", "fontWeight": "800", "color": "#162033", "borderTop": "2px solid #B8C6E3"},
+    # 숫자 컬럼 우측 정렬 + tabular-nums
+    {"if": {"column_id": "비중(%)"}, "textAlign": "right", "fontVariantNumeric": "tabular-nums"},
+    {"if": {"column_id": "1D"}, "textAlign": "right", "fontVariantNumeric": "tabular-nums"},
+    {"if": {"column_id": "1W"}, "textAlign": "right", "fontVariantNumeric": "tabular-nums"},
+    {"if": {"column_id": "1M"}, "textAlign": "right", "fontVariantNumeric": "tabular-nums"},
+    {"if": {"column_id": "3M"}, "textAlign": "right", "fontVariantNumeric": "tabular-nums"},
+    {"if": {"column_id": "6M"}, "textAlign": "right", "fontVariantNumeric": "tabular-nums"},
+    {"if": {"column_id": "YTD"}, "textAlign": "right", "fontVariantNumeric": "tabular-nums"},
+]
+
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
 
 # 탭 상태 유지를 위해 모든 탭 컨텐츠를 항상 렌더링하고 display:none으로 제어
@@ -997,41 +1055,15 @@ app.layout = html.Div([
             ], style={'display': 'inline-block'})
         ], style={'textAlign': 'left', 'marginLeft': '30px', 'marginBottom': 30}),
 
-        # 보유 종목 테이블
+        # 보유 종목 테이블 (파스텔 톤 스타일 적용)
         html.Div([
             html.H3("보유 종목 내역", style={'textAlign': 'center'}),
             dash_table.DataTable(
                 id='holdings-table',
-                style_cell={
-                    'textAlign': 'left',
-                    'padding': '8px',
-                    'fontSize': '12px',
-                    'whiteSpace': 'nowrap',  # 줄바꿈 방지
-                },
-                style_header={
-                    'backgroundColor': '#4CAF50',
-                    'fontWeight': 'bold',
-                    'color': 'white',
-                    'border': '1px solid white'
-                },
-                style_data_conditional=[
-                    {'if': {'row_index': 'odd'}, 'backgroundColor': 'rgb(248, 248, 248)'},
-                    {
-                        'if': {'filter_query': '{_is_subtotal} = "subtotal"'},
-                        'backgroundColor': '#FFE082',
-                        'fontWeight': 'bold',
-                        'borderTop': '2px solid #FF6F00',
-                        'borderBottom': '2px solid #FF6F00'
-                    },
-                    {
-                        'if': {'filter_query': '{_is_subtotal} = "total"'},
-                        'backgroundColor': '#81C784',
-                        'fontWeight': 'bold',
-                        'color': 'white',
-                        'borderTop': '3px solid #388E3C',
-                        'borderBottom': '3px solid #388E3C'
-                    }
-                ],
+                style_table=PASTEL_TABLE["style_table"],
+                style_header=PASTEL_TABLE["style_header"],
+                style_cell=PASTEL_TABLE["style_cell"],
+                style_data_conditional=PASTEL_DATA_COND,
                 page_size=100,
                 sort_action='native',
                 filter_action='native'
@@ -1080,7 +1112,7 @@ app.layout = html.Div([
                 # 디폴트 설정
                 rows=['FUND_NM', '대분류', '지역', 'ITEM_NM'],
                 cols=[],
-                vals=['금액(억)'],
+                vals=['금액(억)', '비중(%)', 'NAV(억)', '1D(%)', '1W(%)', '1M(%)', '3M(%)', '6M(%)', 'YTD(%)'],
                 aggregatorName='Sum',
                 rendererName='Table',
             )
