@@ -308,29 +308,72 @@ def classify_with_master(holding_df, master_df):
 # =========================
 # 4) 수익률 계산 (SCIP DB 영업일 기준)
 # =========================
-def parse_data_blob(blob):
-    """FactSet data blob을 숫자로 파싱"""
-    if blob is None:
+def get_currency_from_item_cd(item_cd):
+    """
+    ITEM_CD 앞자리로 통화 구분
+    KR로 시작: KRW
+    US로 시작: USD
+    """
+    item_cd_str = str(item_cd).upper()
+    if item_cd_str.startswith('KR'):
+        return 'KRW'
+    if item_cd_str.startswith('US'):
+        return 'USD'
+    return 'KRW'
+
+
+def parse_price_blob(blob_data, currency):
+    """
+    Blob에서 통화별 가격 추출
+    """
+    if blob_data is None:
         return None
 
-    if isinstance(blob, (bytes, bytearray)):
-        s = blob.decode('utf-8')
+    if isinstance(blob_data, (bytes, bytearray)):
+        s = blob_data.decode('utf-8')
     else:
-        s = str(blob)
+        s = str(blob_data)
 
     s = s.strip()
 
-    # JSON 파싱 시도
     if s.startswith('{') or s.startswith('['):
         try:
             obj = json.loads(s)
             if isinstance(obj, dict):
-                return float(obj.get('USD', obj.get('KRW', None)))
+                value = obj.get(currency)
+                return float(value) if value is not None else None
             return float(obj)
         except (json.JSONDecodeError, ValueError, TypeError):
-            pass
+            return None
 
-    # 직접 숫자 변환 시도
+    try:
+        return float(s.replace(',', ''))
+    except (ValueError, AttributeError):
+        return None
+
+
+def get_fx_rate(blob_data):
+    """USD/KRW 환율 추출 (1 USD = X KRW)"""
+    if blob_data is None:
+        return None
+
+    if isinstance(blob_data, (bytes, bytearray)):
+        s = blob_data.decode('utf-8')
+    else:
+        s = str(blob_data)
+
+    s = s.strip()
+
+    if s.startswith('{') or s.startswith('['):
+        try:
+            obj = json.loads(s)
+            if isinstance(obj, dict):
+                value = obj.get('USD')
+                return float(value) if value is not None else None
+            return float(obj)
+        except (json.JSONDecodeError, ValueError, TypeError):
+            return None
+
     try:
         return float(s.replace(',', ''))
     except (ValueError, AttributeError):
@@ -374,7 +417,7 @@ def fetch_scip_available_dates(engine_scip, isin_list):
     FROM SCIP.back_datapoint dp
     INNER JOIN SCIP.back_dataset d ON dp.dataset_id = d.id
     WHERE d.ISIN IN :isin_list
-      AND dp.dataseries_id IN (6, 39)
+      AND dp.dataseries_id = 6
     ORDER BY date_value DESC
     """)
 
@@ -525,12 +568,11 @@ def fetch_factset_returns_with_dates(master_df, engine_scip):
     SELECT
         d.ISIN as ITEM_CD,
         DATE(dp.timestamp_observation) as date,
-        dp.dataseries_id,
         dp.data
     FROM SCIP.back_datapoint dp
     INNER JOIN SCIP.back_dataset d ON dp.dataset_id = d.id
     WHERE d.ISIN IN :isin_list
-      AND dp.dataseries_id IN (6, 39)
+      AND dp.dataseries_id = 6
       AND dp.timestamp_observation >= :start_date
       AND dp.timestamp_observation <= :end_date
     ORDER BY d.ISIN, dp.timestamp_observation
@@ -552,13 +594,15 @@ def fetch_factset_returns_with_dates(master_df, engine_scip):
         if df_raw.empty:
             return pd.DataFrame(columns=['ITEM_CD', 'date', 'return_index']), available_dates, latest_date, base_dates
 
-        # 데이터 파싱
-        df_raw['return_index'] = df_raw['data'].apply(parse_data_blob)
+        # 데이터 파싱 (통화별)
+        df_raw['currency'] = df_raw['ITEM_CD'].apply(get_currency_from_item_cd)
+        df_raw['return_index'] = df_raw.apply(
+            lambda row: parse_price_blob(row['data'], row['currency']),
+            axis=1
+        )
         df_raw = df_raw.dropna(subset=['return_index'])
-
-        # dataseries_id = 6 우선, 없으면 39 사용
-        df_raw = df_raw.sort_values(['ITEM_CD', 'date', 'dataseries_id'])
-        df_raw = df_raw.drop_duplicates(subset=['ITEM_CD', 'date'], keep='first')
+        df_raw = df_raw.sort_values(['ITEM_CD', 'date'])
+        df_raw = df_raw.drop_duplicates(subset=['ITEM_CD', 'date'], keep='last')
 
         result = df_raw[['ITEM_CD', 'date', 'return_index']].copy()
         print(f"[INFO] SCIP 파싱된 데이터: {len(result)}개 ({result['ITEM_CD'].nunique()}개 종목)")
@@ -568,6 +612,78 @@ def fetch_factset_returns_with_dates(master_df, engine_scip):
     except Exception as e:
         print(f"[ERROR] fetch_factset_returns_with_dates: {e}")
         return pd.DataFrame(columns=['ITEM_CD', 'date', 'return_index']), [], None, {}
+
+
+# =========================
+# 4-1) 환율 조회 (SCIP)
+# =========================
+def fetch_fx_rates(engine_scip, target_dates):
+    """
+    SCIP DB에서 USD/KRW 환율 데이터 조회 (dataset_id=31, dataseries_id=6)
+    Returns:
+    --------
+    dict: {date: fx_rate}
+    """
+    if not target_dates:
+        return {}
+
+    query_fx = text("""
+    SELECT
+        DATE(dp.timestamp_observation) AS date,
+        dp.data
+    FROM SCIP.back_datapoint dp
+    WHERE dp.dataset_id = '31'
+      AND dp.dataseries_id = '6'
+      AND DATE(dp.timestamp_observation) IN :target_dates
+    ORDER BY DATE(dp.timestamp_observation)
+    """)
+
+    try:
+        with engine_scip.connect() as conn:
+            df_fx = pd.read_sql(query_fx, conn, params={'target_dates': tuple(target_dates)})
+
+        fx_rates = {}
+        for _, row in df_fx.iterrows():
+            fx_rate = get_fx_rate(row['data'])
+            if fx_rate is not None:
+                fx_rates[row['date']] = fx_rate
+
+        return fx_rates
+    except Exception as e:
+        print(f"[ERROR] fetch_fx_rates: {e}")
+        return {}
+
+
+def apply_fx_to_returns(return_df, fx_return_by_period):
+    """
+    USD 종목 수익률에 환율 변동 반영 (KRW 환산)
+    - return_df의 1D~YTD는 KRW 기준으로 변환
+    - FX_1D~FX_YTD 컬럼에 환차익 저장
+    """
+    if return_df.empty:
+        return return_df
+
+    return_df = return_df.copy()
+    return_cols = ['1D', '1W', '1M', '3M', '6M', 'YTD']
+
+    for col in return_cols:
+        if col not in return_df.columns:
+            return_df[col] = np.nan
+        return_df[f'FX_{col}'] = 0.0
+
+    usd_mask = return_df['ITEM_CD'].apply(lambda x: get_currency_from_item_cd(x) == 'USD')
+
+    for col in return_cols:
+        fx_ret = fx_return_by_period.get(col, 0)
+        if fx_ret is None:
+            fx_ret = 0
+
+        usd_returns = return_df.loc[usd_mask, col]
+        krw_returns = ((1 + usd_returns / 100) * (1 + fx_ret / 100) - 1) * 100
+        return_df.loc[usd_mask, f'FX_{col}'] = krw_returns - usd_returns
+        return_df.loc[usd_mask, col] = krw_returns
+
+    return return_df
 
 
 # =========================
@@ -878,6 +994,23 @@ print(f"[INFO] 모펀드 return data: {len(mofund_return_periods)} items")
 return_periods = pd.concat([scip_return_periods, mofund_return_periods], ignore_index=True)
 print(f"[INFO] Total return data: {len(return_periods)} items")
 
+# Step 4: 환율 반영 (USD 종목 KRW 환산)
+fx_target_dates = [scip_latest_date] + [d for d in base_dates.values() if d is not None]
+fx_target_dates = sorted(set([d for d in fx_target_dates if d is not None]))
+fx_rates = fetch_fx_rates(engine_scip, fx_target_dates)
+
+fx_return_by_period = {}
+fx_latest = fx_rates.get(scip_latest_date)
+for period, base_date in base_dates.items():
+    fx_base = fx_rates.get(base_date)
+    if fx_latest is not None and fx_base is not None and fx_base != 0:
+        fx_return_by_period[period] = (fx_latest / fx_base - 1) * 100
+    else:
+        fx_return_by_period[period] = 0
+
+return_periods = apply_fx_to_returns(return_periods, fx_return_by_period)
+FX_RETURN_BY_PERIOD = fx_return_by_period
+
 # Merge return data with holding
 if not return_periods.empty:
     holding = holding.merge(return_periods, on='ITEM_CD', how='left')
@@ -897,29 +1030,15 @@ print(f"[INFO] Unmapped items: {len(unmapped)}")
 # 8) Pivot 분석용 데이터 준비
 # =========================
 def prepare_pivot_data(holding_df, metrics_df, return_periods_df):
-    """피봇 분석용 데이터 준비 (수익률, 비중, NAV 포함)"""
+    """피봇 분석용 데이터 준비 (수익률, 비중)"""
     pivot_data = holding_df.copy()
-    pivot_data['날짜'] = pivot_data['STD_DT'].astype(str)
-    pivot_data['금액(억)'] = (pivot_data['EVL_AMT'] / 100_000_000).round(2)
-    pivot_data['금액(원)'] = pivot_data['EVL_AMT'].astype(int)
 
     # 펀드별 총액 계산하여 비중(%) 계산
     fund_totals = pivot_data.groupby(['STD_DT', 'FUND_CD'])['EVL_AMT'].transform('sum')
     pivot_data['비중(%)'] = (pivot_data['EVL_AMT'] / fund_totals * 100).round(2)
 
-    # NAV 추가 (NAST_AMT)
-    metrics_for_pivot = metrics_df[metrics_df['FUND_CD'].isin(FUND_LIST)][['STD_DT', 'FUND_CD', 'NAST_AMT']].copy()
-    metrics_for_pivot['STD_DT'] = metrics_for_pivot['STD_DT'].apply(lambda x: datetime.strptime(str(int(x)), '%Y%m%d').date())
-    metrics_for_pivot['NAV(억)'] = (metrics_for_pivot['NAST_AMT'] / 100_000_000).round(2)
-
-    pivot_data = pivot_data.merge(
-        metrics_for_pivot[['STD_DT', 'FUND_CD', 'NAV(억)']],
-        on=['STD_DT', 'FUND_CD'],
-        how='left'
-    )
-
-    # 수익률 컬럼 추가 (holding에 이미 merge된 경우)
-    return_cols = ['1D', '1W', '1M', '3M', '6M', 'YTD', 'Last Updated']
+    # 수익률 컬럼 준비
+    return_cols = ['1D', '1W', '1M', '3M', '6M', 'YTD']
     for col in return_cols:
         if col not in pivot_data.columns:
             pivot_data[col] = np.nan
@@ -934,9 +1053,18 @@ def prepare_pivot_data(holding_df, metrics_df, return_periods_df):
     for col in ['1D(%)', '1W(%)', '1M(%)', '3M(%)', '6M(%)', 'YTD(%)']:
         pivot_data[col] = pivot_data[col].apply(lambda x: x if pd.notna(x) else '')
 
+    # 필요한 컬럼만 정리
+    pivot_data = pivot_data[[
+        'FUND_CD', 'FUND_NM', 'STD_DT',
+        '대분류', '지역', 'ITEM_NM',
+        '비중(%)',
+        '1D(%)', '1W(%)', '1M(%)', '3M(%)', '6M(%)', 'YTD(%)'
+    ]].copy()
+
     # 대분류 순서 적용하여 정렬
     pivot_data['대분류_순서'] = pivot_data['대분류'].map(CATEGORY_ORDER_MAP).fillna(99)
     pivot_data = pivot_data.sort_values(['대분류_순서', '지역', 'ITEM_NM'])
+    pivot_data = pivot_data.drop(columns=['대분류_순서'])
 
     return pivot_data
 
@@ -946,10 +1074,21 @@ pivot_data_global = prepare_pivot_data(holding, metrics, return_periods)
 pivot_latest_date = str(holding_latest_date)
 
 # Pivot에 사용할 컬럼
-pivot_cols = ['날짜', 'FUND_CD', 'FUND_NM', '대분류', '지역', '소분류',
-              'ITEM_NM', '금액(억)', '비중(%)', 'NAV(억)', '금액(원)',
-              '1D(%)', '1W(%)', '1M(%)', '3M(%)', '6M(%)', 'YTD(%)', 'Last Updated']
-pivot_data_for_table = pivot_data_global[[c for c in pivot_cols if c in pivot_data_global.columns]]
+pivot_cols = ['FUND_CD', 'FUND_NM', 'STD_DT',
+              '대분류', '지역', 'ITEM_NM',
+              '비중(%)',
+              '1D(%)', '1W(%)', '1M(%)', '3M(%)', '6M(%)', 'YTD(%)']
+# 변경: Pivot 데이터는 2026년만 유지하고 STD_DT 내림차순 정렬
+pivot_data_for_table = pivot_data_global[[c for c in pivot_cols if c in pivot_data_global.columns]].copy()
+pivot_data_for_table = pivot_data_for_table[pivot_data_for_table['STD_DT'].apply(lambda d: d.year == 2026)]
+pivot_data_for_table = pivot_data_for_table.sort_values(['STD_DT'], ascending=False)
+
+# 변경: 디폴트 모드(최신일 + FUND_CD=07G03)용 데이터 별도 준비
+pivot_latest_date_2026 = pivot_data_for_table['STD_DT'].max()
+pivot_data_default = pivot_data_for_table[
+    (pivot_data_for_table['STD_DT'] == pivot_latest_date_2026) &
+    (pivot_data_for_table['FUND_CD'] == '07G03')
+].copy()
 
 
 # =========================
@@ -1011,6 +1150,8 @@ PASTEL_DATA_COND = [
     {"if": {"column_id": "3M"}, "textAlign": "right", "fontVariantNumeric": "tabular-nums"},
     {"if": {"column_id": "6M"}, "textAlign": "right", "fontVariantNumeric": "tabular-nums"},
     {"if": {"column_id": "YTD"}, "textAlign": "right", "fontVariantNumeric": "tabular-nums"},
+    # 변경: 보유 종목 테이블의 Last Updated 정렬을 우측으로 통일
+    {"if": {"column_id": "Last Updated"}, "textAlign": "right", "fontVariantNumeric": "tabular-nums"},
 ]
 
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
@@ -1070,22 +1211,25 @@ app.layout = html.Div([
             )
         ], style={'marginBottom': 30}),
 
-        # 시계열 차트
-        html.Div([dcc.Graph(id='area-chart')], style={'marginTop': 20}),
+        # 변경: 시계열 차트 분류 기준 토글 추가
+        html.Div([
+            dcc.RadioItems(
+                id='area-groupby',
+                options=[
+                    {'label': '대분류', 'value': '대분류'},
+                    {'label': '소분류', 'value': '소분류'},
+                    {'label': '지역', 'value': '지역'},
+                ],
+                value='대분류',
+                inline=True
+            ),
+            dcc.Graph(id='area-chart')
+        ], style={'marginTop': 20}),
 
         # 수익률 차트
         html.Div([dcc.Graph(id='performance-chart')], style={'marginTop': 20}),
 
-        # 자산배분 상세
-        html.Div([
-            html.H3("자산배분 상세", style={'textAlign': 'center'}),
-            dash_table.DataTable(
-                id='allocation-table',
-                style_cell={'textAlign': 'center', 'padding': '8px', 'whiteSpace': 'nowrap'},
-                style_header={'backgroundColor': 'lightgrey', 'fontWeight': 'bold'},
-                style_data_conditional=[{'if': {'row_index': 'odd'}, 'backgroundColor': 'rgb(248, 248, 248)'}]
-            )
-        ], style={'marginTop': 30, 'marginBottom': 50})
+        # 변경: 자산배분 상세 테이블 제거
     ]),
 
     # Tab 2: 피봇 분석
@@ -1101,18 +1245,32 @@ app.layout = html.Div([
                 html.Br(),
                 "• Renderer에서 표시 방식 선택 (Table, Heatmap, Bar Chart 등)",
                 html.Br(),
-                "• 사용 가능 컬럼: 금액(억), 비중(%), NAV(억), 1D(%), 1W(%), 1M(%), 3M(%), 6M(%), YTD(%)"
+                "• 사용 가능 컬럼: 비중(%), 1D(%), 1W(%), 1M(%), 3M(%), 6M(%), YTD(%)"
             ], style={'textAlign': 'center', 'color': '#666', 'fontSize': 14, 'marginBottom': 30}),
         ]),
+
+        # 변경: Pivot 기본/전체(2026) 토글 UI 추가
+        html.Div([
+            dcc.RadioItems(
+                id='pivot-data-mode',
+                options=[
+                    {'label': '디폴트 (최신일 + 07G03)', 'value': 'default'},
+                    {'label': '전체 (2026년)', 'value': 'all'},
+                ],
+                value='default',
+                inline=True
+            )
+        ], style={'textAlign': 'center', 'marginBottom': 10}),
 
         html.Div([
             PivotTable(
                 id='pivot-table',
-                data=pivot_data_for_table.to_dict('records'),
+                # 변경: data는 콜백에서 주입 (디폴트/전체 토글)
+                data=pivot_data_default.to_dict('records'),
                 # 디폴트 설정
-                rows=['FUND_NM', '대분류', '지역', 'ITEM_NM'],
+                rows=['FUND_NM', '대분류', '지역', 'ITEM_NM', '1D(%)', '1W(%)', '1M(%)', '3M(%)', '6M(%)', 'YTD(%)'],
                 cols=[],
-                vals=['금액(억)', '비중(%)', 'NAV(억)', '1D(%)', '1W(%)', '1M(%)', '3M(%)', '6M(%)', 'YTD(%)'],
+                vals=['비중(%)'],
                 aggregatorName='Sum',
                 rendererName='Table',
             )
@@ -1176,6 +1334,17 @@ def toggle_tab_visibility(tab):
     return dashboard_style, pivot_style, itemlist_style
 
 
+# 변경: Pivot 데이터 토글 (디폴트/전체)
+@app.callback(
+    Output('pivot-table', 'data'),
+    Input('pivot-data-mode', 'value')
+)
+def update_pivot_data(mode):
+    if mode == 'all':
+        return pivot_data_for_table.to_dict('records')
+    return pivot_data_default.to_dict('records')
+
+
 # =========================
 # 11) 대시보드 콜백
 # =========================
@@ -1193,13 +1362,12 @@ def display_fund_name(fund_code):
     [Output('holdings-table', 'data'),
      Output('holdings-table', 'columns'),
      Output('area-chart', 'figure'),
-     Output('performance-chart', 'figure'),
-     Output('allocation-table', 'data'),
-     Output('allocation-table', 'columns')],
+     Output('performance-chart', 'figure')],
     [Input('date-picker', 'date'),
-     Input('fund-dropdown', 'value')]
+     Input('fund-dropdown', 'value'),
+     Input('area-groupby', 'value')]
 )
-def update_dashboard(selected_date, selected_fund):
+def update_dashboard(selected_date, selected_fund, area_groupby):
     # 날짜 변환
     if isinstance(selected_date, str):
         selected_date = datetime.strptime(selected_date, '%Y-%m-%d').date()
@@ -1229,6 +1397,30 @@ def update_dashboard(selected_date, selected_fund):
 
     return_cols = ['1D', '1W', '1M', '3M', '6M', 'YTD']
     has_return_data = all(col in df_holding_selected.columns for col in return_cols)
+
+    # 환차익 계산용 (USD 종목만)
+    if total_amt > 0:
+        df_holding_selected['WEIGHT_PCT'] = (df_holding_selected['EVL_AMT'] / total_amt * 100).round(6)
+    else:
+        df_holding_selected['WEIGHT_PCT'] = 0
+
+    # 변경: "US" 접두어로 USD 종목 판정
+    usd_items = df_holding_selected[
+        df_holding_selected['ITEM_CD'].apply(lambda x: str(x).upper().startswith('US'))
+    ].copy()
+
+    weighted_fx_gain = {col: 0 for col in return_cols}
+    if not usd_items.empty:
+        for col in return_cols:
+            fx_col = f'FX_{col}'
+            if fx_col not in usd_items.columns:
+                continue
+            valid_mask = usd_items[fx_col].apply(lambda x: pd.notna(x) and x != '')
+            if valid_mask.any():
+                weighted_fx_gain[col] = (
+                    usd_items.loc[valid_mask, fx_col].astype(float) *
+                    usd_items.loc[valid_mask, 'WEIGHT_PCT']
+                ).sum() / 100
 
     def format_return(value):
         if pd.isna(value) or value == '':
@@ -1313,6 +1505,20 @@ def update_dashboard(selected_date, selected_fund):
                 subtotal_row[col] = '-'
         holdings_list.append(subtotal_row)
 
+    # 환차익 행 추가 (총계 바로 위)
+    if has_return_data:
+        fx_gain_row = {
+            '대분류': '',
+            'ITEM_NM': '환차익',
+            # 변경: 환차익 비중은 USD 종목 비중 합계로 표시
+            '비중(%)': round(usd_items['WEIGHT_PCT'].sum(), 2),
+            '_is_subtotal': '',
+            'Last Updated': '-'
+        }
+        for col in return_cols:
+            fx_gain_row[col] = round(weighted_fx_gain.get(col, 0), 2)
+        holdings_list.append(fx_gain_row)
+
     # 총계 행 추가 (맨 마지막)
     total_row = {
         '대분류': '■ 총계',
@@ -1344,16 +1550,12 @@ def update_dashboard(selected_date, selected_fund):
         {'name': 'Last Updated', 'id': 'Last Updated'}
     ]
 
-    # 소분류별 집계 (allocation table용)
-    df_agg = df_holding_selected.groupby('소분류', as_index=False)['EVL_AMT'].sum()
-    df_agg = df_agg[df_agg['EVL_AMT'] > 0].sort_values('EVL_AMT', ascending=False)
-    df_agg['비중%'] = (df_agg['EVL_AMT'] / df_agg['EVL_AMT'].sum() * 100).round(2)
-    df_agg['EVL_AMT_억'] = (df_agg['EVL_AMT'] / 100_000_000).round(2)
-
-    # 시계열 스택 영역차트
+    # ??: ?? ??? ?? ??(%) ??? ??
     df_timeseries = holding[holding['FUND_CD'] == selected_fund].copy()
-    df_ts_agg = df_timeseries.groupby(['STD_DT', '소분류'], as_index=False)['EVL_AMT'].sum()
-    df_pivot = df_ts_agg.pivot(index='STD_DT', columns='소분류', values='EVL_AMT').fillna(0)
+    group_key = area_groupby if area_groupby in ['대분류', '지역', '소분류'] else '대분류'
+    df_ts_agg = df_timeseries.groupby(['STD_DT', group_key], as_index=False)['EVL_AMT'].sum()
+    df_pivot = df_ts_agg.pivot(index='STD_DT', columns=group_key, values='EVL_AMT').fillna(0)
+    df_pivot = (df_pivot.div(df_pivot.sum(axis=1), axis=0) * 100).fillna(0)
 
     fig_area = go.Figure()
     for col in df_pivot.columns:
@@ -1363,18 +1565,18 @@ def update_dashboard(selected_date, selected_fund):
             mode='lines',
             name=col,
             stackgroup='one',
-            hovertemplate='<b>%{fullData.name}</b><br>%{y:,.0f}원<extra></extra>'
+            hovertemplate='<b>%{fullData.name}</b><br>%{y:.2f}%<extra></extra>'
         ))
     fig_area.update_layout(
-        title='자산배분 추이',
+        title='자산배분 현황',
         xaxis_title='날짜',
-        yaxis_title='평가금액 (원)',
+        yaxis_title='비중(%)',
         height=400,
         hovermode='x unified',
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
+    fig_area.update_yaxes(range=[0, 100])
 
-    # 수익률/NAV 차트
     df_metrics_fund = metrics_for_chart[metrics_for_chart['FUND_CD'] == selected_fund].copy()
 
     fig_perf = make_subplots(
@@ -1414,15 +1616,7 @@ def update_dashboard(selected_date, selected_fund):
     fig_perf.update_yaxes(title_text="NAV (억원)", row=2, col=1)
     fig_perf.update_layout(height=500, showlegend=False)
 
-    # 테이블
-    table_data = df_agg[['소분류', 'EVL_AMT_억', '비중%']].to_dict('records')
-    table_columns = [
-        {'name': '소분류', 'id': '소분류'},
-        {'name': '금액 (억원)', 'id': 'EVL_AMT_억'},
-        {'name': '비중 (%)', 'id': '비중%'}
-    ]
-
-    return holdings_table_data, holdings_table_columns, fig_area, fig_perf, table_data, table_columns
+    return holdings_table_data, holdings_table_columns, fig_area, fig_perf
 
 
 # =========================
