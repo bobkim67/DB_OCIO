@@ -1,13 +1,11 @@
 """
 자산배분 대시보드 (통합 버전)
 
-3개 파일(dashboard_with_master.py, create_initial_master.py, auto_classify.py)을
-하나로 통합한 버전입니다.
-
 Features:
 - 자산 자동 분류
 - 마스터 데이터 관리
 - SCIP DB 기반 영업일 수익률 계산
+- 모펀드 수익률 계산 (DWPM10510 MOD_STPR 기반)
 - 인터랙티브 피봇 분석 (탭 상태 유지)
 """
 
@@ -40,6 +38,10 @@ FUND_LIST = [
     '07J48','07J49','07P70','07W15','08K88','08N33','08N81','09L94',
     '1JM96','1JM98','2JM23','4JM12'
 ]
+
+# 대분류 순서 정의 (전역)
+CATEGORY_ORDER = ['주식', '채권', '대체', '모펀드', '통화', '기타', '현금']
+CATEGORY_ORDER_MAP = {cat: i for i, cat in enumerate(CATEGORY_ORDER)}
 
 # =========================
 # 1) 자동 분류 함수 (auto_classify.py 통합)
@@ -335,13 +337,15 @@ def parse_data_blob(blob):
         return None
 
 
-def should_exclude_for_return(item_nm):
-    """수익률 계산에서 제외할 종목 판단"""
+def should_exclude_for_scip_return(item_nm, category):
+    """SCIP 수익률 계산에서 제외할 종목 판단 (모펀드는 별도 계산)"""
     item_nm_upper = str(item_nm).upper()
 
-    # 모펀드, 콜론, 선물, REPO, 예금/증거금, 미수/미지급 등 제외
-    if '모투자신탁' in item_nm:
+    # 모펀드는 SCIP에서 제외 (별도 DWPM10510에서 계산)
+    if category == '모펀드' or '모투자신탁' in item_nm:
         return True
+
+    # 콜론, 선물, REPO, 예금/증거금, 미수/미지급 등 제외
     if '콜론' in item_nm_upper:
         return True
     if ('달러 F' in item_nm_upper or 'USD F' in item_nm_upper or
@@ -431,7 +435,7 @@ def calculate_period_base_dates(latest_date, available_dates):
     Parameters:
     -----------
     latest_date : date
-        SCIP DB의 최신 영업일
+        최신 영업일
     available_dates : list of date
         실제 데이터가 존재하는 날짜 목록
 
@@ -462,8 +466,7 @@ def calculate_period_base_dates(latest_date, available_dates):
             # 1D는 최신일의 직전 영업일
             base_dates[period] = find_business_day(target, available_dates, 'on_or_before')
         elif period == 'YTD':
-            # YTD는 해당일 또는 이후 가장 가까운 영업일 (여기서는 on_or_before 방식으로 처리)
-            # 실제로는 1/1 이후 첫 영업일이어야 하므로, available_dates에서 ytd_start_target 이상 중 가장 작은 값
+            # YTD는 해당년도 첫 영업일 (1/1 이후 첫 데이터)
             ytd_date = None
             for d in reversed(available_dates):  # 오름차순으로 순회
                 if d >= ytd_start_target:
@@ -479,25 +482,24 @@ def calculate_period_base_dates(latest_date, available_dates):
 def fetch_factset_returns_with_dates(master_df, engine_scip):
     """
     SCIP DB에서 FactSet 수익률 데이터 조회 (영업일 기반)
+    모펀드는 제외 (별도 DWPM10510에서 조회)
 
     Returns:
     --------
     tuple: (return_df, available_dates, latest_date, base_dates)
-        - return_df: ITEM_CD, date, return_index 컬럼
-        - available_dates: 데이터 존재 날짜 목록
-        - latest_date: 최신 영업일
-        - base_dates: 기간별 기준일 dict
     """
-    # 수익률 계산 대상 종목 필터링
-    items_for_return = master_df[~master_df['ITEM_NM'].apply(should_exclude_for_return)].copy()
+    # 수익률 계산 대상 종목 필터링 (모펀드 제외)
+    items_for_return = master_df[
+        ~master_df.apply(lambda row: should_exclude_for_scip_return(row['ITEM_NM'], row.get('대분류', '')), axis=1)
+    ].copy()
 
     if len(items_for_return) == 0:
-        print("[INFO] 수익률 계산 대상 종목이 없습니다")
+        print("[INFO] SCIP 수익률 계산 대상 종목이 없습니다")
         return pd.DataFrame(columns=['ITEM_CD', 'date', 'return_index']), [], None, {}
 
     isin_list = items_for_return['ITEM_CD'].tolist()
 
-    print(f"[INFO] 수익률 조회 대상: {len(isin_list)}개 종목")
+    print(f"[INFO] SCIP 수익률 조회 대상: {len(isin_list)}개 종목 (모펀드 제외)")
 
     # Step 1: 실제 데이터 존재 날짜 조회
     available_dates = fetch_scip_available_dates(engine_scip, isin_list)
@@ -545,7 +547,7 @@ def fetch_factset_returns_with_dates(master_df, engine_scip):
                 }
             )
 
-        print(f"[INFO] 조회된 raw datapoints: {len(df_raw)}개")
+        print(f"[INFO] SCIP 조회된 raw datapoints: {len(df_raw)}개")
 
         if df_raw.empty:
             return pd.DataFrame(columns=['ITEM_CD', 'date', 'return_index']), available_dates, latest_date, base_dates
@@ -559,7 +561,7 @@ def fetch_factset_returns_with_dates(master_df, engine_scip):
         df_raw = df_raw.drop_duplicates(subset=['ITEM_CD', 'date'], keep='first')
 
         result = df_raw[['ITEM_CD', 'date', 'return_index']].copy()
-        print(f"[INFO] 파싱된 데이터: {len(result)}개 ({result['ITEM_CD'].nunique()}개 종목)")
+        print(f"[INFO] SCIP 파싱된 데이터: {len(result)}개 ({result['ITEM_CD'].nunique()}개 종목)")
 
         return result, available_dates, latest_date, base_dates
 
@@ -568,9 +570,133 @@ def fetch_factset_returns_with_dates(master_df, engine_scip):
         return pd.DataFrame(columns=['ITEM_CD', 'date', 'return_index']), [], None, {}
 
 
+# =========================
+# 5) 모펀드 수익률 계산 (DWPM10510 MOD_STPR 기반)
+# =========================
+def fetch_mofund_returns(master_df, engine, latest_date, base_dates):
+    """
+    모펀드 수익률 계산 (DWPM10510의 MOD_STPR 기반)
+
+    모펀드 ITEM_CD 마지막 5자리를 FUND_CD로 변환하여 조회
+
+    Returns:
+    --------
+    DataFrame with columns: ITEM_CD, 1D, 1W, 1M, 3M, 6M, YTD, Last Updated
+    """
+    # 모펀드 종목 추출
+    mofund_items = master_df[master_df['대분류'] == '모펀드'].copy()
+
+    if mofund_items.empty:
+        print("[INFO] 모펀드 종목이 없습니다")
+        return pd.DataFrame(columns=['ITEM_CD', '1D', '1W', '1M', '3M', '6M', 'YTD', 'Last Updated'])
+
+    # ITEM_CD 마지막 5자리를 FUND_CD로 변환
+    mofund_items['FUND_CD'] = mofund_items['ITEM_CD'].apply(lambda x: str(x)[-5:] if len(str(x)) >= 5 else str(x))
+    mofund_fund_codes = mofund_items['FUND_CD'].tolist()
+    item_to_fund_map = dict(zip(mofund_items['ITEM_CD'], mofund_items['FUND_CD']))
+
+    print(f"[INFO] 모펀드 수익률 조회 대상: {len(mofund_fund_codes)}개 펀드")
+    print(f"[INFO] 모펀드 FUND_CD 목록: {mofund_fund_codes}")
+
+    if not latest_date or not base_dates:
+        print("[WARNING] 기준일 정보가 없어 모펀드 수익률 계산 불가")
+        return pd.DataFrame(columns=['ITEM_CD', '1D', '1W', '1M', '3M', '6M', 'YTD', 'Last Updated'])
+
+    # YTD 시작일 ~ 최신일까지 데이터 조회
+    ytd_start = base_dates.get('YTD')
+    if ytd_start is None:
+        ytd_start = date(latest_date.year, 1, 1)
+
+    # 날짜를 YYYYMMDD 형식으로 변환
+    start_dt_int = int(ytd_start.strftime('%Y%m%d'))
+    end_dt_int = int(latest_date.strftime('%Y%m%d'))
+
+    query = text("""
+    SELECT
+        STD_DT,
+        FUND_CD,
+        MOD_STPR
+    FROM dt.DWPM10510
+    WHERE STD_DT BETWEEN :start_dt AND :end_dt
+      AND FUND_CD IN :fund_list
+    ORDER BY FUND_CD, STD_DT
+    """)
+
+    try:
+        with engine.connect() as conn:
+            df_metrics = pd.read_sql(
+                query, conn,
+                params={
+                    'start_dt': start_dt_int,
+                    'end_dt': end_dt_int,
+                    'fund_list': tuple(mofund_fund_codes)
+                }
+            )
+
+        print(f"[INFO] 모펀드 MOD_STPR 조회: {len(df_metrics)}개 레코드")
+
+        if df_metrics.empty:
+            return pd.DataFrame(columns=['ITEM_CD', '1D', '1W', '1M', '3M', '6M', 'YTD', 'Last Updated'])
+
+        # 날짜를 date 객체로 변환
+        df_metrics['date'] = df_metrics['STD_DT'].apply(lambda x: datetime.strptime(str(int(x)), '%Y%m%d').date())
+
+        results = []
+
+        # 각 FUND_CD별로 수익률 계산
+        for item_cd, fund_cd in item_to_fund_map.items():
+            fund_data = df_metrics[df_metrics['FUND_CD'] == fund_cd].sort_values('date')
+
+            if fund_data.empty:
+                print(f"[WARNING] 모펀드 {fund_cd} ({item_cd}) 데이터 없음")
+                continue
+
+            # 최신 데이터
+            latest_data = fund_data[fund_data['date'] <= latest_date]
+            if latest_data.empty:
+                continue
+
+            latest_price = latest_data.iloc[-1]['MOD_STPR']
+            last_updated = latest_data.iloc[-1]['date']
+
+            row = {
+                'ITEM_CD': item_cd,
+                'Last Updated': last_updated.strftime('%Y-%m-%d') if last_updated else '-'
+            }
+
+            # 각 기간별 수익률 계산
+            for period_name, base_date in base_dates.items():
+                if base_date is None:
+                    row[period_name] = np.nan
+                    continue
+
+                # base_date 이하의 가장 최근 데이터
+                period_data = fund_data[fund_data['date'] <= base_date]
+
+                if period_data.empty:
+                    row[period_name] = np.nan
+                else:
+                    base_price = period_data.iloc[-1]['MOD_STPR']
+                    if base_price > 0:
+                        row[period_name] = round((latest_price / base_price - 1) * 100, 2)
+                    else:
+                        row[period_name] = np.nan
+
+            results.append(row)
+
+        result_df = pd.DataFrame(results)
+        print(f"[INFO] 모펀드 수익률 계산 완료: {len(result_df)}개 종목")
+
+        return result_df
+
+    except Exception as e:
+        print(f"[ERROR] fetch_mofund_returns: {e}")
+        return pd.DataFrame(columns=['ITEM_CD', '1D', '1W', '1M', '3M', '6M', 'YTD', 'Last Updated'])
+
+
 def calculate_return_periods_v2(return_df, latest_date, base_dates):
     """
-    영업일 기준 수익률 계산 (v2)
+    영업일 기준 수익률 계산 (v2) - SCIP 데이터용
 
     Returns:
     --------
@@ -624,13 +750,13 @@ def calculate_return_periods_v2(return_df, latest_date, base_dates):
         results.append(row)
 
     result_df = pd.DataFrame(results)
-    print(f"[INFO] 수익률 계산 완료: {len(result_df)}개 종목")
+    print(f"[INFO] SCIP 수익률 계산 완료: {len(result_df)}개 종목")
 
     return result_df
 
 
 # =========================
-# 5) 데이터 로드
+# 6) 데이터 로드
 # =========================
 print("\n" + "="*80)
 print("[INFO] 데이터 로딩 시작")
@@ -682,7 +808,7 @@ GROUP BY STD_DT, FUND_CD, FUND_NM, ITEM_CD, ITEM_NM, AST_CLSF_CD_NM
 ORDER BY STD_DT, FUND_CD;
 """
 
-# Fund metrics
+# Fund metrics (모든 펀드 + 모펀드용)
 query_metrics = """
 SELECT
     STD_DT,
@@ -691,7 +817,6 @@ SELECT
     NAST_AMT
 FROM dt.DWPM10510
 WHERE STD_DT BETWEEN :start_dt AND :end_dt
-  AND FUND_CD IN :fund_list
 ORDER BY STD_DT, FUND_CD;
 """
 
@@ -703,7 +828,7 @@ with engine.connect() as conn:
     )
     metrics = pd.read_sql(
         text(query_metrics), conn,
-        params={"start_dt": START_STD_DT, "end_dt": END_STD_DT, "fund_list": fund_tuple}
+        params={"start_dt": START_STD_DT, "end_dt": END_STD_DT}
     )
 
 print(f"[INFO] Loaded {len(holding)} holding records, {len(metrics)} metric records")
@@ -720,7 +845,7 @@ def convert_to_date(dt_int):
 
 holding['STD_DT_INT'] = holding['STD_DT']
 holding['STD_DT'] = holding['STD_DT'].apply(convert_to_date)
-metrics['STD_DT'] = metrics['STD_DT'].apply(lambda x: datetime.strptime(str(int(x)), '%Y%m%d'))
+metrics['STD_DT_DATE'] = metrics['STD_DT'].apply(lambda x: datetime.strptime(str(int(x)), '%Y%m%d'))
 
 # 자산군 분류
 print("[INFO] Classifying assets with master mapping...")
@@ -732,24 +857,35 @@ available_dates = sorted(holding['STD_DT'].unique())
 holding_latest_date = available_dates[-1]
 
 # =========================
-# 6) SCIP 기반 수익률 데이터 로드
+# 7) 수익률 데이터 로드 (SCIP + 모펀드)
 # =========================
-print("\n[INFO] Fetching SCIP return data (영업일 기준)...")
+print("\n[INFO] Fetching return data (SCIP + 모펀드)...")
+
+# Step 1: SCIP에서 일반 종목 수익률 조회
 factset_returns, scip_available_dates, scip_latest_date, base_dates = fetch_factset_returns_with_dates(
     master_mapping, engine_scip
 )
 
-# 수익률 계산
-return_periods = calculate_return_periods_v2(factset_returns, scip_latest_date, base_dates)
-print(f"[INFO] Return data loaded for {len(return_periods)} items")
+# SCIP 수익률 계산
+scip_return_periods = calculate_return_periods_v2(factset_returns, scip_latest_date, base_dates)
+print(f"[INFO] SCIP return data: {len(scip_return_periods)} items")
+
+# Step 2: 모펀드 수익률 계산 (DWPM10510)
+mofund_return_periods = fetch_mofund_returns(master_mapping, engine, scip_latest_date, base_dates)
+print(f"[INFO] 모펀드 return data: {len(mofund_return_periods)} items")
+
+# Step 3: SCIP + 모펀드 수익률 병합
+return_periods = pd.concat([scip_return_periods, mofund_return_periods], ignore_index=True)
+print(f"[INFO] Total return data: {len(return_periods)} items")
 
 # Merge return data with holding
 if not return_periods.empty:
     holding = holding.merge(return_periods, on='ITEM_CD', how='left')
 
-# 펀드 수익률 계산
-metrics = metrics.sort_values(['FUND_CD', 'STD_DT'])
-metrics['RET'] = metrics.groupby('FUND_CD')['MOD_STPR'].transform(
+# 펀드 수익률 계산 (차트용)
+metrics_for_chart = metrics[metrics['FUND_CD'].isin(FUND_LIST)].copy()
+metrics_for_chart = metrics_for_chart.sort_values(['FUND_CD', 'STD_DT'])
+metrics_for_chart['RET'] = metrics_for_chart.groupby('FUND_CD')['MOD_STPR'].transform(
     lambda x: (x / x.iloc[0] - 1) * 100
 )
 
@@ -758,14 +894,29 @@ print(f"[INFO] SCIP latest date: {scip_latest_date}")
 print(f"[INFO] Unmapped items: {len(unmapped)}")
 
 # =========================
-# 7) Pivot 분석용 데이터 준비
+# 8) Pivot 분석용 데이터 준비
 # =========================
-def prepare_pivot_data(holding_df, return_periods_df):
-    """피봇 분석용 데이터 준비 (수익률 포함)"""
+def prepare_pivot_data(holding_df, metrics_df, return_periods_df):
+    """피봇 분석용 데이터 준비 (수익률, 비중, NAV 포함)"""
     pivot_data = holding_df.copy()
     pivot_data['날짜'] = pivot_data['STD_DT'].astype(str)
     pivot_data['금액(억)'] = (pivot_data['EVL_AMT'] / 100_000_000).round(2)
     pivot_data['금액(원)'] = pivot_data['EVL_AMT'].astype(int)
+
+    # 펀드별 총액 계산하여 비중(%) 계산
+    fund_totals = pivot_data.groupby(['STD_DT', 'FUND_CD'])['EVL_AMT'].transform('sum')
+    pivot_data['비중(%)'] = (pivot_data['EVL_AMT'] / fund_totals * 100).round(2)
+
+    # NAV 추가 (NAST_AMT)
+    metrics_for_pivot = metrics_df[metrics_df['FUND_CD'].isin(FUND_LIST)][['STD_DT', 'FUND_CD', 'NAST_AMT']].copy()
+    metrics_for_pivot['STD_DT'] = metrics_for_pivot['STD_DT'].apply(lambda x: datetime.strptime(str(int(x)), '%Y%m%d').date())
+    metrics_for_pivot['NAV(억)'] = (metrics_for_pivot['NAST_AMT'] / 100_000_000).round(2)
+
+    pivot_data = pivot_data.merge(
+        metrics_for_pivot[['STD_DT', 'FUND_CD', 'NAV(억)']],
+        on=['STD_DT', 'FUND_CD'],
+        how='left'
+    )
 
     # 수익률 컬럼 추가 (holding에 이미 merge된 경우)
     return_cols = ['1D', '1W', '1M', '3M', '6M', 'YTD', 'Last Updated']
@@ -783,22 +934,26 @@ def prepare_pivot_data(holding_df, return_periods_df):
     for col in ['1D(%)', '1W(%)', '1M(%)', '3M(%)', '6M(%)', 'YTD(%)']:
         pivot_data[col] = pivot_data[col].apply(lambda x: x if pd.notna(x) else '')
 
+    # 대분류 순서 적용하여 정렬
+    pivot_data['대분류_순서'] = pivot_data['대분류'].map(CATEGORY_ORDER_MAP).fillna(99)
+    pivot_data = pivot_data.sort_values(['대분류_순서', '지역', 'ITEM_NM'])
+
     return pivot_data
 
-pivot_data_global = prepare_pivot_data(holding, return_periods)
+pivot_data_global = prepare_pivot_data(holding, metrics, return_periods)
 
 # 최신 날짜 (Pivot 기본 필터용)
 pivot_latest_date = str(holding_latest_date)
 
 # Pivot에 사용할 컬럼
 pivot_cols = ['날짜', 'FUND_CD', 'FUND_NM', '대분류', '지역', '소분류',
-              'ITEM_NM', '금액(억)', '금액(원)',
+              'ITEM_NM', '금액(억)', '비중(%)', 'NAV(억)', '금액(원)',
               '1D(%)', '1W(%)', '1M(%)', '3M(%)', '6M(%)', 'YTD(%)', 'Last Updated']
 pivot_data_for_table = pivot_data_global[[c for c in pivot_cols if c in pivot_data_global.columns]]
 
 
 # =========================
-# 8) Dash App
+# 9) Dash App
 # =========================
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
 
@@ -848,11 +1003,10 @@ app.layout = html.Div([
             dash_table.DataTable(
                 id='holdings-table',
                 style_cell={
-                    'textAlign': 'center',
+                    'textAlign': 'left',
                     'padding': '8px',
                     'fontSize': '12px',
-                    'whiteSpace': 'normal',
-                    'height': 'auto'
+                    'whiteSpace': 'nowrap',  # 줄바꿈 방지
                 },
                 style_header={
                     'backgroundColor': '#4CAF50',
@@ -860,29 +1014,25 @@ app.layout = html.Div([
                     'color': 'white',
                     'border': '1px solid white'
                 },
-                style_cell_conditional=[
-                    {'if': {'column_id': 'ITEM_NM'}, 'minWidth': '200px', 'maxWidth': '300px', 'textAlign': 'left', 'textOverflow': 'ellipsis'},
-                    {'if': {'column_id': '대분류'}, 'width': '80px'},
-                    {'if': {'column_id': '비중(%)'}, 'width': '70px', 'textAlign': 'right'},
-                    {'if': {'column_id': '1D'}, 'width': '65px', 'textAlign': 'right'},
-                    {'if': {'column_id': '1W'}, 'width': '65px', 'textAlign': 'right'},
-                    {'if': {'column_id': '1M'}, 'width': '65px', 'textAlign': 'right'},
-                    {'if': {'column_id': '3M'}, 'width': '65px', 'textAlign': 'right'},
-                    {'if': {'column_id': '6M'}, 'width': '65px', 'textAlign': 'right'},
-                    {'if': {'column_id': 'YTD'}, 'width': '65px', 'textAlign': 'right'},
-                    {'if': {'column_id': 'Last Updated'}, 'width': '110px', 'textAlign': 'center'},
-                ],
                 style_data_conditional=[
                     {'if': {'row_index': 'odd'}, 'backgroundColor': 'rgb(248, 248, 248)'},
                     {
-                        'if': {'filter_query': '{_is_subtotal} = true'},
+                        'if': {'filter_query': '{_is_subtotal} = "subtotal"'},
                         'backgroundColor': '#FFE082',
                         'fontWeight': 'bold',
                         'borderTop': '2px solid #FF6F00',
                         'borderBottom': '2px solid #FF6F00'
+                    },
+                    {
+                        'if': {'filter_query': '{_is_subtotal} = "total"'},
+                        'backgroundColor': '#81C784',
+                        'fontWeight': 'bold',
+                        'color': 'white',
+                        'borderTop': '3px solid #388E3C',
+                        'borderBottom': '3px solid #388E3C'
                     }
                 ],
-                page_size=50,
+                page_size=100,
                 sort_action='native',
                 filter_action='native'
             )
@@ -899,7 +1049,7 @@ app.layout = html.Div([
             html.H3("자산배분 상세", style={'textAlign': 'center'}),
             dash_table.DataTable(
                 id='allocation-table',
-                style_cell={'textAlign': 'center', 'padding': '8px'},
+                style_cell={'textAlign': 'center', 'padding': '8px', 'whiteSpace': 'nowrap'},
                 style_header={'backgroundColor': 'lightgrey', 'fontWeight': 'bold'},
                 style_data_conditional=[{'if': {'row_index': 'odd'}, 'backgroundColor': 'rgb(248, 248, 248)'}]
             )
@@ -919,7 +1069,7 @@ app.layout = html.Div([
                 html.Br(),
                 "• Renderer에서 표시 방식 선택 (Table, Heatmap, Bar Chart 등)",
                 html.Br(),
-                "• 수익률 컬럼: 1D(%), 1W(%), 1M(%), 3M(%), 6M(%), YTD(%)"
+                "• 사용 가능 컬럼: 금액(억), 비중(%), NAV(억), 1D(%), 1W(%), 1M(%), 3M(%), 6M(%), YTD(%)"
             ], style={'textAlign': 'center', 'color': '#666', 'fontSize': 14, 'marginBottom': 30}),
         ]),
 
@@ -931,10 +1081,8 @@ app.layout = html.Div([
                 rows=['FUND_NM', '대분류', '지역', 'ITEM_NM'],
                 cols=[],
                 vals=['금액(억)'],
-                aggregatorName='Sum as Fraction of Total',
+                aggregatorName='Sum',
                 rendererName='Table',
-                # 초기 필터: FUND_CD는 '07G03', 날짜는 최신
-                hiddenFromDragDrop=['_is_subtotal'] if '_is_subtotal' in pivot_data_for_table.columns else [],
             )
         ], style={'marginTop': 20})
     ]),
@@ -963,18 +1111,8 @@ app.layout = html.Div([
                     {'name': 'Last Updated', 'id': 'Last Updated'},
                 ],
                 data=[],
-                style_cell={'textAlign': 'center', 'padding': '10px', 'fontSize': '13px'},
+                style_cell={'textAlign': 'left', 'padding': '10px', 'fontSize': '13px', 'whiteSpace': 'nowrap'},
                 style_header={'backgroundColor': '#4CAF50', 'fontWeight': 'bold', 'color': 'white'},
-                style_cell_conditional=[
-                    {'if': {'column_id': 'ITEM_NM'}, 'minWidth': '180px', 'textAlign': 'left'},
-                    {'if': {'column_id': '1D'}, 'width': '65px', 'textAlign': 'right'},
-                    {'if': {'column_id': '1W'}, 'width': '65px', 'textAlign': 'right'},
-                    {'if': {'column_id': '1M'}, 'width': '65px', 'textAlign': 'right'},
-                    {'if': {'column_id': '3M'}, 'width': '65px', 'textAlign': 'right'},
-                    {'if': {'column_id': '6M'}, 'width': '65px', 'textAlign': 'right'},
-                    {'if': {'column_id': 'YTD'}, 'width': '65px', 'textAlign': 'right'},
-                    {'if': {'column_id': 'Last Updated'}, 'width': '110px', 'textAlign': 'center'},
-                ],
                 style_data_conditional=[{'if': {'row_index': 'odd'}, 'backgroundColor': 'rgb(248, 248, 248)'}],
                 page_size=50,
                 sort_action='native',
@@ -982,14 +1120,14 @@ app.layout = html.Div([
                 export_format='xlsx',
                 export_headers='display',
             )
-        ], style={'marginBottom': 30, 'maxWidth': '1200px', 'margin': '0 auto'}),
+        ], style={'marginBottom': 30, 'maxWidth': '1400px', 'margin': '0 auto'}),
     ])
 
-], style={'padding': '20px', 'maxWidth': '1400px', 'margin': '0 auto'})
+], style={'padding': '20px', 'maxWidth': '1600px', 'margin': '0 auto'})
 
 
 # =========================
-# 9) 탭 표시/숨김 콜백
+# 10) 탭 표시/숨김 콜백
 # =========================
 @app.callback(
     [Output('tab-dashboard-content', 'style'),
@@ -1007,7 +1145,7 @@ def toggle_tab_visibility(tab):
 
 
 # =========================
-# 10) 대시보드 콜백
+# 11) 대시보드 콜백
 # =========================
 @app.callback(
     Output('fund-name-display', 'children'),
@@ -1042,17 +1180,20 @@ def update_dashboard(selected_date, selected_fund):
 
     total_amt = df_holding_selected['EVL_AMT'].sum()
 
-    # 정렬 순서 정의
-    category_order = {'주식': 1, '채권': 2, '모펀드': 3, '현금': 4, '대체': 5, '통화': 6, '기타': 7}
-    df_holding_selected['대분류_순서'] = df_holding_selected['대분류'].map(category_order).fillna(99)
-    df_holding_selected = df_holding_selected.sort_values(['대분류_순서', 'EVL_AMT'], ascending=[True, False])
+    # 대분류 순서 정의 (주식, 채권, 대체, 모펀드, 통화, 기타, 현금)
+    df_holding_selected['대분류_순서'] = df_holding_selected['대분류'].map(CATEGORY_ORDER_MAP).fillna(99)
+    df_holding_selected = df_holding_selected.sort_values(['대분류_순서', '지역', 'ITEM_NM'])
 
-    # 보유 종목 테이블 (대분류 소계 포함)
+    # 보유 종목 테이블 (대분류 소계 + 총계 포함)
     holdings_list = []
     current_category = None
     category_pct = 0
     category_weighted_returns = {col: 0 for col in ['1D', '1W', '1M', '3M', '6M', 'YTD']}
     category_valid_weight = {col: 0 for col in ['1D', '1W', '1M', '3M', '6M', 'YTD']}
+
+    # 총계 계산용 변수
+    total_weighted_returns = {col: 0 for col in ['1D', '1W', '1M', '3M', '6M', 'YTD']}
+    total_valid_weight = {col: 0 for col in ['1D', '1W', '1M', '3M', '6M', 'YTD']}
 
     return_cols = ['1D', '1W', '1M', '3M', '6M', 'YTD']
     has_return_data = all(col in df_holding_selected.columns for col in return_cols)
@@ -1074,8 +1215,8 @@ def update_dashboard(selected_date, selected_fund):
                 '대분류': f'▶ {current_category} 소계',
                 'ITEM_NM': '',
                 '비중(%)': round(category_pct, 2),
-                '_is_subtotal': True,
-                'Last Updated': ''
+                '_is_subtotal': 'subtotal',
+                'Last Updated': '-'
             }
             # 가중평균 수익률 계산
             for col in return_cols:
@@ -1083,7 +1224,7 @@ def update_dashboard(selected_date, selected_fund):
                     weighted_avg = category_weighted_returns[col] / category_valid_weight[col]
                     subtotal_row[col] = round(weighted_avg, 2)
                 else:
-                    subtotal_row[col] = ''
+                    subtotal_row[col] = '-'
             holdings_list.append(subtotal_row)
 
             # 초기화
@@ -1098,7 +1239,7 @@ def update_dashboard(selected_date, selected_fund):
             '대분류': row['대분류'],
             'ITEM_NM': row['ITEM_NM'],
             '비중(%)': round(pct, 2),
-            '_is_subtotal': False,
+            '_is_subtotal': '',
             'Last Updated': row.get('Last Updated', '') if has_return_data else ''
         }
 
@@ -1111,8 +1252,12 @@ def update_dashboard(selected_date, selected_fund):
 
                 # 가중평균 계산을 위한 누적 (유효한 값만)
                 if formatted_val != '' and pd.notna(val):
-                    category_weighted_returns[col] += float(val) * pct
+                    val_float = float(val)
+                    category_weighted_returns[col] += val_float * pct
                     category_valid_weight[col] += pct
+                    # 총계용 누적
+                    total_weighted_returns[col] += val_float * pct
+                    total_valid_weight[col] += pct
         else:
             for col in return_cols:
                 item_row[col] = ''
@@ -1125,16 +1270,32 @@ def update_dashboard(selected_date, selected_fund):
             '대분류': f'▶ {current_category} 소계',
             'ITEM_NM': '',
             '비중(%)': round(category_pct, 2),
-            '_is_subtotal': True,
-            'Last Updated': ''
+            '_is_subtotal': 'subtotal',
+            'Last Updated': '-'
         }
         for col in return_cols:
             if category_valid_weight[col] > 0:
                 weighted_avg = category_weighted_returns[col] / category_valid_weight[col]
                 subtotal_row[col] = round(weighted_avg, 2)
             else:
-                subtotal_row[col] = ''
+                subtotal_row[col] = '-'
         holdings_list.append(subtotal_row)
+
+    # 총계 행 추가 (맨 마지막)
+    total_row = {
+        '대분류': '■ 총계',
+        'ITEM_NM': '',
+        '비중(%)': 100.0,
+        '_is_subtotal': 'total',
+        'Last Updated': '-'
+    }
+    for col in return_cols:
+        if total_valid_weight[col] > 0:
+            weighted_avg = total_weighted_returns[col] / total_valid_weight[col]
+            total_row[col] = round(weighted_avg, 2)
+        else:
+            total_row[col] = '-'
+    holdings_list.append(total_row)
 
     holdings_table_data = holdings_list
 
@@ -1182,7 +1343,7 @@ def update_dashboard(selected_date, selected_fund):
     )
 
     # 수익률/NAV 차트
-    df_metrics_fund = metrics[metrics['FUND_CD'] == selected_fund].copy()
+    df_metrics_fund = metrics_for_chart[metrics_for_chart['FUND_CD'] == selected_fund].copy()
 
     fig_perf = make_subplots(
         rows=2, cols=1,
@@ -1193,7 +1354,7 @@ def update_dashboard(selected_date, selected_fund):
 
     fig_perf.add_trace(
         go.Scatter(
-            x=df_metrics_fund['STD_DT'],
+            x=df_metrics_fund['STD_DT_DATE'],
             y=df_metrics_fund['RET'],
             mode='lines',
             name='수익률',
@@ -1205,7 +1366,7 @@ def update_dashboard(selected_date, selected_fund):
 
     fig_perf.add_trace(
         go.Scatter(
-            x=df_metrics_fund['STD_DT'],
+            x=df_metrics_fund['STD_DT_DATE'],
             y=df_metrics_fund['NAST_AMT'] / 100_000_000,
             mode='lines',
             name='NAV',
@@ -1233,7 +1394,7 @@ def update_dashboard(selected_date, selected_fund):
 
 
 # =========================
-# 11) 종목 리스트 탭 콜백
+# 12) 종목 리스트 탭 콜백
 # =========================
 @app.callback(
     [Output('item-list-table', 'data'),
@@ -1254,13 +1415,17 @@ def update_item_list(tab):
     # 수익률 데이터 merge
     master_with_returns = master.merge(return_periods, on='ITEM_CD', how='left')
 
+    # 대분류 순서 적용
+    master_with_returns['대분류_순서'] = master_with_returns['대분류'].map(CATEGORY_ORDER_MAP).fillna(99)
+
     # 종목 리스트 데이터 준비
     cols_to_show = ['ITEM_CD', 'ITEM_NM', '대분류', '지역', '소분류',
                     '1D', '1W', '1M', '3M', '6M', 'YTD', 'Last Updated']
     available_cols = [c for c in cols_to_show if c in master_with_returns.columns]
 
-    item_list = master_with_returns[available_cols].copy()
-    item_list = item_list.sort_values(['대분류', '지역', '소분류', 'ITEM_NM'])
+    item_list = master_with_returns[available_cols + ['대분류_순서']].copy()
+    item_list = item_list.sort_values(['대분류_순서', '지역', '소분류', 'ITEM_NM'])
+    item_list = item_list.drop(columns=['대분류_순서'])
 
     # NaN을 빈 문자열로
     for col in ['1D', '1W', '1M', '3M', '6M', 'YTD', 'Last Updated']:
@@ -1278,11 +1443,11 @@ def update_item_list(tab):
 
 
 # =========================
-# 12) Run
+# 13) Run
 # =========================
 if __name__ == '__main__':
     print("\n" + "="*80)
-    print("자산배분 대시보드 시작 (통합 버전)")
+    print("자산배분 대시보드 시작")
     print("="*80)
     print(f"마스터 종목 수: {len(master_mapping)}")
     print(f"미분류 종목 수: {len(unmapped)}")
