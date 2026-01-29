@@ -880,13 +880,13 @@ SELECT
     FUND_NM,
     ITEM_CD,
     ITEM_NM,
-    AST_CLSF_CD_NM,
+    MAX(AST_CLSF_CD_NM) AS AST_CLSF_CD_NM,
     SUM(EVL_AMT) AS EVL_AMT
 FROM dt.DWPM10530
 WHERE STD_DT BETWEEN :start_dt AND :end_dt
   AND EVL_AMT > 0
   AND FUND_CD IN :fund_list
-GROUP BY STD_DT, FUND_CD, FUND_NM, ITEM_CD, ITEM_NM, AST_CLSF_CD_NM
+GROUP BY STD_DT, FUND_CD, FUND_NM, ITEM_CD, ITEM_NM
 ORDER BY STD_DT, FUND_CD;
 """
 
@@ -954,6 +954,98 @@ factset_returns, scip_available_dates, scip_latest_date, base_dates = fetch_fact
 scip_return_periods = calculate_return_periods_v2(factset_returns, scip_latest_date, base_dates)
 print(f"[INFO] SCIP return data: {len(scip_return_periods)} items")
 
+# =========================
+# DEBUG: VANGUARD FTSE EMERGING MARKETS 상세 분석
+# =========================
+DEBUG_ITEM_CD = 'US9220428588'  # VANGUARD FTSE EMERGING MARKETS
+DEBUG_ITEM_NM = 'VANGUARD FTSE EMERGING MARKETS'
+
+print(f"\n{'='*70}")
+print(f"[DEBUG] === {DEBUG_ITEM_NM} (Fund: 08K88) ===")
+print(f"{'='*70}")
+
+# 최근 5영업일 가격 데이터 조회
+debug_price_data = factset_returns[factset_returns['ITEM_CD'] == DEBUG_ITEM_CD].copy()
+if not debug_price_data.empty:
+    debug_price_data = debug_price_data.sort_values('date', ascending=False).head(5)
+    print(f"\nLast 5 Days Price History (USD):")
+    for _, row in debug_price_data.iterrows():
+        print(f"  {row['date']}: USD {row['return_index']:.4f}")
+
+    # 1D 수익률 계산 상세
+    if len(debug_price_data) >= 2:
+        latest_row = debug_price_data.iloc[0]
+        prev_row = debug_price_data.iloc[1]
+
+        t0_price = latest_row['return_index']
+        t1_price = prev_row['return_index']
+        t0_date = latest_row['date']
+        t1_date = prev_row['date']
+
+        usd_return = (t0_price / t1_price - 1) * 100
+
+        print(f"\n1D Return Calculation ({t0_date}):")
+        print(f"  T-1 Date:  {t1_date}")
+        print(f"  T-1 Price: USD {t1_price:.4f}")
+        print(f"  T-0 Date:  {t0_date}")
+        print(f"  T-0 Price: USD {t0_price:.4f}")
+        print(f"  USD Return: ({t0_price:.4f} / {t1_price:.4f} - 1) = {usd_return:.4f}%")
+else:
+    print(f"[WARNING] {DEBUG_ITEM_CD} 가격 데이터 없음")
+
+# FX 환율 조회 (최근 5일)
+print(f"\nFX Rate Query for Last 5 Days...")
+query_fx_debug = text("""
+SELECT
+    DATE(dp.timestamp_observation) AS date,
+    dp.data
+FROM SCIP.back_datapoint dp
+WHERE dp.dataset_id = 31
+  AND dp.dataseries_id = 6
+ORDER BY dp.timestamp_observation DESC
+LIMIT 10
+""")
+with engine_scip.connect() as conn:
+    fx_debug_df = pd.read_sql(query_fx_debug, conn)
+
+if not fx_debug_df.empty:
+    print(f"\nLast 5 Days FX Rate (KRW/USD):")
+    fx_debug_rates = {}
+    for _, row in fx_debug_df.head(5).iterrows():
+        fx_val = get_fx_rate(row['data'])
+        fx_debug_rates[row['date']] = fx_val
+        print(f"  {row['date']}: {fx_val:,.2f} KRW/USD" if fx_val else f"  {row['date']}: N/A")
+
+    # FX 수익률 계산 (1D)
+    fx_dates = sorted(fx_debug_rates.keys(), reverse=True)
+    if len(fx_dates) >= 2 and fx_debug_rates.get(fx_dates[0]) and fx_debug_rates.get(fx_dates[1]):
+        fx_t0 = fx_debug_rates[fx_dates[0]]
+        fx_t1 = fx_debug_rates[fx_dates[1]]
+        fx_return = (fx_t0 / fx_t1 - 1) * 100
+
+        print(f"\n1D FX Return Calculation:")
+        print(f"  T-1 FX ({fx_dates[1]}): {fx_t1:,.2f}")
+        print(f"  T-0 FX ({fx_dates[0]}): {fx_t0:,.2f}")
+        print(f"  FX Return: ({fx_t0:,.2f} / {fx_t1:,.2f} - 1) = {fx_return:.4f}%")
+
+        # Combined KRW Return
+        if not debug_price_data.empty and len(debug_price_data) >= 2:
+            combined_return = ((1 + usd_return/100) * (1 + fx_return/100) - 1) * 100
+            print(f"\nCombined KRW Return:")
+            print(f"  (1 + {usd_return:.4f}%) × (1 + {fx_return:.4f}%) - 1")
+            print(f"  = ({1 + usd_return/100:.6f}) × ({1 + fx_return/100:.6f}) - 1")
+            print(f"  = {combined_return:.4f}%")
+
+# scip_return_periods에서 해당 종목 확인
+debug_return = scip_return_periods[scip_return_periods['ITEM_CD'] == DEBUG_ITEM_CD]
+if not debug_return.empty:
+    print(f"\nSCIP Return Periods (before FX):")
+    for col in ['1D', '1W', '1M', '3M', '6M', 'YTD']:
+        val = debug_return.iloc[0].get(col, 'N/A')
+        print(f"  {col}: {val}")
+
+print(f"{'='*70}\n")
+
 # Step 2: 모펀드 수익률 계산 (DWPM10510)
 mofund_return_periods = fetch_mofund_returns(master_mapping, engine, scip_latest_date, base_dates)
 print(f"[INFO] 모펀드 return data: {len(mofund_return_periods)} items")
@@ -1006,6 +1098,21 @@ if not usd_items_after.empty:
     print(f"[DEBUG] USD 종목 샘플 (변환 후, KRW 환산):")
     for _, row in usd_items_after.head(5).iterrows():
         print(f"  - {row['ITEM_CD']}: 1D={row.get('1D', 'N/A')}, FX_1D={row.get('FX_1D', 'N/A')}")
+
+# DEBUG: VANGUARD FTSE EMERGING MARKETS 최종 결과 확인
+debug_final = return_periods[return_periods['ITEM_CD'] == DEBUG_ITEM_CD]
+if not debug_final.empty:
+    print(f"\n{'='*70}")
+    print(f"[DEBUG] === {DEBUG_ITEM_NM} 최종 수익률 (FX 적용 후) ===")
+    print(f"{'='*70}")
+    row = debug_final.iloc[0]
+    print(f"  1D:  {row.get('1D', 'N/A')}% (FX 환차익: {row.get('FX_1D', 'N/A')}%)")
+    print(f"  1W:  {row.get('1W', 'N/A')}% (FX 환차익: {row.get('FX_1W', 'N/A')}%)")
+    print(f"  1M:  {row.get('1M', 'N/A')}% (FX 환차익: {row.get('FX_1M', 'N/A')}%)")
+    print(f"  3M:  {row.get('3M', 'N/A')}% (FX 환차익: {row.get('FX_3M', 'N/A')}%)")
+    print(f"  6M:  {row.get('6M', 'N/A')}% (FX 환차익: {row.get('FX_6M', 'N/A')}%)")
+    print(f"  YTD: {row.get('YTD', 'N/A')}% (FX 환차익: {row.get('FX_YTD', 'N/A')}%)")
+    print(f"{'='*70}\n")
 
 # Merge return data with holding
 if not return_periods.empty:
