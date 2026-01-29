@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
 Test script for return data loading
+
+Updated to use dashboard.py (the consolidated version)
 """
 import pandas as pd
 import pickle
@@ -10,11 +12,13 @@ from datetime import datetime, date
 import sys
 sys.path.insert(0, '/home/user/DB_OCIO')
 
-from dashboard_with_master import (
+from dashboard import (
     load_master_mapping,
-    fetch_factset_returns,
-    calculate_return_periods,
-    should_exclude_for_return
+    fetch_factset_returns_with_dates,
+    calculate_return_periods_v2,
+    should_exclude_for_scip_return,
+    create_engine,
+    CONN_STR_SCIP
 )
 
 print("="*80)
@@ -28,7 +32,9 @@ print(f"   Loaded {len(master)} items")
 
 # Check exclusions
 print("\n2. Checking exclusions...")
-master['exclude'] = master['ITEM_NM'].apply(should_exclude_for_return)
+master['exclude'] = master.apply(
+    lambda row: should_exclude_for_scip_return(row['ITEM_NM'], row.get('대분류', '')), axis=1
+)
 excluded = master[master['exclude']]
 included = master[~master['exclude']]
 print(f"   Excluded: {len(excluded)} items")
@@ -39,13 +45,15 @@ if len(excluded) > 0:
     for _, row in excluded.head(10).iterrows():
         print(f"     - {row['ITEM_NM']}")
 
-# Test with a recent date
-test_date = date(2026, 1, 22)
-print(f"\n3. Fetching FactSet returns for date: {test_date}")
+# Test with SCIP DB
+print(f"\n3. Fetching FactSet returns from SCIP...")
 
 try:
-    factset_returns = fetch_factset_returns(master, test_date)
+    engine_scip = create_engine(CONN_STR_SCIP)
+    factset_returns, available_dates, latest_date, base_dates = fetch_factset_returns_with_dates(master, engine_scip)
     print(f"   Retrieved {len(factset_returns)} datapoints")
+    print(f"   Latest date: {latest_date}")
+    print(f"   Base dates: {base_dates}")
 
     if len(factset_returns) > 0:
         print(f"   Date range: {factset_returns['date'].min()} to {factset_returns['date'].max()}")
@@ -57,7 +65,7 @@ try:
 
     # Calculate returns
     print(f"\n4. Calculating return periods...")
-    return_periods = calculate_return_periods(factset_returns, test_date)
+    return_periods = calculate_return_periods_v2(factset_returns, latest_date, base_dates)
     print(f"   Calculated returns for {len(return_periods)} items")
 
     if len(return_periods) > 0:

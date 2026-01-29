@@ -924,7 +924,12 @@ GROUP BY STD_DT, FUND_CD, FUND_NM, ITEM_CD, ITEM_NM, AST_CLSF_CD_NM
 ORDER BY STD_DT, FUND_CD;
 """
 
-# Fund metrics (모든 펀드 + 모펀드용)
+# Fund metrics (FUND_LIST + 모펀드용)
+# 모펀드 FUND_CD 추출 (ITEM_CD 마지막 5자리)
+mofund_items = master_mapping[master_mapping['대분류'] == '모펀드']
+mofund_fund_codes = mofund_items['ITEM_CD'].apply(lambda x: str(x)[-5:] if len(str(x)) >= 5 else str(x)).tolist()
+all_fund_codes = list(set(FUND_LIST + mofund_fund_codes))
+
 query_metrics = """
 SELECT
     STD_DT,
@@ -933,10 +938,12 @@ SELECT
     NAST_AMT
 FROM dt.DWPM10510
 WHERE STD_DT BETWEEN :start_dt AND :end_dt
+  AND FUND_CD IN :fund_list
 ORDER BY STD_DT, FUND_CD;
 """
 
 fund_tuple = tuple(FUND_LIST)
+metrics_fund_tuple = tuple(all_fund_codes)
 with engine.connect() as conn:
     holding = pd.read_sql(
         text(query_holding), conn,
@@ -944,7 +951,7 @@ with engine.connect() as conn:
     )
     metrics = pd.read_sql(
         text(query_metrics), conn,
-        params={"start_dt": START_STD_DT, "end_dt": END_STD_DT}
+        params={"start_dt": START_STD_DT, "end_dt": END_STD_DT, "fund_list": metrics_fund_tuple}
     )
 
 print(f"[INFO] Loaded {len(holding)} holding records, {len(metrics)} metric records")
