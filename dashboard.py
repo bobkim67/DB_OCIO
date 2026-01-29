@@ -357,10 +357,9 @@ def parse_price_blob(blob_data, currency):
 
 def get_fx_rate(blob_data):
     """
-    Blob에서 USD/KRW 환율 계산 (1 USD = X KRW)
+    Blob에서 USD/KRW 환율 추출 (1 USD = X KRW)
 
-    blob 형식: {"USD": 49.25, "KRW": 57794.875}
-    환율 = KRW / USD
+    dataset_id=31의 blob에서 "USD" 값이 이미 환율 (KRW per 1 USD)
     """
     if blob_data is None:
         return None
@@ -376,13 +375,9 @@ def get_fx_rate(blob_data):
         try:
             obj = json.loads(s)
             if isinstance(obj, dict):
-                # USD와 KRW 값 추출 (대소문자 모두 시도)
-                usd_val = obj.get('USD') or obj.get('usd')
-                krw_val = obj.get('KRW') or obj.get('krw')
-
-                if usd_val is not None and krw_val is not None and float(usd_val) > 0:
-                    return float(krw_val) / float(usd_val)  # 환율 = KRW / USD
-                return None
+                # "USD" 값이 환율 (대소문자 모두 시도)
+                value = obj.get('USD') or obj.get('usd')
+                return float(value) if value is not None else None
             return float(obj)
         except (json.JSONDecodeError, ValueError, TypeError):
             return None
@@ -644,11 +639,9 @@ def fetch_factset_returns_with_dates(master_df, engine_scip):
 # =========================
 def fetch_fx_rates(engine_scip, target_dates):
     """
-    SCIP DB에서 USD/KRW 환율 데이터 조회
+    SCIP DB에서 USD/KRW 환율 데이터 조회 (dataset_id=31, dataseries_id=6)
 
-    참고: FG Return (dataseries_id=6) 데이터에서 KRW/USD 비율로 환율 계산
-    blob 형식: {"USD": 49.25, "KRW": 57794.875}
-    환율 = KRW / USD
+    blob의 "USD" 값이 환율 (KRW per 1 USD)
 
     Returns:
     --------
@@ -657,14 +650,12 @@ def fetch_fx_rates(engine_scip, target_dates):
     if not target_dates:
         return {}
 
-    # 환율 계산을 위해 FG Return 데이터에서 KRW/USD 비율 사용
-    # 대표 종목 (예: VANGUARD VALUE ETF, dataset_id=12) 사용
     query_fx = text("""
     SELECT
         DATE(dp.timestamp_observation) AS date,
         dp.data
     FROM SCIP.back_datapoint dp
-    WHERE dp.dataset_id = 12
+    WHERE dp.dataset_id = 31
       AND dp.dataseries_id = 6
       AND DATE(dp.timestamp_observation) IN :target_dates
     ORDER BY DATE(dp.timestamp_observation)
