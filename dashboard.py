@@ -356,7 +356,12 @@ def parse_price_blob(blob_data, currency):
 
 
 def get_fx_rate(blob_data):
-    """USD/KRW 환율 추출 (1 USD = X KRW)"""
+    """
+    Blob에서 USD/KRW 환율 계산 (1 USD = X KRW)
+
+    blob 형식: {"USD": 49.25, "KRW": 57794.875}
+    환율 = KRW / USD
+    """
     if blob_data is None:
         return None
 
@@ -371,9 +376,13 @@ def get_fx_rate(blob_data):
         try:
             obj = json.loads(s)
             if isinstance(obj, dict):
-                # 대소문자 모두 시도
-                value = obj.get('USD') or obj.get('usd')
-                return float(value) if value is not None else None
+                # USD와 KRW 값 추출 (대소문자 모두 시도)
+                usd_val = obj.get('USD') or obj.get('usd')
+                krw_val = obj.get('KRW') or obj.get('krw')
+
+                if usd_val is not None and krw_val is not None and float(usd_val) > 0:
+                    return float(krw_val) / float(usd_val)  # 환율 = KRW / USD
+                return None
             return float(obj)
         except (json.JSONDecodeError, ValueError, TypeError):
             return None
@@ -635,21 +644,28 @@ def fetch_factset_returns_with_dates(master_df, engine_scip):
 # =========================
 def fetch_fx_rates(engine_scip, target_dates):
     """
-    SCIP DB에서 USD/KRW 환율 데이터 조회 (dataset_id=31, dataseries_id=6)
+    SCIP DB에서 USD/KRW 환율 데이터 조회
+
+    참고: FG Return (dataseries_id=6) 데이터에서 KRW/USD 비율로 환율 계산
+    blob 형식: {"USD": 49.25, "KRW": 57794.875}
+    환율 = KRW / USD
+
     Returns:
     --------
-    dict: {date: fx_rate}
+    dict: {date: fx_rate (1 USD = X KRW)}
     """
     if not target_dates:
         return {}
 
+    # 환율 계산을 위해 FG Return 데이터에서 KRW/USD 비율 사용
+    # 대표 종목 (예: VANGUARD VALUE ETF, dataset_id=12) 사용
     query_fx = text("""
     SELECT
         DATE(dp.timestamp_observation) AS date,
         dp.data
     FROM SCIP.back_datapoint dp
-    WHERE dp.dataset_id = '31'
-      AND dp.dataseries_id = '6'
+    WHERE dp.dataset_id = 12
+      AND dp.dataseries_id = 6
       AND DATE(dp.timestamp_observation) IN :target_dates
     ORDER BY DATE(dp.timestamp_observation)
     """)
@@ -1022,17 +1038,45 @@ fx_target_dates = [scip_latest_date] + [d for d in base_dates.values() if d is n
 fx_target_dates = sorted(set([d for d in fx_target_dates if d is not None]))
 fx_rates = fetch_fx_rates(engine_scip, fx_target_dates)
 
+# 디버그: FX 환율 조회 결과
+print(f"\n[DEBUG] === FX 환율 디버그 ===")
+print(f"[DEBUG] FX 조회 대상 날짜: {fx_target_dates}")
+print(f"[DEBUG] FX 조회 결과: {fx_rates}")
+
 fx_return_by_period = {}
 fx_latest = fx_rates.get(scip_latest_date)
+print(f"[DEBUG] FX 최신일({scip_latest_date}) 환율: {fx_latest}")
+
 for period, base_date in base_dates.items():
     fx_base = fx_rates.get(base_date)
     if fx_latest is not None and fx_base is not None and fx_base != 0:
         fx_return_by_period[period] = (fx_latest / fx_base - 1) * 100
+        print(f"[DEBUG] FX {period}: base_date={base_date}, fx_base={fx_base}, fx_return={fx_return_by_period[period]:.4f}%")
     else:
         fx_return_by_period[period] = 0
+        print(f"[DEBUG] FX {period}: base_date={base_date}, fx_base={fx_base}, fx_return=0 (데이터 없음)")
+
+print(f"[DEBUG] 최종 FX 수익률: {fx_return_by_period}")
+
+# 디버그: USD 종목 수익률 변환 전후 비교 (08K88 펀드 대상)
+print(f"\n[DEBUG] === USD 수익률 변환 디버그 (apply_fx_to_returns 호출 전) ===")
+usd_items_debug = return_periods[return_periods['ITEM_CD'].apply(lambda x: str(x).upper().startswith('US'))]
+if not usd_items_debug.empty:
+    print(f"[DEBUG] USD 종목 수: {len(usd_items_debug)}개")
+    print(f"[DEBUG] USD 종목 샘플 (변환 전):")
+    for _, row in usd_items_debug.head(5).iterrows():
+        print(f"  - {row['ITEM_CD']}: 1D={row.get('1D', 'N/A')}, 1W={row.get('1W', 'N/A')}, 1M={row.get('1M', 'N/A')}")
 
 return_periods = apply_fx_to_returns(return_periods, fx_return_by_period)
 FX_RETURN_BY_PERIOD = fx_return_by_period
+
+# 디버그: USD 종목 수익률 변환 후
+print(f"\n[DEBUG] === USD 수익률 변환 디버그 (apply_fx_to_returns 호출 후) ===")
+usd_items_after = return_periods[return_periods['ITEM_CD'].apply(lambda x: str(x).upper().startswith('US'))]
+if not usd_items_after.empty:
+    print(f"[DEBUG] USD 종목 샘플 (변환 후, KRW 환산):")
+    for _, row in usd_items_after.head(5).iterrows():
+        print(f"  - {row['ITEM_CD']}: 1D={row.get('1D', 'N/A')}, FX_1D={row.get('FX_1D', 'N/A')}")
 
 # Merge return data with holding
 if not return_periods.empty:
