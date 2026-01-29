@@ -604,6 +604,18 @@ def fetch_factset_returns_with_dates(master_df, engine_scip):
             lambda row: parse_price_blob(row['data'], row['currency']),
             axis=1
         )
+
+        # 디버그: 통화별 파싱 결과 확인
+        currency_counts = df_raw['currency'].value_counts()
+        print(f"[DEBUG] 통화별 종목 수: {currency_counts.to_dict()}")
+
+        # USD 종목 샘플 확인
+        usd_sample = df_raw[df_raw['currency'] == 'USD'].head(3)
+        if not usd_sample.empty:
+            print(f"[DEBUG] USD 종목 샘플:")
+            for _, row in usd_sample.iterrows():
+                print(f"  - {row['ITEM_CD']}: currency={row['currency']}, return_index={row['return_index']}")
+
         df_raw = df_raw.dropna(subset=['return_index'])
         df_raw = df_raw.sort_values(['ITEM_CD', 'date'])
         df_raw = df_raw.drop_duplicates(subset=['ITEM_CD', 'date'], keep='last')
