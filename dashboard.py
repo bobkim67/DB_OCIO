@@ -120,6 +120,7 @@ US9219438580	VANGUARD FTSE DEVELOPED ETF	주식	선진국	일반
 US9220428588	VANGUARD FTSE EMERGING MARKETS	주식	신흥국	일반
 US92206C6646	Vanguard Russell 2000 ETF	주식	미국	중소형
 US9229087369	VANGUARD GROWTH ETF	주식	미국	성장
+US9219468850	VANGUARD EMERG MKTS GOV BND	채권	신흥국	국채
 032280007G02	한국투자인컴추구증권모투자신탁(채권혼합-	모펀드	모펀드	모펀드
 032280007G03	한국투자수익추구증권모투자신탁(혼합-재간	모펀드	모펀드	모펀드
 032280007J48	한국투자MySuper수익추구증권모투자신탁(혼	모펀드	모펀드	모펀드
