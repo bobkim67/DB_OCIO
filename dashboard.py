@@ -325,6 +325,8 @@ def get_currency_from_item_cd(item_cd):
 def parse_price_blob(blob_data, currency):
     """
     Blob에서 통화별 가격 추출
+    - currency: 'USD' 또는 'KRW'
+    - blob 키는 소문자('usd', 'krw')일 수 있음
     """
     if blob_data is None:
         return None
@@ -340,7 +342,8 @@ def parse_price_blob(blob_data, currency):
         try:
             obj = json.loads(s)
             if isinstance(obj, dict):
-                value = obj.get(currency)
+                # 대소문자 모두 시도 (blob이 소문자 키 사용할 수 있음)
+                value = obj.get(currency) or obj.get(currency.lower())
                 return float(value) if value is not None else None
             return float(obj)
         except (json.JSONDecodeError, ValueError, TypeError):
@@ -368,7 +371,8 @@ def get_fx_rate(blob_data):
         try:
             obj = json.loads(s)
             if isinstance(obj, dict):
-                value = obj.get('USD')
+                # 대소문자 모두 시도
+                value = obj.get('USD') or obj.get('usd')
                 return float(value) if value is not None else None
             return float(obj)
         except (json.JSONDecodeError, ValueError, TypeError):
