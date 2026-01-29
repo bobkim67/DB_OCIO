@@ -621,38 +621,6 @@ def fetch_fx_rates(engine_scip, target_dates):
         return {}
 
 
-def apply_fx_to_returns(return_df, fx_return_by_period):
-    """
-    USD 종목 수익률에 환율 변동 반영 (KRW 환산)
-    - return_df의 1D~YTD는 KRW 기준으로 변환
-    - FX_1D~FX_YTD 컬럼에 환차익 저장
-    """
-    if return_df.empty:
-        return return_df
-
-    return_df = return_df.copy()
-    return_cols = ['1D', '1W', '1M', '3M', '6M', 'YTD']
-
-    for col in return_cols:
-        if col not in return_df.columns:
-            return_df[col] = np.nan
-        return_df[f'FX_{col}'] = 0.0
-
-    usd_mask = return_df['ITEM_CD'].apply(lambda x: get_currency_from_item_cd(x) == 'USD')
-
-    for col in return_cols:
-        fx_ret = fx_return_by_period.get(col, 0)
-        if fx_ret is None:
-            fx_ret = 0
-
-        usd_returns = return_df.loc[usd_mask, col]
-        krw_returns = ((1 + usd_returns / 100) * (1 + fx_ret / 100) - 1) * 100
-        return_df.loc[usd_mask, f'FX_{col}'] = krw_returns - usd_returns
-        return_df.loc[usd_mask, col] = krw_returns
-
-    return return_df
-
-
 # =========================
 # 5) 모펀드 수익률 계산 (DWPM10510 MOD_STPR 기반)
 # =========================
@@ -1053,6 +1021,13 @@ print(f"[INFO] 모펀드 return data: {len(mofund_return_periods)} items")
 
 # Step 3: SCIP + 모펀드 수익률 병합
 return_periods = pd.concat([scip_return_periods, mofund_return_periods], ignore_index=True)
+
+# 중복 ITEM_CD 제거 (first 유지)
+if return_periods['ITEM_CD'].duplicated().any():
+    dup_count = return_periods['ITEM_CD'].duplicated().sum()
+    print(f"[WARNING] return_periods에 중복 ITEM_CD {dup_count}개 발견 → 제거")
+    return_periods = return_periods.drop_duplicates(subset=['ITEM_CD'], keep='first')
+
 print(f"[INFO] Total return data: {len(return_periods)} items")
 
 # Step 4: 환율 반영 (USD 종목 KRW 환산)
@@ -1080,44 +1055,47 @@ for period, base_date in base_dates.items():
 
 print(f"[DEBUG] 최종 FX 수익률: {fx_return_by_period}")
 
-# 디버그: USD 종목 수익률 변환 전후 비교 (08K88 펀드 대상)
-print(f"\n[DEBUG] === USD 수익률 변환 디버그 (apply_fx_to_returns 호출 전) ===")
+# FX 수익률을 전역 변수로 저장 (대시보드에서 사용)
+# NOTE: apply_fx_to_returns 제거 - 순수 USD 수익률 유지, FX는 별도 행으로 표시
+FX_RETURN_BY_PERIOD = fx_return_by_period
+
+# 디버그: USD 종목 순수 수익률 확인
+print(f"\n[DEBUG] === USD 종목 순수 수익률 (FX 미적용) ===")
 usd_items_debug = return_periods[return_periods['ITEM_CD'].apply(lambda x: str(x).upper().startswith('US'))]
 if not usd_items_debug.empty:
     print(f"[DEBUG] USD 종목 수: {len(usd_items_debug)}개")
-    print(f"[DEBUG] USD 종목 샘플 (변환 전):")
     for _, row in usd_items_debug.head(5).iterrows():
         print(f"  - {row['ITEM_CD']}: 1D={row.get('1D', 'N/A')}, 1W={row.get('1W', 'N/A')}, 1M={row.get('1M', 'N/A')}")
 
-return_periods = apply_fx_to_returns(return_periods, fx_return_by_period)
-FX_RETURN_BY_PERIOD = fx_return_by_period
-
-# 디버그: USD 종목 수익률 변환 후
-print(f"\n[DEBUG] === USD 수익률 변환 디버그 (apply_fx_to_returns 호출 후) ===")
-usd_items_after = return_periods[return_periods['ITEM_CD'].apply(lambda x: str(x).upper().startswith('US'))]
-if not usd_items_after.empty:
-    print(f"[DEBUG] USD 종목 샘플 (변환 후, KRW 환산):")
-    for _, row in usd_items_after.head(5).iterrows():
-        print(f"  - {row['ITEM_CD']}: 1D={row.get('1D', 'N/A')}, FX_1D={row.get('FX_1D', 'N/A')}")
-
-# DEBUG: VANGUARD FTSE EMERGING MARKETS 최종 결과 확인
+# DEBUG: VANGUARD FTSE EMERGING MARKETS 순수 USD 수익률
 debug_final = return_periods[return_periods['ITEM_CD'] == DEBUG_ITEM_CD]
 if not debug_final.empty:
     print(f"\n{'='*70}")
-    print(f"[DEBUG] === {DEBUG_ITEM_NM} 최종 수익률 (FX 적용 후) ===")
+    print(f"[DEBUG] === {DEBUG_ITEM_NM} 순수 USD 수익률 ===")
     print(f"{'='*70}")
     row = debug_final.iloc[0]
-    print(f"  1D:  {row.get('1D', 'N/A')}% (FX 환차익: {row.get('FX_1D', 'N/A')}%)")
-    print(f"  1W:  {row.get('1W', 'N/A')}% (FX 환차익: {row.get('FX_1W', 'N/A')}%)")
-    print(f"  1M:  {row.get('1M', 'N/A')}% (FX 환차익: {row.get('FX_1M', 'N/A')}%)")
-    print(f"  3M:  {row.get('3M', 'N/A')}% (FX 환차익: {row.get('FX_3M', 'N/A')}%)")
-    print(f"  6M:  {row.get('6M', 'N/A')}% (FX 환차익: {row.get('FX_6M', 'N/A')}%)")
-    print(f"  YTD: {row.get('YTD', 'N/A')}% (FX 환차익: {row.get('FX_YTD', 'N/A')}%)")
+    print(f"  1D:  {row.get('1D', 'N/A')}%")
+    print(f"  1W:  {row.get('1W', 'N/A')}%")
+    print(f"  1M:  {row.get('1M', 'N/A')}%")
+    print(f"  3M:  {row.get('3M', 'N/A')}%")
+    print(f"  6M:  {row.get('6M', 'N/A')}%")
+    print(f"  YTD: {row.get('YTD', 'N/A')}%")
     print(f"{'='*70}\n")
 
 # Merge return data with holding
 if not return_periods.empty:
     holding = holding.merge(return_periods, on='ITEM_CD', how='left')
+
+# Merge 후 중복 확인 (STD_DT, FUND_CD, ITEM_CD 기준)
+dup_check = holding.duplicated(subset=['STD_DT', 'FUND_CD', 'ITEM_CD'], keep=False)
+if dup_check.any():
+    dup_count = dup_check.sum()
+    print(f"[WARNING] holding merge 후 중복 발견: {dup_count}개 행")
+    print(f"[WARNING] 중복 샘플:")
+    print(holding[dup_check][['STD_DT', 'FUND_CD', 'ITEM_CD', 'ITEM_NM']].head(5))
+    # 중복 제거 (first 유지)
+    holding = holding.drop_duplicates(subset=['STD_DT', 'FUND_CD', 'ITEM_CD'], keep='first')
+    print(f"[INFO] 중복 제거 후: {len(holding)}개 행")
 
 # 펀드 수익률 계산 (차트용)
 metrics_for_chart = metrics[metrics['FUND_CD'].isin(FUND_LIST)].copy()
@@ -1129,6 +1107,80 @@ metrics_for_chart['RET'] = metrics_for_chart.groupby('FUND_CD')['MOD_STPR'].tran
 print(f"[INFO] Holdings latest date: {holding_latest_date}")
 print(f"[INFO] SCIP latest date: {scip_latest_date}")
 print(f"[INFO] Unmapped items: {len(unmapped)}")
+
+# =========================
+# DEBUG: 08K88 펀드 수익률 분해 (1D 기준)
+# =========================
+DEBUG_FUND = '08K88'
+debug_holding = holding[(holding['FUND_CD'] == DEBUG_FUND) & (holding['STD_DT'] == holding_latest_date)].copy()
+
+if not debug_holding.empty:
+    debug_total = debug_holding['EVL_AMT'].sum()
+    debug_holding['WEIGHT'] = (debug_holding['EVL_AMT'] / debug_total * 100)
+    debug_holding['IS_USD'] = debug_holding['ITEM_CD'].apply(lambda x: str(x).upper().startswith('US'))
+
+    print(f"\n{'='*70}")
+    print(f"[DEBUG] === {DEBUG_FUND} 수익률 분해 (1D 기준, {holding_latest_date}) ===")
+    print(f"{'='*70}")
+
+    # 대분류별 집계
+    for cat in ['주식', '채권', '대체', '현금', '모펀드']:
+        cat_data = debug_holding[debug_holding['대분류'] == cat]
+        if cat_data.empty:
+            continue
+
+        cat_weight = cat_data['WEIGHT'].sum()
+        krw_data = cat_data[~cat_data['IS_USD']]
+        usd_data = cat_data[cat_data['IS_USD']]
+
+        krw_weight = krw_data['WEIGHT'].sum()
+        usd_weight = usd_data['WEIGHT'].sum()
+
+        # KRW 자산 가중수익률
+        krw_return_sum = 0
+        if not krw_data.empty:
+            for _, row in krw_data.iterrows():
+                ret = row.get('1D', 0)
+                if pd.notna(ret) and ret != '':
+                    krw_return_sum += float(ret) * row['WEIGHT'] / 100
+
+        # USD 자산 가중수익률 (순수 USD)
+        usd_return_sum = 0
+        if not usd_data.empty:
+            for _, row in usd_data.iterrows():
+                ret = row.get('1D', 0)
+                if pd.notna(ret) and ret != '':
+                    usd_return_sum += float(ret) * row['WEIGHT'] / 100
+
+        cat_return_sum = krw_return_sum + usd_return_sum
+
+        if krw_weight > 0:
+            print(f"  {cat}(KRW): {krw_weight:.2f}% × {krw_return_sum/krw_weight*100:.2f}% = {krw_return_sum:.4f}%")
+        if usd_weight > 0:
+            print(f"  {cat}(USD): {usd_weight:.2f}% × {usd_return_sum/usd_weight*100:.2f}% = {usd_return_sum:.4f}% (순수 USD)")
+        if cat_weight > 0:
+            print(f"  ▶ {cat}소계: {cat_weight:.2f}% 비중, {cat_return_sum:.4f}% 수익률")
+        print()
+
+    # 전체 USD 비중 및 환차익
+    total_usd_weight = debug_holding[debug_holding['IS_USD']]['WEIGHT'].sum()
+    fx_1d = FX_RETURN_BY_PERIOD.get('1D', 0)
+    fx_impact_1d = total_usd_weight * fx_1d / 100
+
+    print(f"  환차익: {total_usd_weight:.2f}% × {fx_1d:.4f}% = {fx_impact_1d:.4f}%")
+
+    # 순수 자산 총수익률
+    total_pure_return = 0
+    for _, row in debug_holding.iterrows():
+        ret = row.get('1D', 0)
+        if pd.notna(ret) and ret != '':
+            total_pure_return += float(ret) * row['WEIGHT'] / 100
+
+    total_return = total_pure_return + fx_impact_1d
+    print(f"\n  순수자산수익률: {total_pure_return:.4f}%")
+    print(f"  + 환차익: {fx_impact_1d:.4f}%")
+    print(f"  = 총수익률: {total_return:.4f}%")
+    print(f"{'='*70}\n")
 
 # =========================
 # 8) Pivot 분석용 데이터 준비
@@ -1502,29 +1554,23 @@ def update_dashboard(selected_date, selected_fund, area_groupby):
     return_cols = ['1D', '1W', '1M', '3M', '6M', 'YTD']
     has_return_data = all(col in df_holding_selected.columns for col in return_cols)
 
-    # 환차익 계산용 (USD 종목만)
+    # 비중 계산
     if total_amt > 0:
         df_holding_selected['WEIGHT_PCT'] = (df_holding_selected['EVL_AMT'] / total_amt * 100).round(6)
     else:
         df_holding_selected['WEIGHT_PCT'] = 0
 
-    # 변경: "US" 접두어로 USD 종목 판정
-    usd_items = df_holding_selected[
-        df_holding_selected['ITEM_CD'].apply(lambda x: str(x).upper().startswith('US'))
-    ].copy()
+    # USD 종목 판정 (ITEM_CD가 'US'로 시작)
+    df_holding_selected['IS_USD'] = df_holding_selected['ITEM_CD'].apply(
+        lambda x: str(x).upper().startswith('US')
+    )
 
-    weighted_fx_gain = {col: 0 for col in return_cols}
-    if not usd_items.empty:
-        for col in return_cols:
-            fx_col = f'FX_{col}'
-            if fx_col not in usd_items.columns:
-                continue
-            valid_mask = usd_items[fx_col].apply(lambda x: pd.notna(x) and x != '')
-            if valid_mask.any():
-                weighted_fx_gain[col] = (
-                    usd_items.loc[valid_mask, fx_col].astype(float) *
-                    usd_items.loc[valid_mask, 'WEIGHT_PCT']
-                ).sum() / 100
+    # USD 종목 총 비중 계산
+    total_usd_weight = df_holding_selected[df_holding_selected['IS_USD']]['WEIGHT_PCT'].sum()
+
+    # 환차익 계산: USD 비중 × FX 수익률
+    # FX_RETURN_BY_PERIOD는 전역 변수 (예: {'1D': -1.62, '1W': 0.5, ...})
+    fx_impact = {col: (total_usd_weight * FX_RETURN_BY_PERIOD.get(col, 0) / 100) for col in return_cols}
 
     def format_return(value):
         if pd.isna(value) or value == '':
@@ -1610,20 +1656,21 @@ def update_dashboard(selected_date, selected_fund, area_groupby):
         holdings_list.append(subtotal_row)
 
     # 환차익 행 추가 (총계 바로 위)
+    # FX impact = USD 비중 × FX 수익률 (이미 fx_impact에 계산됨)
     if has_return_data:
         fx_gain_row = {
-            '대분류': '',
-            'ITEM_NM': '환차익',
-            # 변경: 환차익 비중은 USD 종목 비중 합계로 표시
-            '비중(%)': round(usd_items['WEIGHT_PCT'].sum(), 2),
-            '_is_subtotal': '',
+            '대분류': '통화',
+            'ITEM_NM': '환차손익',
+            '비중(%)': '-',  # 비중은 이미 자산군에 포함되어 있으므로 표시 안함
+            '_is_subtotal': 'subtotal',
             'Last Updated': '-'
         }
         for col in return_cols:
-            fx_gain_row[col] = round(weighted_fx_gain.get(col, 0), 2)
+            fx_gain_row[col] = round(fx_impact.get(col, 0), 2)
         holdings_list.append(fx_gain_row)
 
     # 총계 행 추가 (맨 마지막)
+    # 총계 = 순수 자산 수익률 + 환차익
     total_row = {
         '대분류': '■ 총계',
         'ITEM_NM': '',
@@ -1632,11 +1679,15 @@ def update_dashboard(selected_date, selected_fund, area_groupby):
         'Last Updated': '-'
     }
     for col in return_cols:
+        # 순수 자산 가중평균 수익률
         if total_valid_weight[col] > 0:
-            weighted_avg = total_weighted_returns[col] / total_valid_weight[col]
-            total_row[col] = round(weighted_avg, 2)
+            pure_asset_return = total_weighted_returns[col] / 100  # 가중합 / 100
         else:
-            total_row[col] = '-'
+            pure_asset_return = 0
+
+        # 총계 = 순수 자산 수익률 + FX impact
+        total_return = pure_asset_return + fx_impact.get(col, 0)
+        total_row[col] = round(total_return, 2) if total_return != 0 else '-'
     holdings_list.append(total_row)
 
     holdings_table_data = holdings_list
