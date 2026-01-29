@@ -35,7 +35,7 @@ MASTER_FILE = "master_asset_mapping.pkl"
 
 FUND_LIST = [
     '06X08','07G02','07G03','07G04','07J20','07J27','07J34','07J41',
-    '07J48','07J49','07P70','07W15','08K88','08N33','08N81','09L94',
+    '07J48','07J49','07P70','07W15','08K88','08N33','08N81','08P22','09L94',
     '1JM96','1JM98','2JM23','4JM12'
 ]
 
@@ -148,6 +148,7 @@ US78464A4094	SPDR S&P 500 Growth	주식	미국	성장
 US9229087443	VANGUARD VALUE ETF	주식	미국	가치
 US9219438580	VANGUARD FTSE DEVELOPED ETF	주식	선진국	일반
 US9220428588	VANGUARD FTSE EMERGING MARKETS	주식	신흥국	일반
+US9219468850	Vanguard Emerging Markets Government Bond Index Fund	채권	신흥국	일반
 US92206C6646	Vanguard Russell 2000 ETF	주식	미국	중소형
 US9229087369	VANGUARD GROWTH ETF	주식	미국	성장
 032280007G02	한국투자인컴추구증권모투자신탁(채권혼합-	모펀드	모펀드	모펀드
@@ -1705,3 +1706,4 @@ if __name__ == '__main__':
     print("="*80 + "\n")
 
     app.run(debug=True, host='0.0.0.0', port=8050)
+
