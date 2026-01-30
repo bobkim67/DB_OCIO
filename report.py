@@ -11,9 +11,11 @@ Features:
     - 수정기준가 기반 일별 수익률(최근 3영업일) 출력
     - USD 자산의 경우 환율 반영 전/후 수익률 분리
 
-환율 반영 규칙:
-    - USD 자산: 수정기준가(KRW) = 기준가_USD(T-1) * 환율(USDKRW, T)
-    - 순수 USD 수익률과 환차손익(FX 기여분) 분리 출력
+환율 반영 규칙 (미국 시장 시차 반영):
+    - USD 자산 KRW 기준가(T) = USD 가격(T-1) × 환율(T)
+    - KRW 수익률 = [USD(T-1) × FX(T)] / [USD(T-2) × FX(T-1)] - 1
+    - 분해: USD 수익률(T-2→T-1) + FX 수익률(T-1→T)
+    - KRW 자산: 수익률(T-1→T) 그대로 적용
 """
 
 import argparse
@@ -322,7 +324,8 @@ def fetch_fx_rates(engine_scip, target_dates: list):
 # 3) Core NAV Calculation Function
 # =========================
 def get_adj_nav(item_cd: str, item_nm: str, date_val: date,
-                price_data: dict, fx_rates: dict, prev_date: date = None):
+                price_data: dict, fx_rates: dict,
+                prev_date: date = None, prev_prev_date: date = None):
     """
     수정기준가 및 수익률 계산
 
@@ -333,33 +336,38 @@ def get_adj_nav(item_cd: str, item_nm: str, date_val: date,
     item_nm : str
         종목명
     date_val : date
-        기준일
+        기준일 (T)
     price_data : dict
         {(ITEM_CD, date): {'USD': float, 'KRW': float}}
     fx_rates : dict
         {date: fx_rate}
     prev_date : date, optional
-        전일 (수익률 계산용)
+        전일 (T-1, 수익률 계산용)
+    prev_prev_date : date, optional
+        전전일 (T-2, USD 자산 수익률 계산용)
 
     Returns:
     --------
     dict with keys:
-        - usd_nav: USD 기준가 (USD 자산인 경우)
+        - usd_nav: USD 기준가 (T-1 가격, USD 자산인 경우)
         - krw_nav: KRW 기준가 (원래 통화 기준가)
-        - fx: 환율 (USDKRW)
-        - adj_krw_nav: 환율 반영 KRW 기준가 (USD 자산의 경우)
-        - pure_usd_return: 순수 USD 수익률 (%)
-        - fx_return: 환율 기여 수익률 (%)
+        - fx: 환율 (USDKRW, T일)
+        - adj_krw_nav: 환율 반영 KRW 기준가 (USD 자산: USD_T-1 * FX_T)
+        - pure_usd_return: 순수 USD 수익률 (%, T-2 → T-1)
+        - fx_return: 환율 기여 수익률 (%, T-1 → T)
         - total_krw_return: 총 KRW 수익률 (%)
         - currency: 'USD' or 'KRW'
+
+    Note:
+    -----
+    USD 자산의 경우 미국 시장 시차로 인해:
+    - T일 KRW 기준가 = USD 가격(T-1) × 환율(T)
+    - KRW 수익률 = [USD(T-1) × FX(T)] / [USD(T-2) × FX(T-1)] - 1
+    - 즉, USD 수익률은 T-2→T-1, 환율 수익률은 T-1→T 적용
     """
     currency = get_currency_from_item_cd(item_cd)
 
-    # 현재일 가격 조회
-    current_key = (item_cd, date_val)
-    current_prices = price_data.get(current_key, {})
-
-    # 환율 조회
+    # 환율 조회 (T일)
     fx = fx_rates.get(date_val)
 
     result = {
@@ -374,48 +382,48 @@ def get_adj_nav(item_cd: str, item_nm: str, date_val: date,
     }
 
     if currency == 'USD':
-        # USD 자산
-        result['usd_nav'] = current_prices.get('USD')
-        result['krw_nav'] = current_prices.get('KRW')
-
-        # 환율 반영 KRW 기준가 계산
-        # 규칙: adj_krw_nav = usd_nav(T-1) * fx(T) 또는 직접 KRW 값 사용
-        if result['krw_nav'] is not None:
-            result['adj_krw_nav'] = result['krw_nav']
-        elif result['usd_nav'] is not None and fx is not None:
-            result['adj_krw_nav'] = result['usd_nav'] * fx
-
-        # 수익률 계산 (전일 데이터 필요)
+        # USD 자산: T-1 가격 사용
         if prev_date is not None:
             prev_key = (item_cd, prev_date)
             prev_prices = price_data.get(prev_key, {})
-            prev_usd = prev_prices.get('USD')
-            prev_krw = prev_prices.get('KRW')
-            prev_fx = fx_rates.get(prev_date)
+            result['usd_nav'] = prev_prices.get('USD')  # T-1 USD 가격
+            result['krw_nav'] = prev_prices.get('KRW')  # T-1 KRW 가격 (있는 경우)
 
-            # 순수 USD 수익률
-            if result['usd_nav'] is not None and prev_usd is not None and prev_usd > 0:
-                result['pure_usd_return'] = (result['usd_nav'] / prev_usd - 1) * 100
+        # 환율 반영 KRW 기준가 계산
+        # 규칙: adj_krw_nav = USD(T-1) * FX(T)
+        if result['usd_nav'] is not None and fx is not None:
+            result['adj_krw_nav'] = result['usd_nav'] * fx
 
-            # 환율 기여분
+        # 수익률 계산 (T-2 데이터 필요)
+        if prev_date is not None and prev_prev_date is not None:
+            prev_prev_key = (item_cd, prev_prev_date)
+            prev_prev_prices = price_data.get(prev_prev_key, {})
+            prev_prev_usd = prev_prev_prices.get('USD')  # T-2 USD 가격
+            prev_fx = fx_rates.get(prev_date)  # T-1 환율
+
+            # 순수 USD 수익률 (T-2 → T-1)
+            if result['usd_nav'] is not None and prev_prev_usd is not None and prev_prev_usd > 0:
+                result['pure_usd_return'] = (result['usd_nav'] / prev_prev_usd - 1) * 100
+
+            # 환율 기여분 (T-1 → T)
             if fx is not None and prev_fx is not None and prev_fx > 0:
                 result['fx_return'] = (fx / prev_fx - 1) * 100
 
-            # 총 KRW 수익률
-            if result['krw_nav'] is not None and prev_krw is not None and prev_krw > 0:
-                result['total_krw_return'] = (result['krw_nav'] / prev_krw - 1) * 100
-            elif (result['pure_usd_return'] is not None and
-                  result['fx_return'] is not None):
-                # 근사 계산: (1+r_usd)*(1+r_fx) - 1
-                r_usd = result['pure_usd_return'] / 100
-                r_fx = result['fx_return'] / 100
-                result['total_krw_return'] = ((1 + r_usd) * (1 + r_fx) - 1) * 100
+            # 총 KRW 수익률: [USD(T-1) * FX(T)] / [USD(T-2) * FX(T-1)] - 1
+            if (result['usd_nav'] is not None and prev_prev_usd is not None and
+                fx is not None and prev_fx is not None and
+                prev_prev_usd > 0 and prev_fx > 0):
+                krw_nav_t = result['usd_nav'] * fx           # USD(T-1) * FX(T)
+                krw_nav_t_1 = prev_prev_usd * prev_fx        # USD(T-2) * FX(T-1)
+                result['total_krw_return'] = (krw_nav_t / krw_nav_t_1 - 1) * 100
     else:
-        # KRW 자산
+        # KRW 자산: T일 가격 그대로 사용
+        current_key = (item_cd, date_val)
+        current_prices = price_data.get(current_key, {})
         result['krw_nav'] = current_prices.get('KRW') or current_prices.get('value')
         result['adj_krw_nav'] = result['krw_nav']
 
-        # 수익률 계산
+        # 수익률 계산 (T-1 → T)
         if prev_date is not None:
             prev_key = (item_cd, prev_date)
             prev_prices = price_data.get(prev_key, {})
@@ -442,14 +450,14 @@ def generate_report(fund_cd: str):
     print(f"[INFO] Fetching available dates for fund {fund_cd}...")
     target_dates = get_fund_available_dates(engine, fund_cd, n_days=10)
 
-    if len(target_dates) < 4:
-        print(f"[ERROR] 펀드 {fund_cd}의 데이터가 부족합니다 (최소 4일 필요, 현재 {len(target_dates)}일)")
+    if len(target_dates) < 5:
+        print(f"[ERROR] 펀드 {fund_cd}의 데이터가 부족합니다 (최소 5일 필요, 현재 {len(target_dates)}일)")
         if len(target_dates) == 0:
             print(f"        펀드코드가 올바른지 확인하세요. 유효한 펀드코드: {', '.join(FUND_LIST)}")
         return
 
-    # 최근 4영업일 (내림차순)
-    target_dates = target_dates[:4]
+    # 최근 5영업일 (내림차순) - USD 자산 수익률 계산에 T-2 데이터 필요
+    target_dates = target_dates[:5]
     latest_date = target_dates[0]
 
     print(f"[INFO] Target dates: {[str(d) for d in target_dates]}")
@@ -493,33 +501,37 @@ def generate_report(fund_cd: str):
     print("[INFO] Calculating adjusted NAV and returns...")
 
     # Section A 데이터 구성: 최근 4영업일 수정기준가
+    # USD 자산의 경우: KRW 기준가 = USD(T-1) * FX(T) 이므로 prev_date 필요
     section_a_data = []
     for _, item_row in holdings.iterrows():
         item_cd = item_row['ITEM_CD']
         item_nm = item_row['ITEM_NM']
         currency = get_currency_from_item_cd(item_cd)
 
-        for date_val in target_dates:
-            nav_result = get_adj_nav(item_cd, item_nm, date_val, price_data, fx_rates)
+        for i, date_val in enumerate(target_dates):
+            # USD 자산은 T-1 가격이 필요하므로 prev_date 전달
+            prev_date = target_dates[i + 1] if i + 1 < len(target_dates) else None
+            nav_result = get_adj_nav(item_cd, item_nm, date_val, price_data, fx_rates,
+                                     prev_date=prev_date)
 
             if currency == 'USD':
-                # USD 자산: USD와 KRW 모두 출력
+                # USD 자산: USD(T-1)와 KRW(=USD_T-1 * FX_T) 모두 출력
                 section_a_data.append({
                     'date': date_val,
                     'ITEM_CD': item_cd,
                     'ITEM_NM': item_nm[:30],  # 종목명 잘라내기
                     'CCY': 'USD',
-                    'MOD_STPR': nav_result['usd_nav']
+                    'MOD_STPR': nav_result['usd_nav']  # T-1 USD 가격
                 })
                 section_a_data.append({
                     'date': date_val,
                     'ITEM_CD': item_cd,
                     'ITEM_NM': item_nm[:30],
                     'CCY': 'KRW',
-                    'MOD_STPR': nav_result['adj_krw_nav']
+                    'MOD_STPR': nav_result['adj_krw_nav']  # USD(T-1) * FX(T)
                 })
             else:
-                # KRW 자산
+                # KRW 자산: T일 가격 그대로
                 section_a_data.append({
                     'date': date_val,
                     'ITEM_CD': item_cd,
@@ -529,28 +541,32 @@ def generate_report(fund_cd: str):
                 })
 
     # Section B 데이터 구성: 최근 3영업일 수익률
+    # USD 자산: USD 수익률(T-2→T-1) * FX 수익률(T-1→T) 이므로 prev_prev_date 필요
     section_b_data = []
     for _, item_row in holdings.iterrows():
         item_cd = item_row['ITEM_CD']
         item_nm = item_row['ITEM_NM']
         currency = get_currency_from_item_cd(item_cd)
 
-        # 최근 3영업일 (T-0, T-1, T-2) + 전일 데이터 필요 (T-3)
+        # 최근 3영업일 수익률 계산
+        # USD 자산: T-2 데이터 필요하므로 최대 i=2까지 (target_dates[4]까지 필요)
         for i in range(3):  # target_dates[0], [1], [2]
             date_val = target_dates[i]
             prev_date = target_dates[i + 1] if i + 1 < len(target_dates) else None
+            prev_prev_date = target_dates[i + 2] if i + 2 < len(target_dates) else None
 
-            nav_result = get_adj_nav(item_cd, item_nm, date_val, price_data, fx_rates, prev_date)
+            nav_result = get_adj_nav(item_cd, item_nm, date_val, price_data, fx_rates,
+                                     prev_date=prev_date, prev_prev_date=prev_prev_date)
 
             if currency == 'USD':
-                # USD 자산: 순수 USD 수익률 + 환율 기여 + 총 KRW 수익률
+                # USD 자산: 순수 USD 수익률(T-2→T-1) + 환율 기여(T-1→T) + 총 KRW 수익률
                 section_b_data.append({
                     'date': date_val,
                     'ITEM_CD': item_cd,
                     'ITEM_NM': item_nm[:30],
                     'CCY': 'USD',
                     'return': nav_result['pure_usd_return'],
-                    'type': 'Asset Return'
+                    'type': 'Asset(T-2→T-1)'
                 })
                 section_b_data.append({
                     'date': date_val,
@@ -558,7 +574,7 @@ def generate_report(fund_cd: str):
                     'ITEM_NM': item_nm[:30],
                     'CCY': 'FX',
                     'return': nav_result['fx_return'],
-                    'type': 'FX Impact'
+                    'type': 'FX(T-1→T)'
                 })
                 section_b_data.append({
                     'date': date_val,
@@ -569,7 +585,7 @@ def generate_report(fund_cd: str):
                     'type': 'Total (KRW)'
                 })
             else:
-                # KRW 자산
+                # KRW 자산: T-1→T 수익률
                 section_b_data.append({
                     'date': date_val,
                     'ITEM_CD': item_cd,
@@ -655,7 +671,10 @@ def print_report(fund_cd, fund_nm, latest_date, section_a_data, section_b_data, 
     # Section B: 수익률
     print("\n" + "-" * width)
     print("[B] 수정기준가 기반 일별 수익률 - 최근 3영업일")
-    print("    (USD 자산: Asset Return = 순수 USD 수익률, FX Impact = 환율 기여, Total = 환율 반영 KRW 수익률)")
+    print("    USD 자산: KRW 기준가(T) = USD(T-1) × FX(T)")
+    print("    - Asset(T-2→T-1): 순수 USD 수익률 (전일 미국 가격 변동)")
+    print("    - FX(T-1→T): 환율 기여 (당일 환율 변동)")
+    print("    - Total (KRW): 최종 KRW 수익률 = [USD(T-1)×FX(T)] / [USD(T-2)×FX(T-1)] - 1")
     print("-" * width)
 
     if section_b_data:
