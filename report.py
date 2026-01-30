@@ -181,6 +181,30 @@ def get_business_days(engine, n_days: int = 10):
     return dates
 
 
+def get_fund_available_dates(engine, fund_cd: str, n_days: int = 10):
+    """
+    특정 펀드의 실제 데이터가 있는 최근 n_days개 날짜 조회
+    Returns: list of date objects (내림차순, 최신이 먼저)
+    """
+    query = text("""
+    SELECT DISTINCT STD_DT
+    FROM dt.DWPM10530
+    WHERE FUND_CD = :fund_cd
+      AND EVL_AMT > 0
+    ORDER BY STD_DT DESC
+    LIMIT :n_days
+    """)
+
+    with engine.connect() as conn:
+        df = pd.read_sql(query, conn, params={'fund_cd': fund_cd, 'n_days': n_days})
+
+    if df.empty:
+        return []
+
+    dates = [datetime.strptime(str(int(x)), '%Y%m%d').date() for x in df['STD_DT']]
+    return dates
+
+
 def get_fund_holdings(engine, fund_cd: str, std_dt: date):
     """
     특정 펀드의 특정 일자 편입종목 조회
@@ -414,16 +438,18 @@ def generate_report(fund_cd: str):
     engine = create_engine(CONN_STR)
     engine_scip = create_engine(CONN_STR_SCIP)
 
-    # 1) 영업일 조회 (최근 10일 → 4영업일 + 버퍼)
-    print("[INFO] Fetching business days...")
-    bdays = get_business_days(engine, n_days=10)
+    # 1) 펀드의 실제 데이터가 있는 날짜 조회 (최근 10일 → 4영업일 + 버퍼)
+    print(f"[INFO] Fetching available dates for fund {fund_cd}...")
+    target_dates = get_fund_available_dates(engine, fund_cd, n_days=10)
 
-    if len(bdays) < 4:
-        print("[ERROR] 영업일 데이터가 부족합니다 (최소 4일 필요)")
+    if len(target_dates) < 4:
+        print(f"[ERROR] 펀드 {fund_cd}의 데이터가 부족합니다 (최소 4일 필요, 현재 {len(target_dates)}일)")
+        if len(target_dates) == 0:
+            print(f"        펀드코드가 올바른지 확인하세요. 유효한 펀드코드: {', '.join(FUND_LIST)}")
         return
 
     # 최근 4영업일 (내림차순)
-    target_dates = bdays[:4]
+    target_dates = target_dates[:4]
     latest_date = target_dates[0]
 
     print(f"[INFO] Target dates: {[str(d) for d in target_dates]}")
@@ -433,7 +459,7 @@ def generate_report(fund_cd: str):
     holdings = get_fund_holdings(engine, fund_cd, latest_date)
 
     if holdings.empty:
-        print(f"[ERROR] 펀드 {fund_cd}의 편입종목이 없습니다.")
+        print(f"[ERROR] 펀드 {fund_cd}의 편입종목이 없습니다 (기준일: {latest_date}).")
         print(f"        유효한 펀드코드: {', '.join(FUND_LIST)}")
         return
 
