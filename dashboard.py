@@ -93,12 +93,73 @@ def auto_classify_item(item_cd, item_nm):
 
 
 # =========================
+# 1-2) 현금/통화 필터링 함수 (비중/기여율 왜곡 제거용)
+# =========================
+def filter_holdings_for_weight(df):
+    """
+    비중/기여율 계산을 위해 holdings를 4개 그룹으로 분리
+
+    정책:
+    - 주식, 채권, 대체, 모펀드: 비중/기여율에 포함
+    - 현금: "USD Deposit" 또는 "예금" 포함된 종목만 유지, 나머지 drop
+    - 통화(달러 선물): 비중/기여율에서 제외, 환차손익 계산에만 사용
+
+    Returns:
+    --------
+    tuple: (df_main, df_cash_keep, df_fx_hedge, df_cash_drop)
+        - df_main: 주식/채권/대체/모펀드 종목
+        - df_cash_keep: 유지할 현금 종목 (USD Deposit, 예금)
+        - df_fx_hedge: 통화(달러선물) 종목 (비중 계산 제외)
+        - df_cash_drop: 제외할 현금 종목 (디버깅용)
+    """
+    if df.empty:
+        return df.copy(), df.iloc[:0].copy(), df.iloc[:0].copy(), df.iloc[:0].copy()
+
+    # 대분류별 마스크 생성
+    mask_main_categories = df['대분류'].isin(['주식', '채권', '대체', '모펀드'])
+    mask_cash = df['대분류'] == '현금'
+    mask_currency = df['대분류'] == '통화'
+
+    # 현금 중 유지할 조건: "USD Deposit" 또는 "예금" 포함
+    def is_keepable_cash(item_nm):
+        item_nm_str = str(item_nm).upper()
+        return 'USD DEPOSIT' in item_nm_str or '예금' in item_nm_str
+
+    mask_cash_keep_condition = df['ITEM_NM'].apply(is_keepable_cash)
+
+    # 통화 중 달러 선물만 유지
+    mask_fx_hedge = mask_currency & (df['소분류'] == '달러 선물')
+
+    # 4개 그룹으로 분리
+    df_main = df[mask_main_categories].copy()
+    df_cash_keep = df[mask_cash & mask_cash_keep_condition].copy()
+    df_fx_hedge = df[mask_fx_hedge].copy()
+    df_cash_drop = df[mask_cash & ~mask_cash_keep_condition].copy()
+
+    # 디버깅 로그
+    print(f"\n[INFO] 현금/통화 필터링 결과:")
+    print(f"  - df_main (주식/채권/대체/모펀드): {len(df_main)} rows")
+    print(f"  - df_cash_keep (USD Deposit/예금): {len(df_cash_keep)} rows")
+    print(f"  - df_fx_hedge (달러선물): {len(df_fx_hedge)} rows")
+    print(f"  - df_cash_drop (제외된 현금): {len(df_cash_drop)} rows")
+
+    # drop된 현금 예시 출력 (최대 10개)
+    if len(df_cash_drop) > 0:
+        print(f"\n[DEBUG] 제외된 현금 종목 (최대 10개):")
+        display_cols = ['ITEM_CD', 'ITEM_NM', 'EVL_AMT']
+        display_cols = [c for c in display_cols if c in df_cash_drop.columns]
+        print(df_cash_drop[display_cols].head(10).to_string(index=False))
+
+    return df_main, df_cash_keep, df_fx_hedge, df_cash_drop
+
+
+# =========================
 # 2) 초기 마스터 생성 함수 (create_initial_master.py 통합)
 # =========================
 
 # 마스터 데이터 원본 (버전 관리용)
-MASTER_DATA_RAW = """1751100	미수ETF분배금	현금	국내	현금 등
-KR7332500008	ACE 200TR	주식	국내	일반
+# [2026-01-30] 삭제됨: 1751100 미수ETF분배금, 1912100 기타자산, 000000000000 미지급외화거래비용
+MASTER_DATA_RAW = """KR7332500008	ACE 200TR	주식	국내	일반
 KR7367380003	ACE 미국나스닥100	주식	미국	일반
 KR7453850000	ACE 미국30년국채액티브(H)	채권	미국	장기채
 KR7356540005	ACE 종합채권(AA-이상)액티브	채권	국내	종합채권
@@ -150,9 +211,7 @@ KR7105190003	ACE 200	주식	국내	일반
 KR70127M0006	ACE 미국대형가치주액티브	주식	미국	가치
 KR70127P0003	ACE 미국대형성장주액티브	주식	미국	성장
 KRZ502649912	한국투자TMF26-12만기형증권투자신탁(채권)	채권	국내	단기채
-KRZ502649922	한국투자TMF28-12만기형증권투자신탁(채권)	채권	국내	단기채
-1912100	기타자산	기타	국내	기타
-000000000000	미지급외화거래비용	현금	국내	현금 등"""
+KRZ502649922	한국투자TMF28-12만기형증권투자신탁(채권)	채권	국내	단기채"""
 
 
 # =========================
@@ -1245,10 +1304,29 @@ if not debug_holding.empty:
 # 8) Pivot 분석용 데이터 준비
 # =========================
 def prepare_pivot_data(holding_df, metrics_df, return_periods_df):
-    """피봇 분석용 데이터 준비 (수익률, 비중)"""
+    """피봇 분석용 데이터 준비 (수익률, 비중)
+
+    [NEW] 현금/통화 필터링 적용:
+    - 주식/채권/대체/모펀드: 포함
+    - 현금: "USD Deposit" 또는 "예금" 포함된 종목만 유지
+    - 통화(달러선물): 제외
+    """
     pivot_data = holding_df.copy()
 
-    # 펀드별 총액 계산하여 비중(%) 계산
+    # =========================
+    # [NEW] 현금/통화 필터링 적용
+    # =========================
+    mask_main = pivot_data['대분류'].isin(['주식', '채권', '대체', '모펀드'])
+    mask_cash = pivot_data['대분류'] == '현금'
+    mask_cash_keep = mask_cash & pivot_data['ITEM_NM'].apply(
+        lambda x: 'USD DEPOSIT' in str(x).upper() or '예금' in str(x).upper()
+    )
+    # 통화(달러선물)는 피봇에서도 제외
+    pivot_data = pivot_data[mask_main | mask_cash_keep].copy()
+
+    print(f"[PIVOT] 필터링 후 데이터: {len(pivot_data)} rows")
+
+    # 펀드별/날짜별 총액 계산하여 비중(%) 계산 - 필터링된 데이터 기준
     fund_totals = pivot_data.groupby(['STD_DT', 'FUND_CD'])['EVL_AMT'].transform('sum')
     pivot_data['비중(%)'] = (pivot_data['EVL_AMT'] / fund_totals * 100).round(2)
 
@@ -1606,48 +1684,75 @@ def update_dashboard(selected_date, selected_fund, area_groupby, return_display_
         selected_date = datetime.strptime(selected_date, '%Y-%m-%d').date()
 
     # 필터링
-    df_holding_selected = holding[
+    df_holding_all = holding[
         (holding['STD_DT'] == selected_date) &
         (holding['FUND_CD'] == selected_fund)
     ].copy()
 
-    total_amt = df_holding_selected['EVL_AMT'].sum()
+    return_cols = ['1D', '1W', '1M', '3M', '6M', 'YTD']
+
+    # =========================
+    # [NEW] 현금/통화 필터링 적용 - 비중/기여율 왜곡 제거
+    # =========================
+    df_main, df_cash_keep, df_fx_hedge, df_cash_drop = filter_holdings_for_weight(df_holding_all)
+
+    # 비중 계산 기준 = 주식/채권/대체/모펀드 + 유지할 현금(USD Deposit, 예금)
+    df_weight_base = pd.concat([df_main, df_cash_keep], ignore_index=True)
+    weight_base_total = df_weight_base['EVL_AMT'].sum()
+
+    # 수익률 데이터 존재 여부 확인
+    has_return_data = all(col in df_weight_base.columns for col in return_cols)
+
+    # 비중 검증 로그
+    print(f"\n[CHECK] weight_base_total = {weight_base_total:,.0f} 원")
+    print(f"[CHECK] df_weight_base rows = {len(df_weight_base)}")
 
     # 대분류 순서 정의 (주식, 채권, 대체, 모펀드, 통화, 기타, 현금)
-    df_holding_selected['대분류_순서'] = df_holding_selected['대분류'].map(CATEGORY_ORDER_MAP).fillna(99)
-    df_holding_selected = df_holding_selected.sort_values(['대분류_순서', '지역', 'ITEM_NM'])
+    df_weight_base['대분류_순서'] = df_weight_base['대분류'].map(CATEGORY_ORDER_MAP).fillna(99)
+    df_weight_base = df_weight_base.sort_values(['대분류_순서', '지역', 'ITEM_NM'])
 
-    # 보유 종목 테이블 (대분류 소계 + 총계 포함)
-    holdings_list = []
-    current_category = None
-    category_pct = 0
-    category_weighted_returns = {col: 0 for col in ['1D', '1W', '1M', '3M', '6M', 'YTD']}
-    category_valid_weight = {col: 0 for col in ['1D', '1W', '1M', '3M', '6M', 'YTD']}
-
-    # 총계 계산용 변수
-    total_weighted_returns = {col: 0 for col in ['1D', '1W', '1M', '3M', '6M', 'YTD']}
-    total_valid_weight = {col: 0 for col in ['1D', '1W', '1M', '3M', '6M', 'YTD']}
-
-    return_cols = ['1D', '1W', '1M', '3M', '6M', 'YTD']
-    has_return_data = all(col in df_holding_selected.columns for col in return_cols)
-
-    # 비중 계산
-    if total_amt > 0:
-        df_holding_selected['WEIGHT_PCT'] = (df_holding_selected['EVL_AMT'] / total_amt * 100).round(6)
+    # 비중 계산 (df_weight_base 기준)
+    if weight_base_total > 0:
+        df_weight_base['WEIGHT_PCT'] = (df_weight_base['EVL_AMT'] / weight_base_total * 100).round(6)
     else:
-        df_holding_selected['WEIGHT_PCT'] = 0
+        df_weight_base['WEIGHT_PCT'] = 0
 
-    # USD 종목 판정 (ITEM_CD가 'US'로 시작)
-    df_holding_selected['IS_USD'] = df_holding_selected['ITEM_CD'].apply(
+    # 비중합 검증
+    total_weight_check = df_weight_base['WEIGHT_PCT'].sum()
+    print(f"[CHECK] total weight = {total_weight_check:.6f}%")
+    if weight_base_total > 0:
+        assert abs(total_weight_check - 100) < 1e-4, f"비중합이 100%가 아님: {total_weight_check}"
+
+    # USD 종목 판정 (ITEM_CD가 'US'로 시작) - df_weight_base 기준
+    df_weight_base['IS_USD'] = df_weight_base['ITEM_CD'].apply(
         lambda x: str(x).upper().startswith('US')
     )
 
-    # USD 종목 총 비중 계산
-    total_usd_weight = df_holding_selected[df_holding_selected['IS_USD']]['WEIGHT_PCT'].sum()
+    # USD 종목 총 비중 계산 (환차익 계산용)
+    total_usd_weight = df_weight_base[df_weight_base['IS_USD']]['WEIGHT_PCT'].sum()
 
     # 환차익 계산: USD 비중 × FX 수익률
     # FX_RETURN_BY_PERIOD는 전역 변수 (예: {'1D': -1.62, '1W': 0.5, ...})
     fx_impact = {col: (total_usd_weight * FX_RETURN_BY_PERIOD.get(col, 0) / 100) for col in return_cols}
+
+    # =========================
+    # [NEW] FX Hedge (달러선물) 평가손익 계산 (별도 표시용)
+    # =========================
+    fx_hedge_pnl = 0
+    if len(df_fx_hedge) > 0:
+        fx_hedge_pnl = df_fx_hedge['EVL_AMT'].sum()
+        print(f"[INFO] FX Hedge (달러선물) 평가금액: {fx_hedge_pnl:,.0f} 원")
+
+    # 보유 종목 테이블 (대분류 소계 + 총계 포함) - df_weight_base만 사용
+    holdings_list = []
+    current_category = None
+    category_pct = 0
+    category_weighted_returns = {col: 0 for col in return_cols}
+    category_valid_weight = {col: 0 for col in return_cols}
+
+    # 총계 계산용 변수
+    total_weighted_returns = {col: 0 for col in return_cols}
+    total_valid_weight = {col: 0 for col in return_cols}
 
     def format_return(value):
         if pd.isna(value) or value == '':
@@ -1657,8 +1762,8 @@ def update_dashboard(selected_date, selected_fund, area_groupby, return_display_
         except (ValueError, TypeError):
             return ''
 
-    for idx, row in df_holding_selected.iterrows():
-        pct = (row['EVL_AMT'] / total_amt * 100) if total_amt > 0 else 0
+    for idx, row in df_weight_base.iterrows():
+        pct = (row['EVL_AMT'] / weight_base_total * 100) if weight_base_total > 0 else 0
 
         # 대분류가 바뀌면 이전 대분류 소계 추가
         if current_category and row['대분류'] != current_category:
@@ -1821,10 +1926,21 @@ def update_dashboard(selected_date, selected_fund, area_groupby, return_display_
         {'name': 'Last Updated', 'id': 'Last Updated'}
     ]
 
-    # ??: ?? ??? ?? ??(%) ??? ??
+    # 자산배분 현황 차트: 비중(%) 시계열 추이
+    # [NEW] 현금/통화 필터링 적용 - 제외 대상 종목 제거
     df_timeseries = holding[holding['FUND_CD'] == selected_fund].copy()
+
+    # 시계열 데이터에도 동일한 필터링 로직 적용
+    mask_main_ts = df_timeseries['대분류'].isin(['주식', '채권', '대체', '모펀드'])
+    mask_cash_ts = df_timeseries['대분류'] == '현금'
+    mask_cash_keep_ts = mask_cash_ts & df_timeseries['ITEM_NM'].apply(
+        lambda x: 'USD DEPOSIT' in str(x).upper() or '예금' in str(x).upper()
+    )
+    # 통화(달러선물)는 시계열 차트에서도 제외
+    df_timeseries_filtered = df_timeseries[mask_main_ts | mask_cash_keep_ts].copy()
+
     group_key = area_groupby if area_groupby in ['대분류', '지역', '소분류'] else '대분류'
-    df_ts_agg = df_timeseries.groupby(['STD_DT', group_key], as_index=False)['EVL_AMT'].sum()
+    df_ts_agg = df_timeseries_filtered.groupby(['STD_DT', group_key], as_index=False)['EVL_AMT'].sum()
     df_pivot = df_ts_agg.pivot(index='STD_DT', columns=group_key, values='EVL_AMT').fillna(0)
     df_pivot = (df_pivot.div(df_pivot.sum(axis=1), axis=0) * 100).fillna(0)
 
