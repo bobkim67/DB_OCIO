@@ -745,9 +745,13 @@ def fetch_mofund_returns(master_df, engine, latest_date, base_dates):
         return pd.DataFrame(columns=['ITEM_CD', '1D', '1W', '1M', '3M', '6M', 'YTD', 'Last Updated'])
 
 
-def calculate_return_periods_v2(return_df, latest_date, base_dates):
+def calculate_return_periods_v2(return_df, latest_date, base_dates, fx_rates=None):
     """
     영업일 기준 수익률 계산 (v2) - SCIP 데이터용
+
+    USD 자산의 경우 미국 시장 시차 반영:
+    - KRW 기준가(T) = USD 가격(T-1) × 환율(T)
+    - 수익률 = [USD(T-1) × FX(T)] / [USD(T-2) × FX(T-1)] - 1
 
     Returns:
     --------
@@ -759,49 +763,104 @@ def calculate_return_periods_v2(return_df, latest_date, base_dates):
     return_df = return_df.copy()
     return_df['date'] = pd.to_datetime(return_df['date']).dt.date
 
+    # 전체 날짜 목록 (정렬)
+    all_dates = sorted(return_df['date'].unique())
+
+    def get_prev_date(target_date, dates_list):
+        """target_date 이전 날짜 반환"""
+        prev_dates = [d for d in dates_list if d < target_date]
+        return prev_dates[-1] if prev_dates else None
+
     results = []
 
     for item_cd in return_df['ITEM_CD'].unique():
         item_data = return_df[return_df['ITEM_CD'] == item_cd].sort_values('date')
+        currency = get_currency_from_item_cd(item_cd)
 
         if item_data.empty:
             continue
 
-        # 최신 데이터 (latest_date 이하)
-        latest_data = item_data[item_data['date'] <= latest_date]
-        if latest_data.empty:
-            continue
+        # USD 자산: T-1 시차 적용
+        if currency == 'USD':
+            # USD 자산의 경우 T-1 가격을 사용
+            # latest_date 이전의 가장 최근 데이터가 "오늘의 USD 가격"
+            latest_data = item_data[item_data['date'] < latest_date]
+            if latest_data.empty:
+                # T-1 데이터가 없으면 latest_date 데이터 사용 (fallback)
+                latest_data = item_data[item_data['date'] <= latest_date]
+                if latest_data.empty:
+                    continue
 
-        latest_value = latest_data.iloc[-1]['return_index']
-        last_updated = latest_data.iloc[-1]['date']
+            latest_value = latest_data.iloc[-1]['return_index']  # USD(T-1)
+            last_updated = latest_data.iloc[-1]['date']
 
-        row = {
-            'ITEM_CD': item_cd,
-            'Last Updated': last_updated.strftime('%Y-%m-%d') if last_updated else '-'
-        }
+            row = {
+                'ITEM_CD': item_cd,
+                'Last Updated': last_updated.strftime('%Y-%m-%d') if last_updated else '-'
+            }
 
-        # 각 기간별 수익률 계산
-        for period_name, base_date in base_dates.items():
-            if base_date is None:
-                row[period_name] = np.nan
+            # 각 기간별 수익률 계산
+            for period_name, base_date in base_dates.items():
+                if base_date is None:
+                    row[period_name] = np.nan
+                    continue
+
+                # USD 자산: base_date도 하루 이전 데이터 사용 (T-2 for 1D)
+                # base_date 이전의 가장 최근 데이터
+                period_data = item_data[item_data['date'] < base_date]
+                if period_data.empty:
+                    # fallback: base_date 이하
+                    period_data = item_data[item_data['date'] <= base_date]
+
+                if period_data.empty:
+                    row[period_name] = np.nan
+                else:
+                    period_value = period_data.iloc[-1]['return_index']  # USD(T-2 for 1D)
+                    if period_value > 0:
+                        # 순수 USD 수익률 (T-2 → T-1)
+                        usd_return = (latest_value / period_value - 1) * 100
+                        row[period_name] = round(usd_return, 2)
+                    else:
+                        row[period_name] = np.nan
+
+            results.append(row)
+
+        else:
+            # KRW 자산: 기존 로직 그대로
+            latest_data = item_data[item_data['date'] <= latest_date]
+            if latest_data.empty:
                 continue
 
-            # base_date 이하의 가장 최근 데이터
-            period_data = item_data[item_data['date'] <= base_date]
+            latest_value = latest_data.iloc[-1]['return_index']
+            last_updated = latest_data.iloc[-1]['date']
 
-            if period_data.empty:
-                row[period_name] = np.nan
-            else:
-                period_value = period_data.iloc[-1]['return_index']
-                if period_value > 0:
-                    row[period_name] = round((latest_value / period_value - 1) * 100, 2)
-                else:
+            row = {
+                'ITEM_CD': item_cd,
+                'Last Updated': last_updated.strftime('%Y-%m-%d') if last_updated else '-'
+            }
+
+            # 각 기간별 수익률 계산
+            for period_name, base_date in base_dates.items():
+                if base_date is None:
                     row[period_name] = np.nan
+                    continue
 
-        results.append(row)
+                # base_date 이하의 가장 최근 데이터
+                period_data = item_data[item_data['date'] <= base_date]
+
+                if period_data.empty:
+                    row[period_name] = np.nan
+                else:
+                    period_value = period_data.iloc[-1]['return_index']
+                    if period_value > 0:
+                        row[period_name] = round((latest_value / period_value - 1) * 100, 2)
+                    else:
+                        row[period_name] = np.nan
+
+            results.append(row)
 
     result_df = pd.DataFrame(results)
-    print(f"[INFO] SCIP 수익률 계산 완료: {len(result_df)}개 종목")
+    print(f"[INFO] SCIP 수익률 계산 완료: {len(result_df)}개 종목 (USD 자산 T-1 시차 적용)")
 
     return result_df
 
@@ -1354,7 +1413,24 @@ app.layout = html.Div([
 
         # 보유 종목 테이블 (파스텔 톤 스타일 적용)
         html.Div([
-            html.H3("보유 종목 내역", style={'textAlign': 'center'}),
+            html.Div([
+                html.H3("보유 종목 내역", style={'textAlign': 'center', 'display': 'inline-block', 'marginRight': 30}),
+                html.Div([
+                    html.Label("수익률 표시:", style={'fontWeight': 'bold', 'marginRight': 10, 'fontSize': '13px'}),
+                    dcc.RadioItems(
+                        id='return-display-toggle',
+                        options=[
+                            {'label': '원본 수익률', 'value': 'raw'},
+                            {'label': '기여율 (비중×수익률)', 'value': 'contribution'},
+                        ],
+                        value='raw',
+                        inline=True,
+                        style={'display': 'inline-block', 'fontSize': '13px'},
+                        inputStyle={'marginRight': '5px'},
+                        labelStyle={'marginRight': '15px'}
+                    )
+                ], style={'display': 'inline-block', 'verticalAlign': 'middle'})
+            ], style={'textAlign': 'center', 'marginBottom': 10}),
             dash_table.DataTable(
                 id='holdings-table',
                 style_table=PASTEL_TABLE["style_table"],
@@ -1521,9 +1597,10 @@ def display_fund_name(fund_code):
      Output('performance-chart', 'figure')],
     [Input('date-picker', 'date'),
      Input('fund-dropdown', 'value'),
-     Input('area-groupby', 'value')]
+     Input('area-groupby', 'value'),
+     Input('return-display-toggle', 'value')]
 )
-def update_dashboard(selected_date, selected_fund, area_groupby):
+def update_dashboard(selected_date, selected_fund, area_groupby, return_display_mode):
     # 날짜 변환
     if isinstance(selected_date, str):
         selected_date = datetime.strptime(selected_date, '%Y-%m-%d').date()
@@ -1592,11 +1669,17 @@ def update_dashboard(selected_date, selected_fund, area_groupby):
                 '_is_subtotal': 'subtotal',
                 'Last Updated': '-'
             }
-            # 가중평균 수익률 계산
+            # 토글에 따라 소계 계산
             for col in return_cols:
                 if category_valid_weight[col] > 0:
-                    weighted_avg = category_weighted_returns[col] / category_valid_weight[col]
-                    subtotal_row[col] = round(weighted_avg, 2)
+                    if return_display_mode == 'contribution':
+                        # 기여율 모드: 해당 카테고리의 기여율 합계
+                        category_contribution = category_weighted_returns[col] / 100
+                        subtotal_row[col] = round(category_contribution, 4)
+                    else:
+                        # 원본 수익률 모드: 가중평균
+                        weighted_avg = category_weighted_returns[col] / category_valid_weight[col]
+                        subtotal_row[col] = round(weighted_avg, 2)
                 else:
                     subtotal_row[col] = '-'
             holdings_list.append(subtotal_row)
@@ -1622,7 +1705,6 @@ def update_dashboard(selected_date, selected_fund, area_groupby):
             for col in return_cols:
                 val = row.get(col)
                 formatted_val = format_return(val)
-                item_row[col] = formatted_val
 
                 # 가중평균 계산을 위한 누적 (유효한 값만)
                 if formatted_val != '' and pd.notna(val):
@@ -1632,6 +1714,17 @@ def update_dashboard(selected_date, selected_fund, area_groupby):
                     # 총계용 누적
                     total_weighted_returns[col] += val_float * pct
                     total_valid_weight[col] += pct
+
+                    # 토글에 따라 표시 값 결정
+                    if return_display_mode == 'contribution':
+                        # 기여율: 비중 × 수익률 / 100
+                        contribution = val_float * pct / 100
+                        item_row[col] = round(contribution, 4)
+                    else:
+                        # 원본 수익률
+                        item_row[col] = formatted_val
+                else:
+                    item_row[col] = formatted_val if return_display_mode == 'raw' else ''
         else:
             for col in return_cols:
                 item_row[col] = ''
@@ -1649,8 +1742,14 @@ def update_dashboard(selected_date, selected_fund, area_groupby):
         }
         for col in return_cols:
             if category_valid_weight[col] > 0:
-                weighted_avg = category_weighted_returns[col] / category_valid_weight[col]
-                subtotal_row[col] = round(weighted_avg, 2)
+                if return_display_mode == 'contribution':
+                    # 기여율 모드: 해당 카테고리의 기여율 합계
+                    category_contribution = category_weighted_returns[col] / 100
+                    subtotal_row[col] = round(category_contribution, 4)
+                else:
+                    # 원본 수익률 모드: 가중평균
+                    weighted_avg = category_weighted_returns[col] / category_valid_weight[col]
+                    subtotal_row[col] = round(weighted_avg, 2)
             else:
                 subtotal_row[col] = '-'
         holdings_list.append(subtotal_row)
@@ -1661,12 +1760,17 @@ def update_dashboard(selected_date, selected_fund, area_groupby):
         fx_gain_row = {
             '대분류': '통화',
             'ITEM_NM': '환차손익',
-            '비중(%)': '-',  # 비중은 이미 자산군에 포함되어 있으므로 표시 안함
+            '비중(%)': round(total_usd_weight, 2) if return_display_mode == 'raw' else '-',
             '_is_subtotal': 'subtotal',
             'Last Updated': '-'
         }
         for col in return_cols:
-            fx_gain_row[col] = round(fx_impact.get(col, 0), 2)
+            if return_display_mode == 'contribution':
+                # 기여율 모드: FX 기여율 (이미 계산됨)
+                fx_gain_row[col] = round(fx_impact.get(col, 0), 4)
+            else:
+                # 원본 수익률 모드: FX 수익률 자체
+                fx_gain_row[col] = round(FX_RETURN_BY_PERIOD.get(col, 0), 2)
         holdings_list.append(fx_gain_row)
 
     # 총계 행 추가 (맨 마지막)
@@ -1687,21 +1791,33 @@ def update_dashboard(selected_date, selected_fund, area_groupby):
 
         # 총계 = 순수 자산 수익률 + FX impact
         total_return = pure_asset_return + fx_impact.get(col, 0)
-        total_row[col] = round(total_return, 2) if total_return != 0 else '-'
+
+        if return_display_mode == 'contribution':
+            # 기여율 모드: 총 기여율
+            total_row[col] = round(total_return, 4) if total_return != 0 else '-'
+        else:
+            # 원본 수익률 모드: 총 수익률
+            total_row[col] = round(total_return, 2) if total_return != 0 else '-'
     holdings_list.append(total_row)
 
     holdings_table_data = holdings_list
+
+    # 토글에 따라 컬럼 헤더 변경
+    if return_display_mode == 'contribution':
+        return_header_suffix = '(기여%)'
+    else:
+        return_header_suffix = '(%)'
 
     holdings_table_columns = [
         {'name': '대분류', 'id': '대분류'},
         {'name': '종목명', 'id': 'ITEM_NM'},
         {'name': '비중(%)', 'id': '비중(%)'},
-        {'name': '1D(%)', 'id': '1D'},
-        {'name': '1W(%)', 'id': '1W'},
-        {'name': '1M(%)', 'id': '1M'},
-        {'name': '3M(%)', 'id': '3M'},
-        {'name': '6M(%)', 'id': '6M'},
-        {'name': 'YTD(%)', 'id': 'YTD'},
+        {'name': f'1D{return_header_suffix}', 'id': '1D'},
+        {'name': f'1W{return_header_suffix}', 'id': '1W'},
+        {'name': f'1M{return_header_suffix}', 'id': '1M'},
+        {'name': f'3M{return_header_suffix}', 'id': '3M'},
+        {'name': f'6M{return_header_suffix}', 'id': '6M'},
+        {'name': f'YTD{return_header_suffix}', 'id': 'YTD'},
         {'name': 'Last Updated', 'id': 'Last Updated'}
     ]
 
