@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Guide for DB_OCIO
 
-Last Updated: 2026-01-23
+Last Updated: 2026-01-31
 
 ## Repository Overview
 
@@ -39,6 +39,7 @@ This document serves as a comprehensive guide for AI assistants working on this 
 │  - dt.DWPM10510 (Fund Metrics)                         │
 │  - dt.DWCI10220 (Business Day Calendar)                │
 │  - SCIP.back_datapoint (Market Data)                   │
+│  - SCIP.back_dataset (Dataset Metadata)                │
 └────────────────┬────────────────────────────────────────┘
                  │
                  ▼
@@ -46,34 +47,38 @@ This document serves as a comprehensive guide for AI assistants working on this 
 │           Python Data Processing Layer                  │
 │  - SQLAlchemy (Database Connection)                     │
 │  - Pandas (Data Transformation)                         │
-│  - Auto Classification Engine                           │
+│  - Auto Classification Engine (integrated)              │
+│  - US Market Time Lag Adjustment                        │
 └────────────────┬────────────────────────────────────────┘
                  │
                  ▼
 ┌─────────────────────────────────────────────────────────┐
 │              Master Data Management                      │
-│  - master_asset_mapping.pkl                             │
+│  - MASTER_DATA_RAW (code-embedded constant)             │
 │  - Auto-classification Rules                            │
-│  - Manual Override Support                              │
+│  - Cash/Currency Filtering                              │
 └────────────────┬────────────────────────────────────────┘
                  │
                  ▼
 ┌─────────────────────────────────────────────────────────┐
-│              Dash Web Dashboard                          │
-│  - Asset Allocation View                                │
-│  - Interactive Pivot Tables                             │
-│  - Time Series Charts                                   │
-│  - Performance Analytics                                │
+│              Applications                                │
+│  - dashboard.py: Asset Allocation Dashboard             │
+│  - market.py: Valuation Panel (PE, EPS, TR)            │
+│  - report.py: Terminal Fund Report                      │
 └─────────────────────────────────────────────────────────┘
 ```
 
 ### Key Features
 
 1. **자동 자산 분류**: 종목명과 종목코드 기반으로 자산군 자동 분류
-2. **마스터 데이터 관리**: Pickle 파일 기반 분류 규칙 저장 및 관리
+2. **마스터 데이터 관리**: 코드 내장 상수(MASTER_DATA_RAW) 기반 분류 규칙 관리
 3. **실시간 대시보드**: Dash 기반 인터랙티브 웹 인터페이스
 4. **피봇 분석**: 다차원 자산배분 분석 도구
 5. **성과 모니터링**: NAV, 수익률, 자산배분 추이 시각화
+6. **미국 시장 시차 반영**: USD 자산 T-1 가격 적용 (KRW 기준가 = USD(T-1) × FX(T))
+7. **현금/통화 필터링**: 비중/기여율 왜곡 제거를 위한 필터링
+8. **수익률 분해**: 순수 자산 수익률 + 환율 기여 분리 표시
+9. **밸류에이션 패널**: PE/EPS 시계열 및 YTD 성과 분해
 
 ---
 
@@ -86,23 +91,24 @@ This document serves as a comprehensive guide for AI assistants working on this 
 - **Database**: MySQL (via SQLAlchemy + PyMySQL)
 - **Data Processing**: Pandas 2.0.0+
 - **Visualization**: Plotly 5.18.0+
-- **UI Components**: dash-ag-grid 31.0.0+
+- **UI Components**: dash-ag-grid 31.0.0+, dash-pivottable 0.0.2+
 
 ### Dependencies
 
 ```txt
 dash>=2.14.0
 dash-ag-grid>=31.0.0
+dash-pivottable>=0.0.2
 pandas>=2.0.0
 plotly>=5.18.0
 sqlalchemy>=2.0.0
 pymysql>=1.1.0
+python-dateutil>=2.8.0
 ```
 
 ### Development Tools
 
 - **Version Control**: Git
-- **Data Serialization**: Pickle (for master data)
 - **Jupyter Notebooks**: For ad-hoc analysis and exploration
 
 ---
@@ -118,46 +124,55 @@ DB_OCIO/
 │
 ├── requirements.txt                # Python dependencies
 │
-├── auto_classify.py                # 자동 분류 엔진
-├── create_initial_master.py        # 초기 마스터 데이터 생성 스크립트
-├── dashboard_with_master.py        # 메인 대시보드 애플리케이션
+├── dashboard.py                    # 메인 대시보드 애플리케이션 (자동 분류 통합)
+├── market.py                       # 주식 밸류에이션 패널 (PE, EPS, TR 분석)
+├── report.py                       # 펀드 요약 리포트 (터미널 출력용)
 ├── mysql.ipynb                     # MySQL 연결 및 데이터 탐색 노트북
 │
-└── master_asset_mapping.pkl        # 자산 분류 마스터 데이터 (바이너리)
+├── source_3_latest_snapshot.pkl    # SCIP source_id=3 스냅샷 데이터
+└── factset_data_summary_20260123.xlsx  # FactSet 데이터 요약
 ```
 
 ### File Descriptions
 
 #### Core Application Files
 
-1. **dashboard_with_master.py** (666 lines)
+1. **dashboard.py** (~1600 lines)
    - Main application entry point
    - Dash web server setup
    - Database connection management
+   - **Auto-classification engine integrated** (기존 auto_classify.py 통합)
+   - **Master data management integrated** (기존 create_initial_master.py 통합)
+   - **Cash/Currency filtering** for weight/contribution calculation
+   - **US market time lag** handling for USD assets
    - Three main tabs:
      - 📊 자산배분 현황: Holdings, time series, performance charts
      - 🔍 피봇 분석: Interactive pivot tables
      - 📋 종목 리스트: Master data management
-   - Runs on `http://0.0.0.0:8050`
+   - Runs on `http://127.0.0.1:8050`
 
-2. **auto_classify.py** (108 lines)
-   - Auto-classification logic based on item names
-   - Classification rules:
-     - 콜론 (Call Loan) → 현금/국내/현금 등
-     - GOLD → 대체/국내 or 글로벌/금
-     - 달러 선물 → 통화/미국/달러 선물
-     - 코스피 선물 → 주식/국내/코스피 선물
-     - REPO → 채권/국내/REPO
-     - 예금/증거금 → 현금/국내 or 미국/현금 등
-     - 미수금/미지급금 → 현금/국내/현금 등
-   - Returns: `{'대분류': str, '지역': str, '소분류': str}` or `None`
+2. **market.py** (~500 lines)
+   - Valuation panel for equity analysis
+   - SCIP DB source_id=3 data fetching
+   - Features:
+     - 12M Fwd P/E time series chart
+     - 12M Fwd EPS time series chart
+     - YTD performance decomposition (TR = EPS growth + PE growth + Other)
+     - Multi-select dropdown for asset comparison
+   - Dataset mapping for equity indices (S&P 500, MSCI, Vanguard ETFs, etc.)
+   - Runs on `http://127.0.0.1:8050`
 
-3. **create_initial_master.py** (121 lines)
-   - Initial master data setup script
-   - Parses hardcoded asset mapping data
-   - Applies auto-classification rules
-   - Saves to `master_asset_mapping.pkl`
-   - Includes 62 pre-defined assets (ETFs, funds, cash, etc.)
+3. **report.py** (~770 lines)
+   - Terminal-based fund summary report
+   - CLI interface with argparse
+   - Features:
+     - 최근 4영업일 수정기준가(MOD_STPR) 출력
+     - 최근 3영업일 일별 수익률 출력
+     - USD 자산: 순수 USD 수익률 + FX 기여 분리 표시
+   - US market time lag handling:
+     - KRW 기준가(T) = USD 가격(T-1) × 환율(T)
+     - KRW 수익률 = [USD(T-1) × FX(T)] / [USD(T-2) × FX(T-1)] - 1
+   - Usage: `python report.py --fund 06X08`
 
 4. **mysql.ipynb** (Jupyter Notebook)
    - Ad-hoc database queries
@@ -169,11 +184,13 @@ DB_OCIO/
 
 #### Data Files
 
-5. **master_asset_mapping.pkl** (84KB)
-   - Serialized Pandas DataFrame
-   - Columns: `ITEM_CD`, `ITEM_NM`, `대분류`, `지역`, `소분류`, `등록일`, `비고`
-   - Updated automatically when new items are auto-classified
-   - **Important**: Binary file, do not edit manually
+5. **source_3_latest_snapshot.pkl**
+   - Pickle snapshot of SCIP source_id=3 data
+   - Used for offline analysis and caching
+
+6. **factset_data_summary_20260123.xlsx**
+   - FactSet data summary export
+   - Reference data for validation
 
 ---
 
@@ -182,8 +199,11 @@ DB_OCIO/
 ### Connection Configuration
 
 ```python
-# Production Database (dt)
+# Production Database (dt) - Holdings, Fund Metrics
 CONN_STR = "mysql+pymysql://solution:Solution123!@192.168.195.55/dt?charset=utf8"
+
+# Market Data Database (SCIP) - Price, FX, Valuation
+CONN_STR_SCIP = "mysql+pymysql://solution:Solution123!@192.168.195.55/SCIP?charset=utf8mb4"
 ```
 
 **⚠️ SECURITY WARNING**: Database credentials are hardcoded in source files. See [Security Considerations](#security-considerations).
@@ -211,7 +231,7 @@ WHERE STD_DT BETWEEN '20241201' AND '20241231'
 
 #### 2. dt.DWPM10510 (Fund Metrics)
 
-Stores fund-level metrics (NAV, performance).
+Stores fund-level metrics (NAV, performance). Also used for 모펀드 return calculation.
 
 ```sql
 SELECT
@@ -237,26 +257,36 @@ ORDER BY std_dt
 
 #### 4. SCIP.back_datapoint (Market Data)
 
-Market data time series (rates, KRX, macro indicators).
+Market data time series (prices, FX, PE, EPS).
 
 ```sql
 SELECT
     timestamp_observation,
-    timestamp_effective,
-    dataseries_id,    -- 17: Rate, 22: Duration, 23: Real Rate, 46: KRX
+    dataseries_id,    -- 6: Total Return, 24: PE, 31: EPS
     dataset_id,
-    data              -- JSON blob
+    data              -- JSON blob with USD/KRW values
 FROM SCIP.back_datapoint
+WHERE dataseries_id = 6  -- Total Return Index
+```
+
+#### 5. SCIP.back_dataset (Dataset Metadata)
+
+Dataset information including ISIN codes.
+
+```sql
+SELECT id, name, ISIN
+FROM SCIP.back_dataset
+WHERE ISIN IN ('US78464A5083', 'KR7332500008', ...)
 ```
 
 ### Fund List
 
-Currently tracked funds (20 total):
+Currently tracked funds (21 total):
 
 ```python
 FUND_LIST = [
     '06X08','07G02','07G03','07G04','07J20','07J27','07J34','07J41',
-    '07J48','07J49','07P70','07W15','08K88','08N33','08N81','09L94',
+    '07J48','07J49','07P70','07W15','08K88','08N33','08N81','08P22','09L94',
     '1JM96','1JM98','2JM23','4JM12'
 ]
 ```
@@ -265,9 +295,11 @@ FUND_LIST = [
 
 ## Core Modules
 
-### 1. Auto-Classification Engine (`auto_classify.py`)
+### 1. Auto-Classification Engine (in `dashboard.py`)
 
-#### Functions
+The auto-classification logic is now integrated into `dashboard.py` (lines 46-92).
+
+#### Function
 
 **`auto_classify_item(item_cd: str, item_nm: str) -> dict | None`**
 
@@ -275,22 +307,13 @@ Classifies an asset based on item code and name.
 
 ```python
 result = auto_classify_item('KR7332500008', 'ACE 200TR')
-# Returns: {'대분류': '주식', '지역': '국내', '소분류': '일반'}
+# Returns: None (uses master data instead)
 
-result = auto_classify_item('1751100', '미수ETF분배금')
+result = auto_classify_item('000000', '콜론')
 # Returns: {'대분류': '현금', '지역': '국내', '소분류': '현금 등'}
 
 result = auto_classify_item('US78464A5083', 'SPDR S&P 500 VALUE ETF')
-# Returns: None (auto-classification not applicable)
-```
-
-**`get_auto_classify_stats(items_df: DataFrame) -> dict`**
-
-Returns statistics on auto-classified items.
-
-```python
-stats = get_auto_classify_stats(holdings_df)
-# Returns: {'콜론': 2, '금': 3, '예금/증거금': 5, ...}
+# Returns: None (uses master data instead)
 ```
 
 #### Classification Rules (Priority Order)
@@ -325,20 +348,14 @@ stats = get_auto_classify_stats(holdings_df)
    - Keywords: `'미수'`, `'미지급'`, `'청약금'`, `'원천세'`, `'분배금'`, `'기타자산'`
    - Result: 현금 / 국내 / 현금 등
 
-#### Adding New Classification Rules
+### 2. Master Data Management (in `dashboard.py`)
 
-When adding new rules:
-1. Add to `auto_classify_item()` function in priority order
-2. Test with sample data
-3. Update `get_auto_classify_stats()` if creating a new category
-4. Document the rule in this file
-
-### 2. Master Data Management
+Master data is now embedded as a constant `MASTER_DATA_RAW` (lines 162-214).
 
 #### Loading Master Data
 
 ```python
-from dashboard_with_master import load_master_mapping, save_master_mapping
+from dashboard import load_master_mapping
 
 # Load
 master_df = load_master_mapping()
@@ -350,24 +367,6 @@ master_df = load_master_mapping()
 # - 소분류: 일반, 가치, 성장, 중소형, 장기채, 단기채, etc.
 # - 등록일: YYYY-MM-DD
 # - 비고: 자동분류, 수동입력, etc.
-```
-
-#### Updating Master Data
-
-```python
-# Add new item
-new_item = pd.DataFrame([{
-    'ITEM_CD': 'KR7123456789',
-    'ITEM_NM': 'KODEX 미국채10년',
-    '대분류': '채권',
-    '지역': '미국',
-    '소분류': '장기채',
-    '등록일': '2026-01-23',
-    '비고': '수동입력'
-}])
-
-master_df = pd.concat([master_df, new_item], ignore_index=True)
-save_master_mapping(master_df)
 ```
 
 #### Classification Workflow
@@ -387,55 +386,89 @@ def classify_with_master(holding_df, master_df):
     """
 ```
 
-### 3. Dashboard Application (`dashboard_with_master.py`)
+### 3. Cash/Currency Filtering (in `dashboard.py`)
 
-#### Application Structure
+New function `filter_holdings_for_weight()` (lines 98-153) for removing distortion in weight/contribution calculations.
+
+#### Filtering Policy
+
+- **주식/채권/대체/모펀드**: 비중/기여율에 포함
+- **현금**: "USD Deposit" 또는 "예금" 포함된 종목만 유지, 나머지 drop
+- **통화(달러 선물)**: 비중/기여율에서 제외, 환차손익 계산에만 사용
 
 ```python
-app = dash.Dash(__name__)
-app.layout = html.Div([
-    html.H1("자산배분 대시보드"),
-    dcc.Tabs(id='tabs', children=[
-        dcc.Tab(label='📊 자산배분 현황', value='tab-dashboard'),
-        dcc.Tab(label='🔍 피봇 분석', value='tab-pivot'),
-        dcc.Tab(label='📋 종목 리스트', value='tab-itemlist'),
-    ]),
-    html.Div(id='tabs-content')
-])
+df_main, df_cash_keep, df_fx_hedge, df_cash_drop = filter_holdings_for_weight(holdings_df)
 ```
 
-#### Tab 1: 자산배분 현황 (Asset Allocation Dashboard)
+### 4. US Market Time Lag Handling
 
-Features:
-- Date picker (영업일 기준)
-- Fund selector dropdown
-- Holdings table with subtotals by 대분류
-- Stacked area chart (자산배분 추이)
-- Performance chart (수익률 + NAV)
-- Allocation detail table
+For USD assets, the system applies T-1 price adjustment to account for US market closing time.
 
-#### Tab 2: 피봇 분석 (Pivot Analysis)
+#### Return Calculation Rules
 
-Interactive pivot table using `dash-pivottable`:
-- Drag-and-drop field arrangement
-- Multiple aggregation methods (Sum, Average, Count, etc.)
-- Multiple renderers (Table, Heatmap, Bar Chart, etc.)
-- Fields available: 날짜, FUND_CD, FUND_NM, 대분류, 지역, 소분류, ITEM_NM, 금액(억), 금액(원)
+**USD Assets**:
+```
+KRW 기준가(T) = USD 가격(T-1) × 환율(T)
+KRW 수익률 = [USD(T-1) × FX(T)] / [USD(T-2) × FX(T-1)] - 1
+         = 순수 USD 수익률(T-2→T-1) + FX 수익률(T-1→T)
+```
 
-#### Tab 3: 종목 리스트 (Item List)
+**KRW Assets**:
+```
+KRW 수익률(T) = [가격(T) / 가격(T-1)] - 1
+```
 
-- Displays all items in master data
-- Sortable and filterable
-- Excel export support
-- Shows total count
+### 5. Valuation Panel (`market.py`)
 
-#### Running the Dashboard
+Standalone application for equity valuation analysis.
+
+#### Dataset Mapping
+
+```python
+DATASET_MAPPING = {
+    24:  {"asset1": "주식", "asset2": "미국",   "style": "일반", "display_name": "S&P 500 (미국)"},
+    36:  {"asset1": "주식", "asset2": "선진국", "style": "일반", "display_name": "Vanguard DM (선진국)"},
+    37:  {"asset1": "주식", "asset2": "신흥국", "style": "일반", "display_name": "Vanguard EM (신흥국)"},
+    114: {"asset1": "주식", "asset2": "미국",   "style": "성장", "display_name": "SPDR S&P500 Growth"},
+    116: {"asset1": "주식", "asset2": "미국",   "style": "가치", "display_name": "SPDR S&P500 Value"},
+    144: {"asset1": "주식", "asset2": "국내",   "style": "일반", "display_name": "MSCI KR (국내)"},
+    # FX
+    31:  {"asset1": "FX",   "asset2": "환율",   "style": "USDKRW", "display_name": "USD/KRW"},
+}
+```
+
+#### YTD Decomposition
+
+```python
+def build_ytd_decomposition(df_equity):
+    """
+    TR(YTD)을 EPS growth, PE growth, Other로 분해.
+    - eps_g_ytd = EPS 레벨의 YTD growth
+    - pe_g_ytd  = PE 레벨의 YTD growth
+    - other_ytd = (1+TR)/((1+eps)*(1+pe)) - 1
+    """
+```
+
+### 6. Terminal Report (`report.py`)
+
+CLI-based fund summary report.
+
+#### Usage
 
 ```bash
-python dashboard_with_master.py
-# Access at: http://127.0.0.1:8050
-# or http://0.0.0.0:8050 (accessible from network)
+# With argument
+python report.py --fund 06X08
+
+# Interactive mode
+python report.py
 ```
+
+#### Output Sections
+
+- **FX Rate**: 최근 4영업일 USD/KRW 환율
+- **Section A**: 수정기준가(MOD_STPR) - 최근 4영업일
+- **Section B**: 일별 수익률 - 최근 3영업일
+  - USD 자산: Asset(T-2→T-1), FX(T-1→T), Total (KRW) 분리
 
 ---
 
@@ -454,19 +487,24 @@ python dashboard_with_master.py
    pip install -r requirements.txt
    ```
 
-3. **Initialize Master Data** (if not exists)
+3. **Run Dashboard**
    ```bash
-   python create_initial_master.py
+   python dashboard.py
    ```
 
-4. **Run Dashboard**
+4. **Run Valuation Panel (Optional)**
    ```bash
-   python dashboard_with_master.py
+   python market.py
+   ```
+
+5. **Run Fund Report (Optional)**
+   ```bash
+   python report.py --fund 06X08
    ```
 
 ### Branch Strategy
 
-- **Main Branch**: Not yet created (first commit on claude/ branch)
+- **Main Branch**: Default branch for stable code
 - **Development Branches**: `claude/feature-name-{session-id}`
 - **Feature Branches**: `feature/description`
 - **Hotfix Branches**: `hotfix/description`
@@ -485,11 +523,11 @@ python dashboard_with_master.py
 
 3. **Test Changes**
    ```bash
-   # Run application and verify
-   python dashboard_with_master.py
+   # Run dashboard and verify
+   python dashboard.py
 
-   # Test auto-classification
-   python -c "from auto_classify import auto_classify_item; print(auto_classify_item('test', '콜론'))"
+   # Test auto-classification (now in dashboard.py)
+   python -c "from dashboard import auto_classify_item; print(auto_classify_item('test', '콜론'))"
    ```
 
 4. **Commit Changes**
@@ -526,25 +564,6 @@ https://claude.ai/code/session_[session-id]
 - `config`: Configuration changes
 - `perf`: Performance improvements
 
-**Examples**:
-```
-feat: add new classification rule for infrastructure funds
-
-Added rule to auto-classify infrastructure ETFs based on
-'인프라' or 'INFRASTRUCTURE' keywords.
-
-https://claude.ai/code/session_abc123
-```
-
-```
-fix: resolve duplicate items in master data
-
-Added deduplication logic in classify_with_master() to prevent
-duplicate ITEM_CD entries when auto-classifying.
-
-https://claude.ai/code/session_xyz789
-```
-
 ---
 
 ## Security Considerations
@@ -556,11 +575,9 @@ https://claude.ai/code/session_xyz789
 **Current State**: Database credentials are hardcoded in source files.
 
 ```python
-# dashboard_with_master.py:20
+# dashboard.py, report.py
 CONN_STR = "mysql+pymysql://solution:Solution123!@192.168.195.55/dt?charset=utf8"
-
-# mysql.ipynb
-CONN_STR = "mysql+pymysql://solution:Solution123!@192.168.195.55/SCIP?charset=utf8mb4"
+CONN_STR_SCIP = "mysql+pymysql://solution:Solution123!@192.168.195.55/SCIP?charset=utf8mb4"
 ```
 
 **Risk Level**: 🔴 HIGH
@@ -597,64 +614,6 @@ CONN_STR = "mysql+pymysql://solution:Solution123!@192.168.195.55/SCIP?charset=ut
    python-dotenv>=1.0.0
    ```
 
-4. Create `.env.example` for reference:
-   ```bash
-   DB_HOST=your_host
-   DB_USER=your_user
-   DB_PASSWORD=your_password
-   DB_NAME_DT=dt
-   DB_NAME_SCIP=SCIP
-   DB_CHARSET=utf8
-   ```
-
-#### 2. Network Exposure
-
-**Current State**: Dashboard runs on `0.0.0.0:8050` (accessible from network)
-
-**Risk Level**: 🟡 MEDIUM
-
-**Recommended Actions**:
-- Add authentication (dash-auth)
-- Use reverse proxy (nginx) with HTTPS
-- Restrict access by IP whitelist
-- Use VPN for remote access
-
-#### 3. SQL Injection
-
-**Current State**: Using SQLAlchemy `text()` with parameterized queries ✅
-
-**Status**: 🟢 SECURE
-
-The code correctly uses parameterized queries:
-```python
-query = text("""
-SELECT * FROM dt.DWPM10530
-WHERE STD_DT BETWEEN :start_dt AND :end_dt
-  AND FUND_CD IN :fund_list
-""")
-conn.execute(query, {"start_dt": "20241201", "fund_list": tuple(FUND_LIST)})
-```
-
-#### 4. Data Validation
-
-**Current State**: Limited input validation
-
-**Recommendations**:
-- Validate date ranges before database queries
-- Sanitize user inputs in callbacks
-- Add error handling for malformed data
-
-### Security Checklist
-
-- [ ] Move database credentials to environment variables
-- [ ] Add `.env` to `.gitignore` (already done ✅)
-- [ ] Implement dashboard authentication
-- [ ] Add HTTPS support
-- [ ] Review and restrict network access
-- [ ] Add input validation in Dash callbacks
-- [ ] Regular security audits of dependencies
-- [ ] Document sensitive data handling procedures
-
 ---
 
 ## Coding Conventions
@@ -680,8 +639,8 @@ Follow PEP 8 with these specifics:
    import numpy as np
    from sqlalchemy import create_engine, text
 
-   # Local
-   from auto_classify import auto_classify_item
+   # Local (no separate modules now)
+   # Auto-classify and master management are in dashboard.py
    ```
 
 3. **String Formatting**
@@ -723,47 +682,6 @@ Follow PEP 8 with these specifics:
    )
    ```
 
-3. **Type Conversion**
-   ```python
-   # Explicit type conversion
-   df['ITEM_CD'] = df['ITEM_CD'].astype(str).str.strip()
-   ```
-
-### Dash Callbacks
-
-1. **Callback Organization**
-   ```python
-   @app.callback(
-       [Output('output-1', 'data'),
-        Output('output-2', 'figure')],
-       [Input('input-1', 'value'),
-        Input('input-2', 'date')]
-   )
-   def update_dashboard(input1, input2):
-       """
-       Brief description of what this callback does.
-
-       Parameters:
-       -----------
-       input1 : str
-           Description
-       input2 : date
-           Description
-
-       Returns:
-       --------
-       tuple
-           (data, figure)
-       """
-       # Implementation
-       return data, figure
-   ```
-
-2. **State Management**
-   - Keep state in component properties (value, data, figure)
-   - Avoid global mutable state
-   - Use `State` for values that don't trigger callback
-
 ### Database Queries
 
 1. **Query Format**
@@ -791,32 +709,6 @@ Follow PEP 8 with these specifics:
    result = conn.execute(query, {"ids": tuple(id_list)})
    ```
 
-### Master Data Management
-
-1. **Always check for duplicates**
-   ```python
-   existing_codes = set(master_df['ITEM_CD'].values)
-   new_codes = set(new_items_df['ITEM_CD'].values)
-   duplicates = new_codes & existing_codes
-
-   if duplicates:
-       print(f"[WARNING] {len(duplicates)} duplicates found")
-       new_items_df = new_items_df[~new_items_df['ITEM_CD'].isin(duplicates)]
-   ```
-
-2. **Save after modifications**
-   ```python
-   master_df = pd.concat([master_df, new_items], ignore_index=True)
-   save_master_mapping(master_df)
-   print(f"[✓] Master updated: {len(master_df)} items")
-   ```
-
-3. **Log changes**
-   ```python
-   print(f"[AUTO] {len(new_items)} items auto-classified")
-   print(f"[MANUAL] {len(manual_items)} items manually added")
-   ```
-
 ---
 
 ## Testing Guidelines
@@ -832,25 +724,26 @@ Before committing changes, verify:
    - [ ] Fund dropdown works
    - [ ] Charts render properly
    - [ ] Tables display data
+   - [ ] Return display toggle works (원본/기여율)
    - [ ] No console errors
 
 2. **Data Processing**
    - [ ] Database connection successful
    - [ ] Holdings data loads correctly
    - [ ] Auto-classification works
-   - [ ] Master data saves/loads correctly
+   - [ ] Cash/Currency filtering works correctly
    - [ ] No duplicate items created
 
-3. **Classification Rules**
-   - [ ] Test each auto-classification rule
-   - [ ] Verify priority order
-   - [ ] Check edge cases
+3. **Return Calculation**
+   - [ ] USD assets show T-1 adjusted returns
+   - [ ] FX impact calculated correctly
+   - [ ] KRW assets show standard returns
 
 ### Testing Auto-Classification
 
 ```python
-# Test individual rules
-from auto_classify import auto_classify_item
+# Test individual rules (now in dashboard.py)
+from dashboard import auto_classify_item
 
 # Test cases
 test_cases = [
@@ -881,32 +774,6 @@ with engine.connect() as conn:
     print(f"✓ Connection OK: {count:,} rows in DWPM10530")
 ```
 
-### Testing Master Data
-
-```python
-from dashboard_with_master import load_master_mapping, save_master_mapping
-
-# Load
-master = load_master_mapping()
-print(f"✓ Loaded {len(master)} items")
-
-# Check for duplicates
-duplicates = master[master.duplicated('ITEM_CD', keep=False)]
-if len(duplicates) > 0:
-    print(f"⚠️ Found {len(duplicates)} duplicates:")
-    print(duplicates[['ITEM_CD', 'ITEM_NM']])
-else:
-    print("✓ No duplicates")
-
-# Check required columns
-required_cols = ['ITEM_CD', 'ITEM_NM', '대분류', '지역', '소분류']
-missing_cols = set(required_cols) - set(master.columns)
-if missing_cols:
-    print(f"⚠️ Missing columns: {missing_cols}")
-else:
-    print("✓ All required columns present")
-```
-
 ---
 
 ## Common Tasks
@@ -915,7 +782,7 @@ else:
 
 **Example**: Add classification for "원유" (Crude Oil) assets
 
-1. **Update `auto_classify.py`**
+1. **Update `dashboard.py` auto_classify_item function**
    ```python
    def auto_classify_item(item_cd, item_nm):
        item_nm_upper = str(item_nm).upper()
@@ -925,7 +792,6 @@ else:
 
        # NEW: Crude Oil
        if '원유' in item_nm_upper or 'CRUDE' in item_nm_upper or 'OIL' in item_nm_upper:
-           # Distinguish WTI vs Brent
            if 'WTI' in item_nm_upper:
                return {'대분류': '대체', '지역': '미국', '소분류': '원유'}
            else:
@@ -934,230 +800,40 @@ else:
        return None
    ```
 
-2. **Update statistics function**
-   ```python
-   def get_auto_classify_stats(items_df):
-       stats = {
-           # ... existing categories ...
-           '원유': 0,
-       }
-
-       for _, row in items_df.iterrows():
-           # ... existing logic ...
-           elif '원유' in item_nm_upper or 'CRUDE' in item_nm_upper:
-               stats['원유'] += 1
-
-       return {k: v for k, v in stats.items() if v > 0}
-   ```
-
-3. **Test the new rule**
-   ```python
-   from auto_classify import auto_classify_item
-
-   test_cases = [
-       ('US123', 'WTI Crude Oil', {'대분류': '대체', '지역': '미국', '소분류': '원유'}),
-       ('GB456', 'Brent Crude', {'대분류': '대체', '지역': '글로벌', '소분류': '원유'}),
-   ]
-
-   for item_cd, item_nm, expected in test_cases:
-       result = auto_classify_item(item_cd, item_nm)
-       assert result == expected
-       print(f"✓ {item_nm}: {result}")
-   ```
-
-4. **Run dashboard and verify**
+2. **Test and commit**
    ```bash
-   python dashboard_with_master.py
-   # Check that crude oil items are now classified correctly
-   ```
-
-5. **Commit changes**
-   ```bash
-   git add auto_classify.py
-   git commit -m "feat: add crude oil classification rule
-
-   Added auto-classification for crude oil assets with WTI/Brent distinction.
-
-   https://claude.ai/code/session_[id]"
+   python -c "from dashboard import auto_classify_item; print(auto_classify_item('US123', 'WTI Crude Oil'))"
+   git add dashboard.py
+   git commit -m "feat: add crude oil classification rule"
    ```
 
 ### Task 2: Adding a New Fund to Monitoring
 
-1. **Update fund list in `dashboard_with_master.py`**
+1. **Update fund list in `dashboard.py` and `report.py`**
    ```python
    FUND_LIST = [
        '06X08','07G02','07G03','07G04','07J20','07J27','07J34','07J41',
-       '07J48','07J49','07P70','07W15','08K88','08N33','08N81','09L94',
+       '07J48','07J49','07P70','07W15','08K88','08N33','08N81','08P22','09L94',
        '1JM96','1JM98','2JM23','4JM12',
        'NEW_FUND_CODE'  # Add new fund code
    ]
    ```
 
-2. **Verify fund exists in database**
-   ```python
-   from sqlalchemy import create_engine, text
-
-   engine = create_engine(CONN_STR)
-   with engine.connect() as conn:
-       result = conn.execute(
-           text("SELECT DISTINCT FUND_CD, FUND_NM FROM dt.DWPM10530 WHERE FUND_CD = :code"),
-           {"code": "NEW_FUND_CODE"}
-       )
-       print(result.fetchall())
-   ```
-
-3. **Test dashboard**
+2. **Test dashboard and report**
    ```bash
-   python dashboard_with_master.py
-   # Select new fund from dropdown
-   # Verify data loads correctly
+   python dashboard.py
+   python report.py --fund NEW_FUND_CODE
    ```
 
-4. **Commit changes**
-   ```bash
-   git add dashboard_with_master.py
-   git commit -m "feat: add NEW_FUND_CODE to monitoring list"
-   ```
+### Task 3: Adding Items to Master Data
 
-### Task 3: Manually Adding Items to Master Data
-
-**Example**: Add a new custom fund that can't be auto-classified
-
-1. **Create a script or notebook**
-   ```python
-   import pandas as pd
-   from datetime import datetime
-   from dashboard_with_master import load_master_mapping, save_master_mapping
-
-   # Load existing master
-   master = load_master_mapping()
-
-   # Create new items
-   new_items = pd.DataFrame([
-       {
-           'ITEM_CD': 'KR7999999999',
-           'ITEM_NM': 'Custom Private Equity Fund A',
-           '대분류': '대체',
-           '지역': '국내',
-           '소분류': '사모펀드',
-           '등록일': datetime.now().strftime('%Y-%m-%d'),
-           '비고': '수동입력'
-       },
-       {
-           'ITEM_CD': 'LU1234567890',
-           'ITEM_NM': 'Luxembourg Infrastructure Fund',
-           '대분류': '대체',
-           '지역': '글로벌',
-           '소분류': '인프라',
-           '등록일': datetime.now().strftime('%Y-%m-%d'),
-           '비고': '수동입력'
-       }
-   ])
-
-   # Check for duplicates
-   existing_codes = set(master['ITEM_CD'].values)
-   new_codes = set(new_items['ITEM_CD'].values)
-   duplicates = new_codes & existing_codes
-
-   if duplicates:
-       print(f"⚠️ Duplicates found: {duplicates}")
-       new_items = new_items[~new_items['ITEM_CD'].isin(duplicates)]
-
-   # Add to master
-   master = pd.concat([master, new_items], ignore_index=True)
-
-   # Save
-   save_master_mapping(master)
-   print(f"✓ Added {len(new_items)} items. Total: {len(master)}")
-   ```
-
-2. **Verify in dashboard**
-   ```bash
-   python dashboard_with_master.py
-   # Go to "📋 종목 리스트" tab
-   # Search for new items
-   ```
-
-### Task 4: Exporting Data
-
-**Export holdings data to Excel**
+**Update the `MASTER_DATA_RAW` constant in `dashboard.py`**
 
 ```python
-import pandas as pd
-from sqlalchemy import create_engine, text
-
-CONN_STR = "mysql+pymysql://solution:Solution123!@192.168.195.55/dt?charset=utf8"
-engine = create_engine(CONN_STR)
-
-query = text("""
-SELECT
-    STD_DT,
-    FUND_CD,
-    FUND_NM,
-    ITEM_CD,
-    ITEM_NM,
-    AST_CLSF_CD_NM,
-    SUM(EVL_AMT) AS EVL_AMT
-FROM dt.DWPM10530
-WHERE STD_DT = '20241231'
-  AND EVL_AMT > 0
-GROUP BY STD_DT, FUND_CD, FUND_NM, ITEM_CD, ITEM_NM, AST_CLSF_CD_NM
-ORDER BY FUND_CD, EVL_AMT DESC;
-""")
-
-with engine.connect() as conn:
-    df = pd.read_sql(query, conn)
-
-# Apply classification
-from dashboard_with_master import load_master_mapping, classify_with_master
-
-master = load_master_mapping()
-df, unmapped, _ = classify_with_master(df, master)
-
-# Export
-df.to_excel("holdings_20241231_classified.xlsx", index=False)
-print(f"✓ Exported {len(df)} records to Excel")
-```
-
-### Task 5: Analyzing Unmapped Items
-
-**Find and analyze items that need classification**
-
-```python
-from dashboard_with_master import load_master_mapping, classify_with_master
-import pandas as pd
-from sqlalchemy import create_engine, text
-
-# Load data
-CONN_STR = "mysql+pymysql://solution:Solution123!@192.168.195.55/dt?charset=utf8"
-engine = create_engine(CONN_STR)
-
-query = text("""
-SELECT DISTINCT ITEM_CD, ITEM_NM, AST_CLSF_CD_NM
-FROM dt.DWPM10530
-WHERE STD_DT >= '20241201'
-  AND EVL_AMT > 0
-ORDER BY ITEM_NM;
-""")
-
-with engine.connect() as conn:
-    holdings = pd.read_sql(query, conn)
-
-# Classify
-master = load_master_mapping()
-_, unmapped, _ = classify_with_master(holdings, master)
-
-# Analyze
-print(f"Total unique items: {len(holdings)}")
-print(f"Unmapped items: {len(unmapped)}")
-print(f"Coverage: {(1 - len(unmapped)/len(holdings))*100:.1f}%\n")
-
-print("Top 20 unmapped items:")
-print(unmapped[['ITEM_CD', 'ITEM_NM', 'AST_CLSF_CD_NM']].head(20))
-
-# Group by AST_CLSF_CD_NM
-print("\nUnmapped items by asset class:")
-print(unmapped['AST_CLSF_CD_NM'].value_counts())
+MASTER_DATA_RAW = """KR7332500008	ACE 200TR	주식	국내	일반
+KR7367380003	ACE 미국나스닥100	주식	미국	일반
+...existing items...
+KR7NEW123456	New ETF Name	주식	국내	일반"""  # Add new line
 ```
 
 ---
@@ -1173,12 +849,6 @@ print(unmapped['AST_CLSF_CD_NM'].value_counts())
 sqlalchemy.exc.OperationalError: (pymysql.err.OperationalError)
 (2003, "Can't connect to MySQL server on '192.168.195.55'")
 ```
-
-**Possible Causes**:
-- Network connectivity issues
-- Database server down
-- Firewall blocking connection
-- Incorrect credentials
 
 **Solutions**:
 ```python
@@ -1198,35 +868,11 @@ except pymysql.Error as e:
     print(f"✗ Connection failed: {e}")
 ```
 
-#### 2. Master Data File Corrupted
-
-**Symptoms**:
-```
-pickle.UnpicklingError: invalid load key
-```
-
-**Solutions**:
-```bash
-# Backup corrupted file
-mv master_asset_mapping.pkl master_asset_mapping.pkl.bak
-
-# Recreate master data
-python create_initial_master.py
-
-# Or restore from backup (if available)
-cp master_asset_mapping.pkl.backup master_asset_mapping.pkl
-```
-
-#### 3. Dashboard Not Loading
+#### 2. Dashboard Not Loading
 
 **Symptoms**:
 - Blank page at http://127.0.0.1:8050
 - Spinner keeps spinning
-
-**Possible Causes**:
-- Data loading failed
-- Database query timeout
-- Memory exhaustion
 
 **Solutions**:
 ```python
@@ -1234,48 +880,10 @@ cp master_asset_mapping.pkl.backup master_asset_mapping.pkl
 # Look for error messages or stack traces
 
 # Reduce data range for testing
-START_STD_DT = "20241220"  # Instead of "20241201"
-
-# Test data loading separately
-from dashboard_with_master import engine, query_holding
-import pandas as pd
-from sqlalchemy import text
-
-with engine.connect() as conn:
-    df = pd.read_sql(text(query_holding), conn, params={...})
-    print(f"Loaded {len(df)} records")
+START_STD_DT = "20260120"  # Instead of "20241201"
 ```
 
-#### 4. Duplicate Items in Master
-
-**Symptoms**:
-- Same ITEM_CD appears multiple times
-- Incorrect classification
-
-**Detection**:
-```python
-from dashboard_with_master import load_master_mapping
-
-master = load_master_mapping()
-duplicates = master[master.duplicated('ITEM_CD', keep=False)]
-
-if len(duplicates) > 0:
-    print("Duplicates found:")
-    print(duplicates.sort_values('ITEM_CD')[['ITEM_CD', 'ITEM_NM', '등록일', '비고']])
-```
-
-**Fix**:
-```python
-# Keep the first occurrence, remove duplicates
-master_clean = master.drop_duplicates('ITEM_CD', keep='first')
-
-from dashboard_with_master import save_master_mapping
-save_master_mapping(master_clean)
-
-print(f"Removed {len(master) - len(master_clean)} duplicates")
-```
-
-#### 5. Port Already in Use
+#### 3. Port Already in Use
 
 **Symptoms**:
 ```
@@ -1289,33 +897,6 @@ lsof -i :8050
 
 # Kill the process
 kill -9 <PID>
-
-# Or use a different port
-# In dashboard_with_master.py:
-app.run(debug=True, host='0.0.0.0', port=8051)
-```
-
-#### 6. Memory Error with Large Datasets
-
-**Symptoms**:
-```
-MemoryError: Unable to allocate array
-```
-
-**Solutions**:
-```python
-# Reduce date range
-START_STD_DT = "20241215"  # Last 2 weeks instead of 1 month
-
-# Limit funds
-FUND_LIST = FUND_LIST[:5]  # Test with 5 funds first
-
-# Use chunking for large queries
-chunk_size = 10000
-chunks = []
-for chunk in pd.read_sql(query, conn, chunksize=chunk_size):
-    chunks.append(chunk)
-df = pd.concat(chunks, ignore_index=True)
 ```
 
 ---
@@ -1329,24 +910,19 @@ df = pd.concat(chunks, ignore_index=True)
 3. **Check for duplicates before adding to master**
 4. **Test classification rules with sample data**
 5. **Log important operations** (classifications, data loads)
-6. **Use type hints in function signatures**
-7. **Write descriptive commit messages**
-8. **Document complex logic with comments**
-9. **Save master data after modifications**
-10. **Validate user inputs in callbacks**
+6. **Document complex logic with comments**
+7. **Apply cash/currency filtering for weight calculations**
+8. **Handle USD asset T-1 time lag correctly**
 
 ### DON'T ❌
 
 1. **Never commit database credentials** (use environment variables)
-2. **Never manually edit .pkl files** (use Python)
-3. **Don't use `SELECT *` in production queries**
-4. **Don't skip duplicate checks**
-5. **Don't ignore warning messages**
-6. **Don't hardcode date ranges** (use parameters)
-7. **Don't use `pd.concat` in loops** (collect then concat once)
-8. **Don't ignore NULL values** (use `.fillna()` or `.dropna()`)
-9. **Don't push large data files to git** (use .gitignore)
-10. **Don't run `git add -A`** (add specific files)
+2. **Don't use `SELECT *` in production queries**
+3. **Don't skip duplicate checks**
+4. **Don't ignore warning messages**
+5. **Don't hardcode date ranges** (use parameters)
+6. **Don't push large data files to git** (use .gitignore)
+7. **Don't run `git add -A`** (add specific files)
 
 ---
 
@@ -1357,11 +933,11 @@ df = pd.concat(chunks, ignore_index=True)
 #### 대분류 (Major Category)
 
 1. **주식** (Equity)
-   - 국내/미국/글로벌/선진국/신흥국
+   - 국내/미국/글로벌/선진국/신흥국/호주
    - 일반/가치/성장/중소형/고배당
 
 2. **채권** (Fixed Income)
-   - 국내/미국/글로벌
+   - 국내/미국/글로벌/신흥국
    - 국고채/회사채/하이일드/REPO/물가채
    - 단기채/장기채/종합채권/투자등급
 
@@ -1383,86 +959,30 @@ df = pd.concat(chunks, ignore_index=True)
 7. **기타** (Other)
    - 미분류 항목
 
-### B. Database Table Details
+### B. CATEGORY_ORDER (대분류 순서)
 
-#### DWPM10530 Schema
-
-```sql
-CREATE TABLE dt.DWPM10530 (
-    STD_DT          INT,           -- 기준일 YYYYMMDD
-    FUND_CD         VARCHAR(10),   -- 펀드코드
-    FUND_NM         VARCHAR(200),  -- 펀드명
-    ITEM_CD         VARCHAR(20),   -- 종목코드
-    ITEM_NM         VARCHAR(200),  -- 종목명
-    AST_CLSF_CD_NM  VARCHAR(100),  -- 자산분류코드명
-    EVL_AMT         DECIMAL(18,2), -- 평가금액
-    -- ... other columns
-    PRIMARY KEY (STD_DT, FUND_CD, ITEM_CD)
-);
-```
-
-#### DWPM10510 Schema
-
-```sql
-CREATE TABLE dt.DWPM10510 (
-    STD_DT       INT,           -- 기준일
-    FUND_CD      VARCHAR(10),   -- 펀드코드
-    MOD_STPR     DECIMAL(18,4), -- 수정기준가격
-    NAST_AMT     DECIMAL(18,2), -- 순자산총액
-    -- ... other columns
-    PRIMARY KEY (STD_DT, FUND_CD)
-);
-```
-
-### C. Useful SQL Queries
-
-**Get all unique funds**:
-```sql
-SELECT DISTINCT FUND_CD, FUND_NM
-FROM dt.DWPM10530
-ORDER BY FUND_CD;
-```
-
-**Get holdings on specific date**:
-```sql
-SELECT *
-FROM dt.DWPM10530
-WHERE STD_DT = 20241231
-  AND EVL_AMT > 0
-ORDER BY FUND_CD, EVL_AMT DESC;
-```
-
-**Get fund performance metrics**:
-```sql
-SELECT
-    STD_DT,
-    FUND_CD,
-    MOD_STPR,
-    NAST_AMT,
-    LAG(MOD_STPR) OVER (PARTITION BY FUND_CD ORDER BY STD_DT) AS prev_price
-FROM dt.DWPM10510
-WHERE FUND_CD = '07G02'
-  AND STD_DT >= 20241201
-ORDER BY STD_DT;
-```
-
-**Get asset allocation by fund**:
-```sql
-SELECT
-    FUND_CD,
-    FUND_NM,
-    AST_CLSF_CD_NM,
-    SUM(EVL_AMT) AS total_amt
-FROM dt.DWPM10530
-WHERE STD_DT = 20241231
-  AND EVL_AMT > 0
-GROUP BY FUND_CD, FUND_NM, AST_CLSF_CD_NM
-ORDER BY FUND_CD, total_amt DESC;
+```python
+CATEGORY_ORDER = ['주식', '채권', '대체', '모펀드', '통화', '기타', '현금']
 ```
 
 ---
 
 ## Changelog
+
+### 2026-01-31
+
+- Updated CLAUDE.md to reflect current codebase structure
+- Major changes documented:
+  - `dashboard_with_master.py` → `dashboard.py` (renamed)
+  - `auto_classify.py` → integrated into `dashboard.py`
+  - `create_initial_master.py` → integrated into `dashboard.py`
+  - `master_asset_mapping.pkl` → replaced with `MASTER_DATA_RAW` constant
+  - Added `market.py` (valuation panel)
+  - Added `report.py` (terminal fund report)
+  - Added `08P22` to FUND_LIST (now 21 funds)
+  - Added cash/currency filtering feature
+  - Added US market time lag handling for USD assets
+  - Added return display toggle (raw/contribution)
 
 ### 2026-01-23
 
