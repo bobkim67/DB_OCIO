@@ -14,11 +14,12 @@ import sys, os
 
 # modules/ 경로 추가
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from config.funds import FUND_BM, FUND_LIST
+from config.funds import FUND_BM, FUND_LIST, FUND_MP_MAPPING, FUND_MP_DIRECT
 from modules.data_loader import (
     load_fund_nav, load_fund_nav_with_aum, load_fund_holdings_classified,
     load_fund_holdings_lookthrough,
     load_fund_holdings_history, load_fund_summary, load_scip_bm_prices,
+    load_composite_bm_prices, load_mp_weights_8class,
     load_all_fund_data, parse_data_blob,
 )
 
@@ -60,6 +61,17 @@ def cached_load_fund_summary(fund_codes):
 @st.cache_data(ttl=600)
 def cached_load_all_fund_data(fund_codes_tuple, start_date=None):
     return load_all_fund_data(list(fund_codes_tuple), start_date)
+
+@st.cache_data(ttl=600)
+def cached_load_composite_bm(components_json, start_date=None):
+    """복합 BM 캐시 래퍼. components_json: JSON 문자열 (hashable)"""
+    import json
+    components = json.loads(components_json)
+    return load_composite_bm_prices(components, start_date)
+
+@st.cache_data(ttl=600)
+def cached_load_mp_weights_8class(fund_desc, reference_date=None, cycle_phase=1):
+    return load_mp_weights_8class(fund_desc, reference_date, cycle_phase)
 
 # DB 접속 테스트
 try:
@@ -356,12 +368,19 @@ with tabs[0]:
                 _nav_dates = _nav_df['기준일자'].values
                 _aum_series = _nav_df['AUM_억'].values
 
-                # BM 로드
-                _bm_cfg = FUND_BM.get(selected_fund, {'dataset_id': 24, 'dataseries_id': 39, 'currency': None})
-                _bm_df = cached_load_bm_prices(
-                    _bm_cfg['dataset_id'], _bm_cfg['dataseries_id'],
-                    '2024-01-01', _bm_cfg.get('currency')
-                )
+                # BM 로드 (복합 BM 지원, BM 미설정 펀드는 스킵)
+                _bm_cfg = FUND_BM.get(selected_fund)
+                _bm_df = pd.DataFrame()
+                if _bm_cfg and 'components' in _bm_cfg:
+                    import json as _json
+                    _bm_df = cached_load_composite_bm(
+                        _json.dumps(_bm_cfg['components']), '2024-01-01'
+                    )
+                elif _bm_cfg:
+                    _bm_df = cached_load_bm_prices(
+                        _bm_cfg['dataset_id'], _bm_cfg['dataseries_id'],
+                        '2024-01-01', _bm_cfg.get('currency')
+                    )
                 if not _bm_df.empty and len(_bm_df) > 10:
                     # BM을 NAV 날짜에 맞춰 정렬
                     _bm_df = _bm_df.set_index('기준일자')
@@ -379,8 +398,10 @@ with tabs[0]:
                         _tab0_db = True
                     else:
                         raise ValueError("BM align failed")
+                elif _bm_cfg is None:
+                    raise ValueError("BM 미설정")
                 else:
-                    raise ValueError("BM empty")
+                    raise ValueError("BM 데이터 부족")
             else:
                 raise ValueError("NAV empty")
         except Exception as _e:
@@ -686,10 +707,24 @@ with tabs[1]:
             else:
                 _ap_list = [25.3, 30.1, 22.5, 8.2, 10.5, 0.0, 0.0, 3.4]
 
+            # MP 비중 로드 (직접지정 → DB → fallback)
+            _mp_8class = FUND_MP_DIRECT.get(selected_fund)
+            if not _mp_8class:
+                _mp_desc = FUND_MP_MAPPING.get(selected_fund)
+                if DB_CONNECTED and _mp_desc:
+                    try:
+                        _mp_8class = cached_load_mp_weights_8class(_mp_desc)
+                    except Exception:
+                        pass
+            if _mp_8class:
+                _mp_list = [_mp_8class.get(ac, 0.0) for ac in ASSET_CLASSES]
+            else:
+                _mp_list = [25.0, 30.0, 25.0, 10.0, 8.0, 0.0, 0.0, 2.0]  # fallback
+
             gap_data = {
                 '자산군': ASSET_CLASSES,
                 '실제(%)': _ap_list,
-                'MP(%)': [25.0, 30.0, 25.0, 10.0, 8.0, 0.0, 0.0, 2.0],  # Phase 2: sol_VP_rebalancing_inform 연결
+                'MP(%)': _mp_list,
             }
             gap_df = pd.DataFrame(gap_data)
             gap_df['Gap(%p)'] = gap_df['실제(%)'] - gap_df['MP(%)']
@@ -912,10 +947,22 @@ with tabs[2]:
 
         st.markdown("---")
 
-        # 샘플 VP 데이터
+        # 샘플 VP/AP 데이터 (VP/AP는 Phase 3에서 DB 연동 예정)
         vp_weights = [26.0, 29.0, 24.0, 9.0, 9.5, 0.0, 0.0, 2.5]
         ap_weights_vp = [25.3, 30.1, 22.5, 8.2, 10.5, 0.0, 0.0, 3.4]
-        mp_weights = [25.0, 30.0, 25.0, 10.0, 8.0, 0.0, 0.0, 2.0]
+        # MP 비중: 직접지정 → DB 로드 → fallback
+        _mp_8class_t2 = FUND_MP_DIRECT.get(selected_fund)
+        if not _mp_8class_t2:
+            _mp_desc_t2 = FUND_MP_MAPPING.get(selected_fund)
+            if DB_CONNECTED and _mp_desc_t2:
+                try:
+                    _mp_8class_t2 = cached_load_mp_weights_8class(_mp_desc_t2)
+                except Exception:
+                    pass
+        if _mp_8class_t2:
+            mp_weights = [_mp_8class_t2.get(ac, 0.0) for ac in ASSET_CLASSES]
+        else:
+            mp_weights = [25.0, 30.0, 25.0, 10.0, 8.0, 0.0, 0.0, 2.0]
 
         vp_gap_df = pd.DataFrame({
             '자산군': ASSET_CLASSES,

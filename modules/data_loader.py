@@ -669,3 +669,200 @@ def load_fund_nav_with_aum(fund_code: str, start_date: str = None) -> pd.DataFra
         return df
     df['AUM_억'] = df['NAST_AMT'] / 1e8
     return df[['기준일자', 'MOD_STPR', 'NAST_AMT', 'AUM_억', 'DD1_ERN_RT']].sort_values('기준일자').reset_index(drop=True)
+
+
+# ============================================================
+# 복합 BM (Composite Benchmark)
+# 여러 지수의 가중합으로 구성된 벤치마크
+# ============================================================
+
+def load_composite_bm_prices(components: list, start_date: str = None) -> pd.DataFrame:
+    """
+    복합 BM 시계열 생성.
+    각 component의 SCIP 시계열 → 일별 수익률 → 가중합 → 복합지수 복원.
+
+    components: [{'dataset_id', 'dataseries_id', 'weight', 'name', 'currency'}, ...]
+    Returns: DataFrame(기준일자, value) — load_scip_bm_prices와 동일 포맷
+    """
+    if not components:
+        return pd.DataFrame(columns=['기준일자', 'value'])
+
+    # 각 component 시계열 로드
+    comp_series = {}
+    for comp in components:
+        df = load_scip_bm_prices(
+            comp['dataset_id'], comp['dataseries_id'],
+            start_date, comp.get('currency')
+        )
+        if df.empty or len(df) < 2:
+            logger.warning(f"복합BM component 데이터 부족: {comp.get('name', comp['dataset_id'])}")
+            continue
+        df = df.set_index('기준일자').sort_index()
+        # 동일 날짜 중복 제거 (마지막 값 유지)
+        df = df[~df.index.duplicated(keep='last')]
+        comp_series[comp['name']] = {'returns': df['value'].pct_change(), 'weight': comp['weight']}
+
+    if not comp_series:
+        return pd.DataFrame(columns=['기준일자', 'value'])
+
+    # 공통 날짜 기준 정렬
+    all_dates = None
+    for cs in comp_series.values():
+        idx = cs['returns'].dropna().index
+        all_dates = idx if all_dates is None else all_dates.intersection(idx)
+
+    if all_dates is None or len(all_dates) < 2:
+        return pd.DataFrame(columns=['기준일자', 'value'])
+
+    all_dates = all_dates.sort_values()
+
+    # 가중 수익률 합산
+    composite_ret = pd.Series(0.0, index=all_dates)
+    for cs in comp_series.values():
+        composite_ret += cs['returns'].reindex(all_dates).fillna(0) * cs['weight']
+
+    # 복합지수 복원 (base=1000)
+    composite_idx = (1 + composite_ret).cumprod() * 1000
+
+    result = pd.DataFrame({
+        '기준일자': composite_idx.index,
+        'value': composite_idx.values
+    }).reset_index(drop=True)
+    return result
+
+
+# ============================================================
+# MP (Model Portfolio) from DB
+# solution.sol_MP_released_inform + universe_non_derivative
+# ============================================================
+
+def load_mp_weights_from_db(fund_desc: str, reference_date: str = None,
+                            cycle_phase: int = None) -> pd.DataFrame:
+    """
+    sol_MP_released_inform에서 MP 비중 로드.
+    reference_date 이하의 최신 Release_date 기준.
+
+    fund_desc: 펀드설명 (예: 'MS GROWTH', 'TIF', 'Golden Growth')
+    reference_date: 기준일 'YYYY-MM-DD' (None → 최신)
+    cycle_phase: 경기국면 (Golden Growth용, 기본=1)
+
+    Returns: DataFrame(ISIN, weight, Release_date) 또는 빈 DataFrame
+    """
+    conn = get_pandas_connection('solution')
+    try:
+        # 최신 Release_date 결정
+        if reference_date:
+            date_sql = """
+                SELECT MAX(Release_date) as rd
+                FROM sol_MP_released_inform
+                WHERE `펀드설명` = %s AND Release_date <= %s
+            """
+            date_params = [fund_desc, reference_date]
+        else:
+            date_sql = """
+                SELECT MAX(Release_date) as rd
+                FROM sol_MP_released_inform
+                WHERE `펀드설명` = %s
+            """
+            date_params = [fund_desc]
+
+        rd_df = pd.read_sql(date_sql, conn, params=date_params)
+        if rd_df.empty or pd.isna(rd_df['rd'].iloc[0]):
+            return pd.DataFrame(columns=['ISIN', 'weight', 'Release_date'])
+        release_date = rd_df['rd'].iloc[0]
+
+        # MP 비중 로드
+        conditions = ["`펀드설명` = %s", "Release_date = %s"]
+        params = [fund_desc, release_date]
+
+        if cycle_phase is not None:
+            conditions.append("`경기국면` = %s")
+            params.append(cycle_phase)
+
+        where = " AND ".join(conditions)
+        sql = f"""
+            SELECT DISTINCT ISIN, weight, Release_date
+            FROM sol_MP_released_inform
+            WHERE {where}
+            ORDER BY weight DESC
+        """
+        df = pd.read_sql(sql, conn, params=params)
+        return df
+    except Exception as e:
+        logger.error(f"MP 로드 실패 ({fund_desc}): {e}")
+        return pd.DataFrame(columns=['ISIN', 'weight', 'Release_date'])
+    finally:
+        conn.close()
+
+
+# 8분류 매핑 (universe_non_derivative.방법3 → 8분류)
+# DB의 classification_method 컬럼값은 '방법3' (NOT '분류3')
+_UNIV_TO_8CLASS = {
+    '국내주식': '국내주식',
+    '해외주식': '해외주식',
+    '국내채권': '국내채권',
+    '해외채권': '해외채권',
+    '대체': '대체투자',
+    'FX': 'FX',
+    '유동성및기타': '유동성',
+}
+
+
+def load_mp_weights_8class(fund_desc: str, reference_date: str = None,
+                           cycle_phase: int = 1) -> dict:
+    """
+    MP 비중을 8자산군으로 집계.
+    1) sol_MP_released_inform → ISIN별 weight
+    2) universe_non_derivative (분류3) → ISIN → 자산군
+    3) 8자산군 집계
+
+    fund_desc: 펀드설명 (예: 'MS GROWTH')
+    Returns: dict {'국내주식': 5.0, '해외주식': 30.0, ...} (% 단위) 또는 None
+    """
+    mp_df = load_mp_weights_from_db(fund_desc, reference_date, cycle_phase)
+    if mp_df.empty:
+        # 경기국면 없는 펀드는 cycle_phase=None로 재시도
+        if cycle_phase is not None:
+            mp_df = load_mp_weights_from_db(fund_desc, reference_date, None)
+        if mp_df.empty:
+            return None
+
+    # universe_non_derivative에서 ISIN → 분류3 매핑 로드
+    conn = get_pandas_connection('solution')
+    try:
+        isin_list = mp_df['ISIN'].tolist()
+        placeholders = ','.join(['%s'] * len(isin_list))
+        sql = f"""
+            SELECT ISIN, classification
+            FROM universe_non_derivative
+            WHERE classification_method = '방법3'
+              AND ISIN IN ({placeholders})
+              AND classification IS NOT NULL
+        """
+        cls_df = pd.read_sql(sql, conn, params=isin_list)
+    finally:
+        conn.close()
+
+    # ISIN → 8분류 매핑
+    isin_to_class = {}
+    for _, row in cls_df.iterrows():
+        cls_val = str(row['classification']).strip()
+        mapped = _UNIV_TO_8CLASS.get(cls_val)
+        if mapped:
+            isin_to_class[row['ISIN']] = mapped
+
+    # 8분류별 비중 집계
+    from config.funds import ASSET_6CLASS
+    asset_classes_8 = ['국내주식', '해외주식', '국내채권', '해외채권', '대체투자', 'FX', '모펀드', '유동성']
+    result = {ac: 0.0 for ac in asset_classes_8}
+
+    for _, row in mp_df.iterrows():
+        isin = row['ISIN']
+        weight_pct = float(row['weight']) * 100  # 소수 → %
+        ac = isin_to_class.get(isin, '해외주식')  # fallback: 해외주식 (대부분 해외 ETF)
+        if ac in result:
+            result[ac] += weight_pct
+
+    # 반올림
+    result = {k: round(v, 2) for k, v in result.items()}
+    return result

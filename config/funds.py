@@ -45,31 +45,120 @@ FUND_GROUPS = {
     '동부글로벌': ['4JM12'],
 }
 
-# 펀드별 BM 매핑 (SCIP dataset_id + dataseries_id)
-# dataseries_id=6: FG Return, JSON blob {"USD":x, "KRW":y}
-# 기본값: S&P 500 TR (dataset_id=24) — 추후 펀드별 실제 BM으로 교체
+# ============================================================
+# 펀드별 BM (Benchmark) 매핑
+# ============================================================
+# 복합: {'name', 'components': [{'dataset_id', 'dataseries_id', 'weight', 'name', 'currency'}, ...]}
+# SCIP 지수 ID:
+#   MSCI ACWI Gross TR (57/9), MSCI ACWI Standard TR (35/39),
+#   KIS 종합채권 TR (279/40), Bloomberg Global AGG H KRW (256/9),
+#   KIS KTB 10Y (209/33), KOSPI (253/9), KIS Call (288/40)
+# BM 미설정 펀드: 07P70, 07W15, 08N33, 08N81, 09L94, 2JM23, 4JM12
+
+_C = lambda ds, ser, w, nm, cur=None: {'dataset_id': ds, 'dataseries_id': ser, 'weight': w, 'name': nm, 'currency': cur}
+
 FUND_BM = {
-    '06X08': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
-    '07G02': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
-    '07G03': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
-    '07G04': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
-    '07J20': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
-    '07J27': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
-    '07J34': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
-    '07J41': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
-    '07J48': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
-    '07J49': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
-    '07P70': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
-    '07W15': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
-    '08K88': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
-    '08N33': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
-    '08N81': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
-    '08P22': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
-    '09L94': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
-    '1JM96': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
-    '1JM98': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
-    '2JM23': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
-    '4JM12': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
+    # 06X08: 0.5×MSCI ACWI Gross + 0.5×KIS종합채권
+    '06X08': {
+        'name': '0.5×MSCI ACWI Gross + 0.5×KIS종합채권',
+        'components': [_C(57, 9, 0.50, 'MSCI ACWI Gross TR'), _C(279, 40, 0.50, 'KIS 종합채권 TR')],
+    },
+    # 07G04: 0.34×MSCI ACWI Gross + 0.25×Bloomberg AGG H KRW + 0.41×KIS KTB 10Y
+    '07G04': {
+        'name': '0.34×MSCI ACWI Gross + 0.25×BBG AGG(H) + 0.41×KIS KTB10Y',
+        'components': [
+            _C(57, 9, 0.34, 'MSCI ACWI Gross TR'),
+            _C(256, 9, 0.25, 'Bloomberg AGG Hedged KRW'),
+            _C(209, 33, 0.41, 'KIS KTB 10Y'),
+        ],
+    },
+    # 07J20: 0.4×MSCI ACWI Gross + 0.6×KIS종합채권
+    '07J20': {
+        'name': '0.4×MSCI ACWI Gross + 0.6×KIS종합채권',
+        'components': [_C(57, 9, 0.40, 'MSCI ACWI Gross TR'), _C(279, 40, 0.60, 'KIS 종합채권 TR')],
+    },
+    # 07J27: 0.2×MSCI ACWI Gross + 0.8×KIS종합채권
+    '07J27': {
+        'name': '0.2×MSCI ACWI Gross + 0.8×KIS종합채권',
+        'components': [_C(57, 9, 0.20, 'MSCI ACWI Gross TR'), _C(279, 40, 0.80, 'KIS 종합채권 TR')],
+    },
+    # 07J34: 0.7×MSCI ACWI Gross + 0.3×KIS종합채권
+    '07J34': {
+        'name': '0.7×MSCI ACWI Gross + 0.3×KIS종합채권',
+        'components': [_C(57, 9, 0.70, 'MSCI ACWI Gross TR'), _C(279, 40, 0.30, 'KIS 종합채권 TR')],
+    },
+    # 07J41: 0.2×MSCI ACWI Gross + 0.8×KIS종합채권
+    '07J41': {
+        'name': '0.2×MSCI ACWI Gross + 0.8×KIS종합채권',
+        'components': [_C(57, 9, 0.20, 'MSCI ACWI Gross TR'), _C(279, 40, 0.80, 'KIS 종합채권 TR')],
+    },
+    # 08K88: 0.216×KOSPI + 0.504×MSCI ACWI Std + 0.1×BBG AGG(H) + 0.1×KIS종합채권 + 0.08×KIS Call
+    # (매경BP종합 → KIS종합채권으로 대체, 연34bp 비용 차감 생략)
+    '08K88': {
+        'name': '0.216×KOSPI + 0.504×MSCI ACWI + 0.1×BBG AGG(H) + 0.1×KIS종합 + 0.08×CALL',
+        'components': [
+            _C(253, 9, 0.216, 'KOSPI Index'),
+            _C(35, 39, 0.504, 'MSCI ACWI Standard TR'),
+            _C(256, 9, 0.100, 'Bloomberg AGG Hedged KRW'),
+            _C(279, 40, 0.100, 'KIS 종합채권 TR'),
+            _C(288, 40, 0.080, 'KIS Call'),
+        ],
+    },
+    # 1JM96: 0.9×MSCI ACWI Standard + 0.1×CALL금리
+    '1JM96': {
+        'name': '0.9×MSCI ACWI Standard + 0.1×CALL',
+        'components': [_C(35, 39, 0.90, 'MSCI ACWI Standard TR'), _C(288, 40, 0.10, 'KIS Call')],
+    },
+    # 1JM98: 0.9×MSCI ACWI Standard (USD) + 0.1×ZERO
+    '1JM98': {
+        'name': '0.9×MSCI ACWI Standard (USD)',
+        'components': [_C(35, 39, 0.90, 'MSCI ACWI Standard TR')],
+    },
+    # 4JM12: 0.55×KBP동부생명7 + 0.225×MSCI ACWI(USD) + 0.225×MSCI ACWI(USDKRW)
+    # KBP동부생명7 미존재 → MSCI ACWI + KIS종합채권 혼합으로 근사
+    '4JM12': {
+        'name': '0.45×MSCI ACWI Standard + 0.55×KIS종합채권 (근사)',
+        'components': [_C(35, 39, 0.45, 'MSCI ACWI Standard TR'), _C(279, 40, 0.55, 'KIS 종합채권 TR')],
+    },
+    # BM 미설정 펀드: 07P70, 07W15, 08N33, 08N81, 08P22, 09L94, 2JM23
+    # → Tab 0에서 BM 없이 표시
+}
+
+# ============================================================
+# 펀드별 MP(Model Portfolio) 매핑
+# ============================================================
+
+# DB 기반 MP (fund_code → sol_MP_released_inform.펀드설명)
+FUND_MP_MAPPING = {
+    '07J34': 'MS GROWTH',      # MySuper 성장형
+    '07J41': 'MS STABLE',      # MySuper 안정형
+    '07J48': 'TDF2050',        # MySuper 수익추구 모
+    '07J49': 'TIF',            # MySuper 인컴추구 모
+    '07G02': 'TIF',            # 인컴추구 모펀드
+    '07G03': 'TDF2050',        # 수익추구 모펀드
+    '07G04': 'MS STABLE',      # OCIO 채권혼합 모
+    '07P70': 'Golden Growth',  # 골든그로스 (경기국면 1~4, 기본=1)
+    '06X08': 'MS GROWTH',      # OCIO RSP
+    '07J20': 'TDF2050',        # OCIO 수익형
+    '07J27': 'TIF',            # OCIO 인컴형
+    '09L94': 'TIF',            # MySuper 인컴추구형 모
+    '07W15': 'TIF',            # 디딤CPI+
+}
+
+# 직접 지정 MP (8분류 비중 %, DB 외 펀드)
+FUND_MP_DIRECT = {
+    '08K88': {'국내주식': 16.2, '해외주식': 67.4, '국내채권': 8.2, '해외채권': 8.2,
+              '대체투자': 0.0, 'FX': 0.0, '모펀드': 0.0, '유동성': 0.0},
+    '08N33': {'국내주식': 4.9, '해외주식': 16.6, '국내채권': 59.8, '해외채권': 7.0,
+              '대체투자': 11.7, 'FX': 0.0, '모펀드': 0.0, '유동성': 0.0},
+    '08N81': {'국내주식': 4.3, '해외주식': 32.0, '국내채권': 35.3, '해외채권': 7.0,
+              '대체투자': 20.9, 'FX': 0.0, '모펀드': 0.0, '유동성': 0.5},
+    '08P22': {'국내주식': 3.5, '해외주식': 12.9, '국내채권': 75.8, '해외채권': 0.0,
+              '대체투자': 7.8, 'FX': 0.0, '모펀드': 0.0, '유동성': 0.0},
+    '2JM23': {'국내주식': 1.5, '해외주식': 49.1, '국내채권': 21.0, '해외채권': 2.0,
+              '대체투자': 26.5, 'FX': 0.0, '모펀드': 0.0, '유동성': 0.0},
+    '4JM12': {'국내주식': 0.0, '해외주식': 45.0, '국내채권': 50.0, '해외채권': 0.0,
+              '대체투자': 0.0, 'FX': 22.5, '모펀드': 0.0, '유동성': 0.0},
 }
 
 # 자산 6분류 매핑 기준
