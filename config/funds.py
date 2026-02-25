@@ -45,6 +45,36 @@ FUND_GROUPS = {
     '동부글로벌': ['4JM12'],
 }
 
+# 펀드별 BM 매핑 (SCIP dataset_id + dataseries_id)
+# dataseries_id=6: FG Return, JSON blob {"USD":x, "KRW":y}
+# 기본값: S&P 500 TR (dataset_id=24) — 추후 펀드별 실제 BM으로 교체
+FUND_BM = {
+    '06X08': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
+    '07G02': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
+    '07G03': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
+    '07G04': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
+    '07J20': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
+    '07J27': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
+    '07J34': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
+    '07J41': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
+    '07J48': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
+    '07J49': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
+    '07P70': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
+    '07W15': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
+    '08K88': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
+    '08N33': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
+    '08N81': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
+    '08P22': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
+    '09L94': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
+    '1JM96': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
+    '1JM98': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
+    '2JM23': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
+    '4JM12': {'dataset_id': 24, 'dataseries_id': 6, 'name': 'S&P 500 TR', 'currency': 'KRW'},
+}
+
+# 자산 6분류 매핑 기준
+ASSET_6CLASS = ['국내주식', '해외주식', '국내채권', '해외채권', '대체투자', '유동성']
+
 # DB 접속 설정
 DB_CONFIG = {
     'host': '192.168.195.55',

@@ -7,7 +7,9 @@ import pymysql
 from datetime import datetime, timedelta
 import json
 import warnings
+import logging
 warnings.filterwarnings('ignore')
+logger = logging.getLogger(__name__)
 
 # ============================================================
 # DB 접속
@@ -21,8 +23,49 @@ DB_CONFIG = {
 }
 
 def get_connection(db_name: str):
-    """MariaDB 접속. R: dbConnect(RMariaDB::MariaDB(), ...)"""
+    """MariaDB 접속 (DictCursor). cursor 직접 사용 시."""
     return pymysql.connect(**DB_CONFIG, db=db_name, cursorclass=pymysql.cursors.DictCursor)
+
+
+def get_pandas_connection(db_name: str):
+    """MariaDB 접속 (일반 커서). pd.read_sql 용 — DictCursor는 pd.read_sql과 호환 안됨."""
+    return pymysql.connect(**DB_CONFIG, db=db_name)
+
+
+# ============================================================
+# SCIP blob 파싱 (공용)
+# Monitoring/market.py:54 패턴 재사용
+# ============================================================
+
+def parse_data_blob(blob, currency: str = None):
+    """
+    SCIP back_datapoint.data longblob 파싱.
+
+    blob 형태 3가지:
+      {"USD": 608.66, "KRW": 868066.70}  → dict
+      2451.187912                          → float
+      "13.06"                              → float
+
+    currency 지정 시 해당 키 값만 반환, 미지정 시 dict 또는 float.
+    """
+    if blob is None:
+        return np.nan
+    if isinstance(blob, (bytes, bytearray)):
+        s = blob.decode('utf-8')
+    else:
+        s = str(blob)
+    s = s.strip().strip('"')
+    try:
+        if s.startswith('{'):
+            obj = json.loads(s)
+            if isinstance(obj, dict):
+                parsed = {k: float(v) for k, v in obj.items()}
+                if currency and currency in parsed:
+                    return parsed[currency]
+                return parsed
+        return float(s.replace(',', ''))
+    except (ValueError, json.JSONDecodeError):
+        return np.nan
 
 
 # ============================================================
@@ -32,7 +75,7 @@ def get_connection(db_name: str):
 
 def load_holiday_calendar() -> pd.DataFrame:
     """한국 공휴일/영업일 캘린더 로드"""
-    conn = get_connection('dt')
+    conn = get_pandas_connection('dt')
     try:
         sql = """
             SELECT CAL_DT, HOLI_FG
@@ -73,7 +116,7 @@ def load_fund_nav(fund_codes: list, start_date: str = None) -> pd.DataFrame:
 
     Returns: DataFrame(기준일자, FUND_CD, MOD_STPR, NAST_AMT, DD1_ERN_RT)
     """
-    conn = get_connection('dt')
+    conn = get_pandas_connection('dt')
     try:
         placeholders = ','.join(['%s'] * len(fund_codes))
         where_date = f"AND STD_DT >= '{start_date}'" if start_date else ""
@@ -110,16 +153,17 @@ def load_fund_holdings(fund_code: str, date: str = None) -> pd.DataFrame:
     펀드 보유종목 상세. R: DWPM10530
     date 미지정 시 최근일 조회.
     """
-    conn = get_connection('dt')
-    try:
-        if date is None:
-            sql_date = f"""
-                SELECT MAX(STD_DT) as max_dt FROM DWPM10530 WHERE FUND_CD = %s
-            """
-            with conn.cursor() as cur:
-                cur.execute(sql_date, (fund_code,))
+    if date is None:
+        conn_dict = get_connection('dt')
+        try:
+            with conn_dict.cursor() as cur:
+                cur.execute("SELECT MAX(STD_DT) as max_dt FROM DWPM10530 WHERE FUND_CD = %s", (fund_code,))
                 date = cur.fetchone()['max_dt']
+        finally:
+            conn_dict.close()
 
+    conn = get_pandas_connection('dt')
+    try:
         sql = """
             SELECT STD_DT, FUND_CD, FUND_NM, ITEM_CD, ITEM_NM,
                    AST_CLSF_CD_NM, CURR_DS_CD,
@@ -138,7 +182,7 @@ def load_fund_holdings(fund_code: str, date: str = None) -> pd.DataFrame:
 
 def load_fund_holdings_history(fund_code: str, start_date: str = None) -> pd.DataFrame:
     """보유종목 비중 히스토리 (자산군별 집계)"""
-    conn = get_connection('dt')
+    conn = get_pandas_connection('dt')
     try:
         where_date = f"AND STD_DT >= '{start_date}'" if start_date else ""
         sql = f"""
@@ -167,7 +211,7 @@ def load_pa_source(fund_code: str, start_date: str = None, end_date: str = None)
     펀드 PA 원천 데이터 로드.
     R: get_PA_source_data(fund_cd, start_date, end_date)
     """
-    conn = get_connection('dt')
+    conn = get_pandas_connection('dt')
     try:
         conditions = ["fund_id = %s"]
         params = [fund_code]
@@ -203,7 +247,7 @@ def load_classification_mapping() -> pd.DataFrame:
     자산 유니버스 분류 매핑 테이블.
     R: universe_non_derivative_table
     """
-    conn = get_connection('solution')
+    conn = get_pandas_connection('solution')
     try:
         sql = """
             SELECT primary_source_id as dataset_id, ISIN,
@@ -222,21 +266,34 @@ def load_classification_mapping() -> pd.DataFrame:
 # R benchmark: SCIP.back_datapoint
 # ============================================================
 
-def load_scip_prices(dataset_ids: list, dataseries_ids: list = None) -> pd.DataFrame:
+def load_scip_prices(dataset_ids: list, dataseries_ids: list = None,
+                     start_date: str = None) -> pd.DataFrame:
     """
     SCIP 지수/가격 데이터 로드.
     R: pulled_data_universe_SCIP
+
+    dataseries_ids: 필터할 dataseries id 리스트 (None이면 전체)
+    start_date: 'YYYY-MM-DD' 형식 시작일 필터
     """
-    conn = get_connection('SCIP')
+    conn = get_pandas_connection('SCIP')
     try:
+        params = list(dataset_ids)
         placeholders = ','.join(['%s'] * len(dataset_ids))
+        where_extra = ""
+        if dataseries_ids:
+            ds_ph = ','.join(['%s'] * len(dataseries_ids))
+            where_extra += f" AND dataseries_id IN ({ds_ph})"
+            params.extend(dataseries_ids)
+        if start_date:
+            where_extra += " AND timestamp_observation >= %s"
+            params.append(start_date)
         sql = f"""
             SELECT dataset_id, dataseries_id, timestamp_observation, data
             FROM back_datapoint
-            WHERE dataset_id IN ({placeholders})
+            WHERE dataset_id IN ({placeholders}) {where_extra}
             ORDER BY dataset_id, timestamp_observation
         """
-        df = pd.read_sql(sql, conn, params=dataset_ids)
+        df = pd.read_sql(sql, conn, params=params)
         df['기준일자'] = pd.to_datetime(df['timestamp_observation'])
         return df
     finally:
@@ -276,7 +333,7 @@ def load_usdkrw_from_ecos(api_key: str = '7FA9V1N76SFHX6GXHI58') -> pd.DataFrame
 
 def load_fund_summary(fund_codes: list) -> pd.DataFrame:
     """전체 펀드 최근 요약 정보 (AUM, 기준가, 수익률)"""
-    conn = get_connection('dt')
+    conn = get_pandas_connection('dt')
     try:
         placeholders = ','.join(['%s'] * len(fund_codes))
         sql = f"""
@@ -303,7 +360,7 @@ def load_fund_summary(fund_codes: list) -> pd.DataFrame:
 
 def load_fund_period_return(fund_code: str, start_date: str, end_date: str) -> float:
     """특정 기간 펀드 수익률 계산 (기준가 기반)"""
-    conn = get_connection('dt')
+    conn = get_pandas_connection('dt')
     try:
         sql = """
             SELECT STD_DT, MOD_STPR
@@ -323,13 +380,292 @@ def load_fund_period_return(fund_code: str, start_date: str, end_date: str) -> f
 # 통합 로더 (캐시용)
 # ============================================================
 
-def load_all_fund_data(fund_codes: list) -> dict:
+def load_all_fund_data(fund_codes: list, start_date: str = None) -> dict:
     """
     전체 펀드 데이터 한번에 로드. Streamlit @st.cache_data 용.
+    nav 데이터도 포함.
     """
     result = {
         'summary': load_fund_summary(fund_codes),
         'holiday': load_holiday_calendar(),
+        'nav': load_fund_nav(fund_codes, start_date),
     }
     result['latest_bday'] = get_latest_business_day(result['holiday'])
     return result
+
+
+# ============================================================
+# SCIP BM 지수 시계열
+# ============================================================
+
+def load_scip_bm_prices(dataset_id: int, dataseries_id: int,
+                        start_date: str = None, currency: str = None) -> pd.DataFrame:
+    """
+    SCIP에서 BM 지수 시계열 로드.
+    dataseries_id=39(FG Total Return Index)는 단일 숫자,
+    dataseries_id=6(FG Return)은 {"USD":x, "KRW":y} JSON.
+
+    Returns: DataFrame(기준일자, value)
+    """
+    conn = get_pandas_connection('SCIP')
+    try:
+        params = [dataset_id, dataseries_id]
+        where_date = ""
+        if start_date:
+            where_date = " AND timestamp_observation >= %s"
+            params.append(start_date)
+        sql = f"""
+            SELECT timestamp_observation, data
+            FROM back_datapoint
+            WHERE dataset_id = %s AND dataseries_id = %s {where_date}
+            ORDER BY timestamp_observation
+        """
+        df = pd.read_sql(sql, conn, params=params)
+        if df.empty:
+            return pd.DataFrame(columns=['기준일자', 'value'])
+        df['기준일자'] = pd.to_datetime(df['timestamp_observation']).dt.normalize()
+        df['value'] = df['data'].apply(lambda b: parse_data_blob(b, currency))
+        df = df[df['value'].notna() & df['value'].apply(lambda v: isinstance(v, (int, float)))]
+        df['value'] = df['value'].astype(float)
+        return df[['기준일자', 'value']].reset_index(drop=True)
+    finally:
+        conn.close()
+
+
+# ============================================================
+# SCIP 환율 (USD/KRW)
+# Monitoring/report.py:112 get_fx_rate() 참조
+# ============================================================
+
+def load_usdkrw_from_scip(start_date: str = None) -> pd.DataFrame:
+    """
+    SCIP에서 USD/KRW 환율 로드.
+    dataset_id=31, dataseries_id=6, blob에서 "USD" 키.
+
+    Returns: DataFrame(기준일자, USD/KRW)
+    """
+    conn = get_pandas_connection('SCIP')
+    try:
+        params = [31, 6]
+        where_date = ""
+        if start_date:
+            where_date = " AND timestamp_observation >= %s"
+            params.append(start_date)
+        sql = f"""
+            SELECT timestamp_observation, data
+            FROM back_datapoint
+            WHERE dataset_id = %s AND dataseries_id = %s {where_date}
+            ORDER BY timestamp_observation
+        """
+        df = pd.read_sql(sql, conn, params=params)
+        if df.empty:
+            return pd.DataFrame(columns=['기준일자', 'USD/KRW'])
+        df['기준일자'] = pd.to_datetime(df['timestamp_observation']).dt.normalize()
+        df['USD/KRW'] = df['data'].apply(lambda b: parse_data_blob(b, 'USD'))
+        df = df[df['USD/KRW'].notna()]
+        df['USD/KRW'] = df['USD/KRW'].astype(float)
+        return df[['기준일자', 'USD/KRW']].reset_index(drop=True)
+    finally:
+        conn.close()
+
+
+# ============================================================
+# 보유종목 + 6분류 매핑
+# Monitoring/auto_classify.py 패턴 + AST_CLSF_CD_NM 결합
+# ============================================================
+
+def _classify_6class(row) -> str:
+    """
+    AST_CLSF_CD_NM + ITEM_CD + ITEM_NM 조합으로 6분류 매핑.
+    국내주식 / 해외주식 / 국내채권 / 해외채권 / 대체투자 / 유동성
+    """
+    ast = str(row.get('AST_CLSF_CD_NM', '')).upper()
+    item_cd = str(row.get('ITEM_CD', '')).upper()
+    item_nm = str(row.get('ITEM_NM', '')).upper()
+    curr = str(row.get('CURR_DS_CD', '')).upper()
+
+    # 특수 종목 처리 (auto_classify 패턴)
+    if any(kw in item_nm for kw in ['콜론', '예금', '증거금', 'MMF', '미수', '미지급',
+                                      '청약금', '원천세', '분배금', '기타자산', 'DEPOSIT',
+                                      'CMA', '수시입출금']):
+        return '유동성'
+    if 'REPO' in item_nm:
+        return '유동성'
+    if any(kw in item_nm for kw in ['모펀드', '모투자']):
+        return '모펀드'
+    # FX: 달러선물, 통화선물, NDF 등
+    if any(kw in item_nm for kw in ['달러선물', '달러 선물', 'USD선물', 'NDF', '통화선물', 'FX FORWARD']):
+        return 'FX'
+
+    is_kr = item_cd.startswith('KR') or (len(item_cd) == 6 and item_cd.isdigit())
+    # AST_CLSF_CD_NM에 '해외' 포함 여부로 해외 자산 판별 (KR ISIN인 해외투자 ETF 처리)
+    is_overseas_by_ast = '해외' in ast or '미국' in item_nm or 'US' in item_nm or '글로벌' in item_nm
+
+    if '주식' in ast or 'EQUITY' in ast or '지분증권' in ast or '지수' in ast:
+        if is_overseas_by_ast or (not is_kr):
+            return '해외주식'
+        return '국내주식'
+    if '채권' in ast or 'BOND' in ast or '채무증권' in ast:
+        if is_overseas_by_ast or (not is_kr):
+            return '해외채권'
+        return '국내채권'
+    if any(kw in ast for kw in ['대체', '부동산', '인프라', '리츠', 'REIT', '실물']):
+        return '대체투자'
+    if any(kw in item_nm for kw in ['GOLD', '금현물', 'KRX금', '인프라', 'REIT', '리츠']):
+        return '대체투자'
+    if '현금' in ast or 'CASH' in ast:
+        return '유동성'
+
+    # fallback: 통화 기준
+    if curr in ('USD', 'EUR', 'JPY', 'GBP') or (not is_kr and not is_overseas_by_ast):
+        return '해외주식'
+    return '유동성'
+
+
+def load_fund_holdings_classified(fund_code: str, date: str = None) -> pd.DataFrame:
+    """
+    보유종목 로드 + 6분류 매핑.
+    미수/미지급 필터 적용.
+
+    Returns: DataFrame with '자산군' 컬럼 추가
+    """
+    df = load_fund_holdings(fund_code, date)
+    if df.empty:
+        return df
+
+    # 미수/미지급 필터
+    mask = ~(df['ITEM_NM'].str.contains('미지급|미수', na=False, case=False))
+    df = df[mask].copy()
+
+    # 6분류 매핑
+    df['자산군'] = df.apply(_classify_6class, axis=1)
+
+    # 콜론 종목 → "콜론"으로 통합 표기
+    _col_mask = df['ITEM_NM'].str.contains('콜론', na=False, case=False)
+    df.loc[_col_mask, 'ITEM_NM'] = '콜론'
+
+    # 콜론 그룹핑 (여러 콜론 종목 → 합산)
+    _col_rows = df[_col_mask]
+    if len(_col_rows) > 1:
+        _col_sum = _col_rows.iloc[0:1].copy()
+        _col_sum['EVL_AMT'] = _col_rows['EVL_AMT'].sum()
+        _col_sum['QTY'] = _col_rows['QTY'].sum() if 'QTY' in _col_rows.columns else 0
+        df = pd.concat([df[~_col_mask], _col_sum], ignore_index=True)
+
+    # 비중 계산 (EVL_AMT 기반, NAST_TAMT_AGNST_WGH가 없는 경우 대비)
+    total_evl = df['EVL_AMT'].sum()
+    if total_evl > 0:
+        df['비중(%)'] = (df['EVL_AMT'] / total_evl * 100).round(2)
+    else:
+        df['비중(%)'] = 0.0
+    df['평가금액(억)'] = (df['EVL_AMT'] / 1e8).round(1)
+
+    return df
+
+
+# ============================================================
+# Look-through: 모펀드 → 하위 종목 전개
+# ============================================================
+
+def _extract_fund_code_from_item_cd(item_cd: str) -> str:
+    """
+    모펀드 ITEM_CD에서 펀드코드 추출.
+    DWPM10530의 모펀드 ITEM_CD 형식: '03228000{FUND_CD}' (예: 032280007J48 → 07J48)
+    """
+    s = str(item_cd).strip()
+    if len(s) > 5 and s.startswith('0322800'):
+        return s[-5:]
+    # fallback: 뒤 5자리
+    if len(s) >= 5:
+        return s[-5:]
+    return s
+
+
+def load_fund_holdings_lookthrough(fund_code: str, date: str = None) -> pd.DataFrame:
+    """
+    보유종목 로드 + 모펀드 look-through.
+    모펀드 ITEM_CD에서 하위 펀드코드 추출 후 보유종목을 비중 가중하여 전개.
+
+    Returns: DataFrame with 모펀드 rows replaced by underlying holdings
+    """
+    df = load_fund_holdings_classified(fund_code, date)
+    if df.empty:
+        return df
+
+    # 모펀드 행 식별
+    mother_mask = df['자산군'] == '모펀드'
+    if not mother_mask.any():
+        return df
+
+    non_mother = df[~mother_mask].copy()
+    expanded_rows = []
+
+    for _, row in df[mother_mask].iterrows():
+        raw_item_cd = str(row['ITEM_CD']).strip()
+        child_fund_cd = _extract_fund_code_from_item_cd(raw_item_cd)
+        mother_evl = float(row['EVL_AMT'])
+
+        # 하위 펀드 보유종목 로드 시도
+        try:
+            child_df = load_fund_holdings_classified(child_fund_cd, date)
+            if not child_df.empty:
+                child_df = child_df.copy()
+                # 하위에도 모펀드가 있을 수 있음 — 여기서는 1단계만 전개
+                child_total_evl = child_df['EVL_AMT'].sum()
+                if child_total_evl > 0:
+                    scale = mother_evl / child_total_evl
+                    child_df['EVL_AMT'] = child_df['EVL_AMT'] * scale
+                    child_df['평가금액(억)'] = (child_df['EVL_AMT'] / 1e8).round(1)
+                expanded_rows.append(child_df)
+                continue
+        except Exception:
+            pass
+
+        # look-through 실패 → 모펀드 행 그대로 유지
+        expanded_rows.append(pd.DataFrame([row]))
+
+    if expanded_rows:
+        result = pd.concat([non_mother] + expanded_rows, ignore_index=True)
+    else:
+        result = non_mother
+
+    # 동일 종목 합산 (여러 모펀드에서 동일 종목이 올 수 있음)
+    keep_cols = [c for c in ['ITEM_NM', 'AST_CLSF_CD_NM', 'FUND_CD', 'FUND_NM', 'CURR_DS_CD']
+                 if c in result.columns]
+
+    if 'ITEM_CD' in result.columns and len(result) > 0:
+        agg_dict = {c: 'first' for c in keep_cols}
+        agg_dict['EVL_AMT'] = 'sum'
+        if 'QTY' in result.columns:
+            agg_dict['QTY'] = 'sum'
+        grp = result.groupby(['ITEM_CD', '자산군'], as_index=False).agg(agg_dict)
+    else:
+        grp = result
+
+    # 비중 재계산
+    total_evl = grp['EVL_AMT'].sum()
+    if total_evl > 0:
+        grp['비중(%)'] = (grp['EVL_AMT'] / total_evl * 100).round(2)
+    else:
+        grp['비중(%)'] = 0.0
+    grp['평가금액(억)'] = (grp['EVL_AMT'] / 1e8).round(1)
+
+    return grp
+
+
+# ============================================================
+# NAV + AUM 시계열 (확장)
+# ============================================================
+
+def load_fund_nav_with_aum(fund_code: str, start_date: str = None) -> pd.DataFrame:
+    """
+    펀드 NAV(MOD_STPR) + AUM(NAST_AMT) 시계열.
+    load_fund_nav의 단일 펀드 확장 버전.
+
+    Returns: DataFrame(기준일자, MOD_STPR, NAST_AMT, AUM_억, DD1_ERN_RT)
+    """
+    df = load_fund_nav([fund_code], start_date)
+    if df.empty:
+        return df
+    df['AUM_억'] = df['NAST_AMT'] / 1e8
+    return df[['기준일자', 'MOD_STPR', 'NAST_AMT', 'AUM_억', 'DD1_ERN_RT']].sort_values('기준일자').reset_index(drop=True)

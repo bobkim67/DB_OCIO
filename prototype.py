@@ -10,6 +10,17 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 import io
+import sys, os
+
+# modules/ 경로 추가
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from config.funds import FUND_BM, FUND_LIST
+from modules.data_loader import (
+    load_fund_nav, load_fund_nav_with_aum, load_fund_holdings_classified,
+    load_fund_holdings_lookthrough,
+    load_fund_holdings_history, load_fund_summary, load_scip_bm_prices,
+    load_all_fund_data, parse_data_blob,
+)
 
 st.set_page_config(
     page_title="DB OCIO 운용 대시보드",
@@ -17,6 +28,47 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed"
 )
+
+# ============================================================
+# DB 접속 확인 + 캐싱 레이어
+# ============================================================
+
+@st.cache_data(ttl=600)
+def cached_load_fund_nav(fund_code, start_date=None):
+    return load_fund_nav_with_aum(fund_code, start_date)
+
+@st.cache_data(ttl=600)
+def cached_load_bm_prices(dataset_id, dataseries_id, start_date=None, currency=None):
+    return load_scip_bm_prices(dataset_id, dataseries_id, start_date, currency)
+
+@st.cache_data(ttl=600)
+def cached_load_holdings(fund_code, date=None):
+    return load_fund_holdings_classified(fund_code, date)
+
+@st.cache_data(ttl=600)
+def cached_load_holdings_lookthrough(fund_code, date=None):
+    return load_fund_holdings_lookthrough(fund_code, date)
+
+@st.cache_data(ttl=600)
+def cached_load_holdings_history(fund_code, start_date=None):
+    return load_fund_holdings_history(fund_code, start_date)
+
+@st.cache_data(ttl=600)
+def cached_load_fund_summary(fund_codes):
+    return load_fund_summary(fund_codes)
+
+@st.cache_data(ttl=600)
+def cached_load_all_fund_data(fund_codes_tuple, start_date=None):
+    return load_all_fund_data(list(fund_codes_tuple), start_date)
+
+# DB 접속 테스트
+try:
+    from modules.data_loader import get_connection
+    _test_conn = get_connection('dt')
+    _test_conn.close()
+    DB_CONNECTED = True
+except Exception:
+    DB_CONNECTED = False
 
 # ============================================================
 # 펀드 메타 & 샘플 데이터
@@ -55,11 +107,14 @@ FUND_GROUPS = {
     '기타': ['07P70', '07W15'],
 }
 
-ASSET_CLASSES = ['국내주식', '해외주식', '국내채권', '해외채권', '대체투자', '유동성']
+ASSET_CLASSES = ['국내주식', '해외주식', '국내채권', '해외채권', '대체투자', 'FX', '모펀드', '유동성']
 ASSET_COLORS = {
     '국내주식': '#EF553B', '해외주식': '#636EFA', '국내채권': '#00CC96',
-    '해외채권': '#AB63FA', '대체투자': '#FFA15A', '유동성': '#B6E880'
+    '해외채권': '#AB63FA', '대체투자': '#FFA15A', 'FX': '#19D3F3',
+    '모펀드': '#FF6692', '유동성': '#B6E880',
 }
+# 자산군 정렬 순서 (테이블/차트용)
+ASSET_CLASS_ORDER = {ac: i for i, ac in enumerate(ASSET_CLASSES)}
 
 # 자산군별 관련 시장지표 매핑 (운용보고 탭 필터용, 대분류-중분류 기준)
 ASSET_TO_MARKET_INDICATORS = {
@@ -68,6 +123,8 @@ ASSET_TO_MARKET_INDICATORS = {
     '국내채권': [('채권', '국내금리'), ('채권', '기준금리')],
     '해외채권': [('채권', '미국금리'), ('채권', '기준금리'), ('채권', '크레딧')],
     '대체투자': [('원자재', '에너지'), ('원자재', '귀금속')],
+    'FX':       [('FX', '주요환율')],
+    '모펀드':   [],
     '유동성':   [('채권', '기준금리')],
 }
 ALWAYS_SHOW_INDICATORS = [('FX', '주요환율'), ('경제지표', '물가')]
@@ -220,21 +277,39 @@ if not st.session_state.logged_in:
 role_label = "Admin" if st.session_state.user_role == "admin" else "Client"
 accessible = st.session_state.get('fund_access', list(FUND_META.keys()))
 
-top1, top2, top3, top4 = st.columns([1.5, 1.5, 4, 1])
+top1, top2, top3, top4, top5 = st.columns([1.2, 1.3, 1.5, 3.5, 1])
 
 with top1:
     group_options = [g for g in FUND_GROUPS if any(f in accessible for f in FUND_GROUPS[g])]
     selected_group = st.selectbox("펀드 그룹", group_options, index=0, label_visibility="collapsed")
 
 with top2:
-    group_funds = [f for f in FUND_GROUPS[selected_group] if f in accessible]
-    fund_options = {k: f"{FUND_META[k]['short']} ({FUND_META[k]['aum']:.0f}억)" for k in group_funds}
+    group_funds = sorted([f for f in FUND_GROUPS[selected_group] if f in accessible])
+    fund_options = {k: f"{k}  {FUND_META[k]['short']}" for k in group_funds}
     selected_fund = st.selectbox(
         "펀드 선택", options=list(fund_options.keys()),
         format_func=lambda x: fund_options[x], label_visibility="collapsed"
     )
 
+# 모펀드 존재 여부 사전 확인 + look-through 토글
+_has_mother_fund = False
+lookthrough_on = False
+if DB_CONNECTED:
+    try:
+        _check_hold = cached_load_holdings(selected_fund)
+        if not _check_hold.empty:
+            _has_mother_fund = (_check_hold['자산군'] == '모펀드').any()
+    except Exception:
+        pass
+
 with top3:
+    if _has_mother_fund:
+        lookthrough_on = st.toggle("Look-through", value=False, key="lookthrough_toggle",
+                                    help="모펀드를 하위 종목으로 전개")
+    else:
+        st.write("")  # 빈 공간
+
+with top4:
     fund_info = FUND_META[selected_fund]
     st.markdown(
         f"**{fund_info['name']}** &nbsp; | &nbsp; "
@@ -244,7 +319,7 @@ with top3:
         unsafe_allow_html=True
     )
 
-with top4:
+with top5:
     tc1, tc2 = st.columns(2)
     with tc1:
         color = "#667eea" if st.session_state.user_role == "admin" else "#764ba2"
@@ -271,8 +346,53 @@ tabs = st.tabs(tab_names)
 # ============================================================
 
 with tabs[0]:
-    nav_data = make_nav()
-    bm_data = make_bm_nav()
+    # --- DB 데이터 로드 (fallback: mockup) ---
+    _tab0_db = False
+    if DB_CONNECTED:
+        try:
+            _nav_df = cached_load_fund_nav(selected_fund, '20240101')
+            if not _nav_df.empty and len(_nav_df) > 10:
+                nav_data = _nav_df['MOD_STPR'].values
+                _nav_dates = _nav_df['기준일자'].values
+                _aum_series = _nav_df['AUM_억'].values
+
+                # BM 로드
+                _bm_cfg = FUND_BM.get(selected_fund, {'dataset_id': 24, 'dataseries_id': 39, 'currency': None})
+                _bm_df = cached_load_bm_prices(
+                    _bm_cfg['dataset_id'], _bm_cfg['dataseries_id'],
+                    '2024-01-01', _bm_cfg.get('currency')
+                )
+                if not _bm_df.empty and len(_bm_df) > 10:
+                    # BM을 NAV 날짜에 맞춰 정렬
+                    _bm_df = _bm_df.set_index('기준일자')
+                    _nav_idx = pd.DatetimeIndex(_nav_dates)
+                    _bm_aligned = _bm_df.reindex(_nav_idx, method='ffill')['value'].values
+                    if np.isnan(_bm_aligned).sum() < len(_bm_aligned) * 0.5:
+                        bm_data = _bm_aligned[~np.isnan(_bm_aligned)] if np.isnan(_bm_aligned).any() else _bm_aligned
+                        # 길이 맞추기
+                        _min_len = min(len(nav_data), len(bm_data))
+                        nav_data = nav_data[-_min_len:]
+                        bm_data = bm_data[-_min_len:]
+                        _aum_series = _aum_series[-_min_len:]
+                        _nav_dates = _nav_dates[-_min_len:]
+                        dates_for_tab0 = pd.DatetimeIndex(_nav_dates)
+                        _tab0_db = True
+                    else:
+                        raise ValueError("BM align failed")
+                else:
+                    raise ValueError("BM empty")
+            else:
+                raise ValueError("NAV empty")
+        except Exception as _e:
+            _tab0_db = False
+            st.toast(f"Tab0 DB 오류, 목업 사용: {_e}", icon="⚠️")
+
+    if not _tab0_db:
+        nav_data = make_nav()
+        bm_data = make_bm_nav()
+        dates_for_tab0 = dates
+        _aum_series = fund_info['aum'] + np.cumsum(np.random.normal(0, 2, len(dates)))
+
     daily_ret = np.diff(nav_data) / nav_data[:-1]
     daily_bm_ret = np.diff(bm_data) / bm_data[:-1]
 
@@ -281,15 +401,16 @@ with tabs[0]:
     nav_change = latest_nav - prev_nav
     nav_change_pct = (nav_change / prev_nav) * 100
     si_return = (nav_data[-1] / nav_data[0] - 1) * 100
-    ytd_idx = len(dates) - len(dates[dates >= '2026-01-01'])
-    ytd_return = (nav_data[-1] / nav_data[ytd_idx] - 1) * 100
+    _ytd_mask = dates_for_tab0 >= pd.Timestamp('2026-01-01')
+    ytd_idx = len(dates_for_tab0) - _ytd_mask.sum()
+    ytd_return = (nav_data[-1] / nav_data[max(ytd_idx, 0)] - 1) * 100 if ytd_idx < len(nav_data) else 0.0
     bm_si = (bm_data[-1] / bm_data[0] - 1) * 100
-    bm_ytd = (bm_data[-1] / bm_data[ytd_idx] - 1) * 100
+    bm_ytd = (bm_data[-1] / bm_data[max(ytd_idx, 0)] - 1) * 100 if ytd_idx < len(bm_data) else 0.0
 
     # --- 지표 카드 + 3개월 스파크라인 (카드 내장) ---
     c1, c2, c3, c4 = st.columns(4)
-    spark_n = 66  # ~3개월
-    spark_dates = dates[-spark_n:]
+    spark_n = min(66, len(nav_data))  # ~3개월
+    spark_dates = dates_for_tab0[-spark_n:]
 
     with c1:
         with st.container(border=True):
@@ -301,8 +422,9 @@ with tabs[0]:
     with c2:
         with st.container(border=True):
             st.metric("YTD 수익률", f"{ytd_return:.2f}%", f"{ytd_return - bm_ytd:.2f}%p vs BM")
-            spark_data2 = (bm_data[-spark_n:] / bm_data[-spark_n] - 1) * 100
-            st.plotly_chart(make_sparkline(spark_data2, '#EF553B', spark_dates=spark_dates),
+            _bm_spark_n = min(spark_n, len(bm_data))
+            spark_data2 = (bm_data[-_bm_spark_n:] / bm_data[-_bm_spark_n] - 1) * 100
+            st.plotly_chart(make_sparkline(spark_data2, '#EF553B', spark_dates=spark_dates[-_bm_spark_n:]),
                             use_container_width=True, key="spark2")
 
     with c3:
@@ -314,10 +436,16 @@ with tabs[0]:
 
     with c4:
         with st.container(border=True):
-            st.metric("AUM", f"{fund_info['aum']:.0f}억원", f"전월 대비 +12억")
-            aum_spark = fund_info['aum'] + np.cumsum(np.random.normal(0, 2, spark_n))
-            st.plotly_chart(make_sparkline(aum_spark, '#AB63FA', spark_dates=spark_dates),
+            _aum_latest = _aum_series[-1] if len(_aum_series) > 0 else fund_info['aum']
+            _aum_prev_month = _aum_series[-22] if len(_aum_series) > 22 else _aum_latest
+            _aum_change = _aum_latest - _aum_prev_month
+            st.metric("AUM", f"{_aum_latest:.0f}억원", f"전월 대비 {_aum_change:+.0f}억")
+            aum_spark = _aum_series[-spark_n:] if len(_aum_series) >= spark_n else _aum_series
+            st.plotly_chart(make_sparkline(aum_spark, '#AB63FA', spark_dates=spark_dates[-len(aum_spark):]),
                             use_container_width=True, key="spark4")
+
+    if _tab0_db:
+        st.caption("📡 실시간 DB 데이터")
 
     st.markdown("")
 
@@ -332,7 +460,7 @@ with tabs[0]:
 
     periods = {
         '1D': 1, '1W': 5, '1M': 22, '3M': 66, '6M': 132,
-        'YTD': len(dates) - ytd_idx, '1Y': 252, '설정 후': len(nav_data)-1
+        'YTD': max(1, len(dates_for_tab0) - ytd_idx), '1Y': 252, '설정 후': len(nav_data)-1
     }
     row_port = {p: f"{get_period_return(nav_data, n):.2f}%" for p, n in periods.items()}
     row_bm = {p: f"{get_period_return(bm_data, n):.2f}%" for p, n in periods.items()}
@@ -359,35 +487,65 @@ with tabs[0]:
 
     with col_hold:
         st.markdown("#### 최근 편입현황")
-        st.caption(f"2026-02-11 기준 | {fund_info['short']}")
 
-        # 자산군별 비중 도넛
-        asset_weights = SAMPLE_HOLDINGS_DETAIL.groupby('자산군')['비중(%)'].sum()
-        asset_weights = asset_weights.reindex(ASSET_CLASSES).fillna(0)
+        # DB 보유종목 로드 (fallback: SAMPLE_HOLDINGS_DETAIL) — lookthrough_on 반영
+        _holdings_db = False
+        if DB_CONNECTED:
+            try:
+                _hold_df = cached_load_holdings_lookthrough(selected_fund) if lookthrough_on else cached_load_holdings(selected_fund)
+                if not _hold_df.empty:
+                    _hold_date = _hold_df['기준일자'].iloc[0].strftime('%Y-%m-%d') if '기준일자' in _hold_df.columns else '최근'
+                    st.caption(f"{_hold_date} 기준 | {fund_info['short']}")
+                    asset_weights = _hold_df.groupby('자산군')['비중(%)'].sum()
+                    asset_weights = asset_weights.reindex(ASSET_CLASSES).fillna(0)
+                    _holdings_db = True
+                else:
+                    raise ValueError("Holdings empty")
+            except Exception as _e:
+                st.toast(f"보유종목 DB 오류, 목업 사용: {_e}", icon="⚠️")
 
+        if not _holdings_db:
+            st.caption(f"2026-02-11 기준 | {fund_info['short']}")
+            asset_weights = SAMPLE_HOLDINGS_DETAIL.groupby('자산군')['비중(%)'].sum()
+            asset_weights = asset_weights.reindex(ASSET_CLASSES).fillna(0)
+
+        # 자산군별 비중 도넛 — 호버에 평가금액(억) 표시
+        if _holdings_db:
+            _evl_by_class = _hold_df.groupby('자산군')['평가금액(억)'].sum().reindex(ASSET_CLASSES).fillna(0)
+        else:
+            _evl_by_class = SAMPLE_HOLDINGS_DETAIL.groupby('자산군')['평가금액(억)'].sum().reindex(ASSET_CLASSES).fillna(0)
         fig_donut = go.Figure(data=[go.Pie(
             labels=asset_weights.index, values=asset_weights.values,
             hole=0.50, textinfo='label+percent',
             marker_colors=[ASSET_COLORS.get(a, '#999') for a in asset_weights.index],
-            textfont_size=11
+            textfont_size=11,
+            customdata=_evl_by_class.values,
+            hovertemplate='%{label}<br>비중: %{percent}<br>평가금액: %{customdata:,.1f}(억)<extra></extra>'
         )])
         fig_donut.update_layout(height=260, margin=dict(t=10, b=10, l=10, r=10), showlegend=False)
         st.plotly_chart(fig_donut, use_container_width=True)
 
-        # 전체 보유종목 테이블 — 소수점 2자리 + % 표기
+        # 전체 보유종목 테이블 — 자산군 순서 → 비중 내림차순
         st.markdown("#### 전체 보유종목")
-        display_cols = ['자산군', '종목명', '비중(%)', '평가금액(억)', '1D(%)', '1W(%)', '1M(%)', 'YTD(%)']
-        holdings_display = SAMPLE_HOLDINGS_DETAIL[display_cols].copy()
-        num_cols = ['비중(%)', '평가금액(억)', '1D(%)', '1W(%)', '1M(%)', 'YTD(%)']
-        fmt_dict = {c: '{:.2f}' for c in num_cols}
-        st.dataframe(
-            holdings_display.style.format(fmt_dict).map(
-                lambda v: 'color: #EF553B' if isinstance(v, (int, float)) and v < 0 else (
-                    'color: #00CC96' if isinstance(v, (int, float)) and v > 0 else ''),
-                subset=['1D(%)', '1W(%)', '1M(%)', 'YTD(%)']
-            ),
-            hide_index=True, use_container_width=True, height=450
-        )
+        if _holdings_db:
+            _h_display = _hold_df[['자산군', 'ITEM_NM', '비중(%)', '평가금액(억)']].copy()
+            _h_display = _h_display.rename(columns={'ITEM_NM': '종목명'})
+            _h_display['_sort'] = _h_display['자산군'].map(ASSET_CLASS_ORDER).fillna(99)
+            _h_display = _h_display.sort_values(['_sort', '비중(%)'], ascending=[True, False]).drop(columns='_sort')
+            st.dataframe(_h_display, hide_index=True, use_container_width=True, height=450)
+        else:
+            display_cols = ['자산군', '종목명', '비중(%)', '평가금액(억)', '1D(%)', '1W(%)', '1M(%)', 'YTD(%)']
+            holdings_display = SAMPLE_HOLDINGS_DETAIL[display_cols].copy()
+            num_cols = ['비중(%)', '평가금액(억)', '1D(%)', '1W(%)', '1M(%)', 'YTD(%)']
+            fmt_dict = {c: '{:.2f}' for c in num_cols}
+            st.dataframe(
+                holdings_display.style.format(fmt_dict).map(
+                    lambda v: 'color: #EF553B' if isinstance(v, (int, float)) and v < 0 else (
+                        'color: #00CC96' if isinstance(v, (int, float)) and v > 0 else ''),
+                    subset=['1D(%)', '1W(%)', '1M(%)', 'YTD(%)']
+                ),
+                hide_index=True, use_container_width=True, height=450
+            )
 
     with col_chart:
         cum_ret = (nav_data / nav_data[0] - 1) * 100
@@ -396,17 +554,17 @@ with tabs[0]:
 
         fig = go.Figure()
         fig.add_trace(go.Scatter(
-            x=dates, y=excess, name='초과수익',
+            x=dates_for_tab0, y=excess, name='초과수익',
             fill='tozeroy',
             fillcolor='rgba(144, 238, 144, 0.20)',
             line=dict(color='rgba(144, 238, 144, 0.5)', width=0.8),
         ))
         fig.add_trace(go.Scatter(
-            x=dates, y=cum_ret, name='포트폴리오',
+            x=dates_for_tab0, y=cum_ret, name='포트폴리오',
             line=dict(color='#636EFA', width=2.5)
         ))
         fig.add_trace(go.Scatter(
-            x=dates, y=cum_bm, name='BM',
+            x=dates_for_tab0, y=cum_bm, name='BM',
             line=dict(color='#EF553B', width=2, dash='dot')
         ))
         fig.update_layout(
@@ -429,22 +587,50 @@ with tabs[1]:
         horizontal=True, key="holdings_toggle"
     )
 
+    # DB 보유종목 로드 (Tab 1 공유) — lookthrough_on은 상단 토글
+    _tab1_db = False
+    _tab1_hold = None
+    if DB_CONNECTED:
+        try:
+            if lookthrough_on:
+                _tab1_hold = cached_load_holdings_lookthrough(selected_fund)
+            else:
+                _tab1_hold = cached_load_holdings(selected_fund)
+            if not _tab1_hold.empty:
+                _tab1_db = True
+            else:
+                raise ValueError("Holdings empty")
+        except Exception as _e:
+            st.toast(f"Tab1 보유종목 DB 오류, 목업 사용: {_e}", icon="⚠️")
+
     col_hold2, col_gap2 = st.columns(2)
 
     with col_hold2:
         st.markdown("#### 편입종목 현황")
-        st.caption("2026-02-11 기준")
+        if _tab1_db:
+            _t1_date = _tab1_hold['기준일자'].iloc[0].strftime('%Y-%m-%d') if '기준일자' in _tab1_hold.columns else '최근'
+            st.caption(f"{_t1_date} 기준 | 📡 DB")
+        else:
+            st.caption("2026-02-11 기준")
 
         if view_mode == "자산군별":
-            grp = SAMPLE_HOLDINGS_DETAIL.groupby('자산군').agg(
-                {'비중(%)': 'sum', '평가금액(억)': 'sum'}
-            ).reset_index()
-            grp = grp.sort_values('비중(%)', ascending=False)
+            if _tab1_db:
+                grp = _tab1_hold.groupby('자산군').agg(
+                    {'비중(%)': 'sum', '평가금액(억)': 'sum'}
+                ).reset_index()
+            else:
+                grp = SAMPLE_HOLDINGS_DETAIL.groupby('자산군').agg(
+                    {'비중(%)': 'sum', '평가금액(억)': 'sum'}
+                ).reset_index()
+            grp['_sort'] = grp['자산군'].map(ASSET_CLASS_ORDER).fillna(99)
+            grp = grp.sort_values('_sort').drop(columns='_sort')
 
             fig_pie = go.Figure(data=[go.Pie(
                 labels=grp['자산군'], values=grp['비중(%)'],
                 hole=0.45, textinfo='label+percent',
-                marker_colors=[ASSET_COLORS.get(a, '#999') for a in grp['자산군']]
+                marker_colors=[ASSET_COLORS.get(a, '#999') for a in grp['자산군']],
+                customdata=grp['평가금액(억)'].values,
+                hovertemplate='%{label}<br>비중: %{percent}<br>평가금액: %{customdata:,.1f}(억)<extra></extra>'
             )])
             fig_pie.update_layout(title='자산군별 비중', height=350, margin=dict(t=40, b=20), showlegend=False)
             st.plotly_chart(fig_pie, use_container_width=True)
@@ -454,34 +640,56 @@ with tabs[1]:
             st.dataframe(grp_display, hide_index=True, use_container_width=True)
 
         else:
-            top_sec = SAMPLE_HOLDINGS_DETAIL.nlargest(10, '비중(%)')
+            if _tab1_db:
+                _sec_df = _tab1_hold[['자산군', 'ITEM_NM', '비중(%)', '평가금액(억)']].copy()
+                _sec_df = _sec_df.rename(columns={'ITEM_NM': '종목명'})
+                top_sec = _sec_df.nlargest(10, '비중(%)')
+            else:
+                _sec_df = SAMPLE_HOLDINGS_DETAIL
+                top_sec = _sec_df.nlargest(10, '비중(%)')
+
             fig_pie_sec = go.Figure(data=[go.Pie(
                 labels=top_sec['종목명'], values=top_sec['비중(%)'],
                 hole=0.45, textinfo='label+percent',
+                customdata=top_sec['평가금액(억)'].values,
+                hovertemplate='%{label}<br>비중: %{percent}<br>평가금액: %{customdata:,.1f}(억)<extra></extra>'
             )])
             fig_pie_sec.update_layout(title='종목별 비중 (Top 10)', height=350, margin=dict(t=40, b=20), showlegend=False)
             st.plotly_chart(fig_pie_sec, use_container_width=True)
 
-            # 종목별 테이블 (기간수익률 포함 #4)
-            display_cols2 = ['자산군', '종목명', '비중(%)', '평가금액(억)', '1D(%)', '1W(%)', '1M(%)', 'YTD(%)']
-            st.dataframe(
-                SAMPLE_HOLDINGS_DETAIL[display_cols2].style.map(
-                    lambda v: 'color: #EF553B' if isinstance(v, (int, float)) and v < 0 else (
-                        'color: #00CC96' if isinstance(v, (int, float)) and v > 0 else ''),
-                    subset=['1D(%)', '1W(%)', '1M(%)', 'YTD(%)']
-                ),
-                hide_index=True, use_container_width=True, height=400
-            )
+            # 종목별 테이블 — 자산군 순서 → 비중 내림차순
+            if _tab1_db:
+                _sec_df['_sort'] = _sec_df['자산군'].map(ASSET_CLASS_ORDER).fillna(99)
+                _sec_sorted = _sec_df.sort_values(['_sort', '비중(%)'], ascending=[True, False]).drop(columns='_sort')
+                st.dataframe(_sec_sorted, hide_index=True, use_container_width=True, height=400)
+            else:
+                display_cols2 = ['자산군', '종목명', '비중(%)', '평가금액(억)', '1D(%)', '1W(%)', '1M(%)', 'YTD(%)']
+                st.dataframe(
+                    SAMPLE_HOLDINGS_DETAIL[display_cols2].style.map(
+                        lambda v: 'color: #EF553B' if isinstance(v, (int, float)) and v < 0 else (
+                            'color: #00CC96' if isinstance(v, (int, float)) and v > 0 else ''),
+                        subset=['1D(%)', '1W(%)', '1M(%)', 'YTD(%)']
+                    ),
+                    hide_index=True, use_container_width=True, height=400
+                )
 
     with col_gap2:
         if fund_info['has_mp']:
             st.markdown("#### MP 대비 Gap 분석")
             st.caption("Over/Under weight 현황")
 
+            # 실제 AP 비중: DB에서 가져온 자산군별 비중 (MP는 Phase 2에서 연결)
+            if _tab1_db:
+                _ap_weights = _tab1_hold.groupby('자산군')['비중(%)'].sum()
+                _ap_weights = _ap_weights.reindex(ASSET_CLASSES).fillna(0)
+                _ap_list = _ap_weights.values.tolist()
+            else:
+                _ap_list = [25.3, 30.1, 22.5, 8.2, 10.5, 0.0, 0.0, 3.4]
+
             gap_data = {
                 '자산군': ASSET_CLASSES,
-                '실제(%)': [25.3, 30.1, 22.5, 8.2, 10.5, 3.4],
-                'MP(%)': [25.0, 30.0, 25.0, 10.0, 8.0, 2.0],
+                '실제(%)': _ap_list,
+                'MP(%)': [25.0, 30.0, 25.0, 10.0, 8.0, 0.0, 0.0, 2.0],  # Phase 2: sol_VP_rebalancing_inform 연결
             }
             gap_df = pd.DataFrame(gap_data)
             gap_df['Gap(%p)'] = gap_df['실제(%)'] - gap_df['MP(%)']
@@ -529,32 +737,83 @@ with tabs[1]:
     st.markdown("#### 비중 추이")
     hist_dates = pd.bdate_range('2025-06-01', '2026-02-11', freq='BMS')
 
+    # DB 비중 히스토리 로드
+    _hist_db = False
+    _hist_df = None
+    if DB_CONNECTED:
+        try:
+            _hist_df = cached_load_holdings_history(selected_fund, '20250601')
+            if not _hist_df.empty and _hist_df['기준일자'].nunique() > 2:
+                _hist_db = True
+        except Exception:
+            pass
+
     if view_mode == "자산군별":
         col_trend_al, col_trend_ar = st.columns(2)
         with col_trend_al:
             fig_stack = go.Figure()
-            base_weights = [25.3, 30.1, 22.5, 8.2, 10.5, 3.4]
-            for i, ac in enumerate(ASSET_CLASSES):
-                w = base_weights[i] + np.cumsum(np.random.normal(0, 0.3, len(hist_dates)))
-                fig_stack.add_trace(go.Scatter(
-                    x=hist_dates, y=w, name=ac,
-                    stackgroup='one', fillcolor=ASSET_COLORS[ac],
-                    line=dict(width=0.5, color=ASSET_COLORS[ac])
-                ))
+            if _hist_db:
+                # DB 데이터로 자산군별 비중 추이
+                for ac in ASSET_CLASSES:
+                    _ac_data = _hist_df[_hist_df['AST_CLSF_CD_NM'].str.contains(ac[:2], na=False)]
+                    if not _ac_data.empty:
+                        _ac_grp = _ac_data.groupby('기준일자')['total_weight'].sum().sort_index()
+                        fig_stack.add_trace(go.Scatter(
+                            x=_ac_grp.index, y=_ac_grp.values, name=ac,
+                            stackgroup='one', fillcolor=ASSET_COLORS[ac],
+                            line=dict(width=0.5, color=ASSET_COLORS[ac])
+                        ))
+                # fallback: 자산군 매핑이 안 되면 전체 raw 표시
+                if len(fig_stack.data) == 0:
+                    for ac_nm in _hist_df['AST_CLSF_CD_NM'].unique():
+                        _ac_data = _hist_df[_hist_df['AST_CLSF_CD_NM'] == ac_nm]
+                        _ac_grp = _ac_data.groupby('기준일자')['total_weight'].sum().sort_index()
+                        fig_stack.add_trace(go.Scatter(
+                            x=_ac_grp.index, y=_ac_grp.values, name=str(ac_nm),
+                            stackgroup='one',
+                            line=dict(width=0.5)
+                        ))
+            else:
+                base_weights = [25.3, 30.1, 22.5, 8.2, 10.5, 0.0, 0.0, 3.4]
+                for i, ac in enumerate(ASSET_CLASSES):
+                    w = base_weights[i] + np.cumsum(np.random.normal(0, 0.3, len(hist_dates)))
+                    fig_stack.add_trace(go.Scatter(
+                        x=hist_dates, y=w, name=ac,
+                        stackgroup='one', fillcolor=ASSET_COLORS[ac],
+                        line=dict(width=0.5, color=ASSET_COLORS[ac])
+                    ))
             fig_stack.update_layout(title='자산군별 비중 추이',
                 height=350, margin=dict(t=40, b=20),
                 yaxis_title='비중 (%)', legend=dict(orientation='h', y=-0.25),
                 hovermode='x unified')
             st.plotly_chart(fig_stack, use_container_width=True)
         with col_trend_ar:
-            nav_hist_a = make_nav(start=fund_info['aum'] * 1e8, mu=0.0003, sigma=0.003, n=len(hist_dates))
-            nav_hist_a_억 = nav_hist_a / 1e8
-            fig_nav_a = go.Figure()
-            fig_nav_a.add_trace(go.Scatter(
-                x=hist_dates, y=nav_hist_a_억, name='NAV',
-                fill='tozeroy', fillcolor=hex_to_rgba('#636EFA', 0.15),
-                line=dict(color='#636EFA', width=2)
-            ))
+            # NAV 시계열: DB 우선
+            if _tab0_db and '_nav_df' in dir() and not _nav_df.empty:
+                _recent_nav = _nav_df[_nav_df['기준일자'] >= '2025-06-01']
+                if not _recent_nav.empty:
+                    fig_nav_a = go.Figure()
+                    fig_nav_a.add_trace(go.Scatter(
+                        x=_recent_nav['기준일자'], y=_recent_nav['AUM_억'], name='NAV',
+                        fill='tozeroy', fillcolor=hex_to_rgba('#636EFA', 0.15),
+                        line=dict(color='#636EFA', width=2)
+                    ))
+                else:
+                    nav_hist_a = make_nav(start=fund_info['aum'] * 1e8, mu=0.0003, sigma=0.003, n=len(hist_dates))
+                    fig_nav_a = go.Figure()
+                    fig_nav_a.add_trace(go.Scatter(
+                        x=hist_dates, y=nav_hist_a / 1e8, name='NAV',
+                        fill='tozeroy', fillcolor=hex_to_rgba('#636EFA', 0.15),
+                        line=dict(color='#636EFA', width=2)
+                    ))
+            else:
+                nav_hist_a = make_nav(start=fund_info['aum'] * 1e8, mu=0.0003, sigma=0.003, n=len(hist_dates))
+                fig_nav_a = go.Figure()
+                fig_nav_a.add_trace(go.Scatter(
+                    x=hist_dates, y=nav_hist_a / 1e8, name='NAV',
+                    fill='tozeroy', fillcolor=hex_to_rgba('#636EFA', 0.15),
+                    line=dict(color='#636EFA', width=2)
+                ))
             fig_nav_a.update_layout(title='NAV 시계열',
                 height=350, margin=dict(t=40, b=20),
                 yaxis_title='NAV (억원)', hovermode='x unified',
@@ -565,8 +824,12 @@ with tabs[1]:
         col_trend_l, col_trend_r = st.columns(2)
 
         with col_trend_l:
-            all_secs = SAMPLE_HOLDINGS_DETAIL['종목명'].tolist()
-            all_weights = SAMPLE_HOLDINGS_DETAIL['비중(%)'].tolist()
+            if _tab1_db:
+                all_secs = _tab1_hold['ITEM_NM'].tolist()
+                all_weights = _tab1_hold['비중(%)'].tolist()
+            else:
+                all_secs = SAMPLE_HOLDINGS_DETAIL['종목명'].tolist()
+                all_weights = SAMPLE_HOLDINGS_DETAIL['비중(%)'].tolist()
             sec_palette = px.colors.qualitative.Plotly + px.colors.qualitative.Set2 + px.colors.qualitative.Pastel
             fig_stack = go.Figure()
             for i, sec in enumerate(all_secs):
@@ -583,14 +846,31 @@ with tabs[1]:
             st.plotly_chart(fig_stack, use_container_width=True)
 
         with col_trend_r:
-            nav_hist = make_nav(start=fund_info['aum'] * 1e8, mu=0.0003, sigma=0.003, n=len(hist_dates))
-            nav_hist_억 = nav_hist / 1e8
-            fig_nav = go.Figure()
-            fig_nav.add_trace(go.Scatter(
-                x=hist_dates, y=nav_hist_억, name='NAV',
-                fill='tozeroy', fillcolor=hex_to_rgba('#636EFA', 0.15),
-                line=dict(color='#636EFA', width=2)
-            ))
+            if _tab0_db and '_nav_df' in dir() and not _nav_df.empty:
+                _recent_nav2 = _nav_df[_nav_df['기준일자'] >= '2025-06-01']
+                if not _recent_nav2.empty:
+                    fig_nav = go.Figure()
+                    fig_nav.add_trace(go.Scatter(
+                        x=_recent_nav2['기준일자'], y=_recent_nav2['AUM_억'], name='NAV',
+                        fill='tozeroy', fillcolor=hex_to_rgba('#636EFA', 0.15),
+                        line=dict(color='#636EFA', width=2)
+                    ))
+                else:
+                    nav_hist = make_nav(start=fund_info['aum'] * 1e8, mu=0.0003, sigma=0.003, n=len(hist_dates))
+                    fig_nav = go.Figure()
+                    fig_nav.add_trace(go.Scatter(
+                        x=hist_dates, y=nav_hist / 1e8, name='NAV',
+                        fill='tozeroy', fillcolor=hex_to_rgba('#636EFA', 0.15),
+                        line=dict(color='#636EFA', width=2)
+                    ))
+            else:
+                nav_hist = make_nav(start=fund_info['aum'] * 1e8, mu=0.0003, sigma=0.003, n=len(hist_dates))
+                fig_nav = go.Figure()
+                fig_nav.add_trace(go.Scatter(
+                    x=hist_dates, y=nav_hist / 1e8, name='NAV',
+                    fill='tozeroy', fillcolor=hex_to_rgba('#636EFA', 0.15),
+                    line=dict(color='#636EFA', width=2)
+                ))
             fig_nav.update_layout(title='NAV 시계열',
                 height=350, margin=dict(t=40, b=20),
                 yaxis_title='NAV (억원)', hovermode='x unified',
@@ -633,9 +913,9 @@ with tabs[2]:
         st.markdown("---")
 
         # 샘플 VP 데이터
-        vp_weights = [26.0, 29.0, 24.0, 9.0, 9.5, 2.5]
-        ap_weights_vp = [25.3, 30.1, 22.5, 8.2, 10.5, 3.4]
-        mp_weights = [25.0, 30.0, 25.0, 10.0, 8.0, 2.0]
+        vp_weights = [26.0, 29.0, 24.0, 9.0, 9.5, 0.0, 0.0, 2.5]
+        ap_weights_vp = [25.3, 30.1, 22.5, 8.2, 10.5, 0.0, 0.0, 3.4]
+        mp_weights = [25.0, 30.0, 25.0, 10.0, 8.0, 0.0, 0.0, 2.0]
 
         vp_gap_df = pd.DataFrame({
             '자산군': ASSET_CLASSES,
@@ -743,20 +1023,22 @@ with tabs[2]:
 
         with col_gap_r:
             st.markdown("##### AP vs VP 누적수익률 비교")
-            vp_nav = make_nav(1000, 0.00028, 0.0048, len(dates))
+            _n_vp = len(nav_data)
+            vp_nav = make_nav(1000, 0.00028, 0.0048, _n_vp)
             ap_cum_vp = (nav_data / nav_data[0] - 1) * 100
             vp_cum = (vp_nav / vp_nav[0] - 1) * 100
             te = ap_cum_vp - vp_cum
+            _vp_dates = dates_for_tab0 if len(dates_for_tab0) == _n_vp else pd.bdate_range(end='2026-02-23', periods=_n_vp)
 
             fig_vp_perf = go.Figure()
             fig_vp_perf.add_trace(go.Scatter(
-                x=dates, y=te, name='추적오차 (AP-VP)',
+                x=_vp_dates, y=te, name='추적오차 (AP-VP)',
                 fill='tozeroy', fillcolor='rgba(255,161,90,0.15)',
                 line=dict(color='#FFA15A', width=0.8)
             ))
-            fig_vp_perf.add_trace(go.Scatter(x=dates, y=ap_cum_vp, name='AP (실제)',
+            fig_vp_perf.add_trace(go.Scatter(x=_vp_dates, y=ap_cum_vp, name='AP (실제)',
                                                line=dict(color='#636EFA', width=2.5)))
-            fig_vp_perf.add_trace(go.Scatter(x=dates, y=vp_cum, name='VP (목표)',
+            fig_vp_perf.add_trace(go.Scatter(x=_vp_dates, y=vp_cum, name='VP (목표)',
                                                line=dict(color='#00CC96', width=2, dash='dot')))
             fig_vp_perf.update_layout(height=400, yaxis_title='수익률(%)', hovermode='x unified',
                                         legend=dict(orientation='h', y=1.05))
@@ -1772,15 +2054,44 @@ if st.session_state.user_role == "admin" and len(tabs) > 6:
     with tabs[6]:
         st.markdown("#### 전체 펀드 운용 현황")
 
-        all_funds = pd.DataFrame([
-            {'펀드코드': k, '펀드명': v['short'], 'AUM(억)': v['aum'],
-             '그룹': v['group'],
-             'YTD': f"{np.random.uniform(-1, 5):.2f}%",
-             'BM대비': f"{np.random.uniform(-0.5, 1.5):+.2f}%p",
-             'MP': 'O' if v['has_mp'] else 'X',
-             'MP Gap': np.random.choice(['적정', 'Over', 'Under'], p=[0.6, 0.2, 0.2]) if v['has_mp'] else '-'}
-            for k, v in FUND_META.items()
-        ])
+        # DB 펀드 요약 로드 (fallback: FUND_META 기반 mockup)
+        _tab6_db = False
+        if DB_CONNECTED:
+            try:
+                _summary_df = cached_load_fund_summary(FUND_LIST)
+                if not _summary_df.empty:
+                    _tab6_db = True
+            except Exception as _e:
+                st.toast(f"Admin DB 오류, 목업 사용: {_e}", icon="⚠️")
+
+        if _tab6_db:
+            st.caption(f"📡 DB 실데이터 | 기준일: {_summary_df['기준일자'].max().strftime('%Y-%m-%d')}")
+            all_funds = pd.DataFrame()
+            all_funds['펀드코드'] = _summary_df['FUND_CD']
+            all_funds['펀드명'] = _summary_df['FUND_CD'].map(
+                lambda x: FUND_META.get(x, {}).get('short', x)
+            )
+            all_funds['AUM(억)'] = _summary_df['AUM_억'].round(1)
+            all_funds['기준가'] = _summary_df['MOD_STPR'].round(2)
+            all_funds['전일수익률(%)'] = (_summary_df['DD1_ERN_RT'] * 100).round(4) if 'DD1_ERN_RT' in _summary_df.columns else 0.0
+            all_funds['그룹'] = _summary_df['FUND_CD'].map(
+                lambda x: FUND_META.get(x, {}).get('group', '기타')
+            )
+            all_funds['MP'] = _summary_df['FUND_CD'].map(
+                lambda x: 'O' if FUND_META.get(x, {}).get('has_mp', False) else 'X'
+            )
+            all_funds['듀레이션'] = _summary_df['FUND_DUR'].round(2) if 'FUND_DUR' in _summary_df.columns else '-'
+        else:
+            all_funds = pd.DataFrame([
+                {'펀드코드': k, '펀드명': v['short'], 'AUM(억)': v['aum'],
+                 '그룹': v['group'],
+                 'YTD': f"{np.random.uniform(-1, 5):.2f}%",
+                 'BM대비': f"{np.random.uniform(-0.5, 1.5):+.2f}%p",
+                 'MP': 'O' if v['has_mp'] else 'X',
+                 'MP Gap': np.random.choice(['적정', 'Over', 'Under'], p=[0.6, 0.2, 0.2]) if v['has_mp'] else '-'}
+                for k, v in FUND_META.items()
+            ])
+
         all_funds = all_funds.sort_values('AUM(억)', ascending=False)
         st.dataframe(all_funds, hide_index=True, use_container_width=True, height=500)
 
