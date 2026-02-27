@@ -18,7 +18,7 @@ streamlit run prototype.py --server.port 8505
 python -c "import ast; ast.parse(open('prototype.py', encoding='utf-8').read())"
 
 # 모듈 import 검증
-python -c "from modules.data_loader import parse_data_blob, load_fund_holdings_lookthrough; print('OK')"
+python -c "from modules.data_loader import parse_data_blob, load_fund_holdings_lookthrough, load_vp_weights_8class, load_vp_nav; print('OK')"
 
 # DB 접속 검증
 python -c "from modules.data_loader import get_connection; c=get_connection('dt'); print(c); c.close()"
@@ -30,13 +30,13 @@ python -c "from modules.data_loader import get_connection; c=get_connection('dt'
 
 ```
 DB_OCIO_Webview/
-├── prototype.py           ← 메인 Streamlit 앱 (v4, ~2100줄, 7개 탭)
+├── prototype.py           ← 메인 Streamlit 앱 (v5, ~2260줄, 7개 탭)
 ├── config/
-│   ├── funds.py           ← 21개 펀드 메타정보, BM 매핑, 8개 그룹, DB 설정
+│   ├── funds.py           ← 21개 펀드 메타정보, BM/MP 매핑, 8개 그룹, DB 설정
 │   └── users.yaml         ← 사용자 인증 정보
 ├── modules/
 │   ├── auth.py            ← 로그인 인증 모듈
-│   └── data_loader.py     ← 20+ DB 로딩 함수 (MariaDB) + 자산분류 + look-through
+│   └── data_loader.py     ← 25+ DB 로딩 함수 (MariaDB) + 자산분류 + look-through + VP
 ├── tabs/                  ← (예정) 탭별 모듈 분리
 ├── docs/
 │   ├── 01-plan/features/  ← Plan 문서
@@ -51,7 +51,7 @@ DB_OCIO_Webview/
 |-----------|------|-----------|---------|
 | tabs[0] | Overview | 기준가, 누적수익률, 기간성과, 편입현황 도넛 | **Done** |
 | tabs[1] | 편입종목 & MP Gap | 자산군/종목 토글, 파이+테이블, 비중추이 | **Done** |
-| tabs[2] | AP vs VP 분석 | AP/VP/MP 비중비교, Gap 추이 | mockup |
+| tabs[2] | AP vs VP 분석 | AP/VP/MP 비중비교, Gap 추이 | **Done** (Gap추이 mockup) |
 | tabs[3] | 성과분석(Brinson) | 3-Factor Attribution, 워터폴, 기여도 | mockup |
 | tabs[4] | 매크로 지표 | TR Decomposition, EPS/PE, FX, 금리, 벤치마크 히트맵 | mockup |
 | tabs[5] | 운용보고 | 시장환경, 성과요약, Brinson, 리스크 종합 | mockup |
@@ -59,15 +59,20 @@ DB_OCIO_Webview/
 
 ### 데이터 흐름
 
-**DB 연동 완료 (Tab 0, 1, 6)**:
+**DB 연동 완료 (Tab 0, 1, 2, 6)**:
 - NAV/AUM: `dt.DWPM10510` → `load_fund_nav_with_aum()`
-- BM 지수: `SCIP.back_datapoint` → `load_scip_bm_prices()` (dataseries_id=6, FG Return)
+- BM 지수: `SCIP.back_datapoint` → `load_composite_bm_prices()` (복합 BM 지원)
 - 보유종목: `dt.DWPM10530` → `load_fund_holdings_classified()` + `_classify_6class()`
 - Look-through: 모펀드 전개 → `load_fund_holdings_lookthrough()`
+- MP 비중: `solution.sol_MP_released_inform` → `load_mp_weights_8class()` + FUND_MP_DIRECT
+- VP 비중: `solution.sol_DWPM10530` → `load_vp_holdings_8class()` (VP 전용 코드)
+- VP NAV: `solution.sol_DWPM10510` → `load_vp_nav()` (fund_desc → VP 코드 자동변환)
+- VP 리밸런싱: `solution.sol_VP_rebalancing_inform` → `load_vp_rebal_date()`
 - 전체 펀드 요약: `load_fund_summary()` → Tab 6
 
-**Mockup 잔존 (Tab 2~5)**:
-- AP vs VP 비중, Brinson PA, 매크로 지표 — `np.random` 기반 샘플 데이터
+**Mockup 잔존 (Tab 3~5)**:
+- Brinson PA, 매크로 지표, 운용보고 — `np.random` 기반 샘플 데이터
+- Tab 2 Gap 추이 차트 — random walk (일별 역사적 VP 비중 구축 필요)
 
 **Fallback 패턴**:
 ```python
@@ -135,7 +140,7 @@ def cached_load_fund_nav(fund_code, start_date=None):
     return load_fund_nav_with_aum(fund_code, start_date)
 ```
 
-TTL 600초. NAV, BM, Holdings, Holdings History, Fund Summary, All Fund Data 총 7개 캐시 함수.
+TTL 600초. NAV, BM, Holdings, Holdings History, Fund Summary, All Fund Data, VP Weights, VP NAV, VP Rebal Date 총 10개 캐시 함수.
 
 ### SCIP blob 파싱
 
@@ -166,6 +171,26 @@ df['_sort'] = df['자산군'].map(ASSET_CLASS_ORDER).fillna(99)
 df = df.sort_values(['_sort', '비중(%)'], ascending=[True, False]).drop(columns='_sort')
 ```
 
+### VP 데이터 아키텍처
+
+VP 데이터는 AP/MP와 다른 구조:
+- `sol_VP_rebalancing_inform`: 리밸런싱 이벤트 로그 (ISIN/weight **없음**, 날짜/사유만)
+- `sol_DWPM10530`: VP 보유종목 (VP 전용 코드로 조회, NAST_TAMT_AGNST_WGH 비중 사용)
+- `sol_DWPM10510`: VP 기준가 (VP 전용 코드로 조회, MOD_STPR)
+
+```python
+# fund_desc → VP 전용 펀드코드
+_FUND_DESC_TO_VP_CODE = {
+    'MS GROWTH': '3MP01', 'MS STABLE': '3MP02',
+    'TDF2050': '1MP50', 'TIF': '2MP24', 'Golden Growth': '6MP07', ...
+}
+```
+
+Tab 2 VP 로딩 우선순위:
+1. `FUND_MP_DIRECT` (사모펀드) → VP = MP 비중 사용
+2. `FUND_MP_MAPPING` → `load_vp_weights_8class(fund_desc)` → DB
+3. fallback hardcoded
+
 ### 자산군별 벤치마크 수익률 테이블 (tabs[4])
 
 - 42행 x 7기간(`1D, 1W, 1M, 3M, 6M, 1Y, YTD`) 수치 데이터
@@ -181,12 +206,14 @@ df = df.sort_values(['_sort', '비중(%)'], ascending=[True, False]).drop(column
 - `users.yaml`에 사용자 비밀번호 포함 — 커밋 시 주의.
 - Streamlit의 Pandas Styler 지원이 제한적: `.bar()` 등 일부 기능 미지원.
 - `pd.read_sql`에 DictCursor 사용하면 컬럼명이 값으로 들어가는 버그 → 반드시 `get_pandas_connection()` 사용.
-- BM 매핑: 현재 전 펀드 S&P 500 TR 기본값. `config/funds.py::FUND_BM`에서 펀드별 실제 BM으로 교체 필요.
-- MP 비중: 현재 hardcoded. Phase 2에서 `solution.sol_MP_released_inform` / `sol_VP_rebalancing_inform` 연결 예정.
+- BM 매핑: `config/funds.py::FUND_BM`에 11개 펀드 복합 BM 설정 완료. 미설정 7개: 07P70, 07W15, 08N33, 08N81, 08P22, 09L94, 2JM23.
+- MP 비중: DB 연동 완료 (`sol_MP_released_inform` + `FUND_MP_DIRECT`). 19개 펀드 MP 설정, ABL 2개 미설정.
+- VP 데이터: `sol_DWPM10530/10510` 사용 (VP 전용 코드: 3MP01, 2MP24 등). `sol_VP_rebalancing_inform`은 이벤트 로그만.
+- VP 코드 매핑: `data_loader.py::_FUND_DESC_TO_VP_CODE` dict로 관리.
 
 ## PDCA Status
 
 - Feature: DB_OCIO_Webview
-- Phase: Do (DB 연동 Phase 1 완료, Phase 2 진행 예정)
+- Phase: Do (DB 연동 Phase 2 완료 — BM/MP/VP 연동 + Tab 2)
 - Plan/Design 문서: `docs/` 디렉토리
 - 개발일지: `devlog/` 디렉토리 (일별)

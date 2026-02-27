@@ -20,6 +20,7 @@ from modules.data_loader import (
     load_fund_holdings_lookthrough,
     load_fund_holdings_history, load_fund_summary, load_scip_bm_prices,
     load_composite_bm_prices, load_mp_weights_8class,
+    load_vp_weights_8class, load_vp_nav, load_vp_rebal_date,
     load_all_fund_data, parse_data_blob,
 )
 
@@ -73,6 +74,19 @@ def cached_load_composite_bm(components_json, start_date=None):
 def cached_load_mp_weights_8class(fund_desc, reference_date=None, cycle_phase=1):
     return load_mp_weights_8class(fund_desc, reference_date, cycle_phase)
 
+@st.cache_data(ttl=600)
+def cached_load_vp_weights_8class(fund_desc, reference_date=None, cycle_phase=1):
+    return load_vp_weights_8class(fund_desc, reference_date, cycle_phase)
+
+@st.cache_data(ttl=600)
+def cached_load_vp_nav(fund_code, start_date=None):
+    return load_vp_nav(fund_code, start_date)
+
+@st.cache_data(ttl=600)
+def cached_load_vp_rebal_date(fund_desc):
+    """VP 최근 리밸런싱 날짜 조회"""
+    return load_vp_rebal_date(fund_desc)
+
 # DB 접속 테스트
 try:
     from modules.data_loader import get_connection
@@ -96,12 +110,12 @@ FUND_META = {
     '07G02': {'name': '인컴추구 모펀드', 'short': '인컴추구모', 'aum': 883.4, 'group': '모펀드', 'has_mp': True},
     '08P22': {'name': 'OCIO알아서 프라임', 'short': 'OCIO프라임', 'aum': 815.9, 'group': 'OCIO', 'has_mp': True},
     '08K88': {'name': 'OCIO알아서 성장형(사모)', 'short': 'OCIO성장사모', 'aum': 542.3, 'group': 'OCIO', 'has_mp': True},
-    '07P70': {'name': '골든그로스', 'short': '골든그로스', 'aum': 518.5, 'group': '기타', 'has_mp': False},
+    '07P70': {'name': '골든그로스', 'short': '골든그로스', 'aum': 518.5, 'group': '기타', 'has_mp': True},
     '08N33': {'name': 'OCIO알아서 베이직', 'short': 'OCIO베이직', 'aum': 241.1, 'group': 'OCIO', 'has_mp': True},
-    '4JM12': {'name': '동부글로벌 Active', 'short': '동부Active', 'aum': 234.6, 'group': '외부위탁', 'has_mp': False},
-    '2JM23': {'name': '오렌지라이프 자산배분B', 'short': '오렌지B', 'aum': 194.7, 'group': '외부위탁', 'has_mp': False},
+    '4JM12': {'name': '동부글로벌 Active', 'short': '동부Active', 'aum': 234.6, 'group': '외부위탁', 'has_mp': True},
+    '2JM23': {'name': '오렌지라이프 자산배분B', 'short': '오렌지B', 'aum': 194.7, 'group': '외부위탁', 'has_mp': True},
     '08N81': {'name': 'OCIO알아서 액티브', 'short': 'OCIO액티브', 'aum': 188.7, 'group': 'OCIO', 'has_mp': True},
-    '07W15': {'name': '디딤CPI+', 'short': '디딤CPI+', 'aum': 90.3, 'group': '기타', 'has_mp': False},
+    '07W15': {'name': '디딤CPI+', 'short': '디딤CPI+', 'aum': 90.3, 'group': '기타', 'has_mp': True},
     '1JM96': {'name': 'ABL글로벌배당인컴', 'short': 'ABL배당', 'aum': 46.1, 'group': '외부위탁', 'has_mp': False},
     '06X08': {'name': 'OCIO RSP(사모)', 'short': 'OCIO_RSP', 'aum': 40.6, 'group': 'OCIO', 'has_mp': True},
     '07J27': {'name': 'OCIO알아서 인컴형', 'short': 'OCIO인컴', 'aum': 19.9, 'group': 'OCIO', 'has_mp': True},
@@ -947,10 +961,43 @@ with tabs[2]:
 
         st.markdown("---")
 
-        # 샘플 VP/AP 데이터 (VP/AP는 Phase 3에서 DB 연동 예정)
-        vp_weights = [26.0, 29.0, 24.0, 9.0, 9.5, 0.0, 0.0, 2.5]
-        ap_weights_vp = [25.3, 30.1, 22.5, 8.2, 10.5, 0.0, 0.0, 3.4]
-        # MP 비중: 직접지정 → DB 로드 → fallback
+        # --- VP 비중: DB → 직접지정 → fallback ---
+        _t2_vp_db = False
+        _t2_vp_rebal_date = None
+        vp_weights = None
+
+        # 1순위: FUND_MP_DIRECT에 있는 사모펀드 → VP = MP (DB에 VP 없음)
+        _vp_direct = FUND_MP_DIRECT.get(selected_fund)
+        if _vp_direct:
+            vp_weights = [_vp_direct.get(ac, 0.0) for ac in ASSET_CLASSES]
+            _t2_vp_db = True
+
+        # 2순위: FUND_MP_MAPPING → DB에서 VP 로드
+        if vp_weights is None:
+            _vp_desc = FUND_MP_MAPPING.get(selected_fund)
+            if DB_CONNECTED and _vp_desc:
+                try:
+                    _vp_8class = cached_load_vp_weights_8class(_vp_desc)
+                    if _vp_8class:
+                        vp_weights = [_vp_8class.get(ac, 0.0) for ac in ASSET_CLASSES]
+                        _t2_vp_rebal_date = cached_load_vp_rebal_date(_vp_desc)
+                        _t2_vp_db = True
+                except Exception:
+                    st.toast("VP 로드 실패, 목업 사용", icon="⚠️")
+
+        # 3순위: fallback mockup
+        if vp_weights is None:
+            vp_weights = [26.0, 29.0, 24.0, 9.0, 9.5, 0.0, 0.0, 2.5]
+
+        # --- AP 비중: Tab 1 보유종목 DB 데이터 활용 ---
+        if _tab1_db and _tab1_hold is not None and not _tab1_hold.empty:
+            _ap_w_t2 = _tab1_hold.groupby('자산군')['비중(%)'].sum()
+            _ap_w_t2 = _ap_w_t2.reindex(ASSET_CLASSES).fillna(0)
+            ap_weights_vp = _ap_w_t2.values.tolist()
+        else:
+            ap_weights_vp = [25.3, 30.1, 22.5, 8.2, 10.5, 0.0, 0.0, 3.4]
+
+        # --- MP 비중: 직접지정 → DB 로드 → fallback ---
         _mp_8class_t2 = FUND_MP_DIRECT.get(selected_fund)
         if not _mp_8class_t2:
             _mp_desc_t2 = FUND_MP_MAPPING.get(selected_fund)
@@ -976,12 +1023,36 @@ with tabs[2]:
         # 지표 카드
         ap_vp_total_gap = sum(abs(a - v) for a, v in zip(ap_weights_vp, vp_weights))
         vp_mp_total_gap = sum(abs(v - m) for v, m in zip(vp_weights, mp_weights))
+
+        # VP 추적오차 계산 (AP NAV vs VP NAV)
+        _te_str = "-"
+        _te_delta = ""
+        _vp_desc_t2 = FUND_MP_MAPPING.get(selected_fund)
+        if DB_CONNECTED and _vp_desc_t2:
+            try:
+                _vp_nav_df = cached_load_vp_nav(_vp_desc_t2, '2024-01-01')
+                if not _vp_nav_df.empty and len(nav_data) > 20:
+                    _vp_nav_ts = _vp_nav_df.set_index('기준일자')['MOD_STPR']
+                    _ap_nav_ts = pd.Series(nav_data, index=dates_for_tab0)
+                    _common_idx = _ap_nav_ts.index.intersection(_vp_nav_ts.index)
+                    if len(_common_idx) > 20:
+                        _ap_ret = _ap_nav_ts.reindex(_common_idx).pct_change().dropna()
+                        _vp_ret = _vp_nav_ts.reindex(_common_idx).pct_change().dropna()
+                        _te_val = (_ap_ret - _vp_ret).std() * np.sqrt(252) * 100
+                        _te_str = f"{_te_val:.2f}%"
+            except Exception:
+                pass
+
         vp_c1, vp_c2, vp_c3, vp_c4 = st.columns(4)
         vp_c1.metric("AP-VP 총괴리", f"{ap_vp_total_gap:.1f}%p", "적정" if ap_vp_total_gap < 10 else "주의")
         vp_c2.metric("VP-MP 총괴리", f"{vp_mp_total_gap:.1f}%p", "적정" if vp_mp_total_gap < 10 else "주의")
-        vp_c3.metric("최근 VP 리밸런싱", "2026-02-03")
-        vp_c4.metric("VP 추적오차", "0.15%", "-0.03%p")
+        vp_c3.metric("최근 VP 리밸런싱", _t2_vp_rebal_date or "-")
+        vp_c4.metric("VP 추적오차 (연환산)", _te_str)
 
+        if _t2_vp_db:
+            st.caption("📡 VP/AP/MP: DB 데이터")
+        else:
+            st.caption("⚠️ VP: 목업 데이터")
         st.markdown("")
 
         col_vp1, col_vp2 = st.columns(2)
@@ -1070,12 +1141,36 @@ with tabs[2]:
 
         with col_gap_r:
             st.markdown("##### AP vs VP 누적수익률 비교")
-            _n_vp = len(nav_data)
-            vp_nav = make_nav(1000, 0.00028, 0.0048, _n_vp)
-            ap_cum_vp = (nav_data / nav_data[0] - 1) * 100
-            vp_cum = (vp_nav / vp_nav[0] - 1) * 100
-            te = ap_cum_vp - vp_cum
-            _vp_dates = dates_for_tab0 if len(dates_for_tab0) == _n_vp else pd.bdate_range(end='2026-02-23', periods=_n_vp)
+
+            # VP NAV: DB → fallback mockup
+            _vp_nav_arr = None
+            _vp_dates_arr = None
+            if DB_CONNECTED and _vp_desc_t2:
+                try:
+                    _vp_nav_df2 = cached_load_vp_nav(_vp_desc_t2, '2024-01-01')
+                    if not _vp_nav_df2.empty and len(_vp_nav_df2) > 10:
+                        _vp_nav_ts2 = _vp_nav_df2.set_index('기준일자')['MOD_STPR']
+                        _ap_nav_ts2 = pd.Series(nav_data, index=dates_for_tab0)
+                        _common2 = _ap_nav_ts2.index.intersection(_vp_nav_ts2.index).sort_values()
+                        if len(_common2) > 10:
+                            _vp_nav_arr = _vp_nav_ts2.reindex(_common2).values
+                            _ap_nav_arr2 = _ap_nav_ts2.reindex(_common2).values
+                            _vp_dates_arr = _common2
+                except Exception:
+                    pass
+
+            if _vp_nav_arr is not None and _vp_dates_arr is not None:
+                ap_cum_vp = (_ap_nav_arr2 / _ap_nav_arr2[0] - 1) * 100
+                vp_cum = (_vp_nav_arr / _vp_nav_arr[0] - 1) * 100
+                te = ap_cum_vp - vp_cum
+                _vp_dates = _vp_dates_arr
+            else:
+                _n_vp = len(nav_data)
+                vp_nav_mock = make_nav(1000, 0.00028, 0.0048, _n_vp)
+                ap_cum_vp = (nav_data / nav_data[0] - 1) * 100
+                vp_cum = (vp_nav_mock / vp_nav_mock[0] - 1) * 100
+                te = ap_cum_vp - vp_cum
+                _vp_dates = dates_for_tab0 if len(dates_for_tab0) == _n_vp else pd.bdate_range(end='2026-02-23', periods=_n_vp)
 
             fig_vp_perf = go.Figure()
             fig_vp_perf.add_trace(go.Scatter(

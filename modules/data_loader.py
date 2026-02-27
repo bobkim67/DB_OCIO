@@ -866,3 +866,174 @@ def load_mp_weights_8class(fund_desc: str, reference_date: str = None,
     # 반올림
     result = {k: round(v, 2) for k, v in result.items()}
     return result
+
+
+# ============================================================
+# VP (Virtual Portfolio) from DB
+# sol_DWPM10530 (보유종목), sol_DWPM10510 (기준가), sol_VP_rebalancing_inform (이벤트)
+# ============================================================
+
+# fund_desc → VP 펀드코드 매핑
+# sol_DWPM10510/10530의 VP 전용 펀드코드
+_FUND_DESC_TO_VP_CODE = {
+    'MS GROWTH': '3MP01',
+    'MS STABLE': '3MP02',
+    'TDF2050': '1MP50',
+    'TDF2045': '1MP45',
+    'TDF2040': '1MP40',
+    'TDF2035': '1MP35',
+    'TDF2030': '1MP30',
+    'TDF2055': '1MP55',
+    'TDF2060': '1MP60',
+    'TIF': '2MP24',
+    'Golden Growth': '6MP07',
+}
+
+
+def load_vp_rebal_date(fund_desc: str) -> str:
+    """
+    sol_VP_rebalancing_inform에서 최근 VP 리밸런싱 날짜 조회.
+    Returns: 날짜 문자열 또는 None
+    """
+    conn = get_pandas_connection('solution')
+    try:
+        sql = """
+            SELECT MAX(`리밸런싱날짜`) as rd
+            FROM sol_VP_rebalancing_inform
+            WHERE `펀드설명` = %s AND port = 'VP'
+        """
+        df = pd.read_sql(sql, conn, params=[fund_desc])
+        if not df.empty and pd.notna(df['rd'].iloc[0]):
+            return str(df['rd'].iloc[0])
+        return None
+    except Exception:
+        return None
+    finally:
+        conn.close()
+
+
+def load_vp_holdings_8class(vp_fund_code: str, date: str = None) -> dict:
+    """
+    VP 보유종목(sol_DWPM10530)에서 NAST_TAMT_AGNST_WGH 기반 8분류 비중 집계.
+
+    vp_fund_code: VP 전용 펀드코드 (예: '3MP01')
+    date: 기준일 YYYYMMDD (None → 최근일)
+
+    Returns: dict {'국내주식': 5.0, '해외주식': 30.0, ...} (% 단위) 또는 None
+    """
+    conn = get_pandas_connection('solution')
+    try:
+        # 최근일 결정
+        if date is None:
+            conn_dict = get_connection('solution')
+            try:
+                with conn_dict.cursor() as cur:
+                    cur.execute(
+                        "SELECT MAX(STD_DT) as max_dt FROM sol_DWPM10530 WHERE FUND_CD = %s",
+                        (vp_fund_code,)
+                    )
+                    row = cur.fetchone()
+                    if not row or row['max_dt'] is None:
+                        return None
+                    date = row['max_dt']
+            finally:
+                conn_dict.close()
+
+        sql = """
+            SELECT ITEM_CD, ITEM_NM, NAST_TAMT_AGNST_WGH
+            FROM sol_DWPM10530
+            WHERE FUND_CD = %s AND STD_DT = %s
+            ORDER BY NAST_TAMT_AGNST_WGH DESC
+        """
+        df = pd.read_sql(sql, conn, params=[vp_fund_code, date])
+        if df.empty:
+            return None
+
+        # ISIN → universe_non_derivative 방법3 매핑
+        isin_list = df['ITEM_CD'].tolist()
+        placeholders = ','.join(['%s'] * len(isin_list))
+        cls_sql = f"""
+            SELECT ISIN, classification
+            FROM universe_non_derivative
+            WHERE classification_method = '방법3'
+              AND ISIN IN ({placeholders})
+              AND classification IS NOT NULL
+        """
+        cls_df = pd.read_sql(cls_sql, conn, params=isin_list)
+
+        isin_to_class = {}
+        for _, row in cls_df.iterrows():
+            cls_val = str(row['classification']).strip()
+            mapped = _UNIV_TO_8CLASS.get(cls_val)
+            if mapped:
+                isin_to_class[row['ISIN']] = mapped
+
+        # 8분류별 비중 집계
+        asset_classes_8 = ['국내주식', '해외주식', '국내채권', '해외채권', '대체투자', 'FX', '모펀드', '유동성']
+        result = {ac: 0.0 for ac in asset_classes_8}
+
+        for _, r in df.iterrows():
+            isin = r['ITEM_CD']
+            wgt = float(r['NAST_TAMT_AGNST_WGH']) if pd.notna(r['NAST_TAMT_AGNST_WGH']) else 0.0
+            ac = isin_to_class.get(isin, '해외주식')  # fallback: 해외주식
+            if ac in result:
+                result[ac] += wgt
+
+        result = {k: round(v, 2) for k, v in result.items()}
+        return result
+    except Exception as e:
+        logger.error(f"VP holdings 8class 실패 ({vp_fund_code}): {e}")
+        return None
+    finally:
+        conn.close()
+
+
+def load_vp_weights_8class(fund_desc: str, reference_date: str = None,
+                           cycle_phase: int = 1) -> dict:
+    """
+    VP 비중을 8자산군으로 집계.
+    fund_desc → VP 펀드코드 → sol_DWPM10530 보유종목 → 8분류 집계.
+
+    fund_desc: 펀드설명 (예: 'MS GROWTH')
+    Returns: dict {'국내주식': 5.0, '해외주식': 30.0, ...} (% 단위) 또는 None
+    """
+    vp_code = _FUND_DESC_TO_VP_CODE.get(fund_desc)
+    if not vp_code:
+        return None
+    return load_vp_holdings_8class(vp_code)
+
+
+def load_vp_nav(fund_desc_or_code: str, start_date: str = None) -> pd.DataFrame:
+    """
+    VP 기준가 시계열 로드.
+    테이블: solution.sol_DWPM10510
+
+    fund_desc_or_code: fund_desc (예: 'MS GROWTH') 또는 VP 코드 (예: '3MP01')
+    Returns: DataFrame(기준일자, MOD_STPR) 또는 빈 DataFrame
+    """
+    # fund_desc → VP 코드 변환
+    vp_code = _FUND_DESC_TO_VP_CODE.get(fund_desc_or_code, fund_desc_or_code)
+
+    conn = get_pandas_connection('solution')
+    try:
+        params = [vp_code]
+        where_date = ""
+        if start_date:
+            where_date = " AND STD_DT >= %s"
+            params.append(start_date)
+        sql = f"""
+            SELECT STD_DT, MOD_STPR
+            FROM sol_DWPM10510
+            WHERE FUND_CD = %s {where_date}
+            ORDER BY STD_DT
+        """
+        df = pd.read_sql(sql, conn, params=params)
+        if df.empty:
+            return pd.DataFrame(columns=['기준일자', 'MOD_STPR'])
+        df['기준일자'] = pd.to_datetime(df['STD_DT'], format='%Y%m%d')
+        return df[['기준일자', 'MOD_STPR']].reset_index(drop=True)
+    except Exception as e:
+        logger.error(f"VP NAV 로드 실패 ({vp_code}): {e}")
+        return pd.DataFrame(columns=['기준일자', 'MOD_STPR'])
+    finally:
+        conn.close()
