@@ -1037,3 +1037,365 @@ def load_vp_nav(fund_desc_or_code: str, start_date: str = None) -> pd.DataFrame:
         return pd.DataFrame(columns=['기준일자', 'MOD_STPR'])
     finally:
         conn.close()
+
+
+# ============================================================
+# Brinson PA 계산
+# ============================================================
+
+def compute_brinson_attribution(fund_code: str, bm_code: str,
+                                start_date: str, end_date: str,
+                                asset_classes_8: list = None) -> dict:
+    """
+    Brinson 3-Factor Attribution 계산.
+
+    MA000410에서 AP 종목별 일별 손익 → 자산군별 집계 → BM 대비 비교.
+    BM은 FUND_BM 복합 BM 비중 기반.
+
+    Returns: dict with keys:
+      'pa_df': DataFrame (자산군, AP비중, BM비중, AP수익률, BM수익률, Allocation, Selection, Cross)
+      'total_alloc', 'total_select', 'total_cross', 'total_excess'
+      'period_ap_return', 'period_bm_return'
+      'sec_contrib': DataFrame (종목별 기여도)
+    """
+    if asset_classes_8 is None:
+        asset_classes_8 = ['국내주식', '해외주식', '국내채권', '해외채권', '대체투자', 'FX', '모펀드', '유동성']
+
+    # 1) PA 원천 데이터 로드
+    pa_df = load_pa_source(fund_code, start_date, end_date)
+    if pa_df.empty:
+        return None
+
+    # 2) 보유종목 → 자산군 매핑 (최신일 기준)
+    latest_date = pa_df['pr_date'].max()
+    holdings = load_fund_holdings_classified(fund_code)
+
+    if holdings is None or holdings.empty:
+        return None
+
+    # ITEM_CD → 자산군 매핑 dict
+    item_to_class = dict(zip(holdings['종목코드'], holdings['자산군']))
+
+    # 3) PA 데이터에 자산군 부여
+    pa_df['자산군'] = pa_df['sec_id'].map(item_to_class).fillna('유동성')
+
+    # 4) 자산군별 AP 기간 손익 집계
+    # modify_unav_chg = 수정기준가 변동분 (일별 자산군별 손익)
+    ap_by_class = pa_df.groupby('자산군').agg(
+        총손익=('modify_unav_chg', 'sum'),
+        총평가액=('val', lambda x: x.iloc[-1] if len(x) > 0 else 0)
+    ).reindex(asset_classes_8).fillna(0)
+
+    total_val = ap_by_class['총평가액'].sum()
+    if total_val == 0:
+        total_val = 1  # zero-division 방지
+
+    ap_weights = (ap_by_class['총평가액'] / total_val * 100).to_dict()
+    ap_returns = {}
+    for ac in asset_classes_8:
+        ev = ap_by_class.loc[ac, '총평가액'] if ac in ap_by_class.index else 0
+        pl = ap_by_class.loc[ac, '총손익'] if ac in ap_by_class.index else 0
+        ap_returns[ac] = (pl / ev * 100) if ev > 0 else 0.0
+
+    # 5) BM 비중/수익률 — FUND_BM에서 가져오기
+    from config.funds import FUND_BM
+    bm_info = FUND_BM.get(fund_code)
+
+    # BM 비중은 복합 BM 컴포넌트 weight 기반으로 자산군 매핑
+    # 간소화: 주식 지수 → 해외주식, 채권 지수 → 국내/해외채권, 기타 → 유동성
+    bm_weights = {ac: 0.0 for ac in asset_classes_8}
+    bm_returns = {ac: 0.0 for ac in asset_classes_8}
+
+    if bm_info:
+        for comp in bm_info.get('components', []):
+            w = comp['weight'] * 100
+            nm = comp['name'].upper()
+            if 'KOSPI' in nm:
+                bm_weights['국내주식'] += w
+            elif any(k in nm for k in ['MSCI', 'S&P', 'ACWI']):
+                bm_weights['해외주식'] += w
+            elif 'KIS' in nm and ('KTB' in nm or '종합' in nm or 'CALL' not in nm):
+                bm_weights['국내채권'] += w
+            elif 'BLOOMBERG' in nm or 'AGG' in nm:
+                bm_weights['해외채권'] += w
+            elif 'CALL' in nm:
+                bm_weights['유동성'] += w
+            else:
+                bm_weights['해외주식'] += w
+
+        # BM 수익률: SCIP에서 기간 수익률 계산 시도
+        try:
+            bm_prices = load_composite_bm_prices(bm_info['components'], start_date)
+            if not bm_prices.empty:
+                # 기간 수익률 (end_date 근방)
+                bm_prices = bm_prices.sort_values('기준일자')
+                bm_prices_filt = bm_prices[
+                    (bm_prices['기준일자'] >= pd.Timestamp(start_date)) &
+                    (bm_prices['기준일자'] <= pd.Timestamp(end_date))
+                ]
+                if len(bm_prices_filt) >= 2:
+                    bm_total_ret = (bm_prices_filt['composite_price'].iloc[-1] /
+                                    bm_prices_filt['composite_price'].iloc[0] - 1) * 100
+                    # BM 수익률을 비중 기반으로 자산군에 배분 (근사)
+                    total_bm_w = sum(bm_weights.values())
+                    if total_bm_w > 0:
+                        for ac in asset_classes_8:
+                            bm_returns[ac] = bm_total_ret * (bm_weights[ac] / total_bm_w) if bm_weights[ac] > 0 else 0
+        except Exception:
+            pass
+    else:
+        # BM 미설정 → AP 비중을 BM으로 사용 (peer comparison 불가)
+        bm_weights = ap_weights.copy()
+
+    # 6) Brinson 3-Factor 계산
+    results = []
+    for ac in asset_classes_8:
+        ap_w = ap_weights.get(ac, 0)
+        bm_w = bm_weights.get(ac, 0)
+        ap_r = ap_returns.get(ac, 0)
+        bm_r = bm_returns.get(ac, 0)
+        alloc = (ap_w - bm_w) * bm_r / 100
+        select = bm_w * (ap_r - bm_r) / 100
+        cross = (ap_w - bm_w) * (ap_r - bm_r) / 100
+        contrib = ap_w * ap_r / 100
+        results.append({
+            '자산군': ac, 'AP비중': round(ap_w, 2), 'BM비중': round(bm_w, 2),
+            'AP수익률': round(ap_r, 2), 'BM수익률': round(bm_r, 2),
+            'Allocation': round(alloc, 4), 'Selection': round(select, 4),
+            'Cross': round(cross, 4), '기여수익률': round(contrib, 4)
+        })
+
+    result_df = pd.DataFrame(results)
+    total_alloc = result_df['Allocation'].sum()
+    total_select = result_df['Selection'].sum()
+    total_cross = result_df['Cross'].sum()
+
+    # 7) 종목별 기여도 Top
+    sec_contrib_data = pa_df.groupby(['자산군', 'sec_id']).agg(
+        종목손익=('modify_unav_chg', 'sum'),
+        종목평가액=('val', 'last')
+    ).reset_index()
+    sec_contrib_data['수익률(%)'] = np.where(
+        sec_contrib_data['종목평가액'] > 0,
+        sec_contrib_data['종목손익'] / sec_contrib_data['종목평가액'] * 100, 0
+    )
+    sec_contrib_data['기여수익률(%)'] = sec_contrib_data['종목손익'] / max(total_val, 1) * 100
+
+    # 종목명 매핑
+    item_to_name = dict(zip(holdings['종목코드'], holdings['종목명']))
+    sec_contrib_data['종목명'] = sec_contrib_data['sec_id'].map(item_to_name).fillna(sec_contrib_data['sec_id'])
+    sec_contrib_data = sec_contrib_data.sort_values('기여수익률(%)', ascending=False)
+
+    period_ap_return = sum(ap_returns[ac] * ap_weights.get(ac, 0) / 100 for ac in asset_classes_8)
+    period_bm_return = sum(bm_returns[ac] * bm_weights.get(ac, 0) / 100 for ac in asset_classes_8)
+
+    return {
+        'pa_df': result_df,
+        'total_alloc': total_alloc,
+        'total_select': total_select,
+        'total_cross': total_cross,
+        'total_excess': total_alloc + total_select + total_cross,
+        'period_ap_return': period_ap_return,
+        'period_bm_return': period_bm_return,
+        'sec_contrib': sec_contrib_data[['자산군', '종목명', '수익률(%)', '기여수익률(%)']].head(20),
+    }
+
+
+# ============================================================
+# 매크로 지표 로딩 (SCIP 기반)
+# ============================================================
+
+# 매크로 지표 dataset_id 매핑
+MACRO_DATASETS = {
+    # 주식 지수 (TR)
+    'MSCI ACWI': {'dataset_id': 57, 'dataseries_id': 9, 'type': 'index'},
+    'S&P 500': {'dataset_id': 24, 'dataseries_id': 6, 'type': 'index'},
+    'MSCI Korea': {'dataset_id': 144, 'dataseries_id': 6, 'type': 'index'},
+    'MSCI EM': {'dataset_id': 37, 'dataseries_id': 6, 'type': 'index'},
+    'MSCI World ex US': {'dataset_id': 36, 'dataseries_id': 6, 'type': 'index'},
+    # PE/EPS
+    'MSCI ACWI_PE': {'dataset_id': 57, 'dataseries_id': 24, 'type': 'valuation'},
+    'MSCI ACWI_EPS': {'dataset_id': 57, 'dataseries_id': 31, 'type': 'valuation'},
+    'S&P 500_PE': {'dataset_id': 24, 'dataseries_id': 24, 'type': 'valuation'},
+    'S&P 500_EPS': {'dataset_id': 24, 'dataseries_id': 31, 'type': 'valuation'},
+    'MSCI Korea_PE': {'dataset_id': 144, 'dataseries_id': 24, 'type': 'valuation'},
+    'MSCI Korea_EPS': {'dataset_id': 144, 'dataseries_id': 31, 'type': 'valuation'},
+    'MSCI EM_PE': {'dataset_id': 37, 'dataseries_id': 24, 'type': 'valuation'},
+    'MSCI EM_EPS': {'dataset_id': 37, 'dataseries_id': 31, 'type': 'valuation'},
+    # FX
+    'USD/KRW': {'dataset_id': 31, 'dataseries_id': 6, 'type': 'fx', 'currency': 'USD'},
+    # 변동성/스프레드
+    'VIX': {'dataset_id': 403, 'dataseries_id': 9, 'type': 'volatility'},
+    'MOVE': {'dataset_id': 405, 'dataseries_id': 9, 'type': 'volatility'},
+    'US HY OAS': {'dataset_id': 404, 'dataseries_id': 9, 'type': 'spread'},
+    # 금
+    'Gold': {'dataset_id': 408, 'dataseries_id': 15, 'type': 'commodity'},
+}
+
+
+def load_macro_timeseries(indicator_keys: list = None,
+                          start_date: str = '2017-01-01') -> dict:
+    """
+    SCIP에서 매크로 지표 시계열 로드.
+
+    Returns: dict[indicator_name] = pd.DataFrame(기준일자, value)
+    """
+    if indicator_keys is None:
+        indicator_keys = list(MACRO_DATASETS.keys())
+
+    # dataset_id → dataseries_id 그룹핑 (쿼리 최소화)
+    queries = {}  # (dataset_id, dataseries_id) → [indicator_key, ...]
+    for key in indicator_keys:
+        if key not in MACRO_DATASETS:
+            continue
+        info = MACRO_DATASETS[key]
+        q_key = (info['dataset_id'], info['dataseries_id'])
+        if q_key not in queries:
+            queries[q_key] = []
+        queries[q_key].append(key)
+
+    # 고유 dataset_ids 수집
+    all_dataset_ids = list(set(ds for ds, _ in queries.keys()))
+    all_dataseries_ids = list(set(ser for _, ser in queries.keys()))
+
+    try:
+        raw = load_scip_prices(all_dataset_ids, all_dataseries_ids, start_date)
+    except Exception as e:
+        logger.error(f"매크로 지표 로드 실패: {e}")
+        return {}
+
+    result = {}
+    for (ds_id, ser_id), keys in queries.items():
+        subset = raw[(raw['dataset_id'] == ds_id) & (raw['dataseries_id'] == ser_id)].copy()
+        if subset.empty:
+            continue
+
+        for key in keys:
+            info = MACRO_DATASETS[key]
+            currency = info.get('currency')
+
+            values = []
+            dates = []
+            for _, row in subset.iterrows():
+                v = parse_data_blob(row['data'], currency)
+                if v is not None and not (isinstance(v, float) and np.isnan(v)):
+                    if isinstance(v, dict):
+                        # dict인 경우: KRW 우선, 없으면 USD
+                        v = v.get('KRW', v.get('USD', list(v.values())[0] if v else np.nan))
+                    values.append(float(v))
+                    dates.append(row['기준일자'])
+
+            if values:
+                result[key] = pd.DataFrame({
+                    '기준일자': dates,
+                    'value': values
+                }).sort_values('기준일자').reset_index(drop=True)
+
+    return result
+
+
+def load_macro_period_returns(macro_data: dict, reference_date: str = None) -> dict:
+    """
+    매크로 시계열 → 기간별 수익률(%) 계산.
+
+    Returns: dict[indicator] = {'1D':, '1W':, '1M':, '3M':, '6M':, '1Y':, 'YTD':, 'current':}
+    """
+    if reference_date:
+        ref = pd.Timestamp(reference_date)
+    else:
+        ref = pd.Timestamp.now().normalize()
+
+    period_bdays = {'1D': 1, '1W': 5, '1M': 22, '3M': 66, '6M': 132, '1Y': 252}
+
+    result = {}
+    for key, df in macro_data.items():
+        if df.empty:
+            continue
+        ts = df.set_index('기준일자')['value'].sort_index()
+        # 가장 가까운 기준일로 이동
+        if ref not in ts.index:
+            closest = ts.index[ts.index <= ref]
+            if closest.empty:
+                continue
+            ref_actual = closest[-1]
+        else:
+            ref_actual = ref
+
+        current_val = ts.loc[ref_actual]
+        info = MACRO_DATASETS.get(key, {})
+        is_level = info.get('type') in ('volatility', 'spread', 'rate')
+
+        periods = {}
+        for pname, bdays in period_bdays.items():
+            past_idx = ts.index[ts.index <= ref_actual - pd.Timedelta(days=bdays * 1.5)]
+            if past_idx.empty:
+                periods[pname] = np.nan
+                continue
+            past_val = ts.loc[past_idx[-1]]
+            if is_level:
+                periods[pname] = current_val - past_val  # 레벨 변화
+            else:
+                periods[pname] = ((current_val / past_val) - 1) * 100 if past_val != 0 else 0
+
+        # YTD
+        ytd_start = pd.Timestamp(f'{ref_actual.year}-01-01')
+        ytd_idx = ts.index[ts.index >= ytd_start]
+        if len(ytd_idx) > 0:
+            ytd_val = ts.loc[ytd_idx[0]]
+            if is_level:
+                periods['YTD'] = current_val - ytd_val
+            else:
+                periods['YTD'] = ((current_val / ytd_val) - 1) * 100 if ytd_val != 0 else 0
+        else:
+            periods['YTD'] = np.nan
+
+        periods['current'] = current_val
+        result[key] = periods
+
+    return result
+
+
+def load_holdings_history_8class(fund_code: str, start_date: str = None) -> pd.DataFrame:
+    """
+    자산군별 비중 이력 (8분류).
+    sol_DWPM10530에서 월별 비중 추이 로드.
+
+    Returns: DataFrame(기준일자, 국내주식, 해외주식, ..., 유동성)
+    """
+    conn = get_pandas_connection('dt')
+    try:
+        params = [fund_code]
+        date_filter = ""
+        if start_date:
+            date_filter = " AND STD_DT >= %s"
+            params.append(start_date.replace('-', ''))
+
+        sql = f"""
+            SELECT STD_DT, ITEM_CD, ITEM_NM, AST_CLSF_CD_NM,
+                   SUM(NAST_TAMT_AGNST_WGH) as 비중
+            FROM DWPM10530
+            WHERE FUND_CD = %s AND IMC_CD = '003228'
+              AND EVL_AMT > 0
+              AND ITEM_NM NOT LIKE '%%미지급%%'
+              AND ITEM_NM NOT LIKE '%%미수%%'
+              {date_filter}
+            GROUP BY STD_DT, ITEM_CD, ITEM_NM, AST_CLSF_CD_NM
+            ORDER BY STD_DT
+        """
+        df = pd.read_sql(sql, conn, params=params)
+        if df.empty:
+            return pd.DataFrame()
+
+        # 자산군 분류 적용
+        asset_classes_8 = ['국내주식', '해외주식', '국내채권', '해외채권', '대체투자', 'FX', '모펀드', '유동성']
+        df['자산군'] = df.apply(_classify_6class, axis=1)
+        df['기준일자'] = pd.to_datetime(df['STD_DT'].astype(str), format='%Y%m%d')
+
+        pivot = df.groupby(['기준일자', '자산군'])['비중'].sum().unstack(fill_value=0)
+        pivot = pivot.reindex(columns=asset_classes_8, fill_value=0)
+        return pivot.reset_index()
+    except Exception as e:
+        logger.error(f"비중 이력 로드 실패 ({fund_code}): {e}")
+        return pd.DataFrame()
+    finally:
+        conn.close()

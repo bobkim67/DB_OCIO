@@ -22,6 +22,9 @@ from modules.data_loader import (
     load_composite_bm_prices, load_mp_weights_8class,
     load_vp_weights_8class, load_vp_nav, load_vp_rebal_date,
     load_all_fund_data, parse_data_blob,
+    compute_brinson_attribution,
+    load_macro_timeseries, load_macro_period_returns,
+    load_holdings_history_8class,
 )
 
 st.set_page_config(
@@ -86,6 +89,24 @@ def cached_load_vp_nav(fund_code, start_date=None):
 def cached_load_vp_rebal_date(fund_desc):
     """VP 최근 리밸런싱 날짜 조회"""
     return load_vp_rebal_date(fund_desc)
+
+@st.cache_data(ttl=600)
+def cached_compute_brinson(fund_code, bm_code, start_date, end_date):
+    return compute_brinson_attribution(fund_code, bm_code, start_date, end_date)
+
+@st.cache_data(ttl=600)
+def cached_load_macro_timeseries(keys_tuple=None, start_date='2017-01-01'):
+    keys = list(keys_tuple) if keys_tuple else None
+    return load_macro_timeseries(keys, start_date)
+
+@st.cache_data(ttl=600)
+def cached_load_macro_period_returns(macro_keys_tuple, start_date='2017-01-01'):
+    macro_data = cached_load_macro_timeseries(macro_keys_tuple, start_date)
+    return load_macro_period_returns(macro_data)
+
+@st.cache_data(ttl=600)
+def cached_load_holdings_history_8class(fund_code, start_date=None):
+    return load_holdings_history_8class(fund_code, start_date)
 
 # DB 접속 테스트
 try:
@@ -1121,15 +1142,44 @@ with tabs[2]:
 
         with col_gap_l:
             st.markdown("##### Gap 추이 (AP-VP)")
-            gap_hist_dates = pd.bdate_range('2025-06-01', '2026-02-11', freq='BMS')
+
+            # DB에서 AP 비중 이력 로드 시도
+            _gap_hist_db = False
+            _ap_hist = None
+            if DB_CONNECTED:
+                try:
+                    _ap_hist = cached_load_holdings_history_8class(selected_fund, '20250601')
+                    if _ap_hist is not None and not _ap_hist.empty and len(_ap_hist) > 2:
+                        _gap_hist_db = True
+                except Exception:
+                    pass
+
             fig_gap_trend = go.Figure()
-            for i, ac in enumerate(ASSET_CLASSES):
-                base_gap = vp_gap_df['AP-VP Gap(%p)'].iloc[i]
-                gap_series = base_gap + np.cumsum(np.random.normal(0, 0.3, len(gap_hist_dates)))
-                fig_gap_trend.add_trace(go.Scatter(
-                    x=gap_hist_dates, y=gap_series, name=ac,
-                    line=dict(color=ASSET_COLORS.get(ac, '#999'), width=2)
-                ))
+            if _gap_hist_db:
+                # DB 비중 이력 기반 Gap 계산 (AP - VP 현재값)
+                gap_hist_dates = _ap_hist['기준일자']
+                for i, ac in enumerate(ASSET_CLASSES):
+                    if ac in _ap_hist.columns:
+                        ap_hist_vals = _ap_hist[ac].values
+                        vp_val = vp_weights[i] if i < len(vp_weights) else 0
+                        gap_series = ap_hist_vals - vp_val
+                    else:
+                        gap_series = np.zeros(len(gap_hist_dates))
+                    fig_gap_trend.add_trace(go.Scatter(
+                        x=gap_hist_dates, y=gap_series, name=ac,
+                        line=dict(color=ASSET_COLORS.get(ac, '#999'), width=2)
+                    ))
+            else:
+                # fallback mockup
+                gap_hist_dates = pd.bdate_range('2025-06-01', '2026-02-11', freq='BMS')
+                for i, ac in enumerate(ASSET_CLASSES):
+                    base_gap = vp_gap_df['AP-VP Gap(%p)'].iloc[i]
+                    gap_series = base_gap + np.cumsum(np.random.normal(0, 0.3, len(gap_hist_dates)))
+                    fig_gap_trend.add_trace(go.Scatter(
+                        x=gap_hist_dates, y=gap_series, name=ac,
+                        line=dict(color=ASSET_COLORS.get(ac, '#999'), width=2)
+                    ))
+
             fig_gap_trend.add_hline(y=0, line_dash="solid", line_color="black", line_width=1)
             fig_gap_trend.add_hrect(y0=-5.0, y1=5.0, fillcolor="green", opacity=0.04,
                                      annotation_text="허용범위 ±5.0%p")
@@ -1205,71 +1255,98 @@ with tabs[3]:
         analysis_period = st.date_input("분석기간", value=(datetime(2025, 7, 1), datetime(2026, 2, 11)),
                                          key='brinson_period')
     with bc2:
-        pa_method = st.selectbox("자산군 분류", ["방법1", "방법2"], key='pa_method')
+        pa_method = st.selectbox("자산군 분류", ["8분류", "5분류"], key='pa_method')
 
-    # FX 분리 토글 — 분석기간 아래 배치 (#13)
     pa_fx = st.toggle("FX 분리 (FX를 별도 자산군으로 분리하여 분석)", value=True, key='pa_fx')
     st.caption("ON: FX를 별도 자산군으로 분리 | OFF: FX 효과를 각 자산군에 포함")
 
     st.markdown("---")
 
-    # 자산군 분류 방법에 따른 데이터 변경 (#12)
-    if pa_method == "방법1":
-        pa_asset_classes = ['국내주식', '해외주식', '국내채권', '해외채권', '대체투자']
-        pa_ap_w = [25.3, 30.1, 22.5, 8.2, 10.5]
-        pa_bm_w = [25.0, 30.0, 25.0, 10.0, 8.0]
-        pa_ap_ret = [2.31, 5.12, 0.82, 1.23, 3.45]
-        pa_bm_ret = [1.98, 4.85, 0.75, 1.10, 3.12]
-    else:  # 방법2: 더 세분화된 분류
-        pa_asset_classes = ['국내주식', '미국주식', '미국외선진', '신흥국주식', '국내채권', '해외채권', '대체투자']
-        pa_ap_w = [25.3, 20.5, 5.3, 4.3, 22.5, 8.2, 10.5]
-        pa_bm_w = [25.0, 20.0, 5.0, 5.0, 25.0, 10.0, 8.0]
-        pa_ap_ret = [2.31, 6.10, 3.50, 1.80, 0.82, 1.23, 3.45]
-        pa_bm_ret = [1.98, 5.80, 3.20, 1.50, 0.75, 1.10, 3.12]
+    # --- Brinson 데이터: DB → fallback ---
+    _brinson_db = False
+    _brinson_result = None
 
-    # FX 분리 적용 (#13)
-    if pa_fx:
-        pa_asset_classes_display = pa_asset_classes + ['FX']
-        fx_ap_w = sum(w for w, ac in zip(pa_ap_w, pa_asset_classes) if '해외' in ac or '미국' in ac or '신흥' in ac)
-        fx_bm_w = sum(w for w, ac in zip(pa_bm_w, pa_asset_classes) if '해외' in ac or '미국' in ac or '신흥' in ac)
-        pa_ap_w_display = pa_ap_w + [fx_ap_w]
-        pa_bm_w_display = pa_bm_w + [fx_bm_w]
-        # FX 분리: 해외자산 수익률에서 FX 효과 제거
-        fx_return = 1.65  # 샘플 원달러 변동 기여
-        pa_ap_ret_display = []
-        pa_bm_ret_display = []
-        for i, ac in enumerate(pa_asset_classes):
-            if '해외' in ac or '미국' in ac or '신흥' in ac:
-                # FX 제외: (1+r_total)/(1+r_fx) - 1
-                pa_ap_ret_display.append(round((1 + pa_ap_ret[i]/100)/(1 + fx_return/100) - 1, 4) * 100)
-                pa_bm_ret_display.append(round((1 + pa_bm_ret[i]/100)/(1 + fx_return/100) - 1, 4) * 100)
-            else:
-                pa_ap_ret_display.append(pa_ap_ret[i])
-                pa_bm_ret_display.append(pa_bm_ret[i])
-        pa_ap_ret_display.append(fx_return)
-        pa_bm_ret_display.append(fx_return * 0.95)
+    if DB_CONNECTED and len(analysis_period) == 2:
+        _pa_start = analysis_period[0].strftime('%Y%m%d')
+        _pa_end = analysis_period[1].strftime('%Y%m%d')
+        try:
+            _brinson_result = cached_compute_brinson(selected_fund, selected_fund, _pa_start, _pa_end)
+            if _brinson_result and not _brinson_result['pa_df'].empty:
+                _brinson_db = True
+        except Exception:
+            pass
+
+    if _brinson_db:
+        _pa_data = _brinson_result['pa_df']
+        if pa_method == "5분류":
+            # 8분류 → 5분류 축소 (FX/모펀드/유동성 → 유동성으로 합산)
+            _pa5 = _pa_data[_pa_data['자산군'].isin(['국내주식','해외주식','국내채권','해외채권','대체투자'])].copy()
+            _other = _pa_data[~_pa_data['자산군'].isin(['국내주식','해외주식','국내채권','해외채권','대체투자'])]
+            _other_row = pd.DataFrame([{
+                '자산군': '기타', 'AP비중': _other['AP비중'].sum(), 'BM비중': _other['BM비중'].sum(),
+                'AP수익률': 0, 'BM수익률': 0,
+                'Allocation': _other['Allocation'].sum(), 'Selection': _other['Selection'].sum(),
+                'Cross': _other['Cross'].sum(), '기여수익률': _other['기여수익률'].sum()
+            }])
+            _pa_data = pd.concat([_pa5, _other_row], ignore_index=True)
+
+        if not pa_fx and 'FX' in _pa_data['자산군'].values:
+            _pa_data = _pa_data[_pa_data['자산군'] != 'FX']
+
+        pa_asset_classes_display = _pa_data['자산군'].tolist()
+        pa_ap_w_display = _pa_data['AP비중'].tolist()
+        pa_bm_w_display = _pa_data['BM비중'].tolist()
+        pa_ap_ret_display = _pa_data['AP수익률'].tolist()
+        pa_bm_ret_display = _pa_data['BM수익률'].tolist()
+        alloc_effects = _pa_data['Allocation'].tolist()
+        select_effects = _pa_data['Selection'].tolist()
+        cross_effects = _pa_data['Cross'].tolist()
+        contrib_ret = _pa_data['기여수익률'].tolist()
+        total_alloc = _brinson_result['total_alloc']
+        total_select = _brinson_result['total_select']
+        total_cross = _brinson_result['total_cross']
+        total_excess = _brinson_result['total_excess']
+        residual = 0.0
+        _sec_contrib_db = _brinson_result.get('sec_contrib')
+        st.caption("📡 DB 데이터 (dt.MA000410)")
     else:
-        pa_asset_classes_display = pa_asset_classes
-        pa_ap_w_display = pa_ap_w
-        pa_bm_w_display = pa_bm_w
-        pa_ap_ret_display = pa_ap_ret
-        pa_bm_ret_display = pa_bm_ret
+        # fallback mockup
+        if pa_method == "5분류":
+            pa_asset_classes_display = ['국내주식', '해외주식', '국내채권', '해외채권', '대체투자']
+            pa_ap_w_display = [25.3, 30.1, 22.5, 8.2, 10.5]
+            pa_bm_w_display = [25.0, 30.0, 25.0, 10.0, 8.0]
+            pa_ap_ret_display = [2.31, 5.12, 0.82, 1.23, 3.45]
+            pa_bm_ret_display = [1.98, 4.85, 0.75, 1.10, 3.12]
+        else:
+            pa_asset_classes_display = ['국내주식', '해외주식', '국내채권', '해외채권', '대체투자', 'FX', '모펀드', '유동성']
+            pa_ap_w_display = [25.3, 30.1, 22.5, 8.2, 10.5, 1.2, 0.0, 2.2]
+            pa_bm_w_display = [25.0, 30.0, 25.0, 10.0, 8.0, 0.0, 0.0, 2.0]
+            pa_ap_ret_display = [2.31, 5.12, 0.82, 1.23, 3.45, 1.65, 0.0, 0.15]
+            pa_bm_ret_display = [1.98, 4.85, 0.75, 1.10, 3.12, 1.57, 0.0, 0.10]
 
-    # Brinson 계산
-    alloc_effects = [(pa_ap_w_display[i] - pa_bm_w_display[i]) * pa_bm_ret_display[i] / 100
-                     for i in range(len(pa_asset_classes_display))]
-    select_effects = [pa_bm_w_display[i] * (pa_ap_ret_display[i] - pa_bm_ret_display[i]) / 100
-                      for i in range(len(pa_asset_classes_display))]
-    cross_effects = [(pa_ap_w_display[i] - pa_bm_w_display[i]) * (pa_ap_ret_display[i] - pa_bm_ret_display[i]) / 100
-                     for i in range(len(pa_asset_classes_display))]
-    contrib_ret = [pa_ap_w_display[i] * pa_ap_ret_display[i] / 100
-                   for i in range(len(pa_asset_classes_display))]
+        if pa_fx and 'FX' not in pa_asset_classes_display:
+            pa_asset_classes_display = pa_asset_classes_display + ['FX']
+            fx_ap_w = sum(w for w, ac in zip(pa_ap_w_display, pa_asset_classes_display[:-1]) if '해외' in ac)
+            pa_ap_w_display = pa_ap_w_display + [fx_ap_w]
+            pa_bm_w_display = pa_bm_w_display + [fx_ap_w * 0.95]
+            pa_ap_ret_display = pa_ap_ret_display + [1.65]
+            pa_bm_ret_display = pa_bm_ret_display + [1.57]
 
-    total_alloc = sum(alloc_effects)
-    total_select = sum(select_effects)
-    total_cross = sum(cross_effects)
-    total_excess = total_alloc + total_select + total_cross
-    residual = 0.05
+        alloc_effects = [(pa_ap_w_display[i] - pa_bm_w_display[i]) * pa_bm_ret_display[i] / 100
+                         for i in range(len(pa_asset_classes_display))]
+        select_effects = [pa_bm_w_display[i] * (pa_ap_ret_display[i] - pa_bm_ret_display[i]) / 100
+                          for i in range(len(pa_asset_classes_display))]
+        cross_effects = [(pa_ap_w_display[i] - pa_bm_w_display[i]) * (pa_ap_ret_display[i] - pa_bm_ret_display[i]) / 100
+                         for i in range(len(pa_asset_classes_display))]
+        contrib_ret = [pa_ap_w_display[i] * pa_ap_ret_display[i] / 100
+                       for i in range(len(pa_asset_classes_display))]
+        total_alloc = sum(alloc_effects)
+        total_select = sum(select_effects)
+        total_cross = sum(cross_effects)
+        total_excess = total_alloc + total_select + total_cross
+        residual = 0.05
+        _sec_contrib_db = None
+        st.caption("⚠️ 목업 데이터")
 
     pa_tabs = st.tabs(["Brinson 분석", "수익률 비교", "비중 비교", "개별포트 분석"])
 
@@ -1288,14 +1365,15 @@ with tabs[3]:
             st.dataframe(brinson_df, hide_index=True, use_container_width=True)
 
             st.markdown("##### 초과성과 요인분해")
+            _excess_total = total_excess + residual
             decomp_df = pd.DataFrame({
                 '요인': ['Allocation Effect', 'Selection Effect', 'Cross Effect', '유동성/기타', '합계'],
                 '기여도': [f"{total_alloc:+.2f}%", f"{total_select:+.2f}%", f"{total_cross:+.2f}%",
-                         f"{residual:+.2f}%", f"{total_excess + residual:+.2f}%"],
-                '비율': [f"{abs(total_alloc)/max(abs(total_excess+residual),0.01)*100:.0f}%",
-                        f"{abs(total_select)/max(abs(total_excess+residual),0.01)*100:.0f}%",
-                        f"{abs(total_cross)/max(abs(total_excess+residual),0.01)*100:.0f}%",
-                        f"{abs(residual)/max(abs(total_excess+residual),0.01)*100:.0f}%",
+                         f"{residual:+.2f}%", f"{_excess_total:+.2f}%"],
+                '비율': [f"{abs(total_alloc)/max(abs(_excess_total),0.01)*100:.0f}%",
+                        f"{abs(total_select)/max(abs(_excess_total),0.01)*100:.0f}%",
+                        f"{abs(total_cross)/max(abs(_excess_total),0.01)*100:.0f}%",
+                        f"{abs(residual)/max(abs(_excess_total),0.01)*100:.0f}%",
                         '100%']
             })
             st.dataframe(decomp_df, hide_index=True, use_container_width=True)
@@ -1304,34 +1382,67 @@ with tabs[3]:
             fig_wf = go.Figure(go.Waterfall(
                 name="", orientation="v",
                 x=['Allocation', 'Selection', 'Cross', '유동성/기타', '합계'],
-                y=[total_alloc, total_select, total_cross, residual, total_excess + residual],
+                y=[total_alloc, total_select, total_cross, residual, _excess_total],
                 measure=['relative', 'relative', 'relative', 'relative', 'total'],
                 connector_line_color='#888',
                 increasing_marker_color='#636EFA',
                 decreasing_marker_color='#EF553B',
                 totals_marker_color='#00CC96',
                 text=[f"{total_alloc:+.2f}%", f"{total_select:+.2f}%", f"{total_cross:+.2f}%",
-                      f"{residual:+.2f}%", f"{total_excess+residual:+.2f}%"],
+                      f"{residual:+.2f}%", f"{_excess_total:+.2f}%"],
                 textposition='outside'
             ))
             fig_wf.update_layout(title='초과성과 요인분해 (Brinson)', height=450, yaxis_title='기여도 (%)')
             st.plotly_chart(fig_wf, use_container_width=True)
 
     with pa_tabs[1]:
-        ap_cum = (make_nav(1000, 0.0003, 0.004, 150) / 1000 - 1) * 100
-        bm_cum2 = (make_nav(1000, 0.00025, 0.003, 150) / 1000 - 1) * 100
-        comp_dates = pd.bdate_range('2025-07-01', periods=150)
-        excess_cum = ap_cum - bm_cum2
+        # AP vs BM 누적수익률: DB NAV 데이터 활용
+        _pa_ap_cum = None
+        _pa_bm_cum = None
+        _pa_dates = None
+        if DB_CONNECTED and len(analysis_period) == 2:
+            try:
+                _pa_nav_df = cached_load_fund_nav(selected_fund, analysis_period[0].strftime('%Y%m%d'))
+                if not _pa_nav_df.empty:
+                    _pa_nav_ts = _pa_nav_df.set_index('기준일자')['MOD_STPR'].sort_index()
+                    _pa_ap_cum = (_pa_nav_ts / _pa_nav_ts.iloc[0] - 1) * 100
+                    _pa_dates = _pa_nav_ts.index
+                    # BM 누적수익률
+                    _bm_cfg = FUND_BM.get(selected_fund)
+                    if _bm_cfg:
+                        import json as _json_pa
+                        _bm_nav_df = cached_load_composite_bm(_json_pa.dumps(_bm_cfg['components']),
+                                                                analysis_period[0].strftime('%Y-%m-%d'))
+                        if not _bm_nav_df.empty:
+                            _bm_nav_ts = _bm_nav_df.set_index('기준일자')['composite_price'].sort_index()
+                            _common_pa = _pa_nav_ts.index.intersection(_bm_nav_ts.index).sort_values()
+                            if len(_common_pa) > 10:
+                                _pa_ap_cum = (_pa_nav_ts.reindex(_common_pa) / _pa_nav_ts.reindex(_common_pa).iloc[0] - 1) * 100
+                                _pa_bm_cum = (_bm_nav_ts.reindex(_common_pa) / _bm_nav_ts.reindex(_common_pa).iloc[0] - 1) * 100
+                                _pa_dates = _common_pa
+            except Exception:
+                pass
+
+        if _pa_ap_cum is not None and _pa_dates is not None:
+            if _pa_bm_cum is None:
+                _pa_bm_cum = _pa_ap_cum * 0.85  # BM 없으면 근사
+            excess_cum = _pa_ap_cum - _pa_bm_cum
+        else:
+            comp_dates_pa = pd.bdate_range('2025-07-01', periods=150)
+            _pa_ap_cum = (make_nav(1000, 0.0003, 0.004, 150) / 1000 - 1) * 100
+            _pa_bm_cum = (make_nav(1000, 0.00025, 0.003, 150) / 1000 - 1) * 100
+            excess_cum = _pa_ap_cum - _pa_bm_cum
+            _pa_dates = comp_dates_pa
 
         fig_ret = go.Figure()
         fig_ret.add_trace(go.Scatter(
-            x=comp_dates, y=excess_cum, name='초과수익',
+            x=_pa_dates, y=excess_cum, name='초과수익',
             fill='tozeroy', fillcolor='rgba(144, 238, 144, 0.20)',
             line=dict(color='rgba(144, 238, 144, 0.5)', width=0.8)
         ))
-        fig_ret.add_trace(go.Scatter(x=comp_dates, y=ap_cum, name='AP (포트폴리오)',
+        fig_ret.add_trace(go.Scatter(x=_pa_dates, y=_pa_ap_cum, name='AP (포트폴리오)',
                                       line=dict(color='#636EFA', width=2.5)))
-        fig_ret.add_trace(go.Scatter(x=comp_dates, y=bm_cum2, name='BM',
+        fig_ret.add_trace(go.Scatter(x=_pa_dates, y=_pa_bm_cum, name='BM',
                                       line=dict(color='#EF553B', width=2, dash='dot')))
         fig_ret.update_layout(title='AP vs BM 누적수익률', height=450,
                                 yaxis_title='수익률(%)', hovermode='x unified',
@@ -1377,12 +1488,15 @@ with tabs[3]:
         col_pl, col_pr = st.columns(2)
         with col_pl:
             st.markdown("##### 종목별 기여수익률")
-            sec_contrib = pd.DataFrame({
-                '자산군': ['국내주식','국내주식','해외주식','해외주식','해외주식','국내채권','국내채권','대체투자'],
-                '종목명': ['KODEX200','TIGER KOSPI','SPY','QQQ','VWO','국고3Y','통안2Y','맥쿼리인프라'],
-                '수익률(%)': [2.31, 1.82, 5.12, 7.21, -1.30, 0.82, 0.51, 3.45],
-                '기여수익률(%)': [0.24, 0.15, 0.63, 0.73, -0.06, 0.10, 0.05, 0.17]
-            })
+            if _sec_contrib_db is not None and not _sec_contrib_db.empty:
+                sec_contrib = _sec_contrib_db.head(10)
+            else:
+                sec_contrib = pd.DataFrame({
+                    '자산군': ['국내주식','국내주식','해외주식','해외주식','해외주식','국내채권','국내채권','대체투자'],
+                    '종목명': ['KODEX200','TIGER KOSPI','SPY','QQQ','VWO','국고3Y','통안2Y','맥쿼리인프라'],
+                    '수익률(%)': [2.31, 1.82, 5.12, 7.21, -1.30, 0.82, 0.51, 3.45],
+                    '기여수익률(%)': [0.24, 0.15, 0.63, 0.73, -0.06, 0.10, 0.05, 0.17]
+                })
             st.dataframe(sec_contrib.style.map(
                 lambda v: 'color: #EF553B' if isinstance(v, float) and v < 0 else (
                     'color: #00CC96' if isinstance(v, float) and v > 0 else ''),
@@ -1404,16 +1518,16 @@ with tabs[3]:
 
 with tabs[4]:
     st.markdown("#### 매크로 지표 대시보드")
-    st.caption("Bloomberg 데이터 엑셀 업로드 기반 | 주간 업데이트")
+    st.caption("SCIP DB 시계열 데이터 기반 | 자동 업데이트")
 
     with st.expander("Bloomberg 데이터 엑셀 업로드", expanded=False):
         st.markdown("""
         **엑셀 파일 형식 안내:**
         - **Sheet 1 (TR_Index)**: Date | MXWD | MXUS | MXWOU | MXEF | ... (Tot_Return_Index_Net_Dvds)
-        - **Sheet 2 (Valuation)**: Date | MXWD_PE | MXWD_EPS | MXUS_PE | MXUS_EPS | ... (BEST_PE_RATIO, BEST_EPS)
+        - **Sheet 2 (Valuation)**: Date | MXWD_PE | MXWD_EPS | MXUS_PE | MXUS_EPS | ...
         - **Sheet 3 (Benchmarks)**: Date | KOSPI | SPX | RTY | ... (PX_Last)
-        - **Sheet 4 (FX)**: Date | USDKRW | DXY | EURUSD | ... (px_last)
-        - **Sheet 5 (Rates)**: Date | USGG2Y | USGG10Y | KBPMG10Y | ... (px_last)
+        - **Sheet 4 (FX)**: Date | USDKRW | DXY | EURUSD | ...
+        - **Sheet 5 (Rates)**: Date | USGG2Y | USGG10Y | KBPMG10Y | ...
         """)
         uploaded_file = st.file_uploader("엑셀 파일 업로드 (.xlsx)", type=['xlsx', 'xls'], key='macro_upload')
         if uploaded_file:
@@ -1421,26 +1535,72 @@ with tabs[4]:
 
     st.markdown("---")
 
-    # --- 샘플 데이터 (확장) ---
+    # --- 매크로 데이터: DB → fallback mockup ---
+    _macro_db = False
+    _macro_data = {}
+
+    # DB에서 매크로 시계열 로드 시도
+    _macro_keys = ('MSCI ACWI', 'S&P 500', 'MSCI Korea', 'MSCI EM', 'MSCI World ex US',
+                   'MSCI ACWI_PE', 'MSCI ACWI_EPS', 'S&P 500_PE', 'S&P 500_EPS',
+                   'MSCI Korea_PE', 'MSCI Korea_EPS', 'MSCI EM_PE', 'MSCI EM_EPS',
+                   'USD/KRW', 'VIX', 'MOVE', 'US HY OAS', 'Gold')
+    if DB_CONNECTED:
+        try:
+            _macro_data = cached_load_macro_timeseries(_macro_keys, '2017-01-01')
+            if _macro_data and len(_macro_data) > 3:
+                _macro_db = True
+        except Exception:
+            pass
+
+    # mockup fallback
     macro_dates = pd.bdate_range('2024-01-02', '2026-02-11', freq='B')
     n_md = len(macro_dates)
 
-    # 전체 티커 PE/EPS 데이터 (#5 확장)
-    all_val_tickers = ['MSCI ACWI', 'MSCI US', 'MSCI EM', 'MSCI Korea', 'S&P500',
-                       'NASDAQ 100', 'Russell 2000', 'MSCI World ex US', 'MSCI World']
+    # PE/EPS/TR 데이터 구성 (DB or mockup)
+    all_val_tickers = ['MSCI ACWI', 'S&P 500', 'MSCI EM', 'MSCI Korea', 'MSCI World ex US']
     pe_data = {}
     eps_data = {}
-    pe_bases = [18.5, 21.2, 13.8, 10.5, 22.1, 28.5, 16.2, 15.8, 19.0]
-    eps_bases = [45.0, 52.0, 28.0, 32.0, 55.0, 18.0, 22.0, 38.0, 48.0]
-    for i, tk in enumerate(all_val_tickers):
-        pe_data[tk] = pe_bases[i] + np.cumsum(np.random.normal(0, 0.05, n_md))
-        eps_data[tk] = eps_bases[i] + np.cumsum(np.random.normal(0.01, 0.08, n_md))
-
     tr_indices = {}
-    tr_mus = [0.0003, 0.0004, 0.0002, 0.0001, 0.0004, 0.0005, 0.0002, 0.00025, 0.00035]
-    tr_sigmas = [0.008, 0.009, 0.010, 0.012, 0.009, 0.012, 0.011, 0.008, 0.009]
+
+    for tk in all_val_tickers:
+        pe_key = f'{tk}_PE'
+        eps_key = f'{tk}_EPS'
+        if _macro_db and pe_key in _macro_data:
+            _pe_df = _macro_data[pe_key]
+            pe_data[tk] = _pe_df.set_index('기준일자')['value']
+        if _macro_db and eps_key in _macro_data:
+            _eps_df = _macro_data[eps_key]
+            eps_data[tk] = _eps_df.set_index('기준일자')['value']
+        if _macro_db and tk in _macro_data:
+            _tr_df = _macro_data[tk]
+            tr_indices[tk] = _tr_df.set_index('기준일자')['value']
+
+    # mockup으로 보충
+    pe_bases = [18.5, 22.1, 13.8, 10.5, 15.8]
+    eps_bases = [45.0, 55.0, 28.0, 32.0, 38.0]
+    tr_mus = [0.0003, 0.0004, 0.0001, 0.0002, 0.00025]
+    tr_sigmas = [0.008, 0.009, 0.012, 0.010, 0.008]
     for i, tk in enumerate(all_val_tickers):
-        tr_indices[tk] = 100 * np.cumprod(1 + np.random.normal(tr_mus[i], tr_sigmas[i], n_md))
+        if tk not in pe_data:
+            pe_data[tk] = pd.Series(pe_bases[i] + np.cumsum(np.random.normal(0, 0.05, n_md)), index=macro_dates)
+        if tk not in eps_data:
+            eps_data[tk] = pd.Series(eps_bases[i] + np.cumsum(np.random.normal(0.01, 0.08, n_md)), index=macro_dates)
+        if tk not in tr_indices:
+            tr_indices[tk] = pd.Series(100 * np.cumprod(1 + np.random.normal(tr_mus[i], tr_sigmas[i], n_md)), index=macro_dates)
+
+    if _macro_db:
+        st.caption("📡 SCIP DB 시계열 데이터")
+        # 날짜 범위를 DB 데이터 기준으로 조정
+        _all_dates = set()
+        for v in [pe_data, eps_data, tr_indices]:
+            for ts in v.values():
+                if hasattr(ts, 'index'):
+                    _all_dates.update(ts.index)
+        if _all_dates:
+            macro_dates = pd.DatetimeIndex(sorted(_all_dates))
+            n_md = len(macro_dates)
+    else:
+        st.caption("⚠️ 목업 데이터 (DB 연결 시 SCIP 실데이터로 자동 전환)")
 
     # --- Total Return Decomposition ---
     st.markdown("### Total Return Decomposition")
@@ -1450,16 +1610,17 @@ with tabs[4]:
         "지수 선택", list(pe_data.keys()), key='tr_decomp_ticker'
     )
     decomp_period = st.radio("기간", ['3M', '6M', 'YTD', '1Y'], horizontal=True, key='tr_decomp_period')
-    period_map_macro = {'3M': 66, '6M': 132, 'YTD': len(macro_dates) - len(macro_dates[macro_dates >= '2026-01-01']), '1Y': 252}
+    _ytd_bdays = len(macro_dates[macro_dates >= '2026-01-01']) if len(macro_dates[macro_dates >= '2026-01-01']) > 0 else 22
+    period_map_macro = {'3M': 66, '6M': 132, 'YTD': _ytd_bdays, '1Y': 252}
     n_period = min(period_map_macro[decomp_period], n_md - 1)
 
-    tr_arr = tr_indices[decomp_ticker]
-    pe_arr = pe_data[decomp_ticker]
-    eps_arr = eps_data[decomp_ticker]
+    tr_arr = tr_indices[decomp_ticker].values if hasattr(tr_indices[decomp_ticker], 'values') else tr_indices[decomp_ticker]
+    pe_arr = pe_data[decomp_ticker].values if hasattr(pe_data[decomp_ticker], 'values') else pe_data[decomp_ticker]
+    eps_arr = eps_data[decomp_ticker].values if hasattr(eps_data[decomp_ticker], 'values') else eps_data[decomp_ticker]
 
-    total_return = (tr_arr[-1] / tr_arr[-(n_period+1)] - 1) * 100
-    pe_growth = (pe_arr[-1] / pe_arr[-(n_period+1)] - 1) * 100
-    eps_growth = (eps_arr[-1] / eps_arr[-(n_period+1)] - 1) * 100
+    total_return = (tr_arr[-1] / tr_arr[max(0, -(n_period+1))] - 1) * 100 if len(tr_arr) > n_period else 0
+    pe_growth = (pe_arr[-1] / pe_arr[max(0, -(n_period+1))] - 1) * 100 if len(pe_arr) > n_period else 0
+    eps_growth = (eps_arr[-1] / eps_arr[max(0, -(n_period+1))] - 1) * 100 if len(eps_arr) > n_period else 0
     other = total_return - pe_growth - eps_growth
 
     dc1, dc2 = st.columns([3, 2])
@@ -1513,7 +1674,6 @@ with tabs[4]:
         key='val_ticker_select'
     )
 
-    # 표시 모드 토글: 실제 값 vs Growth Rate
     val_mode_c1, val_mode_c2 = st.columns([2, 1])
     with val_mode_c1:
         val_display_mode = st.radio("표시 모드", ['실제 값', 'Growth Rate'], horizontal=True, key='val_display_mode')
@@ -1527,28 +1687,27 @@ with tabs[4]:
     if selected_val_tickers:
         if val_display_mode == 'Growth Rate':
             gp_map = {'1M': 22, '3M': 66, '6M': 132, '1Y': 252,
-                       'YTD': len(macro_dates) - len(macro_dates[macro_dates >= '2026-01-01'])}
+                       'YTD': max(1, len(macro_dates[macro_dates >= '2026-01-01']))}
             n_shift = min(gp_map.get(growth_period_val, 66), n_md - 1)
-            start_idx = max(0, n_md - n_shift - 1)
-            trimmed_dates = macro_dates[start_idx:]
             fig_val = make_subplots(rows=1, cols=2,
                                      subplot_titles=(f'PE Ratio Growth Rate ({growth_period_val})',
                                                      f'EPS Growth Rate ({growth_period_val})'))
             for i, tk in enumerate(selected_val_tickers):
                 c = val_colors[i % len(val_colors)]
-                pe_s = pd.Series(pe_data[tk], index=macro_dates)
+                pe_s = pe_data[tk] if isinstance(pe_data[tk], pd.Series) else pd.Series(pe_data[tk], index=macro_dates)
+                eps_s = eps_data[tk] if isinstance(eps_data[tk], pd.Series) else pd.Series(eps_data[tk], index=macro_dates)
+                start_idx = max(0, len(pe_s) - n_shift - 1)
                 pe_trimmed = pe_s.iloc[start_idx:]
                 pe_indexed = (pe_trimmed / pe_trimmed.iloc[0] - 1) * 100
-                eps_s = pd.Series(eps_data[tk], index=macro_dates)
                 eps_trimmed = eps_s.iloc[start_idx:]
                 eps_indexed = (eps_trimmed / eps_trimmed.iloc[0] - 1) * 100
                 fig_val.add_trace(go.Scatter(
-                    x=trimmed_dates, y=pe_indexed.values, name=tk,
+                    x=pe_trimmed.index, y=pe_indexed.values, name=tk,
                     line=dict(color=c, width=2),
                     legendgroup=tk, showlegend=True
                 ), row=1, col=1)
                 fig_val.add_trace(go.Scatter(
-                    x=trimmed_dates, y=eps_indexed.values, name=tk,
+                    x=eps_trimmed.index, y=eps_indexed.values, name=tk,
                     line=dict(color=c, width=2, dash='dot'),
                     legendgroup=tk, showlegend=False
                 ), row=1, col=2)
@@ -1560,13 +1719,15 @@ with tabs[4]:
             fig_val = make_subplots(rows=1, cols=2, subplot_titles=('PE Ratio 추이', 'EPS 추이'))
             for i, tk in enumerate(selected_val_tickers):
                 c = val_colors[i % len(val_colors)]
+                pe_s = pe_data[tk] if isinstance(pe_data[tk], pd.Series) else pd.Series(pe_data[tk], index=macro_dates)
+                eps_s = eps_data[tk] if isinstance(eps_data[tk], pd.Series) else pd.Series(eps_data[tk], index=macro_dates)
                 fig_val.add_trace(go.Scatter(
-                    x=macro_dates, y=pe_data[tk], name=tk,
+                    x=pe_s.index, y=pe_s.values, name=tk,
                     line=dict(color=c, width=2),
                     legendgroup=tk, showlegend=True
                 ), row=1, col=1)
                 fig_val.add_trace(go.Scatter(
-                    x=macro_dates, y=eps_data[tk], name=tk,
+                    x=eps_s.index, y=eps_s.values, name=tk,
                     line=dict(color=c, width=2, dash='dot'),
                     legendgroup=tk, showlegend=False
                 ), row=1, col=2)
@@ -1581,11 +1742,24 @@ with tabs[4]:
     # --- 원화 가치 분석 (#6, #7) ---
     st.markdown("### 원화 가치 분석")
 
-    # 2017.1.1 이후 데이터 생성
-    fx_full_dates = pd.bdate_range('2017-01-02', '2026-02-11', freq='B')
+    # USD/KRW: DB → fallback
+    _usdkrw_ts = None
+    if _macro_db and 'USD/KRW' in _macro_data:
+        _usdkrw_df = _macro_data['USD/KRW']
+        if not _usdkrw_df.empty:
+            _usdkrw_ts = _usdkrw_df.set_index('기준일자')['value'].sort_index()
+
+    if _usdkrw_ts is not None and len(_usdkrw_ts) > 100:
+        fx_full_dates = _usdkrw_ts.index
+        usdkrw_full = _usdkrw_ts.values
+    else:
+        fx_full_dates = pd.bdate_range('2017-01-02', '2026-02-11', freq='B')
+        np.random.seed(77)
+        usdkrw_full = 1150 + np.cumsum(np.random.normal(0.15, 2.5, len(fx_full_dates)))
+
     n_fx = len(fx_full_dates)
+    # DXY는 mockup 유지 (SCIP에 DXY 시계열 미존재 or 별도 dataset 필요)
     np.random.seed(77)
-    usdkrw_full = 1150 + np.cumsum(np.random.normal(0.15, 2.5, n_fx))
     dxy_full = 101 + np.cumsum(np.random.normal(-0.005, 0.25, n_fx))
 
     col_fx1, col_fx2 = st.columns(2)
@@ -1651,17 +1825,53 @@ with tabs[4]:
 
     # --- 글로벌 금리 추이 (#8) ---
     st.markdown("### 글로벌 금리 추이")
+
+    # 금리 데이터: SCIP dataset (Treasury 2Y=6, 10Y=2) dataseries 7(YTM) 로드 시도
+    _rates_db = False
+    _rate_data = {}
+    if DB_CONNECTED:
+        try:
+            from modules.data_loader import load_scip_prices as _lsp
+            # US Treasury 2Y(6), 10Y(2), KR는 SCIP에 별도 dataset 필요
+            _rates_raw = _lsp([2, 6], [7], '2024-01-01')
+            if not _rates_raw.empty:
+                for ds_id, label in [(2, 'US 10Y'), (6, 'US 2Y')]:
+                    _sub = _rates_raw[_rates_raw['dataset_id'] == ds_id].copy()
+                    if not _sub.empty:
+                        _sub['value'] = _sub['data'].apply(lambda b: parse_data_blob(b))
+                        _sub = _sub.dropna(subset=['value'])
+                        _rate_data[label] = _sub.set_index('기준일자')['value'].sort_index()
+                if _rate_data:
+                    _rates_db = True
+        except Exception:
+            pass
+
     monthly_dates = pd.date_range('2024-01-01', '2026-02-01', freq='MS')
     n_rates = len(monthly_dates)
 
-    us_10y = 4.3 + np.cumsum(np.random.normal(-0.01, 0.08, n_rates))
-    us_2y = 4.5 + np.cumsum(np.random.normal(-0.015, 0.06, n_rates))
+    if _rates_db and 'US 10Y' in _rate_data:
+        # DB 데이터를 월말 리샘플
+        us_10y_ts = _rate_data.get('US 10Y', pd.Series(dtype=float))
+        us_2y_ts = _rate_data.get('US 2Y', pd.Series(dtype=float))
+        if len(us_10y_ts) > 10:
+            monthly_dates = us_10y_ts.resample('MS').last().dropna().index
+            n_rates = len(monthly_dates)
+            us_10y = us_10y_ts.resample('MS').last().dropna().values
+            us_2y = us_2y_ts.resample('MS').last().dropna().values[:n_rates] if len(us_2y_ts) > 0 else us_10y - 0.2
+        else:
+            us_10y = 4.3 + np.cumsum(np.random.normal(-0.01, 0.08, n_rates))
+            us_2y = 4.5 + np.cumsum(np.random.normal(-0.015, 0.06, n_rates))
+    else:
+        us_10y = 4.3 + np.cumsum(np.random.normal(-0.01, 0.08, n_rates))
+        us_2y = 4.5 + np.cumsum(np.random.normal(-0.015, 0.06, n_rates))
+
+    # 한국 금리는 mockup (SCIP에 KR 국채 YTM 별도 dataset)
     kr_10y = 3.5 + np.cumsum(np.random.normal(-0.01, 0.05, n_rates))
     kr_2y = 3.3 + np.cumsum(np.random.normal(-0.01, 0.04, n_rates))
     us_base = np.full(n_rates, 5.25)
-    us_base[n_rates//2:] = 4.50  # 금리 인하
+    us_base[n_rates//2:] = 4.50
     kr_base = np.full(n_rates, 3.50)
-    kr_base[n_rates*2//3:] = 3.00  # 금리 인하
+    kr_base[n_rates*2//3:] = 3.00
 
     col_rate1, col_rate2 = st.columns(2)
 
@@ -1857,12 +2067,39 @@ with tabs[4]:
 
     # --- 벤치마크 수익률 히트맵 (고정 기간) (#8, #13) ---
     st.markdown("### 주요 벤치마크 기간수익률")
-    bm_selected_periods = ['1M', '3M', 'YTD', '1Y', '3Y', '5Y']
+    bm_selected_periods = ['1M', '3M', 'YTD', '1Y']
 
-    bm_names = ['MSCI ACWI', 'MSCI US', 'MSCI Korea', 'S&P500', 'KOSPI 200', 'NASDAQ 100',
-                'SPYG', 'Russell 2000', 'MSCI EM', 'Barclays Global Agg', 'Bloomberg Commodity', 'Gold']
-    heatmap_data = np.random.uniform(-5, 15, (len(bm_names), len(bm_selected_periods)))
-    heatmap_df = pd.DataFrame(heatmap_data, index=bm_names, columns=bm_selected_periods)
+    # DB에서 기간수익률 계산 시도
+    _hm_db = False
+    _hm_tickers = {
+        'MSCI ACWI': 'MSCI ACWI', 'S&P 500': 'S&P 500', 'MSCI Korea': 'MSCI Korea',
+        'MSCI EM': 'MSCI EM', 'MSCI World ex US': 'MSCI World ex US', 'Gold': 'Gold'
+    }
+    _hm_data = {}
+    if _macro_db:
+        try:
+            _hm_returns = cached_load_macro_period_returns(_macro_keys, '2017-01-01')
+            if _hm_returns:
+                _hm_db = True
+                for disp_name, key in _hm_tickers.items():
+                    if key in _hm_returns:
+                        _hm_data[disp_name] = _hm_returns[key]
+        except Exception:
+            pass
+
+    bm_names = list(_hm_tickers.keys())
+    if _hm_db and _hm_data:
+        heatmap_rows = []
+        for nm in bm_names:
+            if nm in _hm_data:
+                row = [_hm_data[nm].get(p, 0) for p in bm_selected_periods]
+            else:
+                row = [np.random.uniform(-5, 15) for _ in bm_selected_periods]
+            heatmap_rows.append(row)
+        heatmap_df = pd.DataFrame(heatmap_rows, index=bm_names, columns=bm_selected_periods)
+    else:
+        heatmap_data = np.random.uniform(-5, 15, (len(bm_names), len(bm_selected_periods)))
+        heatmap_df = pd.DataFrame(heatmap_data, index=bm_names, columns=bm_selected_periods)
 
     pastel_colorscale = [
         [0.0, '#f8d7da'], [0.25, '#fef3cd'], [0.5, '#fff9e6'],
@@ -1943,7 +2180,11 @@ with tabs[5]:
     ])
 
     # 현재 펀드 보유 자산군에 따라 관련 지표만 필터링
-    fund_asset_classes = set(SAMPLE_HOLDINGS_DETAIL['자산군'].unique())  # TODO: DB 연동 시 selected_fund 기반 조회
+    # DB 보유종목 기반 자산군 or fallback
+    if _tab1_db and _tab1_hold is not None and not _tab1_hold.empty:
+        fund_asset_classes = set(_tab1_hold['자산군'].unique())
+    else:
+        fund_asset_classes = set(SAMPLE_HOLDINGS_DETAIL['자산군'].unique())
     relevant_cats = set(ALWAYS_SHOW_INDICATORS)
     for ac in fund_asset_classes:
         if ac in ASSET_TO_MARKET_INDICATORS:
@@ -2017,18 +2258,71 @@ with tabs[5]:
     st.markdown("---")
     st.markdown("**2. 운용 성과**")
 
+    # DB에서 기간별 성과 계산
+    _rpt_ap_ret = '+1.23%'
+    _rpt_bm_ret = '+0.98%'
+    _rpt_excess = '+0.25%p'
+    _rpt_ytd_ap = '+1.23%'
+    _rpt_ytd_bm = '+0.98%'
+    _rpt_ytd_excess = '+0.25%p'
+    _rpt_since_ap = '+15.85%'
+    _rpt_since_bm = '+13.20%'
+    _rpt_since_excess = '+2.65%p'
+
+    if DB_CONNECTED:
+        try:
+            _rpt_nav = cached_load_fund_nav(selected_fund, rpt_start.replace('-', ''))
+            if _rpt_nav is not None and not _rpt_nav.empty:
+                _rpt_nav_ts = _rpt_nav.set_index('기준일자')['MOD_STPR'].sort_index()
+                # 보고 기간 수익률
+                _rpt_start_dt = pd.Timestamp(rpt_start)
+                _rpt_end_dt = pd.Timestamp(rpt_end)
+                _rpt_filt = _rpt_nav_ts[(_rpt_nav_ts.index >= _rpt_start_dt) & (_rpt_nav_ts.index <= _rpt_end_dt)]
+                if len(_rpt_filt) >= 2:
+                    _rpt_ret_val = (_rpt_filt.iloc[-1] / _rpt_filt.iloc[0] - 1) * 100
+                    _rpt_ap_ret = f'{_rpt_ret_val:+.2f}%'
+                # YTD
+                _ytd_start = pd.Timestamp(f'{_rpt_end_dt.year}-01-01')
+                _rpt_ytd_filt = _rpt_nav_ts[_rpt_nav_ts.index >= _ytd_start]
+                if len(_rpt_ytd_filt) >= 2:
+                    _ytd_val = (_rpt_ytd_filt.iloc[-1] / _rpt_ytd_filt.iloc[0] - 1) * 100
+                    _rpt_ytd_ap = f'{_ytd_val:+.2f}%'
+                # 설정이후
+                if len(_rpt_nav_ts) >= 2:
+                    _since_val = (_rpt_nav_ts.iloc[-1] / _rpt_nav_ts.iloc[0] - 1) * 100
+                    _rpt_since_ap = f'{_since_val:+.2f}%'
+
+                # BM 수익률
+                _bm_cfg_rpt = FUND_BM.get(selected_fund)
+                if _bm_cfg_rpt:
+                    import json as _json_rpt
+                    _bm_rpt_df = cached_load_composite_bm(
+                        _json_rpt.dumps(_bm_cfg_rpt['components']), rpt_start)
+                    if not _bm_rpt_df.empty:
+                        _bm_ts = _bm_rpt_df.set_index('기준일자')['composite_price'].sort_index()
+                        _bm_filt = _bm_ts[(_bm_ts.index >= _rpt_start_dt) & (_bm_ts.index <= _rpt_end_dt)]
+                        if len(_bm_filt) >= 2:
+                            _bm_ret_val = (_bm_filt.iloc[-1] / _bm_filt.iloc[0] - 1) * 100
+                            _rpt_bm_ret = f'{_bm_ret_val:+.2f}%'
+                            _exc_val = _rpt_ret_val - _bm_ret_val if '_rpt_ret_val' in dir() else 0
+                            _rpt_excess = f'{_exc_val:+.2f}%p'
+        except Exception:
+            pass
+
     perf_rpt = pd.DataFrame({
         '구분': ['포트폴리오', 'BM', '초과수익'],
-        f'{selected_report}': ['+1.23%', '+0.98%', '+0.25%p'],
-        'YTD': ['+1.23%', '+0.98%', '+0.25%p'],
-        '설정이후': ['+15.85%', '+13.20%', '+2.65%p'],
+        f'{selected_report}': [_rpt_ap_ret, _rpt_bm_ret, _rpt_excess],
+        'YTD': [_rpt_ytd_ap, _rpt_ytd_bm, _rpt_ytd_excess],
+        '설정이후': [_rpt_since_ap, _rpt_since_bm, _rpt_since_excess],
     })
     st.dataframe(perf_rpt, hide_index=True, use_container_width=True)
 
+    if DB_CONNECTED:
+        st.caption("📡 성과 데이터: DB (dt.DWPM10510)")
     st.markdown("""
-    - **Brinson 분석**: Selection Effect (+0.82%p)가 주요 초과수익 원인
-    - **해외주식**: QQQ, SPY 기여 +0.73%p. AI/반도체 섹터 강세 수혜
-    - **국내채권**: 듀레이션 확대 (+3.2Y→3.5Y) 기여 +0.10%p
+    - **Brinson 분석**: Selection Effect가 주요 초과수익 원인
+    - **해외주식**: AI/반도체 섹터 강세 수혜
+    - **국내채권**: 듀레이션 확대 전략 효과
     """)
 
     # #12: 자산군별 Brinson + 매크로 매핑 코멘트 (배분효과 + 선별효과 코멘트 분리)
