@@ -1064,6 +1064,7 @@ def compute_brinson_attribution(fund_code: str, bm_code: str,
     # 1) PA 원천 데이터 로드
     pa_df = load_pa_source(fund_code, start_date, end_date)
     if pa_df.empty:
+        print(f"[Brinson] MA000410에 {fund_code} 기간 {start_date}~{end_date} 데이터 없음")
         return None
 
     # 2) 보유종목 → 자산군 매핑 (최신일 기준)
@@ -1071,10 +1072,11 @@ def compute_brinson_attribution(fund_code: str, bm_code: str,
     holdings = load_fund_holdings_classified(fund_code)
 
     if holdings is None or holdings.empty:
+        print(f"[Brinson] {fund_code} 보유종목 로드 실패")
         return None
 
     # ITEM_CD → 자산군 매핑 dict
-    item_to_class = dict(zip(holdings['종목코드'], holdings['자산군']))
+    item_to_class = dict(zip(holdings['ITEM_CD'], holdings['자산군']))
 
     # 3) PA 데이터에 자산군 부여
     pa_df['자산군'] = pa_df['sec_id'].map(item_to_class).fillna('유동성')
@@ -1182,7 +1184,7 @@ def compute_brinson_attribution(fund_code: str, bm_code: str,
     sec_contrib_data['기여수익률(%)'] = sec_contrib_data['종목손익'] / max(total_val, 1) * 100
 
     # 종목명 매핑
-    item_to_name = dict(zip(holdings['종목코드'], holdings['종목명']))
+    item_to_name = dict(zip(holdings['ITEM_CD'], holdings['ITEM_NM']))
     sec_contrib_data['종목명'] = sec_contrib_data['sec_id'].map(item_to_name).fillna(sec_contrib_data['sec_id'])
     sec_contrib_data = sec_contrib_data.sort_values('기여수익률(%)', ascending=False)
 

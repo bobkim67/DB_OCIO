@@ -1265,6 +1265,7 @@ with tabs[3]:
     # --- Brinson 데이터: DB → fallback ---
     _brinson_db = False
     _brinson_result = None
+    _brinson_fail_reason = ""
 
     if DB_CONNECTED and len(analysis_period) == 2:
         _pa_start = analysis_period[0].strftime('%Y%m%d')
@@ -1273,8 +1274,10 @@ with tabs[3]:
             _brinson_result = cached_compute_brinson(selected_fund, selected_fund, _pa_start, _pa_end)
             if _brinson_result and not _brinson_result['pa_df'].empty:
                 _brinson_db = True
-        except Exception:
-            pass
+            elif _brinson_result is None:
+                _brinson_fail_reason = f"MA000410에 '{selected_fund}' 펀드의 PA 데이터가 없거나 보유종목 매핑 실패"
+        except Exception as e:
+            _brinson_fail_reason = f"DB 조회 오류: {e}"
 
     if _brinson_db:
         _pa_data = _brinson_result['pa_df']
@@ -1346,7 +1349,10 @@ with tabs[3]:
         total_excess = total_alloc + total_select + total_cross
         residual = 0.05
         _sec_contrib_db = None
-        st.caption("⚠️ 목업 데이터")
+        if _brinson_fail_reason:
+            st.caption(f"⚠️ 목업 데이터 — {_brinson_fail_reason}")
+        else:
+            st.caption("⚠️ 목업 데이터")
 
     pa_tabs = st.tabs(["Brinson 분석", "수익률 비교", "비중 비교", "개별포트 분석"])
 
