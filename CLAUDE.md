@@ -214,9 +214,37 @@ Tab 2 VP 로딩 우선순위:
 - Brinson PA: `dt.MA000410` 테이블의 컬럼명은 영문(`sec_id`, `modify_unav_chg`), 보유종목(`load_fund_holdings_classified`)의 컬럼명도 영문(`ITEM_CD`, `ITEM_NM`)이므로 매핑 시 영문 컬럼명 사용.
 - 매크로 지표: `data_loader.py::MACRO_DATASETS` dict에 SCIP dataset_id/dataseries_id 매핑.
 
+## PA 정밀화 계획 (Phase 4 — R 동일 로직 구현)
+
+### 현재 Python PA의 한계
+- 기간 전체 합산 (R은 일별 x 종목별)
+- 비중: 기간말 val.last() (R은 T-1 시가평가액 / (T-1순자산+순설정금액))
+- FX 분리 미구현 (R은 pl_gb='환산'으로 증권/환산 분리)
+- 누적기여도: 단순 합산 (R은 경로의존적 누적)
+
+### 핵심 검증 완료 (2026-03-06)
+- `modify_unav_chg` 합산 = 기준가 변동 (완벽 일치, 08K88 20260305 검증)
+- `pl_gb` 6종류: 평가, 환산, 이자, 배당, 매매, 기타 — FX 분리 가능
+- 필요 데이터 전부 확보: MA000410(전컬럼), DWPM10510(순자산), DWCI10260(환율), DWPM12880(순설정)
+
+### 구현 순서
+1. `load_pa_source()` 확장 — position_gb, pl_gb, crrncy_cd, os_gb 추가
+2. 일별 T-1 비중 — val(T-1) / NAST_AMT(T-1), SHORT 음수 처리
+3. FX 분리 — pl_gb='환산' 필터
+4. 일별 종목 기여수익률 — 수익률 x 비중(T-1), 유동성잔차
+5. 누적기여도 — 경로의존적 공식
+6. Brinson 3-Factor 일별화
+7. 검증 — sum(종목기여도) + FX + 유동성 = 포트수익률
+
+### R 코드 참조 파일
+- `General_Backtest/04_사후분석/func_펀드_PA_모듈_adj_GENERAL_final.R` — PA 데이터 전처리, 비중계산, FX분리
+- `General_Backtest/04_사후분석/func_PA_결합및요약용_final.R` — Brinson 3-Factor, 누적기여도
+
 ## PDCA Status
 
 - Feature: DB_OCIO_Webview
-- Phase: Do (DB 연동 Phase 3 완료 — 전체 탭 DB 연동)
+- Phase: Do (Phase 4 PA 정밀화 준비 완료)
+- Phase 3 완료: 전체 탭 DB 연동
+- Phase 4 예정: PA 정밀화 (R 동일 로직)
 - Plan/Design 문서: `docs/` 디렉토리
 - 개발일지: `devlog/` 디렉토리 (일별)

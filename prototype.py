@@ -1309,9 +1309,13 @@ with tabs[3]:
         total_select = _brinson_result['total_select']
         total_cross = _brinson_result['total_cross']
         total_excess = _brinson_result['total_excess']
-        residual = 0.0
+        residual = _brinson_result.get('residual', 0.0)
+        _fx_contrib = _brinson_result.get('fx_contrib', 0.0)
+        _daily_brinson = _brinson_result.get('daily_brinson')
         _sec_contrib_db = _brinson_result.get('sec_contrib')
-        st.caption("📡 DB 데이터 (dt.MA000410)")
+        _period_ap_ret = _brinson_result.get('period_ap_return', 0)
+        _period_bm_ret = _brinson_result.get('period_bm_return', 0)
+        st.caption("📡 DB 데이터 (dt.MA000410) — 일별 정밀 PA")
     else:
         # fallback mockup
         if pa_method == "5분류":
@@ -1348,6 +1352,10 @@ with tabs[3]:
         total_cross = sum(cross_effects)
         total_excess = total_alloc + total_select + total_cross
         residual = 0.05
+        _fx_contrib = 0.0
+        _daily_brinson = None
+        _period_ap_ret = 0
+        _period_bm_ret = 0
         _sec_contrib_db = None
         if _brinson_fail_reason:
             st.caption(f"⚠️ 목업 데이터 — {_brinson_fail_reason}")
@@ -1371,7 +1379,12 @@ with tabs[3]:
             st.dataframe(brinson_df, hide_index=True, use_container_width=True)
 
             st.markdown("##### 초과성과 요인분해")
-            _excess_total = total_excess + residual
+            _excess_total = total_excess
+            decomp_rows = [
+                ('AP 수익률', f"{_period_ap_ret:+.2f}%", ''),
+                ('BM 수익률', f"{_period_bm_ret:+.2f}%", ''),
+                ('초과수익률', f"{_excess_total:+.2f}%", '100%'),
+            ]
             decomp_df = pd.DataFrame({
                 '요인': ['Allocation Effect', 'Selection Effect', 'Cross Effect', '유동성/기타', '합계'],
                 '기여도': [f"{total_alloc:+.2f}%", f"{total_select:+.2f}%", f"{total_cross:+.2f}%",
@@ -1382,12 +1395,14 @@ with tabs[3]:
                         f"{abs(residual)/max(abs(_excess_total),0.01)*100:.0f}%",
                         '100%']
             })
+            if _fx_contrib != 0:
+                st.caption(f"FX 기여: {_fx_contrib:+.2f}%")
             st.dataframe(decomp_df, hide_index=True, use_container_width=True)
 
         with col_chart:
             fig_wf = go.Figure(go.Waterfall(
                 name="", orientation="v",
-                x=['Allocation', 'Selection', 'Cross', '유동성/기타', '합계'],
+                x=['Allocation', 'Selection', 'Cross', '유동성/기타', '초과수익률'],
                 y=[total_alloc, total_select, total_cross, residual, _excess_total],
                 measure=['relative', 'relative', 'relative', 'relative', 'total'],
                 connector_line_color='#888',
@@ -1400,6 +1415,26 @@ with tabs[3]:
             ))
             fig_wf.update_layout(title='초과성과 요인분해 (Brinson)', height=450, yaxis_title='기여도 (%)')
             st.plotly_chart(fig_wf, use_container_width=True)
+
+            # 일별 누적 Brinson 추이 차트
+            if _daily_brinson is not None and not _daily_brinson.empty:
+                fig_db = go.Figure()
+                fig_db.add_trace(go.Scatter(
+                    x=_daily_brinson['기준일자'], y=_daily_brinson['alloc_cum'],
+                    name='Allocation', line=dict(color='#636EFA', width=1.5)))
+                fig_db.add_trace(go.Scatter(
+                    x=_daily_brinson['기준일자'], y=_daily_brinson['select_cum'],
+                    name='Selection', line=dict(color='#EF553B', width=1.5)))
+                fig_db.add_trace(go.Scatter(
+                    x=_daily_brinson['기준일자'], y=_daily_brinson['cross_cum'],
+                    name='Cross', line=dict(color='#00CC96', width=1.5)))
+                fig_db.add_trace(go.Scatter(
+                    x=_daily_brinson['기준일자'], y=_daily_brinson['excess_cum'],
+                    name='합계', line=dict(color='#333', width=2.5, dash='dot')))
+                fig_db.update_layout(title='일별 누적 Brinson 효과', height=350,
+                                      yaxis_title='누적 기여도 (%)', hovermode='x unified',
+                                      legend=dict(orientation='h', y=1.05))
+                st.plotly_chart(fig_db, use_container_width=True)
 
     with pa_tabs[1]:
         # AP vs BM 누적수익률: DB NAV 데이터 활용

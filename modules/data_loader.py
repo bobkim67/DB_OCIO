@@ -208,8 +208,10 @@ def load_fund_holdings_history(fund_code: str, start_date: str = None) -> pd.Dat
 
 def load_pa_source(fund_code: str, start_date: str = None, end_date: str = None) -> pd.DataFrame:
     """
-    펀드 PA 원천 데이터 로드.
+    펀드 PA 원천 데이터 로드 (확장).
     R: get_PA_source_data(fund_cd, start_date, end_date)
+
+    Phase 4: position_gb, pl_gb, crrncy_cd, os_gb 추가.
     """
     conn = get_pandas_connection('dt')
     try:
@@ -225,13 +227,69 @@ def load_pa_source(fund_code: str, start_date: str = None, end_date: str = None)
 
         sql = f"""
             SELECT pr_date, fund_id, asset_gb, sec_id,
+                   position_gb, pl_gb, crrncy_cd, os_gb,
                    amt, val, std_val, modify_unav_chg
             FROM MA000410
             WHERE {where}
-            ORDER BY pr_date, asset_gb
+            ORDER BY pr_date, sec_id
         """
         df = pd.read_sql(sql, conn, params=params)
         df['기준일자'] = pd.to_datetime(df['pr_date'], format='%Y%m%d')
+        return df
+    finally:
+        conn.close()
+
+
+def _load_daily_nast(fund_code: str, start_date: str = None, end_date: str = None) -> pd.DataFrame:
+    """일별 순자산/기준가 (DWPM10510)."""
+    conn = get_pandas_connection('dt')
+    try:
+        conditions = ["FUND_CD = %s", "IMC_CD = '003228'"]
+        params = [fund_code]
+        if start_date:
+            conditions.append("STD_DT >= %s")
+            params.append(start_date)
+        if end_date:
+            conditions.append("STD_DT <= %s")
+            params.append(end_date)
+        where = " AND ".join(conditions)
+        sql = f"""
+            SELECT STD_DT, MOD_STPR, NAST_AMT, PDD_CHNG_STPR
+            FROM DWPM10510
+            WHERE {where}
+            ORDER BY STD_DT
+        """
+        df = pd.read_sql(sql, conn, params=params)
+        df['기준일자'] = pd.to_datetime(df['STD_DT'].astype(str), format='%Y%m%d')
+        return df
+    finally:
+        conn.close()
+
+
+def _load_net_subscription(fund_code: str, start_date: str = None, end_date: str = None) -> pd.DataFrame:
+    """일별 순설정금액 (DWPM12880)."""
+    conn = get_pandas_connection('dt')
+    try:
+        conditions = ["fund_cd = %s"]
+        params = [fund_code]
+        if start_date:
+            conditions.append("tr_dt >= %s")
+            params.append(start_date)
+        if end_date:
+            conditions.append("tr_dt <= %s")
+            params.append(end_date)
+        where = " AND ".join(conditions)
+        sql = f"""
+            SELECT tr_dt,
+                   SUM(ocpy_flct_amt) as net_subscription
+            FROM DWPM12880
+            WHERE {where}
+            GROUP BY tr_dt
+            ORDER BY tr_dt
+        """
+        df = pd.read_sql(sql, conn, params=params)
+        if not df.empty:
+            df['기준일자'] = pd.to_datetime(df['tr_dt'].astype(str), format='%Y%m%d')
         return df
     finally:
         conn.close()
@@ -1043,128 +1101,373 @@ def load_vp_nav(fund_desc_or_code: str, start_date: str = None) -> pd.DataFrame:
 # Brinson PA 계산
 # ============================================================
 
+def _map_bm_component_to_asset_class(comp_name: str) -> str:
+    """BM 컴포넌트명 → 자산군 매핑."""
+    nm = comp_name.upper()
+    if 'KOSPI' in nm:
+        return '국내주식'
+    if 'KIS' in nm and 'CALL' in nm:
+        return '유동성'
+    if 'KIS' in nm:
+        return '국내채권'
+    if 'BLOOMBERG' in nm or 'AGG' in nm:
+        return '해외채권'
+    if any(k in nm for k in ['MSCI', 'S&P', 'ACWI']):
+        return '해외주식'
+    return '해외주식'
+
+
+def _load_bm_daily_returns_by_class(bm_info: dict, start_date: str, end_date: str,
+                                     asset_classes_8: list) -> tuple:
+    """
+    BM 컴포넌트 일별 수익률 → 자산군별 집계.
+
+    Returns: (bm_weights_static, bm_daily_df)
+        bm_weights_static: {자산군: 비중(%)}
+        bm_daily_df: DataFrame(기준일자, 자산군별 일별 수익률 컬럼들)
+    """
+    bm_weights = {ac: 0.0 for ac in asset_classes_8}
+    components = bm_info.get('components', [])
+    if not components:
+        return bm_weights, pd.DataFrame()
+
+    # 컴포넌트 → 자산군 매핑 및 비중 합산
+    comp_class_map = {}
+    for comp in components:
+        ac = _map_bm_component_to_asset_class(comp['name'])
+        bm_weights[ac] += comp['weight'] * 100
+        comp_class_map[comp['name']] = ac
+
+    # 각 컴포넌트의 SCIP 일별 수익률 로드
+    comp_returns = {}
+    for comp in components:
+        df = load_scip_bm_prices(comp['dataset_id'], comp['dataseries_id'],
+                                  start_date, comp.get('currency'))
+        if df.empty or len(df) < 2:
+            continue
+        df = df.set_index('기준일자').sort_index()
+        df = df[~df.index.duplicated(keep='last')]
+        comp_returns[comp['name']] = {
+            'daily_ret': df['value'].pct_change(),
+            'weight': comp['weight'],
+            'class': comp_class_map[comp['name']]
+        }
+
+    if not comp_returns:
+        return bm_weights, pd.DataFrame()
+
+    # 공통 날짜
+    all_dates = None
+    for cr in comp_returns.values():
+        idx = cr['daily_ret'].dropna().index
+        all_dates = idx if all_dates is None else all_dates.intersection(idx)
+    if all_dates is None or len(all_dates) < 2:
+        return bm_weights, pd.DataFrame()
+    all_dates = all_dates.sort_values()
+
+    # 자산군별 일별 수익률 (가중평균)
+    bm_daily = pd.DataFrame(index=all_dates)
+    for ac in asset_classes_8:
+        bm_daily[ac] = 0.0
+
+    for cr in comp_returns.values():
+        ac = cr['class']
+        w = cr['weight']
+        total_w = bm_weights[ac] / 100 if bm_weights[ac] > 0 else 1
+        # 자산군 내 비중 비례
+        bm_daily[ac] += cr['daily_ret'].reindex(all_dates).fillna(0) * (w / total_w)
+
+    # 날짜 필터
+    sd = pd.Timestamp(start_date) if len(start_date) == 8 else pd.Timestamp(start_date)
+    ed = pd.Timestamp(end_date) if len(end_date) == 8 else pd.Timestamp(end_date)
+    if len(start_date) == 8:
+        sd = pd.Timestamp(f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:8]}")
+    if len(end_date) == 8:
+        ed = pd.Timestamp(f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:8]}")
+    bm_daily = bm_daily[(bm_daily.index >= sd) & (bm_daily.index <= ed)]
+
+    bm_daily = bm_daily.reset_index().rename(columns={'index': '기준일자'})
+    return bm_weights, bm_daily
+
+
 def compute_brinson_attribution(fund_code: str, bm_code: str,
                                 start_date: str, end_date: str,
                                 asset_classes_8: list = None) -> dict:
     """
-    Brinson 3-Factor Attribution 계산.
+    Brinson 3-Factor Attribution 계산 (Phase 4: 일별 정밀 로직).
 
-    MA000410에서 AP 종목별 일별 손익 → 자산군별 집계 → BM 대비 비교.
-    BM은 FUND_BM 복합 BM 비중 기반.
+    R 동일 로직:
+    - 일별 x 종목별 기여수익률
+    - T-1 비중 기준
+    - pl_gb='환산'으로 FX 분리
+    - 경로의존적 누적기여도
+    - 유동성잔차 = 포트수익률 - sum(종목기여도)
 
     Returns: dict with keys:
-      'pa_df': DataFrame (자산군, AP비중, BM비중, AP수익률, BM수익률, Allocation, Selection, Cross)
+      'pa_df': DataFrame (자산군, AP비중, BM비중, AP수익률, BM수익률, Allocation, Selection, Cross, 기여수익률)
       'total_alloc', 'total_select', 'total_cross', 'total_excess'
       'period_ap_return', 'period_bm_return'
-      'sec_contrib': DataFrame (종목별 기여도)
+      'sec_contrib': DataFrame (종목별 기여도, top 20)
+      'daily_brinson': DataFrame (일별 누적 Brinson)
+      'fx_contrib': float (FX 기여수익률 %)
+      'residual': float (유동성/기타 잔차 %)
     """
     if asset_classes_8 is None:
         asset_classes_8 = ['국내주식', '해외주식', '국내채권', '해외채권', '대체투자', 'FX', '모펀드', '유동성']
 
-    # 1) PA 원천 데이터 로드
+    # ── 1) PA 원천 데이터 로드 (확장 컬럼) ──
     pa_df = load_pa_source(fund_code, start_date, end_date)
     if pa_df.empty:
-        print(f"[Brinson] MA000410에 {fund_code} 기간 {start_date}~{end_date} 데이터 없음")
+        logger.warning(f"[Brinson] MA000410에 {fund_code} 기간 {start_date}~{end_date} 데이터 없음")
         return None
 
-    # 2) 보유종목 → 자산군 매핑 (최신일 기준)
-    latest_date = pa_df['pr_date'].max()
+    # ── 2) 보유종목 → 자산군 매핑 ──
     holdings = load_fund_holdings_classified(fund_code)
-
     if holdings is None or holdings.empty:
-        print(f"[Brinson] {fund_code} 보유종목 로드 실패")
+        logger.warning(f"[Brinson] {fund_code} 보유종목 로드 실패")
         return None
 
-    # ITEM_CD → 자산군 매핑 dict
     item_to_class = dict(zip(holdings['ITEM_CD'], holdings['자산군']))
-
-    # 3) PA 데이터에 자산군 부여
+    item_to_name = dict(zip(holdings['ITEM_CD'], holdings['ITEM_NM']))
     pa_df['자산군'] = pa_df['sec_id'].map(item_to_class).fillna('유동성')
 
-    # 4) 자산군별 AP 기간 손익 집계
-    # modify_unav_chg = 수정기준가 변동분 (일별 자산군별 손익)
-    ap_by_class = pa_df.groupby('자산군').agg(
-        총손익=('modify_unav_chg', 'sum'),
-        총평가액=('val', lambda x: x.iloc[-1] if len(x) > 0 else 0)
-    ).reindex(asset_classes_8).fillna(0)
+    # ── 3) 일별 순자산 로드 (T-1 비중 기준, start_date 이전 1일 포함) ──
+    # T-1 기준가가 필요하므로 start_date보다 30일 이전부터 로드
+    _nast_start = str(max(int(start_date) - 100, 20200101))  # 여유분
+    nast_df = _load_daily_nast(fund_code, _nast_start, end_date)
 
-    total_val = ap_by_class['총평가액'].sum()
-    if total_val == 0:
-        total_val = 1  # zero-division 방지
+    # pr_date를 int로 통일 (DB에서 str/int 혼재 가능)
+    pa_df['pr_date'] = pa_df['pr_date'].astype(int)
+    dates = sorted(pa_df['pr_date'].unique())
+    if len(dates) < 2:
+        logger.warning(f"[Brinson] {fund_code} 기간 내 데이터 2일 미만")
+        return None
 
-    ap_weights = (ap_by_class['총평가액'] / total_val * 100).to_dict()
-    ap_returns = {}
-    for ac in asset_classes_8:
-        ev = ap_by_class.loc[ac, '총평가액'] if ac in ap_by_class.index else 0
-        pl = ap_by_class.loc[ac, '총손익'] if ac in ap_by_class.index else 0
-        ap_returns[ac] = (pl / ev * 100) if ev > 0 else 0.0
+    # ── 4) 일별 종목별 기여수익률 계산 ──
+    # modify_unav_chg는 기준가 변동 기여분 (검증: sum = MOD_STPR 변동)
+    # 기여수익률(%) = modify_unav_chg / MOD_STPR(T-1) * 100
 
-    # 5) BM 비중/수익률 — FUND_BM에서 가져오기
+    # 일별 기준가 dict + 정렬된 날짜 리스트 (T-1 탐색용)
+    nav_dict = {}
+    nav_dates_sorted = []
+    if not nast_df.empty:
+        nast_df['_dt_int'] = nast_df['STD_DT'].astype(int)
+        for _, r in nast_df.iterrows():
+            nav_dict[r['_dt_int']] = {'mod_stpr': r['MOD_STPR'], 'nast_amt': r['NAST_AMT']}
+        nav_dates_sorted = sorted(nav_dict.keys())
+
+    # FX 분리: pl_gb='환산' 행의 modify_unav_chg
+    fx_total = 0.0
+    ex_fx_total = 0.0
+
+    daily_records = []  # 일별 자산군별 집계
+
+    # 종목별 기여도 누적 (전 기간)
+    sec_contrib_acc = {}  # sec_id → {modify_sum, val_last, fx_sum}
+
+    for i, dt in enumerate(dates):
+        day_data = pa_df[pa_df['pr_date'] == dt]
+        # T-1 기준가: NAST 테이블에서 dt보다 작은 최근 날짜
+        prev_nast_dates = [d for d in nav_dates_sorted if d < dt]
+        prev_nast_dt = prev_nast_dates[-1] if prev_nast_dates else None
+        mod_stpr_prev = nav_dict.get(prev_nast_dt, {}).get('mod_stpr', None) if prev_nast_dt else None
+
+        if mod_stpr_prev is None or mod_stpr_prev == 0:
+            # 첫 날이거나 T-1 기준가 없음 → 비중 계산 불가, skip
+            # 하지만 종목 val 축적은 계속
+            for _, row in day_data.iterrows():
+                sid = row['sec_id']
+                if sid not in sec_contrib_acc:
+                    sec_contrib_acc[sid] = {'modify_sum': 0, 'val_last': 0, 'fx_sum': 0, '자산군': row['자산군']}
+                sec_contrib_acc[sid]['val_last'] = row['val'] if pd.notna(row['val']) else 0
+            continue
+
+        # 일별 포트 수익률 = sum(modify_unav_chg) / MOD_STPR(T-1)
+        day_total_modify = day_data['modify_unav_chg'].sum()
+        daily_port_ret = day_total_modify / mod_stpr_prev
+
+        # FX 분리
+        day_fx = day_data[day_data['pl_gb'] == '환산']['modify_unav_chg'].sum()
+        day_ex_fx = day_total_modify - day_fx
+        fx_total += day_fx
+        ex_fx_total += day_ex_fx
+
+        # 종목별 T-1 평가액 → 비중
+        # MA000410의 val은 시가평가액. T-1 val로 비중 계산
+        # 동일 sec_id의 pl_gb별로 여러 행 존재 → sec_id 그룹핑
+        sec_day = day_data.groupby(['sec_id', '자산군']).agg(
+            modify_sum=('modify_unav_chg', 'sum'),
+            fx_modify=('modify_unav_chg', lambda x: x[day_data.loc[x.index, 'pl_gb'] == '환산'].sum()),
+            val_last=('val', 'last'),
+        ).reset_index()
+
+        # 자산군별 집계
+        class_day = {ac: {'modify': 0.0, 'fx_modify': 0.0, 'val_t1': 0.0} for ac in asset_classes_8}
+
+        for _, sr in sec_day.iterrows():
+            sid = sr['sec_id']
+            ac = sr['자산군']
+
+            # T-1 val 사용 (이전 누적 정보)
+            val_t1 = sec_contrib_acc.get(sid, {}).get('val_last', 0)
+            class_day[ac]['val_t1'] += val_t1
+            class_day[ac]['modify'] += sr['modify_sum']
+            class_day[ac]['fx_modify'] += sr['fx_modify']
+
+            # 누적 업데이트
+            if sid not in sec_contrib_acc:
+                sec_contrib_acc[sid] = {'modify_sum': 0, 'val_last': 0, 'fx_sum': 0, '자산군': ac}
+            sec_contrib_acc[sid]['modify_sum'] += sr['modify_sum']
+            sec_contrib_acc[sid]['fx_sum'] += sr['fx_modify']
+            sec_contrib_acc[sid]['val_last'] = sr['val_last'] if pd.notna(sr['val_last']) else sec_contrib_acc[sid]['val_last']
+
+        # 자산군별 일별 비중 (T-1 val 기준) 및 수익률
+        total_val_t1 = sum(c['val_t1'] for c in class_day.values())
+        if total_val_t1 == 0:
+            total_val_t1 = 1
+
+        rec = {'pr_date': dt, 'port_ret': daily_port_ret}
+        for ac in asset_classes_8:
+            w = class_day[ac]['val_t1'] / total_val_t1  # 비중 (0~1)
+            m = class_day[ac]['modify']
+            v = class_day[ac]['val_t1']
+            r = m / v if v > 0 else 0  # 자산군 수익률
+            contrib = m / mod_stpr_prev  # 기여수익률 (기준가 대비)
+            rec[f'{ac}_w'] = w
+            rec[f'{ac}_r'] = r
+            rec[f'{ac}_contrib'] = contrib
+        daily_records.append(rec)
+
+    if not daily_records:
+        logger.warning(f"[Brinson] {fund_code} 일별 레코드 생성 실패")
+        return None
+
+    daily_df = pd.DataFrame(daily_records)
+    daily_df['기준일자'] = pd.to_datetime(daily_df['pr_date'].astype(str), format='%Y%m%d')
+
+    # ── 5) BM 일별 수익률 로드 ──
     from config.funds import FUND_BM
     bm_info = FUND_BM.get(fund_code)
 
-    # BM 비중은 복합 BM 컴포넌트 weight 기반으로 자산군 매핑
-    # 간소화: 주식 지수 → 해외주식, 채권 지수 → 국내/해외채권, 기타 → 유동성
     bm_weights = {ac: 0.0 for ac in asset_classes_8}
-    bm_returns = {ac: 0.0 for ac in asset_classes_8}
+    bm_daily_df = pd.DataFrame()
 
     if bm_info:
-        for comp in bm_info.get('components', []):
-            w = comp['weight'] * 100
-            nm = comp['name'].upper()
-            if 'KOSPI' in nm:
-                bm_weights['국내주식'] += w
-            elif any(k in nm for k in ['MSCI', 'S&P', 'ACWI']):
-                bm_weights['해외주식'] += w
-            elif 'KIS' in nm and ('KTB' in nm or '종합' in nm or 'CALL' not in nm):
-                bm_weights['국내채권'] += w
-            elif 'BLOOMBERG' in nm or 'AGG' in nm:
-                bm_weights['해외채권'] += w
-            elif 'CALL' in nm:
-                bm_weights['유동성'] += w
-            else:
-                bm_weights['해외주식'] += w
+        bm_weights, bm_daily_df = _load_bm_daily_returns_by_class(
+            bm_info, start_date, end_date, asset_classes_8)
 
-        # BM 수익률: SCIP에서 기간 수익률 계산 시도
-        try:
-            bm_prices = load_composite_bm_prices(bm_info['components'], start_date)
-            if not bm_prices.empty:
-                # 기간 수익률 (end_date 근방)
-                bm_prices = bm_prices.sort_values('기준일자')
-                bm_prices_filt = bm_prices[
-                    (bm_prices['기준일자'] >= pd.Timestamp(start_date)) &
-                    (bm_prices['기준일자'] <= pd.Timestamp(end_date))
-                ]
-                if len(bm_prices_filt) >= 2:
-                    bm_total_ret = (bm_prices_filt['composite_price'].iloc[-1] /
-                                    bm_prices_filt['composite_price'].iloc[0] - 1) * 100
-                    # BM 수익률을 비중 기반으로 자산군에 배분 (근사)
-                    total_bm_w = sum(bm_weights.values())
-                    if total_bm_w > 0:
-                        for ac in asset_classes_8:
-                            bm_returns[ac] = bm_total_ret * (bm_weights[ac] / total_bm_w) if bm_weights[ac] > 0 else 0
-        except Exception:
-            pass
+    # ── 6) 일별 Brinson 3-Factor 계산 ──
+    # 공통 날짜 매칭
+    if not bm_daily_df.empty:
+        bm_daily_df = bm_daily_df.set_index('기준일자')
+        daily_df = daily_df.set_index('기준일자')
+        common_dates = daily_df.index.intersection(bm_daily_df.index).sort_values()
+
+        if len(common_dates) < 2:
+            # BM 데이터 매칭 실패 → AP 데이터만으로 진행
+            common_dates = daily_df.index.sort_values()
+            daily_df = daily_df.loc[common_dates]
+            bm_available = False
+        else:
+            daily_df = daily_df.loc[common_dates]
+            bm_daily_df = bm_daily_df.loc[common_dates]
+            bm_available = True
     else:
-        # BM 미설정 → AP 비중을 BM으로 사용 (peer comparison 불가)
-        bm_weights = ap_weights.copy()
+        daily_df = daily_df.set_index('기준일자')
+        common_dates = daily_df.index.sort_values()
+        daily_df = daily_df.loc[common_dates]
+        bm_available = False
 
-    # 6) Brinson 3-Factor 계산
+    # 일별 Brinson 효과 (비중은 %, 수익률은 소수)
+    brinson_daily = []
+    for ac in asset_classes_8:
+        ap_w_col = f'{ac}_w'
+        ap_r_col = f'{ac}_r'
+
+        for dt in common_dates:
+            ap_w = daily_df.loc[dt, ap_w_col] if ap_w_col in daily_df.columns else 0
+            ap_r = daily_df.loc[dt, ap_r_col] if ap_r_col in daily_df.columns else 0
+            bm_w = bm_weights.get(ac, 0) / 100  # % → 소수
+            bm_r = bm_daily_df.loc[dt, ac] if (bm_available and ac in bm_daily_df.columns) else 0
+
+            brinson_daily.append({
+                '기준일자': dt, '자산군': ac,
+                'ap_w': ap_w, 'bm_w': bm_w, 'ap_r': ap_r, 'bm_r': bm_r,
+                'alloc': (ap_w - bm_w) * bm_r,
+                'select': bm_w * (ap_r - bm_r),
+                'cross': (ap_w - bm_w) * (ap_r - bm_r),
+            })
+
+    brinson_df = pd.DataFrame(brinson_daily)
+
+    # ── 7) 기간 집계 ──
+    # 누적 수익률 (경로의존적)
+    daily_df['cum_port_ret'] = (1 + daily_df['port_ret']).cumprod() - 1
+    period_ap_return = daily_df['cum_port_ret'].iloc[-1] * 100 if len(daily_df) > 0 else 0
+
+    # BM 누적 수익률
+    if bm_available:
+        bm_composite_ret = pd.Series(0.0, index=common_dates)
+        for ac in asset_classes_8:
+            w = bm_weights.get(ac, 0) / 100
+            if ac in bm_daily_df.columns:
+                bm_composite_ret += bm_daily_df[ac] * w
+        period_bm_return = ((1 + bm_composite_ret).cumprod().iloc[-1] - 1) * 100
+    else:
+        period_bm_return = 0
+
+    # 자산군별 기간 집계 (AP 비중: 평균, AP 수익률: 누적)
+    ap_period_weights = {}
+    ap_period_returns = {}
+    for ac in asset_classes_8:
+        w_col = f'{ac}_w'
+        contrib_col = f'{ac}_contrib'
+        if w_col in daily_df.columns:
+            ap_period_weights[ac] = daily_df[w_col].mean() * 100  # 기간 평균 비중
+        else:
+            ap_period_weights[ac] = 0
+        if contrib_col in daily_df.columns:
+            # 누적 기여수익률 = sum(일별 기여) (기준가 대비이므로 합산 가능)
+            cum_contrib = daily_df[contrib_col].sum() * 100
+            avg_w = ap_period_weights[ac]
+            ap_period_returns[ac] = (cum_contrib / avg_w * 100) if avg_w > 0 else 0
+        else:
+            ap_period_returns[ac] = 0
+
+    # BM 자산군별 기간 수익률
+    bm_period_returns = {}
+    for ac in asset_classes_8:
+        if bm_available and ac in bm_daily_df.columns:
+            bm_period_returns[ac] = ((1 + bm_daily_df[ac]).cumprod().iloc[-1] - 1) * 100
+        else:
+            bm_period_returns[ac] = 0
+
+    # Brinson 기간 합계 (일별 합산)
+    if not brinson_df.empty:
+        period_brinson = brinson_df.groupby('자산군').agg(
+            alloc=('alloc', 'sum'), select=('select', 'sum'), cross=('cross', 'sum')
+        ).reindex(asset_classes_8).fillna(0)
+    else:
+        period_brinson = pd.DataFrame(0, index=asset_classes_8, columns=['alloc', 'select', 'cross'])
+
+    # 결과 테이블 조립
     results = []
     for ac in asset_classes_8:
-        ap_w = ap_weights.get(ac, 0)
+        ap_w = ap_period_weights.get(ac, 0)
         bm_w = bm_weights.get(ac, 0)
-        ap_r = ap_returns.get(ac, 0)
-        bm_r = bm_returns.get(ac, 0)
-        alloc = (ap_w - bm_w) * bm_r / 100
-        select = bm_w * (ap_r - bm_r) / 100
-        cross = (ap_w - bm_w) * (ap_r - bm_r) / 100
-        contrib = ap_w * ap_r / 100
+        ap_r = ap_period_returns.get(ac, 0)
+        bm_r = bm_period_returns.get(ac, 0)
+        alloc = period_brinson.loc[ac, 'alloc'] * 100 if ac in period_brinson.index else 0
+        sel = period_brinson.loc[ac, 'select'] * 100 if ac in period_brinson.index else 0
+        crs = period_brinson.loc[ac, 'cross'] * 100 if ac in period_brinson.index else 0
+        # 기여수익률: 자산군 내 modify_unav_chg 합계 / 기준가(첫날) 기반
+        contrib_col = f'{ac}_contrib'
+        cum_contrib = daily_df[contrib_col].sum() * 100 if contrib_col in daily_df.columns else 0
         results.append({
             '자산군': ac, 'AP비중': round(ap_w, 2), 'BM비중': round(bm_w, 2),
             'AP수익률': round(ap_r, 2), 'BM수익률': round(bm_r, 2),
-            'Allocation': round(alloc, 4), 'Selection': round(select, 4),
-            'Cross': round(cross, 4), '기여수익률': round(contrib, 4)
+            'Allocation': round(alloc, 4), 'Selection': round(sel, 4),
+            'Cross': round(crs, 4), '기여수익률': round(cum_contrib, 4)
         })
 
     result_df = pd.DataFrame(results)
@@ -1172,34 +1475,63 @@ def compute_brinson_attribution(fund_code: str, bm_code: str,
     total_select = result_df['Selection'].sum()
     total_cross = result_df['Cross'].sum()
 
-    # 7) 종목별 기여도 Top
-    sec_contrib_data = pa_df.groupby(['자산군', 'sec_id']).agg(
-        종목손익=('modify_unav_chg', 'sum'),
-        종목평가액=('val', 'last')
-    ).reset_index()
-    sec_contrib_data['수익률(%)'] = np.where(
-        sec_contrib_data['종목평가액'] > 0,
-        sec_contrib_data['종목손익'] / sec_contrib_data['종목평가액'] * 100, 0
-    )
-    sec_contrib_data['기여수익률(%)'] = sec_contrib_data['종목손익'] / max(total_val, 1) * 100
+    # ── 8) 유동성/기타 잔차 ──
+    total_excess = period_ap_return - period_bm_return
+    brinson_sum = total_alloc + total_select + total_cross
+    residual = total_excess - brinson_sum
 
-    # 종목명 매핑
-    item_to_name = dict(zip(holdings['ITEM_CD'], holdings['ITEM_NM']))
-    sec_contrib_data['종목명'] = sec_contrib_data['sec_id'].map(item_to_name).fillna(sec_contrib_data['sec_id'])
-    sec_contrib_data = sec_contrib_data.sort_values('기여수익률(%)', ascending=False)
+    # ── 9) FX 기여수익률 ──
+    # 기간 시작 기준가 (T-1 of first date)
+    first_date_prev = [d for d in nav_dates_sorted if d < dates[0]]
+    first_nav_dt = first_date_prev[-1] if first_date_prev else dates[0]
+    first_nav = nav_dict.get(first_nav_dt, {}).get('mod_stpr', None)
+    if first_nav is None or first_nav == 0:
+        first_nav = nav_dict.get(dates[0], {}).get('mod_stpr', 1)
+    fx_contrib_pct = (fx_total / first_nav * 100) if first_nav > 0 else 0
 
-    period_ap_return = sum(ap_returns[ac] * ap_weights.get(ac, 0) / 100 for ac in asset_classes_8)
-    period_bm_return = sum(bm_returns[ac] * bm_weights.get(ac, 0) / 100 for ac in asset_classes_8)
+    # ── 10) 종목별 기여도 (전 기간 누적) ──
+    sec_rows = []
+    for sid, info in sec_contrib_acc.items():
+        val = info['val_last']
+        modify = info['modify_sum']
+        ret_pct = (modify / val * 100) if val > 0 else 0
+        contrib_pct = (modify / first_nav * 100) if first_nav > 0 else 0
+        sec_rows.append({
+            '자산군': info['자산군'],
+            'sec_id': sid,
+            '종목명': item_to_name.get(sid, sid),
+            '수익률(%)': round(ret_pct, 4),
+            '기여수익률(%)': round(contrib_pct, 4),
+            'FX기여(%)': round((info['fx_sum'] / first_nav * 100) if first_nav > 0 else 0, 4),
+        })
+    sec_contrib_data = pd.DataFrame(sec_rows)
+    if not sec_contrib_data.empty:
+        sec_contrib_data = sec_contrib_data.sort_values('기여수익률(%)', ascending=False)
+
+    # ── 11) 일별 누적 Brinson (차트용) ──
+    daily_brinson_chart = None
+    if not brinson_df.empty:
+        dbc = brinson_df.groupby('기준일자').agg(
+            alloc=('alloc', 'sum'), select=('select', 'sum'), cross=('cross', 'sum')
+        ).sort_index()
+        dbc['alloc_cum'] = dbc['alloc'].cumsum() * 100
+        dbc['select_cum'] = dbc['select'].cumsum() * 100
+        dbc['cross_cum'] = dbc['cross'].cumsum() * 100
+        dbc['excess_cum'] = dbc['alloc_cum'] + dbc['select_cum'] + dbc['cross_cum']
+        daily_brinson_chart = dbc.reset_index()
 
     return {
         'pa_df': result_df,
         'total_alloc': total_alloc,
         'total_select': total_select,
         'total_cross': total_cross,
-        'total_excess': total_alloc + total_select + total_cross,
+        'total_excess': total_excess,
         'period_ap_return': period_ap_return,
         'period_bm_return': period_bm_return,
-        'sec_contrib': sec_contrib_data[['자산군', '종목명', '수익률(%)', '기여수익률(%)']].head(20),
+        'sec_contrib': sec_contrib_data[['자산군', '종목명', '수익률(%)', '기여수익률(%)']].head(20) if not sec_contrib_data.empty else pd.DataFrame(),
+        'daily_brinson': daily_brinson_chart,
+        'fx_contrib': fx_contrib_pct,
+        'residual': residual,
     }
 
 
