@@ -22,7 +22,7 @@ from modules.data_loader import (
     load_composite_bm_prices, load_dt_bm_prices, load_mp_weights_8class,
     load_vp_weights_8class, load_vp_nav, load_vp_rebal_date,
     load_all_fund_data, parse_data_blob,
-    compute_brinson_attribution,
+    compute_brinson_attribution, compute_single_port_pa,
     load_macro_timeseries, load_macro_period_returns,
     load_holdings_history_8class,
     _FUND_INCEPTION_BASE,
@@ -99,6 +99,10 @@ def cached_load_vp_rebal_date(fund_desc):
 @st.cache_data(ttl=600)
 def cached_compute_brinson(fund_code, bm_code, start_date, end_date):
     return compute_brinson_attribution(fund_code, bm_code, start_date, end_date)
+
+@st.cache_data(ttl=600, show_spinner=False)
+def cached_compute_single_port_pa(fund_code, start_date, end_date, fx_split=True, mapping_method='방법3'):
+    return compute_single_port_pa(fund_code, start_date, end_date, fx_split, mapping_method)
 
 @st.cache_data(ttl=600)
 def cached_load_macro_timeseries(keys_tuple=None, start_date='2017-01-01'):
@@ -1304,14 +1308,17 @@ with tabs[3]:
 
     st.markdown("---")
 
-    # --- Brinson 데이터: DB → fallback ---
+    # --- PA 데이터: DB → fallback ---
     _brinson_db = False
     _brinson_result = None
     _brinson_fail_reason = ""
+    _single_pa_result = None
+    _single_pa_db = False
 
     if DB_CONNECTED and len(analysis_period) == 2:
         _pa_start = analysis_period[0].strftime('%Y%m%d')
         _pa_end = analysis_period[1].strftime('%Y%m%d')
+        # 1) Brinson 3-Factor (기존)
         try:
             _brinson_result = cached_compute_brinson(selected_fund, selected_fund, _pa_start, _pa_end)
             if _brinson_result and not _brinson_result['pa_df'].empty:
@@ -1320,6 +1327,14 @@ with tabs[3]:
                 _brinson_fail_reason = f"MA000410에 '{selected_fund}' 펀드의 PA 데이터가 없거나 보유종목 매핑 실패"
         except Exception as e:
             _brinson_fail_reason = f"DB 조회 오류: {e}"
+        # 2) Single Port PA (R 동일 정밀 PA)
+        try:
+            _single_pa_result = cached_compute_single_port_pa(
+                selected_fund, _pa_start, _pa_end, fx_split=pa_fx, mapping_method='방법3')
+            if _single_pa_result is not None:
+                _single_pa_db = True
+        except Exception as e:
+            pass  # Brinson fallback으로 진행
 
     if _brinson_db:
         _pa_data = _brinson_result['pa_df']
@@ -1404,21 +1419,36 @@ with tabs[3]:
         else:
             st.caption("⚠️ 목업 데이터")
 
-    pa_tabs = st.tabs(["Brinson 분석", "수익률 비교", "비중 비교", "개별포트 분석"])
+    pa_tabs = st.tabs(["Brinson 분석", "수익률 비교", "비중 비교", "개별포트 분석", "기여수익률 추이"])
 
     with pa_tabs[0]:
         col_tbl, col_chart = st.columns([2, 3])
         with col_tbl:
             st.markdown("##### 자산군별 기여수익률")
-            brinson_df = pd.DataFrame({
-                '자산군': pa_asset_classes_display,
-                'AP비중': [f"{w:.1f}" for w in pa_ap_w_display],
-                'BM비중': [f"{w:.1f}" for w in pa_bm_w_display],
-                'AP수익률': [f"{r:+.2f}%" for r in pa_ap_ret_display],
-                'BM수익률': [f"{r:+.2f}%" for r in pa_bm_ret_display],
-                '기여수익률': [f"{c:+.2f}%" for c in contrib_ret],
-            })
-            st.dataframe(brinson_df, hide_index=True, use_container_width=True)
+            if _single_pa_db:
+                _spa_asset = _single_pa_result['asset_summary'].copy()
+                _spa_display = _spa_asset[_spa_asset['자산군'] != '포트폴리오'].copy()
+                _spa_port = _spa_asset[_spa_asset['자산군'] == '포트폴리오']
+                brinson_df = pd.DataFrame({
+                    '자산군': _spa_display['자산군'].tolist(),
+                    '순자산비중': [f"{w*100:.1f}%" for w in _spa_display['순자산비중']],
+                    '개별수익률': [f"{r*100:+.2f}%" for r in _spa_display['개별수익률']],
+                    '기여수익률': [f"{c*100:+.4f}%" for c in _spa_display['기여수익률']],
+                })
+                st.dataframe(brinson_df, hide_index=True, use_container_width=True)
+                if not _spa_port.empty:
+                    _port_ret = _spa_port.iloc[0]['개별수익률'] * 100
+                    st.caption(f"포트폴리오 수익률: **{_port_ret:+.4f}%**")
+            else:
+                brinson_df = pd.DataFrame({
+                    '자산군': pa_asset_classes_display,
+                    'AP비중': [f"{w:.1f}" for w in pa_ap_w_display],
+                    'BM비중': [f"{w:.1f}" for w in pa_bm_w_display],
+                    'AP수익률': [f"{r:+.2f}%" for r in pa_ap_ret_display],
+                    'BM수익률': [f"{r:+.2f}%" for r in pa_bm_ret_display],
+                    '기여수익률': [f"{c:+.2f}%" for c in contrib_ret],
+                })
+                st.dataframe(brinson_df, hide_index=True, use_container_width=True)
 
             st.markdown("##### 초과성과 요인분해")
             _excess_total = total_excess
@@ -1575,8 +1605,27 @@ with tabs[3]:
         col_pl, col_pr = st.columns(2)
         with col_pl:
             st.markdown("##### 종목별 기여수익률")
-            if _sec_contrib_db is not None and not _sec_contrib_db.empty:
+            if _single_pa_db:
+                _sec_sum = _single_pa_result['sec_summary'].copy()
+                _sec_sum = _sec_sum[~_sec_sum['종목코드'].isin(['유동성및기타'])].copy()
+                _sec_sum['개별수익률(%)'] = (_sec_sum['개별수익률'] * 100).round(4)
+                _sec_sum['기여수익률(%)'] = (_sec_sum['기여수익률'] * 100).round(4)
+                _sec_sum['비중(%)'] = (_sec_sum['순자산비중'] * 100).round(2)
+                sec_display = _sec_sum[['자산군', '종목명', '비중(%)', '개별수익률(%)', '기여수익률(%)']].copy()
+                sec_display = sec_display.sort_values('기여수익률(%)', ascending=False).reset_index(drop=True)
+                st.dataframe(sec_display.style.map(
+                    lambda v: 'color: #EF553B' if isinstance(v, (int, float)) and v < 0 else (
+                        'color: #00CC96' if isinstance(v, (int, float)) and v > 0 else ''),
+                    subset=['개별수익률(%)', '기여수익률(%)']
+                ), hide_index=True, use_container_width=True, height=400)
+                st.caption(f"📡 R 동일 정밀 PA — 전 종목 ({len(sec_display)}개)")
+            elif _sec_contrib_db is not None and not _sec_contrib_db.empty:
                 sec_contrib = _sec_contrib_db.head(10)
+                st.dataframe(sec_contrib.style.map(
+                    lambda v: 'color: #EF553B' if isinstance(v, float) and v < 0 else (
+                        'color: #00CC96' if isinstance(v, float) and v > 0 else ''),
+                    subset=['수익률(%)', '기여수익률(%)']
+                ), hide_index=True, use_container_width=True)
             else:
                 sec_contrib = pd.DataFrame({
                     '자산군': ['국내주식','국내주식','해외주식','해외주식','해외주식','국내채권','국내채권','대체투자'],
@@ -1584,19 +1633,75 @@ with tabs[3]:
                     '수익률(%)': [2.31, 1.82, 5.12, 7.21, -1.30, 0.82, 0.51, 3.45],
                     '기여수익률(%)': [0.24, 0.15, 0.63, 0.73, -0.06, 0.10, 0.05, 0.17]
                 })
-            st.dataframe(sec_contrib.style.map(
-                lambda v: 'color: #EF553B' if isinstance(v, float) and v < 0 else (
-                    'color: #00CC96' if isinstance(v, float) and v > 0 else ''),
-                subset=['수익률(%)', '기여수익률(%)']
-            ), hide_index=True, use_container_width=True)
+                st.dataframe(sec_contrib, hide_index=True, use_container_width=True)
 
         with col_pr:
             st.markdown("##### 자산군별 기여수익률")
-            colors_cc = ['#EF553B' if c < 0 else '#636EFA' for c in contrib_ret]
-            fig_ctb = go.Figure(go.Bar(x=pa_asset_classes_display, y=contrib_ret, marker_color=colors_cc,
-                                        text=[f"{c:+.2f}%" for c in contrib_ret], textposition='outside'))
-            fig_ctb.update_layout(title='자산군별 기여수익률', height=350, yaxis_title='기여수익률(%)')
+            if _single_pa_db:
+                _spa_d = _single_pa_result['asset_summary']
+                _spa_d = _spa_d[_spa_d['자산군'] != '포트폴리오'].copy()
+                _ac_names = _spa_d['자산군'].tolist()
+                _ac_contrib = (_spa_d['기여수익률'] * 100).tolist()
+                colors_cc = ['#EF553B' if c < 0 else '#636EFA' for c in _ac_contrib]
+                fig_ctb = go.Figure(go.Bar(x=_ac_names, y=_ac_contrib, marker_color=colors_cc,
+                                            text=[f"{c:+.4f}%" for c in _ac_contrib], textposition='outside'))
+                fig_ctb.update_layout(title='자산군별 기여수익률 (정밀PA)', height=350, yaxis_title='기여수익률(%)')
+            else:
+                colors_cc = ['#EF553B' if c < 0 else '#636EFA' for c in contrib_ret]
+                fig_ctb = go.Figure(go.Bar(x=pa_asset_classes_display, y=contrib_ret, marker_color=colors_cc,
+                                            text=[f"{c:+.2f}%" for c in contrib_ret], textposition='outside'))
+                fig_ctb.update_layout(title='자산군별 기여수익률', height=350, yaxis_title='기여수익률(%)')
             st.plotly_chart(fig_ctb, use_container_width=True)
+
+
+    with pa_tabs[4]:
+        if _single_pa_db:
+            _ad = _single_pa_result['asset_daily']
+            if not _ad.empty:
+                st.markdown("##### 자산군별 누적 기여수익률 추이")
+                fig_ac_trend = go.Figure()
+                _ac_colors = {
+                    '국내주식': '#EF553B', '해외주식': '#636EFA', '국내채권': '#00CC96',
+                    '해외채권': '#AB63FA', '대체': '#FFA15A', 'FX': '#19D3F3', '유동성및기타': '#B6E880'
+                }
+                for ac in _ad['자산군'].unique():
+                    ac_data = _ad[_ad['자산군'] == ac].sort_values('기준일자')
+                    fig_ac_trend.add_trace(go.Scatter(
+                        x=ac_data['기준일자'], y=ac_data['기여수익률'] * 100,
+                        name=ac, line=dict(color=_ac_colors.get(ac, '#888'), width=1.5),
+                        hovertemplate=f'{ac}: %{{y:+.4f}}%<extra></extra>'
+                    ))
+                fig_ac_trend.update_layout(
+                    height=450, yaxis_title='누적 기여수익률 (%)',
+                    hovermode='x unified', legend=dict(orientation='h', y=1.05))
+                st.plotly_chart(fig_ac_trend, use_container_width=True)
+
+                # 종목별 Top 기여 추이
+                st.markdown("##### 주요 종목 누적 기여수익률 추이")
+                _sd = _single_pa_result['sec_daily']
+                _sec_last = _sd.groupby('종목코드').last().reset_index()
+                _sec_last = _sec_last[~_sec_last['종목코드'].isin(['유동성및기타', 'USD(FX)'])]
+                _top_pos = _sec_last.nlargest(3, '기여수익률')['종목코드'].tolist()
+                _top_neg = _sec_last.nsmallest(2, '기여수익률')['종목코드'].tolist()
+                _top_secs = _top_pos + _top_neg
+
+                fig_sec_trend = go.Figure()
+                for sec in _top_secs:
+                    sd_sec = _sd[_sd['종목코드'] == sec].sort_values('기준일자')
+                    nm = sd_sec['종목명'].iloc[0] if not sd_sec.empty else sec
+                    fig_sec_trend.add_trace(go.Scatter(
+                        x=sd_sec['기준일자'], y=sd_sec['기여수익률'] * 100,
+                        name=nm, line=dict(width=1.5),
+                        hovertemplate=f'{nm}: %{{y:+.4f}}%<extra></extra>'
+                    ))
+                fig_sec_trend.update_layout(
+                    height=400, yaxis_title='누적 기여수익률 (%)',
+                    hovermode='x unified', legend=dict(orientation='h', y=1.05))
+                st.plotly_chart(fig_sec_trend, use_container_width=True)
+            else:
+                st.info("자산군별 일별 데이터가 없습니다.")
+        else:
+            st.info("📡 DB 연결 시 자산군별/종목별 기여수익률 추이를 확인할 수 있습니다.")
 
 
 # ============================================================
