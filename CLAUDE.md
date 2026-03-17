@@ -37,10 +37,7 @@ DB_OCIO_Webview/
 ├── modules/
 │   ├── auth.py            ← 로그인 인증 모듈
 │   └── data_loader.py     ← 30+ DB 로딩 함수 (MariaDB) + 자산분류 + look-through + VP + Brinson + 매크로
-├── tabs/                  ← (예정) 탭별 모듈 분리
-├── docs/
-│   ├── 01-plan/features/  ← Plan 문서
-│   └── 02-design/features/ ← Design 문서
+├── debug/                 ← R/Python PA 검증용 디버그 파일 (R 스크립트, CSV)
 ├── devlog/                ← 일별 개발일지
 └── General_Backtest/      ← R Shiny 원본 (참조용, 수정 금지)
 ```
@@ -346,13 +343,31 @@ DWCI10220 실제 컬럼명은 소문자: `std_dt`, `hldy_yn`, `day_ds_cd`.
 - `General_Backtest/04_사후분석/func_펀드_PA_모듈_adj_GENERAL_final.R` — PA 데이터 전처리, 비중계산, FX분리
 - `General_Backtest/04_사후분석/func_PA_결합및요약용_final.R` — Brinson 3-Factor, 누적기여도
 
+### Single Portfolio PA FX Split (R 동일 로직)
+
+FX_split=TRUE일 때 증권 수익률에서 환효과 분리:
+```python
+# R line 552 동일: 금액 기반 환산_adjust
+환산_adjust = 시가평가액(T-1) × r_FX × (1 + r_sec)
+수익률(FX_제외) = (총손익 - 환산_adjust) / 조정_평가시가평가액
+```
+- `시가평가액(T-1)=0` (종목 첫 등장일) → `환산_adjust=0` → FX 미제거 (R 동일)
+- 수학적 수식 `r_sec=(1+R)/(1+r_FX)-1`과 달리, **실제 환노출 기간에 대해서만** 환효과 인식
+- 08N81 기준 R Excel과 자산군 8개 + 종목 11개 전부 0.000000 차이 검증 완료
+
 ## PDCA Status
 
 - Feature: DB_OCIO_Webview
-- Phase: Do (Phase 4.3 DT BM 연동 완료, Phase 4.2 PA 정밀화 예정)
+- Phase: Do (Phase 4.2 PA 정밀화 완료)
 - Phase 3 완료: 전체 탭 DB 연동
 - Phase 4.1 완료: 연율화수익률/위험/RF/샤프 (R 동일 로직, Excel 검증 통과)
-- Phase 4.2 예정: PA 정밀화 (R 동일 로직)
+- Phase 4.2 완료: PA 정밀화 — FX split R 완벽 일치 (환산_adjust 금액 기반)
 - Phase 4.3 완료: DT BM 연동, 기간수익률 DT 일치, 설정후 수익률 보정
-- Plan/Design 문서: `docs/` 디렉토리
 - 개발일지: `devlog/` 디렉토리 (일별)
+- 디버그 파일: `debug/` 디렉토리 (R/Python PA 검증용)
+  - `debug_pa_original.R` — R 원본 PA_from_MOS 핵심 파이프라인 (파생 그룹핑 포함, Shiny 제거)
+  - `debug_pa_full.R` — R 간소화 PA (DB 직접 조회)
+  - `debug_pa_R_original_intermediate.csv` — R 원본 파이프라인 중간 데이터 (714rows, 종목별 일별)
+  - `debug_pa_R_intermediate.csv` — R 간소화 버전 중간 데이터 (848rows)
+  - `debug_fx_*.R` — FX split 환율/환산_adjust 디버깅
+  - `debug_nast.R` — NAST_AMT 모자구조 확인
