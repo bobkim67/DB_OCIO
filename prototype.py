@@ -19,12 +19,13 @@ from modules.data_loader import (
     load_fund_nav, load_fund_nav_with_aum, load_fund_holdings_classified,
     load_fund_holdings_lookthrough,
     load_fund_holdings_history, load_fund_summary, load_scip_bm_prices,
-    load_composite_bm_prices, load_mp_weights_8class,
+    load_composite_bm_prices, load_dt_bm_prices, load_mp_weights_8class,
     load_vp_weights_8class, load_vp_nav, load_vp_rebal_date,
     load_all_fund_data, parse_data_blob,
     compute_brinson_attribution,
     load_macro_timeseries, load_macro_period_returns,
     load_holdings_history_8class,
+    _FUND_INCEPTION_BASE,
 )
 
 st.set_page_config(
@@ -72,6 +73,11 @@ def cached_load_composite_bm(components_json, start_date=None):
     import json
     components = json.loads(components_json)
     return load_composite_bm_prices(components, start_date)
+
+@st.cache_data(ttl=600)
+def cached_load_dt_bm(fund_code, start_date=None):
+    """DT BM 캐시 래퍼 (DWPM10041 서브BM)"""
+    return load_dt_bm_prices(fund_code, start_date)
 
 @st.cache_data(ttl=600)
 def cached_load_mp_weights_8class(fund_desc, reference_date=None, cycle_phase=1):
@@ -397,25 +403,29 @@ with tabs[0]:
     _tab0_db = False
     if DB_CONNECTED:
         try:
-            _nav_df = cached_load_fund_nav(selected_fund, '20240101')
+            _inception = FUND_META.get(selected_fund, {}).get('inception', '20220101')
+            _nav_df = cached_load_fund_nav(selected_fund, _inception)
             if not _nav_df.empty and len(_nav_df) > 10:
                 nav_data = _nav_df['MOD_STPR'].values
                 _nav_dates = _nav_df['기준일자'].values
                 _aum_series = _nav_df['AUM_억'].values
 
-                # BM 로드 (복합 BM 지원, BM 미설정 펀드는 스킵)
-                _bm_cfg = FUND_BM.get(selected_fund)
-                _bm_df = pd.DataFrame()
-                if _bm_cfg and 'components' in _bm_cfg:
-                    import json as _json
-                    _bm_df = cached_load_composite_bm(
-                        _json.dumps(_bm_cfg['components']), '2024-01-01'
-                    )
-                elif _bm_cfg:
-                    _bm_df = cached_load_bm_prices(
-                        _bm_cfg['dataset_id'], _bm_cfg['dataseries_id'],
-                        '2024-01-01', _bm_cfg.get('currency')
-                    )
+                # BM 로드: DT(DWPM10041) 우선 → SCIP fallback (설정일부터)
+                _bm_df = cached_load_dt_bm(selected_fund, _inception)
+                if _bm_df.empty or len(_bm_df) < 10:
+                    _bm_cfg = FUND_BM.get(selected_fund)
+                    _bm_df = pd.DataFrame()
+                    _scip_start = f'{_inception[:4]}-{_inception[4:6]}-{_inception[6:8]}'
+                    if _bm_cfg and 'components' in _bm_cfg:
+                        import json as _json
+                        _bm_df = cached_load_composite_bm(
+                            _json.dumps(_bm_cfg['components']), _scip_start
+                        )
+                    elif _bm_cfg:
+                        _bm_df = cached_load_bm_prices(
+                            _bm_cfg['dataset_id'], _bm_cfg['dataseries_id'],
+                            _scip_start, _bm_cfg.get('currency')
+                        )
                 if not _bm_df.empty and len(_bm_df) > 10:
                     # BM을 NAV 날짜에 맞춰 정렬
                     _bm_df = _bm_df.set_index('기준일자')
@@ -456,11 +466,12 @@ with tabs[0]:
     prev_nav = nav_data[-2]
     nav_change = latest_nav - prev_nav
     nav_change_pct = (nav_change / prev_nav) * 100
-    si_return = (nav_data[-1] / nav_data[0] - 1) * 100
+    _si_base = _FUND_INCEPTION_BASE.get(selected_fund, nav_data[0])
+    si_return = (nav_data[-1] / _si_base - 1) * 100  # 설정일 기준가 기준
     _ytd_mask = dates_for_tab0 >= pd.Timestamp('2026-01-01')
     ytd_idx = len(dates_for_tab0) - _ytd_mask.sum()
     ytd_return = (nav_data[-1] / nav_data[max(ytd_idx, 0)] - 1) * 100 if ytd_idx < len(nav_data) else 0.0
-    bm_si = (bm_data[-1] / bm_data[0] - 1) * 100
+    bm_si = (bm_data[-1] / bm_data[0] - 1) * 100  # BM은 지수 기반이므로 첫 행 기준 유지
     bm_ytd = (bm_data[-1] / bm_data[max(ytd_idx, 0)] - 1) * 100 if ytd_idx < len(bm_data) else 0.0
 
     # --- 지표 카드 + 3개월 스파크라인 (카드 내장) ---
@@ -505,33 +516,63 @@ with tabs[0]:
 
     st.markdown("")
 
-    # --- 기간별 성과 테이블: 1D, 1W 추가, SI → "설정 후" (#0) ---
-    def get_period_return(data, n):
-        if n >= len(data): return np.nan
-        return (data[-1] / data[-(n+1)] - 1) * 100
+    # --- 기간별 성과 테이블: DT 동일 달력월 기준 (#0) ---
+    from dateutil.relativedelta import relativedelta
 
-    def get_period_sharpe(rets, n):
-        if n >= len(rets): return np.nan
-        return calc_sharpe(rets[-n:])
+    def _find_ref_value(dates_arr, data_arr, target_date):
+        """target_date 이하 가장 가까운 날짜의 값 반환"""
+        idx = pd.DatetimeIndex(dates_arr)
+        mask = idx <= target_date
+        if not mask.any():
+            return np.nan
+        pos = np.where(mask)[0][-1]
+        return data_arr[pos]
 
-    periods = {
-        '1D': 1, '1W': 5, '1M': 22, '3M': 66, '6M': 132,
-        'YTD': max(1, len(dates_for_tab0) - ytd_idx), '1Y': 252, '설정 후': len(nav_data)-1
+    _end_dt = pd.Timestamp(dates_for_tab0[-1])
+    _period_targets = {
+        '1D': _end_dt - pd.Timedelta(days=1),
+        '1W': _end_dt - pd.Timedelta(days=7),
+        '1M': _end_dt - relativedelta(months=1),
+        '3M': _end_dt - relativedelta(months=3),
+        '6M': _end_dt - relativedelta(months=6),
+        'YTD': pd.Timestamp(f'{_end_dt.year}0101'),
+        '1Y': _end_dt - relativedelta(years=1),
+        '설정 후': pd.Timestamp('1900-01-01'),  # 가장 오래된 데이터
     }
-    row_port = {p: f"{get_period_return(nav_data, n):.2f}%" for p, n in periods.items()}
-    row_bm = {p: f"{get_period_return(bm_data, n):.2f}%" for p, n in periods.items()}
+    _end_nav = nav_data[-1]
+    _end_bm = bm_data[-1]
+
+    row_port = {}
+    row_bm = {}
     row_excess = {}
     row_sharpe = {}
-    for p, n in periods.items():
-        pr = get_period_return(nav_data, n)
-        br = get_period_return(bm_data, n)
-        row_excess[p] = f"{pr - br:+.2f}%p"
-        _sh = get_period_sharpe(daily_ret, min(n, len(daily_ret)))
+    period_order = ['1D', '1W', '1M', '3M', '6M', 'YTD', '1Y', '설정 후']
+    for p in period_order:
+        if p == '설정 후':
+            # 설정 후: 설정일 기준가 기준 (하드코딩 보정 우선)
+            _nav_base = _FUND_INCEPTION_BASE.get(selected_fund, nav_data[0])
+            pr = (_end_nav / _nav_base - 1) * 100
+            br = (_end_bm / bm_data[0] - 1) * 100
+        else:
+            target = _period_targets[p]
+            ref_nav = _find_ref_value(dates_for_tab0, nav_data, target)
+            ref_bm = _find_ref_value(dates_for_tab0, bm_data, target)
+            pr = (_end_nav / ref_nav - 1) * 100 if not np.isnan(ref_nav) and ref_nav != 0 else np.nan
+            br = (_end_bm / ref_bm - 1) * 100 if not np.isnan(ref_bm) and ref_bm != 0 else np.nan
+        row_port[p] = f"{pr:.2f}%" if not np.isnan(pr) else ""
+        row_bm[p] = f"{br:.2f}%" if not np.isnan(br) else ""
+        exc = pr - br if not (np.isnan(pr) or np.isnan(br)) else np.nan
+        row_excess[p] = f"{exc:+.2f}%p" if not np.isnan(exc) else ""
+        # Sharpe: 영업일 수 기준 유지
+        _bday_map = {'1D': 1, '1W': 5, '1M': 22, '3M': 66, '6M': 132, '1Y': 252,
+                     'YTD': max(1, len(dates_for_tab0) - ytd_idx), '설정 후': len(nav_data)-1}
+        _n = _bday_map.get(p, len(daily_ret))
+        _sh = calc_sharpe(daily_ret[-min(_n, len(daily_ret)):]) if _n <= len(daily_ret) else np.nan
         row_sharpe[p] = f"{_sh:.2f}" if not np.isnan(_sh) else ""
 
     perf_df = pd.DataFrame({
         '구분': ['포트폴리오', 'BM', '초과수익', 'Sharpe'],
-        **{p: [row_port[p], row_bm[p], row_excess[p], row_sharpe[p]] for p in periods}
+        **{p: [row_port[p], row_bm[p], row_excess[p], row_sharpe[p]] for p in period_order}
     })
 
     st.dataframe(perf_df, hide_index=True, use_container_width=True, height=180)
@@ -604,7 +645,8 @@ with tabs[0]:
             )
 
     with col_chart:
-        cum_ret = (nav_data / nav_data[0] - 1) * 100
+        _chart_nav_base = _FUND_INCEPTION_BASE.get(selected_fund, nav_data[0])
+        cum_ret = (nav_data / _chart_nav_base - 1) * 100
         cum_bm = (bm_data / bm_data[0] - 1) * 100
         excess = cum_ret - cum_bm
 
@@ -1448,14 +1490,18 @@ with tabs[3]:
                     _pa_nav_ts = _pa_nav_df.set_index('기준일자')['MOD_STPR'].sort_index()
                     _pa_ap_cum = (_pa_nav_ts / _pa_nav_ts.iloc[0] - 1) * 100
                     _pa_dates = _pa_nav_ts.index
-                    # BM 누적수익률
-                    _bm_cfg = FUND_BM.get(selected_fund)
-                    if _bm_cfg:
-                        import json as _json_pa
-                        _bm_nav_df = cached_load_composite_bm(_json_pa.dumps(_bm_cfg['components']),
-                                                                analysis_period[0].strftime('%Y-%m-%d'))
-                        if not _bm_nav_df.empty:
-                            _bm_nav_ts = _bm_nav_df.set_index('기준일자')['composite_price'].sort_index()
+                    # BM 누적수익률: DT 우선 → SCIP fallback
+                    _bm_nav_df = cached_load_dt_bm(selected_fund, analysis_period[0].strftime('%Y%m%d'))
+                    if _bm_nav_df.empty or len(_bm_nav_df) < 10:
+                        _bm_cfg = FUND_BM.get(selected_fund)
+                        if _bm_cfg:
+                            import json as _json_pa
+                            _bm_nav_df = cached_load_composite_bm(_json_pa.dumps(_bm_cfg['components']),
+                                                                    analysis_period[0].strftime('%Y-%m-%d'))
+                    if not _bm_nav_df.empty:
+                        _bm_col = 'composite_price' if 'composite_price' in _bm_nav_df.columns else 'value'
+                        if _bm_col in _bm_nav_df.columns:
+                            _bm_nav_ts = _bm_nav_df.set_index('기준일자')[_bm_col].sort_index()
                             _common_pa = _pa_nav_ts.index.intersection(_bm_nav_ts.index).sort_values()
                             if len(_common_pa) > 10:
                                 _pa_ap_cum = (_pa_nav_ts.reindex(_common_pa) / _pa_nav_ts.reindex(_common_pa).iloc[0] - 1) * 100
@@ -2328,19 +2374,23 @@ with tabs[5]:
                 if len(_rpt_ytd_filt) >= 2:
                     _ytd_val = (_rpt_ytd_filt.iloc[-1] / _rpt_ytd_filt.iloc[0] - 1) * 100
                     _rpt_ytd_ap = f'{_ytd_val:+.2f}%'
-                # 설정이후
+                # 설정이후 (기준가 1,000 기준 — 시스템 동일)
                 if len(_rpt_nav_ts) >= 2:
-                    _since_val = (_rpt_nav_ts.iloc[-1] / _rpt_nav_ts.iloc[0] - 1) * 100
+                    _since_val = (_rpt_nav_ts.iloc[-1] / 1000 - 1) * 100
                     _rpt_since_ap = f'{_since_val:+.2f}%'
 
-                # BM 수익률
-                _bm_cfg_rpt = FUND_BM.get(selected_fund)
-                if _bm_cfg_rpt:
-                    import json as _json_rpt
-                    _bm_rpt_df = cached_load_composite_bm(
-                        _json_rpt.dumps(_bm_cfg_rpt['components']), rpt_start)
-                    if not _bm_rpt_df.empty:
-                        _bm_ts = _bm_rpt_df.set_index('기준일자')['composite_price'].sort_index()
+                # BM 수익률: DT 우선 → SCIP fallback
+                _bm_rpt_df = cached_load_dt_bm(selected_fund, rpt_start.replace('-', ''))
+                if _bm_rpt_df.empty or len(_bm_rpt_df) < 10:
+                    _bm_cfg_rpt = FUND_BM.get(selected_fund)
+                    if _bm_cfg_rpt:
+                        import json as _json_rpt
+                        _bm_rpt_df = cached_load_composite_bm(
+                            _json_rpt.dumps(_bm_cfg_rpt['components']), rpt_start)
+                if not _bm_rpt_df.empty:
+                    _bm_col_rpt = 'composite_price' if 'composite_price' in _bm_rpt_df.columns else 'value'
+                    if _bm_col_rpt in _bm_rpt_df.columns:
+                        _bm_ts = _bm_rpt_df.set_index('기준일자')[_bm_col_rpt].sort_index()
                         _bm_filt = _bm_ts[(_bm_ts.index >= _rpt_start_dt) & (_bm_ts.index <= _rpt_end_dt)]
                         if len(_bm_filt) >= 2:
                             _bm_ret_val = (_bm_filt.iloc[-1] / _bm_filt.iloc[0] - 1) * 100

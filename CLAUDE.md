@@ -61,7 +61,9 @@ DB_OCIO_Webview/
 
 **DB 연동 완료 (전체 탭)**:
 - NAV/AUM: `dt.DWPM10510` → `load_fund_nav_with_aum()`
-- BM 지수: `SCIP.back_datapoint` → `load_composite_bm_prices()` (복합 BM 지원)
+- BM 지수: **DT 우선** (`DWPM10040/10041`) → SCIP fallback (`load_composite_bm_prices()`)
+  - DT BM 매핑: `data_loader.py::_DT_BM_CONFIG` (12개 펀드), `load_dt_bm_prices()`
+  - SCIP fallback: 나머지 9개 펀드 (`load_composite_bm_prices()`)
 - 보유종목: `dt.DWPM10530` → `load_fund_holdings_classified()` + `_classify_6class()`
 - Look-through: 모펀드 전개 → `load_fund_holdings_lookthrough()`
 - MP 비중: `solution.sol_MP_released_inform` → `load_mp_weights_8class()` + FUND_MP_DIRECT
@@ -117,7 +119,7 @@ if DB_CONNECTED:
 ## Dependencies
 
 ```
-streamlit, pandas, numpy, plotly, openpyxl, pymysql
+streamlit, pandas, numpy, plotly, openpyxl, pymysql, python-dateutil
 ```
 
 ## Coding Conventions
@@ -141,7 +143,7 @@ def cached_load_fund_nav(fund_code, start_date=None):
     return load_fund_nav_with_aum(fund_code, start_date)
 ```
 
-TTL 600초. NAV, BM, Holdings, Holdings History, Fund Summary, All Fund Data, VP Weights, VP NAV, VP Rebal Date, Brinson PA, Macro Timeseries, Holdings History 8class 총 13개 캐시 함수.
+TTL 600초. NAV, BM(DT+SCIP), Holdings, Holdings History, Fund Summary, All Fund Data, VP Weights, VP NAV, VP Rebal Date, Brinson PA, Macro Timeseries, Holdings History 8class, DT BM 총 14개 캐시 함수.
 
 ### SCIP blob 파싱
 
@@ -192,6 +194,53 @@ Tab 2 VP 로딩 우선순위:
 2. `FUND_MP_MAPPING` → `load_vp_weights_8class(fund_desc)` → DB
 3. fallback hardcoded
 
+### BM 로딩 아키텍처 (DT 우선 → SCIP fallback)
+
+```python
+# data_loader.py
+_DT_BM_CONFIG = {
+    '07G04': ('10041', 'BM1'),   # 서브BM1
+    '06X08': ('10041', 'BM1'),   # 서브BM1
+    '07G02': ('10041', 'BM1'),   # 서브BM1
+    '07G03': ('10041', 'BM1'),   # 서브BM1
+    '07J20': ('10041', 'BM2'),   # 서브BM2
+    '07J27': ('10041', 'BM2'),   # 서브BM2
+    '07J34': ('10041', 'BM2'),   # 서브BM2
+    '07J41': ('10041', 'BM2'),   # 서브BM2
+    '08K88': ('10041', 'BM2'),   # 서브BM2
+    '1JM96': ('10040', 'B'),     # 기본BM
+    '1JM98': ('10040', 'B'),     # 기본BM
+    '4JM12': ('10040', 'B'),     # 기본BM
+}
+```
+
+- Tab 0(Overview), Tab 3(Brinson PA), Tab 5(운용보고)에서 동일 우선순위 적용
+- `cached_load_dt_bm()` → `load_dt_bm_prices()` (MOD_STPR 시계열)
+- DT 빈 결과 시 자동으로 `cached_load_bm_prices()` (SCIP) fallback
+
+### 기간수익률 계산 (DT 일치)
+
+달력월 기반 `relativedelta` 사용 (DT DWPM10040과 정확 일치):
+```python
+from dateutil.relativedelta import relativedelta
+_period_targets = {
+    '1M': _end_dt - relativedelta(months=1),   # 3/15 → 2/15
+    '3M': _end_dt - relativedelta(months=3),
+    '6M': _end_dt - relativedelta(months=6),
+    '1Y': _end_dt - relativedelta(years=1),
+}
+```
+기존 고정일수(`timedelta(days=30)`) 방식은 DT와 불일치 발생.
+
+### 설정후 수익률 기준가 보정
+
+```python
+_FUND_INCEPTION_BASE = {'4JM12': 1970.76}
+```
+- 4JM12 DB 첫 MOD_STPR=1998.62이지만 시스템 기준 1970.76
+- `설정 후` 수익률, 메트릭 카드, 누적수익률 차트 모두 이 기준가 사용
+- BM은 1000에서 시작 (DT DWPM10040 MOD_STPR 첫값)
+
 ### 자산군별 벤치마크 수익률 테이블 (tabs[4])
 
 - 42행 x 7기간(`1D, 1W, 1M, 3M, 6M, 1Y, YTD`) 수치 데이터
@@ -207,12 +256,69 @@ Tab 2 VP 로딩 우선순위:
 - `users.yaml`에 사용자 비밀번호 포함 — 커밋 시 주의.
 - Streamlit의 Pandas Styler 지원이 제한적: `.bar()` 등 일부 기능 미지원.
 - `pd.read_sql`에 DictCursor 사용하면 컬럼명이 값으로 들어가는 버그 → 반드시 `get_pandas_connection()` 사용.
-- BM 매핑: `config/funds.py::FUND_BM`에 11개 펀드 복합 BM 설정 완료. 미설정 7개: 07P70, 07W15, 08N33, 08N81, 08P22, 09L94, 2JM23.
+- BM 매핑: DT BM 우선 (12개 펀드 `_DT_BM_CONFIG`), SCIP fallback (9개 펀드 `FUND_BM`). SCIP 미설정: 07P70, 07W15, 08N33, 08N81, 08P22, 09L94, 2JM23.
+- NAV 로딩 시작일: `FUND_META[fund]['inception']` 사용 (이전 하드코딩 '20240101' 제거)
+- 기간수익률: `relativedelta` 달력월 기준 (DT DWPM10040 완벽 일치). `python-dateutil` 의존성 추가.
 - MP 비중: DB 연동 완료 (`sol_MP_released_inform` + `FUND_MP_DIRECT`). 19개 펀드 MP 설정, ABL 2개 미설정.
 - VP 데이터: `sol_DWPM10530/10510` 사용 (VP 전용 코드: 3MP01, 2MP24 등). `sol_VP_rebalancing_inform`은 이벤트 로그만.
 - VP 코드 매핑: `data_loader.py::_FUND_DESC_TO_VP_CODE` dict로 관리.
 - Brinson PA: `dt.MA000410` 테이블의 컬럼명은 영문(`sec_id`, `modify_unav_chg`), 보유종목(`load_fund_holdings_classified`)의 컬럼명도 영문(`ITEM_CD`, `ITEM_NM`)이므로 매핑 시 영문 컬럼명 사용.
 - 매크로 지표: `data_loader.py::MACRO_DATASETS` dict에 SCIP dataset_id/dataseries_id 매핑.
+
+## 연율화 성과지표 (결과4/5/6 — R 동일 로직 구현 완료)
+
+### 구현 함수 (`modules/data_loader.py`)
+
+| 함수 | 역할 |
+|------|------|
+| `compute_annualized_metrics()` | 결과4(연율화수익률) + 결과5(연율화위험) |
+| `compute_rf_annualized_metrics()` | 결과6(무위험연율화수익률) |
+| `compute_full_performance_stats()` | 결과4+5+6+샤프비율 통합 |
+| `compute_sharpe_ratio()` | 샤프비율 = (수익률-RF)/위험 |
+| `load_rf_index_from_db()` | KIS CD Index 총수익 (SCIP dataset_id=194) |
+| `load_korea_holidays_weekday()` | 평일 공휴일 set (R의 KOREA_holidays) |
+| `_build_weekly_returns()` | 기준가→공휴일NA→pad→ffill→주간수익률 |
+| `_return_first_weekly_date()` | 불완전 주 건너뛰기 (R 동일) |
+| `_calc_ref_dates()` | 기간별 기준일 (1D/1W/1M/3M/.../YTD/누적) |
+
+### 연율화 방법 (R Shiny 기본값과 동일)
+
+- **연율화수익률**: `return_method='v3'` (기간수익률 기하평균, 기본값)
+  - v1: `mean(주간수익률) * 52`
+  - v2: `mean(주간로그수익률) * 52`
+  - v3: `(1+기간수익률)^(365.25/일수) - 1`
+- **연율화위험**: `risk_method='v1'` (주간수익률 표준편차, 기본값)
+  - v1: `sd(주간수익률, ddof=1) * sqrt(52)`
+  - v2: `sd(주간로그수익률, ddof=1) * sqrt(52)`
+
+### 무위험수익률 소스
+
+KIS CD Index 총수익 (SCIP dataset_id=194, dataseries_id=33) 사용.
+- blob: `{"totRtnIndex": "12538.6535", ...}` → `totRtnIndex / 10` (1000 리베이스)
+- ECOS CD(91일) 대비 0.01~0.02bp 차이 (실무상 무시 가능)
+- KAP CD 총수익지수(dataset_id=300)는 ~12bp 차이로 부적합
+
+### Excel 검증 결과 (08N81, end=20260311)
+
+| 항목 | Python | Excel | 차이 |
+|------|--------|-------|------|
+| 결과4 누적 | 0.184514756315 | 0.184515 | <0.001bp |
+| 결과5 누적 | 0.102454989224 | 0.102455 | <0.001bp |
+| 결과6 누적 | 0.027936009744 | 0.027937 | 0.01bp |
+
+### 주간수익률 파이프라인 (R 동일)
+
+```
+기준가(MOD_STPR) → T-1에 1000 추가 → 평일공휴일 NA → 캘린더일 pad(ffill)
+→ 요일별 group → lag(1) → 주간수익률/주간로그수익률
+→ 기간 필터(end_date 요일, first_weekly_date~end_date) → 연율화
+```
+
+### DB 컬럼명 주의
+
+DWCI10220 실제 컬럼명은 소문자: `std_dt`, `hldy_yn`, `day_ds_cd`.
+`load_holiday_calendar()`에서 `AS CAL_DT`, `AS HOLI_FG`로 alias 처리.
+`hldy_yn`은 'Y'/'N' 값 (CLAUDE.md 기존 설명의 '0'/'1'과 다름).
 
 ## PA 정밀화 계획 (Phase 4 — R 동일 로직 구현)
 
@@ -243,8 +349,10 @@ Tab 2 VP 로딩 우선순위:
 ## PDCA Status
 
 - Feature: DB_OCIO_Webview
-- Phase: Do (Phase 4 PA 정밀화 준비 완료)
+- Phase: Do (Phase 4.3 DT BM 연동 완료, Phase 4.2 PA 정밀화 예정)
 - Phase 3 완료: 전체 탭 DB 연동
-- Phase 4 예정: PA 정밀화 (R 동일 로직)
+- Phase 4.1 완료: 연율화수익률/위험/RF/샤프 (R 동일 로직, Excel 검증 통과)
+- Phase 4.2 예정: PA 정밀화 (R 동일 로직)
+- Phase 4.3 완료: DT BM 연동, 기간수익률 DT 일치, 설정후 수익률 보정
 - Plan/Design 문서: `docs/` 디렉토리
 - 개발일지: `devlog/` 디렉토리 (일별)

@@ -78,10 +78,10 @@ def load_holiday_calendar() -> pd.DataFrame:
     conn = get_pandas_connection('dt')
     try:
         sql = """
-            SELECT CAL_DT, HOLI_FG
+            SELECT std_dt AS CAL_DT, hldy_yn AS HOLI_FG
             FROM DWCI10220
-            WHERE CAL_DT >= '20000101'
-            ORDER BY CAL_DT
+            WHERE std_dt >= '20000101'
+            ORDER BY std_dt
         """
         df = pd.read_sql(sql, conn)
         df['CAL_DT'] = pd.to_datetime(df['CAL_DT'], format='%Y%m%d')
@@ -92,7 +92,12 @@ def load_holiday_calendar() -> pd.DataFrame:
 
 def get_business_days(holiday_df: pd.DataFrame) -> pd.DatetimeIndex:
     """영업일만 추출. R: selectable_dates"""
-    bdays = holiday_df[holiday_df['HOLI_FG'] == '0']['CAL_DT']
+    col = 'HOLI_FG'
+    vals = holiday_df[col].unique()
+    if 'N' in vals:
+        bdays = holiday_df[holiday_df[col] == 'N']['CAL_DT']
+    else:
+        bdays = holiday_df[holiday_df[col] == '0']['CAL_DT']
     return pd.DatetimeIndex(bdays)
 
 
@@ -254,7 +259,7 @@ def _load_daily_nast(fund_code: str, start_date: str = None, end_date: str = Non
             params.append(end_date)
         where = " AND ".join(conditions)
         sql = f"""
-            SELECT STD_DT, MOD_STPR, NAST_AMT, PDD_CHNG_STPR
+            SELECT STD_DT, MOD_STPR, NAST_AMT, PDD_CHNG_STPR, DD1_ERN_RT
             FROM DWPM10510
             WHERE {where}
             ORDER BY STD_DT
@@ -371,7 +376,7 @@ def load_usdkrw_from_ecos(api_key: str = '7FA9V1N76SFHX6GXHI58') -> pd.DataFrame
     import requests
     url = f"https://ecos.bok.or.kr/api/StatisticSearch/{api_key}/json/kr/1/10000/731Y003/D/20000101/99991231/0000001"
     try:
-        resp = requests.get(url, timeout=30)
+        resp = requests.get(url, timeout=30, verify=False)
         data = resp.json()
         rows = data.get('StatisticSearch', {}).get('row', [])
         if not rows:
@@ -485,6 +490,82 @@ def load_scip_bm_prices(dataset_id: int, dataseries_id: int,
         df['value'] = df['data'].apply(lambda b: parse_data_blob(b, currency))
         df = df[df['value'].notna() & df['value'].apply(lambda v: isinstance(v, (int, float)))]
         df['value'] = df['value'].astype(float)
+        return df[['기준일자', 'value']].reset_index(drop=True)
+    finally:
+        conn.close()
+
+
+# ============================================================
+# DT BM 지수 (DWPM10041 서브BM / DWPM10040 기본BM)
+# ============================================================
+
+# DT BM 매핑: (테이블, BM유형)
+# DWPM10041: 서브BM1/서브BM2 (BM_DS_CD LIKE '%BMn%')
+# DWPM10040: 기본BM (FUND_BM_DS_CD='B', DD1_ERN_RT != 0인 펀드만)
+_DT_BM_CONFIG = {
+    # DWPM10041 서브BM
+    '07G04': ('10041', 'BM1'),   # 서브BM1
+    '06X08': ('10041', 'BM2'),   # 서브BM2
+    '07G02': ('10041', 'BM1'),   # 서브BM1만 존재
+    '07G03': ('10041', 'BM1'),   # 서브BM1만 존재
+    '07J20': ('10041', 'BM2'),
+    '07J27': ('10041', 'BM2'),
+    '07J34': ('10041', 'BM2'),
+    '07J41': ('10041', 'BM2'),
+    '08K88': ('10041', 'BM2'),
+    # DWPM10040 기본BM
+    '1JM96': ('10040', 'B'),
+    '1JM98': ('10040', 'B'),
+    '4JM12': ('10040', 'B'),
+}
+
+
+def load_dt_bm_prices(fund_code: str, start_date: str = None) -> pd.DataFrame:
+    """
+    DT에서 BM 기준가 시계열 로드.
+    DWPM10041(서브BM) 또는 DWPM10040(기본BM)에서 조회.
+    _DT_BM_CONFIG에 등록된 펀드만 지원.
+
+    Returns: DataFrame(기준일자, value) — load_scip_bm_prices와 동일 포맷
+    """
+    cfg = _DT_BM_CONFIG.get(fund_code)
+    if cfg is None:
+        return pd.DataFrame(columns=['기준일자', 'value'])
+
+    table, bm_type = cfg
+    conn = get_pandas_connection('dt')
+    try:
+        start_int = int(start_date.replace('-', '')) if start_date else None
+        if table == '10041':
+            params = [fund_code, f'%{bm_type}%']
+            where_date = ""
+            if start_int:
+                where_date = " AND STD_DT >= %s"
+                params.append(start_int)
+            sql = f"""
+                SELECT STD_DT, MOD_STPR
+                FROM DWPM10041
+                WHERE FUND_CD = %s AND BM_DS_CD LIKE %s {where_date}
+                ORDER BY STD_DT
+            """
+        else:  # 10040
+            params = [fund_code, 'B']
+            where_date = ""
+            if start_int:
+                where_date = " AND STD_DT >= %s"
+                params.append(start_int)
+            sql = f"""
+                SELECT STD_DT, MOD_STPR
+                FROM DWPM10040
+                WHERE FUND_CD = %s AND FUND_BM_DS_CD = %s {where_date}
+                ORDER BY STD_DT
+            """
+        df = pd.read_sql(sql, conn, params=params)
+        if df.empty:
+            return pd.DataFrame(columns=['기준일자', 'value'])
+        df['기준일자'] = pd.to_datetime(df['STD_DT'].astype(str), format='%Y%m%d')
+        df['value'] = df['MOD_STPR'].astype(float)
+        df = df[df['value'] != 0]  # 더미(0) 제거
         return df[['기준일자', 'value']].reset_index(drop=True)
     finally:
         conn.close()
@@ -714,6 +795,12 @@ def load_fund_holdings_lookthrough(fund_code: str, date: str = None) -> pd.DataF
 # ============================================================
 # NAV + AUM 시계열 (확장)
 # ============================================================
+
+# 설정후 수익률 계산용 설정일 기준가 (시스템 일치용)
+_FUND_INCEPTION_BASE = {
+    '4JM12': 1970.76,  # 시스템 설정후 수익률 기준가
+}
+
 
 def load_fund_nav_with_aum(fund_code: str, start_date: str = None) -> pd.DataFrame:
     """
@@ -1536,6 +1623,967 @@ def compute_brinson_attribution(fund_code: str, bm_code: str,
 
 
 # ============================================================
+# Single Portfolio PA (R 동일 로직)
+# R reference: func_펀드_PA_모듈_adj_GENERAL_final.R + func_PA_결합및요약용_final.R
+# ============================================================
+
+def _get_class_mother_fund(fund_code: str) -> str:
+    """모펀드 코드 조회 (DWPI10011.CLSS_MTFD_CD). 없으면 자기 자신 반환."""
+    conn = get_pandas_connection('dt')
+    try:
+        sql = """
+            SELECT CLSS_MTFD_CD FROM DWPI10011
+            WHERE FUND_CD = %s AND IMC_CD = '003228'
+            AND EFTV_END_DT = '99991231'
+            LIMIT 1
+        """
+        df = pd.read_sql(sql, conn, params=[fund_code])
+        if df.empty or pd.isna(df.iloc[0, 0]):
+            return fund_code
+        return str(df.iloc[0, 0]).strip()
+    finally:
+        conn.close()
+
+
+def _load_net_subscription_pa(fund_code: str, start_date: str, end_date: str) -> pd.DataFrame:
+    """
+    순설정금액 로드 (R 동일 로직).
+    R: bf_nast_flct_amt (이월순자산변동금액), 해지 거래 부호 반전.
+    """
+    conn = get_pandas_connection('dt')
+    try:
+        sql = """
+            SELECT r.tr_dt, r.bf_nast_flct_amt, t.tr_whl_nm
+            FROM DWPM12880 r
+            LEFT JOIN DWCI10160 t ON r.tr_cd = t.tr_cd AND r.synp_cd = t.synp_cd
+            WHERE r.fund_cd = %s AND r.tr_dt >= %s AND r.tr_dt <= %s
+        """
+        df = pd.read_sql(sql, conn, params=[fund_code, start_date, end_date])
+        if df.empty:
+            return pd.DataFrame(columns=['기준일자', '순설정금액'])
+        # 해지 거래 부호 반전 (R: if_else(str_detect(tr_whl_nm,"해지"), -이월순자산변동금액, ...))
+        df['adj_amt'] = df.apply(
+            lambda r: -r['bf_nast_flct_amt'] if '해지' in str(r.get('tr_whl_nm', '')) else r['bf_nast_flct_amt'],
+            axis=1
+        )
+        result = df.groupby('tr_dt')['adj_amt'].sum().reset_index()
+        result.columns = ['tr_dt', '순설정금액']
+        result['기준일자'] = pd.to_datetime(result['tr_dt'].astype(str), format='%Y%m%d')
+        return result[['기준일자', '순설정금액']]
+    finally:
+        conn.close()
+
+
+def _load_holdings_for_pa(fund_code: str, start_date: str, end_date: str) -> pd.DataFrame:
+    """
+    PA용 DWPM10530 보유종목 로드.
+    R: historical_position_DWPM10530 (lines 125-147)
+    PDD_QTY, BUY_QTY, SELL_QTY로 신규매수/전량매도 판별, POS_DS_CD로 position_gb 크로스체크.
+    """
+    conn = get_pandas_connection('dt')
+    try:
+        sql = """
+            SELECT STD_DT, FUND_CD, ITEM_CD, ITEM_NM, POS_DS_CD,
+                   COALESCE(EVL_AMT, 0) AS EVL_AMT,
+                   COALESCE(PDD_QTY, 0) AS PDD_QTY,
+                   COALESCE(BUY_QTY, 0) AS BUY_QTY,
+                   COALESCE(SELL_QTY, 0) AS SELL_QTY
+            FROM DWPM10530
+            WHERE FUND_CD = %s
+              AND STD_DT >= %s AND STD_DT <= %s
+              AND ITEM_NM NOT LIKE '%%미지급%%'
+              AND ITEM_NM NOT LIKE '%%미수%%'
+            ORDER BY STD_DT, ITEM_CD
+        """
+        df = pd.read_sql(sql, conn, params=[fund_code, start_date, end_date])
+        if df.empty:
+            return df
+
+        df['기준일자'] = pd.to_datetime(df['STD_DT'].astype(str), format='%Y%m%d')
+
+        # R: group_by(기준일자, FUND_CD, ITEM_CD) → reframe(sum) — 하루에 사고팔고 합산
+        agg = df.groupby(['기준일자', 'FUND_CD', 'ITEM_CD']).agg(
+            POS_DS_CD=('POS_DS_CD', 'first'),
+            ITEM_NM=('ITEM_NM', 'first'),
+            EVL_AMT=('EVL_AMT', 'sum'),
+            PDD_QTY=('PDD_QTY', 'sum'),
+            BUY_QTY=('BUY_QTY', 'sum'),
+            SELL_QTY=('SELL_QTY', 'sum'),
+        ).reset_index()
+
+        # R: filter(EVL_AMT+PDD_QTY+BUY_QTY+SELL_QTY != 0)
+        agg = agg[agg['EVL_AMT'] + agg['PDD_QTY'] + agg['BUY_QTY'] + agg['SELL_QTY'] != 0].copy()
+
+        # R: 전량청산시 매수처리 (POS_DS_CD=="매도" & PDD_QTY+BUY_QTY<=SELL_QTY → "매수")
+        rollover_mask = (agg['POS_DS_CD'] == '매도') & (agg['PDD_QTY'] + agg['BUY_QTY'] <= agg['SELL_QTY'])
+        agg.loc[rollover_mask, 'POS_DS_CD'] = '매수'
+        # R: EVL_AMT = if_else(POS_DS_CD=="매도", -EVL_AMT, EVL_AMT)
+        agg.loc[agg['POS_DS_CD'] == '매도', 'EVL_AMT'] *= -1
+
+        return agg
+    finally:
+        conn.close()
+
+
+def _load_etf_redemption_adjustment(fund_code: str, start_date: str, end_date: str) -> pd.DataFrame:
+    """
+    ETF 발행시장환매 평가시가평가액 보정 (R lines 177-183).
+    DWPM10520에서 "ETF발행시장환매" 거래를 찾아 trd_amt를 평가시가평가액에 가산.
+    """
+    conn = get_pandas_connection('dt')
+    try:
+        sql = """
+            SELECT t.std_dt, t.fund_cd, t.item_cd, t.item_nm,
+                   t.trd_amt, t.tr_upr, t.trd_pl_amt,
+                   c.tr_whl_nm
+            FROM DWPM10520 t
+            LEFT JOIN DWCI10160 c ON t.tr_cd = c.tr_cd AND t.synp_cd = c.synp_cd
+            WHERE t.fund_cd = %s
+              AND t.std_dt >= %s AND t.std_dt <= %s
+              AND c.tr_whl_nm LIKE '%%ETF발행시장환매%%'
+        """
+        df = pd.read_sql(sql, conn, params=[fund_code, start_date, end_date])
+        if df.empty:
+            return pd.DataFrame(columns=['기준일자', 'item_cd', '평가시가평가액보정'])
+
+        df['기준일자'] = pd.to_datetime(df['std_dt'].astype(str), format='%Y%m%d')
+        # R: group_by(fund_cd, item_cd, tr_upr, trd_pl_amt) → reframe(기준일자=max, 평가시가평가액보정=trd_amt[1])
+        result = df.groupby(['fund_cd', 'item_cd', 'tr_upr', 'trd_pl_amt']).agg(
+            기준일자=('기준일자', 'max'),
+            평가시가평가액보정=('trd_amt', 'first'),
+        ).reset_index()
+
+        return result[['기준일자', 'item_cd', '평가시가평가액보정']]
+    finally:
+        conn.close()
+
+
+def _load_usdkrw_rate(start_date: str = None, end_date: str = None,
+                      source: str = 'ECOS') -> pd.DataFrame:
+    """
+    USDKRW 매매기준율 로드.
+
+    source 태깅:
+        'ECOS' — 한국은행 ECOS API (R 동일 소스, stat_code=731Y003)
+        'DWCI10260' — dt.DWCI10260 테이블 (DB 대체 소스)
+    나중에 source='DWCI10260'으로 교체 가능.
+    """
+    if source == 'ECOS':
+        return _load_usdkrw_from_ecos(start_date, end_date)
+    else:
+        return _load_usdkrw_from_db(start_date, end_date)
+
+
+def _load_usdkrw_from_ecos(start_date: str = None, end_date: str = None) -> pd.DataFrame:
+    """ECOS API로 USDKRW 매매기준율 로드 (R 동일: stat_code=731Y003, item=0000003)."""
+    import requests
+    import warnings
+    warnings.filterwarnings('ignore', message='Unverified HTTPS request')
+
+    api_key = "FWC2IZWA5YD459SQ7RJM"
+    # 충분한 버퍼 포함 (R: start_time=19000101)
+    st = start_date or '20100101'
+    ed = end_date or pd.Timestamp.now().strftime('%Y%m%d')
+    url = (f"https://ecos.bok.or.kr/api/StatisticSearch/{api_key}/json/kr/"
+           f"1/10000/731Y003/D/{st}/{ed}/0000003")
+
+    try:
+        resp = requests.get(url, timeout=15, verify=False)
+        data = resp.json()
+    except Exception as e:
+        logger.warning(f"[ECOS API] 요청 실패, DWCI10260 fallback: {e}")
+        return _load_usdkrw_from_db(start_date, end_date)
+
+    if 'StatisticSearch' not in data:
+        logger.warning(f"[ECOS API] 응답 없음, DWCI10260 fallback")
+        return _load_usdkrw_from_db(start_date, end_date)
+
+    rows = data['StatisticSearch']['row']
+    df = pd.DataFrame(rows)
+    df = df[['TIME', 'DATA_VALUE']].copy()
+    df.columns = ['STD_DT', 'USD_KRW']
+    df['STD_DT'] = df['STD_DT'].astype(int)
+    df['USD_KRW'] = df['USD_KRW'].str.replace(',', '').astype(float)
+    df['기준일자'] = pd.to_datetime(df['STD_DT'].astype(str), format='%Y%m%d')
+    df = df.sort_values('기준일자').reset_index(drop=True)
+
+    # R 동일: pad_by_time(.by="day", .fill_na_direction="down")
+    full_range = pd.date_range(df['기준일자'].min(), df['기준일자'].max(), freq='D')
+    df = df.set_index('기준일자').reindex(full_range).ffill().reset_index()
+    df.columns = ['기준일자'] + list(df.columns[1:])
+    df['return_USDKRW'] = df['USD_KRW'].pct_change()
+    df['_source'] = 'ECOS'  # 소스 태깅
+
+    return df
+
+
+def _load_usdkrw_from_db(start_date: str = None, end_date: str = None) -> pd.DataFrame:
+    """DWCI10260에서 USDKRW 매매기준율 로드 (DB 소스)."""
+    conn = get_pandas_connection('dt')
+    try:
+        conditions = ["CURR_DS_CD = 'USD'"]
+        params = []
+        if start_date:
+            conditions.append("STD_DT >= %s")
+            params.append(start_date)
+        if end_date:
+            conditions.append("STD_DT <= %s")
+            params.append(end_date)
+        sql = f"SELECT STD_DT, TR_STD_RT FROM DWCI10260 WHERE {' AND '.join(conditions)} ORDER BY STD_DT"
+        df = pd.read_sql(sql, conn, params=params)
+        if not df.empty:
+            df['기준일자'] = pd.to_datetime(df['STD_DT'].astype(str), format='%Y%m%d')
+            df['return_USDKRW'] = df['TR_STD_RT'].pct_change()
+            df['_source'] = 'DWCI10260'  # 소스 태깅
+        return df
+    finally:
+        conn.close()
+
+
+def _load_currency_exposure_mapping() -> dict:
+    """통화 노출 매핑 (solution.universe_non_derivative → ISIN:노출통화 dict)."""
+    conn = get_pandas_connection('solution')
+    try:
+        sql = """
+            SELECT ISIN, classification as 노출통화
+            FROM universe_non_derivative
+            WHERE classification_method = 'Currency Exposure'
+            AND classification IS NOT NULL AND ISIN IS NOT NULL
+        """
+        df = pd.read_sql(sql, conn)
+        return dict(zip(df['ISIN'], df['노출통화']))
+    finally:
+        conn.close()
+
+
+def _load_asset_classification_mapping(method: str = '방법3') -> dict:
+    """자산군 분류 매핑 (solution.universe_non_derivative → ISIN:자산군 dict)."""
+    conn = get_pandas_connection('solution')
+    try:
+        sql = """
+            SELECT ISIN, classification as 자산군
+            FROM universe_non_derivative
+            WHERE classification_method = %s
+            AND classification IS NOT NULL AND ISIN IS NOT NULL
+        """
+        df = pd.read_sql(sql, conn, params=[method])
+        return dict(zip(df['ISIN'], df['자산군']))
+    finally:
+        conn.close()
+
+
+def compute_single_port_pa(fund_code: str, start_date: str, end_date: str,
+                           fx_split: bool = True, mapping_method: str = '방법3') -> dict:
+    """
+    단일 포트폴리오 PA (R 동일 로직).
+
+    R reference:
+    - PA_from_MOS(): 비중/수익률 계산, FX 분리
+    - Portfolio_analysis(): 기여수익률, 누적기여도
+
+    Parameters:
+        fund_code: 펀드코드 (예: '08N81')
+        start_date: 분석시작일 (YYYYMMDD)
+        end_date: 분석종료일 (YYYYMMDD)
+        fx_split: FX 분리 여부 (True=증권/FX 분리)
+        mapping_method: 자산군 분류 방법 ('방법1'~'방법5')
+
+    Returns: dict with keys:
+        'asset_summary': DataFrame (자산군별 요약 — Excel Sheet 1)
+        'sec_summary': DataFrame (종목별 요약 — Excel Sheet 2)
+        'asset_daily': DataFrame (자산군별 일별 — Excel Sheet 3)
+        'sec_daily': DataFrame (종목별 일별 — Excel Sheet 4)
+        'classification': DataFrame (분류현황 — Excel Sheet 5)
+    """
+    # ── 1) 모펀드 코드 ──
+    class_m_fund = _get_class_mother_fund(fund_code)
+    logger.info(f"[SinglePA] fund={fund_code}, class_m={class_m_fund}, {start_date}~{end_date}")
+
+    # ── 2) 데이터 로드 (T-1 버퍼 포함) ──
+    buf_start = str(max(int(start_date) - 100, 20200101))
+
+    # MA000410
+    pa_raw = load_pa_source(class_m_fund, buf_start, end_date)
+    if pa_raw.empty:
+        logger.warning(f"[SinglePA] MA000410 데이터 없음: {class_m_fund}")
+        return None
+
+    # Error sec 필터링 (R: sum(abs(amt))==0인 종목 제거)
+    sec_err = pa_raw.groupby('sec_id')['amt'].apply(lambda x: x.abs().sum())
+    error_secs = sec_err[sec_err == 0].index.tolist()
+    pa_raw = pa_raw[~pa_raw['sec_id'].isin(error_secs)].copy()
+
+    # DWPM10510 (class_m_fund + fund_code)
+    nast_class_m = _load_daily_nast(class_m_fund, buf_start, end_date)
+    if class_m_fund != fund_code:
+        nast_fund = _load_daily_nast(fund_code, buf_start, end_date)
+    else:
+        nast_fund = nast_class_m
+
+    if nast_class_m.empty or nast_fund.empty:
+        logger.warning(f"[SinglePA] DWPM10510 데이터 없음")
+        return None
+
+    # Merge: class_m의 NAST_AMT + fund의 MOD_STPR/PDD_CHNG_STPR
+    nast_class_m = nast_class_m.sort_values('기준일자').reset_index(drop=True)
+    nast_fund = nast_fund.sort_values('기준일자').reset_index(drop=True)
+
+    if class_m_fund != fund_code:
+        fund_info = nast_class_m[['기준일자', 'NAST_AMT']].merge(
+            nast_fund[['기준일자', 'MOD_STPR', 'PDD_CHNG_STPR', 'DD1_ERN_RT']],
+            on='기준일자', how='inner'
+        )
+    else:
+        fund_info = nast_class_m[['기준일자', 'NAST_AMT', 'MOD_STPR', 'PDD_CHNG_STPR', 'DD1_ERN_RT']].copy()
+
+    fund_info = fund_info.sort_values('기준일자').reset_index(drop=True)
+
+    # MOD_STPR → 1000 리베이스 (R: PDD_CHNG_STPR[1]==0 분기)
+    if fund_info['PDD_CHNG_STPR'].iloc[0] == 0:
+        base = 10000 if fund_info['MOD_STPR'].iloc[0] > 9500 else 1000
+        fund_info['PDD_CHNG_STPR'] = fund_info['MOD_STPR'].shift(1).fillna(base)
+        fund_info['수정기준가'] = fund_info['MOD_STPR']
+    else:
+        fund_info['수정기준가'] = fund_info['MOD_STPR']
+        first_mod = fund_info['MOD_STPR'].iloc[0]
+        first_dd1 = fund_info['DD1_ERN_RT'].iloc[0] / 100
+        fund_info['MOD_STPR'] = (fund_info['MOD_STPR'] / first_mod) * 1000
+        fund_info['PDD_CHNG_STPR'] = fund_info['MOD_STPR'].shift(1)
+        fund_info.loc[fund_info.index[0], 'PDD_CHNG_STPR'] = 1000 * (1 - first_dd1)
+
+    fund_info['daily_return'] = fund_info['MOD_STPR'] / fund_info['PDD_CHNG_STPR'] - 1
+
+    # 순설정금액
+    net_sub = _load_net_subscription_pa(class_m_fund, start_date, end_date)
+
+    # USDKRW 환율
+    usdkrw = _load_usdkrw_rate(buf_start, end_date)
+
+    # 통화 노출 & 자산군 매핑
+    ccy_dict = _load_currency_exposure_mapping()
+    asset_dict = _load_asset_classification_mapping(mapping_method)
+
+    # DWPM10530 보유내역 (R: historical_position_DWPM10530)
+    holdings_buf_start = str(max(int(buf_start) - 50, 20200101))
+    holdings_pa = _load_holdings_for_pa(class_m_fund, holdings_buf_start, end_date)
+    has_holdings = not holdings_pa.empty
+
+    # ETF 발행시장환매 보정 (R lines 177-183)
+    etf_adj = _load_etf_redemption_adjustment(class_m_fund, buf_start, end_date)
+
+    # ── 3) 일별 종목별 집계 (MA000410 + DWPM10530 조인) ──
+    pa_raw['pr_date'] = pa_raw['pr_date'].astype(int)
+
+    # pl_gb별 환산금액 분리를 위한 마킹
+    pa_raw['is_환산'] = (pa_raw['pl_gb'] == '환산').astype(int)
+    pa_raw['환산amt'] = pa_raw['amt'] * pa_raw['is_환산']
+
+    # R line 221: MA410 + DWPM10530 left_join → position_gb 보정 + 평가시가평가액 조건부 계산
+    if has_holdings:
+        pa_raw = pa_raw.merge(
+            holdings_pa[['기준일자', 'ITEM_CD', 'ITEM_NM', 'POS_DS_CD', 'PDD_QTY', 'BUY_QTY', 'SELL_QTY']],
+            left_on=['기준일자', 'sec_id'],
+            right_on=['기준일자', 'ITEM_CD'],
+            how='left',
+        )
+        # R line 223: position_gb=="LONG" & POS_DS_CD=="매도" → "SHORT"
+        cross_short = (pa_raw['position_gb'] == 'LONG') & (pa_raw['POS_DS_CD'] == '매도')
+        pa_raw.loc[cross_short, 'position_gb'] = 'SHORT'
+    else:
+        pa_raw['POS_DS_CD'] = np.nan
+        pa_raw['PDD_QTY'] = np.nan
+        pa_raw['BUY_QTY'] = np.nan
+        pa_raw['ITEM_NM'] = np.nan
+
+    # R lines 225-236: group_by(fund_id, pr_date, sec_id) → reframe with conditional 평가시가평가액
+    def _agg_sec_group(g):
+        """R 동일: sec_id 그룹 집계 (lines 225-236)."""
+        시가 = g['val'].max()
+        총손익 = g['amt'].sum()
+        환산 = (g['amt'] * (g['pl_gb'] == '환산').astype(int)).sum()
+        ag = g['asset_gb'].iloc[0]
+
+        # 평가시가평가액: R line 230 — 신규매수(PDD_QTY==0 & BUY_QTY!=0) → max(val)-sum(amt)
+        pdd_qty = g['PDD_QTY'].iloc[0] if pd.notna(g['PDD_QTY'].iloc[0]) else -1
+        buy_qty = g['BUY_QTY'].iloc[0] if pd.notna(g['BUY_QTY'].iloc[0]) else 0
+        if pdd_qty == 0 and buy_qty != 0:
+            평가시가 = 시가 - 총손익
+        else:
+            평가시가 = g['std_val'].max()
+
+        # position_gb: R lines 233-236 — 2행 이상이고 '평가' 존재 → 평가 row의 position_gb
+        if len(g) >= 2 and (g['pl_gb'] == '평가').any():
+            pos = g.loc[g['pl_gb'] == '평가', 'position_gb'].iloc[0]
+        else:
+            pos = g['position_gb'].iloc[0]
+
+        item_nm = g['ITEM_NM'].iloc[0] if pd.notna(g['ITEM_NM'].iloc[0]) else None
+        pos_ds = g['POS_DS_CD'].iloc[0] if 'POS_DS_CD' in g.columns and pd.notna(g['POS_DS_CD'].iloc[0]) else None
+
+        return pd.Series({
+            '시가평가액': 시가,
+            '평가시가평가액': 평가시가,
+            '총손익금액': 총손익,
+            '환산금액': 환산,
+            'asset_gb': ag,
+            'position_gb': pos,
+            'ITEM_NM_pos': item_nm,
+            'POS_DS_CD': pos_ds,
+        })
+
+    sec_agg = pa_raw.groupby(['pr_date', '기준일자', 'sec_id']).apply(_agg_sec_group).reset_index()
+
+    # R lines 238-242: 전량매도 lag 보정 (group_by sec_id → lag)
+    sec_agg = sec_agg.sort_values(['sec_id', '기준일자']).reset_index(drop=True)
+    for sid in sec_agg['sec_id'].unique():
+        if sid == '000000000000':
+            continue
+        mask = sec_agg['sec_id'] == sid
+        idx = sec_agg.index[mask]
+        시가 = sec_agg.loc[idx, '시가평가액'].values
+        평가시가 = sec_agg.loc[idx, '평가시가평가액'].values
+        for i in range(1, len(idx)):
+            # R line 240: 시가평가액==0 & 평가시가평가액==0 → lag(평가시가평가액)
+            if 시가[i] == 0 and 평가시가[i] == 0:
+                sec_agg.loc[idx[i], '평가시가평가액'] = 평가시가[i - 1]
+            # R line 241: 시가평가액==0 → lag(시가평가액)
+            elif 시가[i] == 0:
+                sec_agg.loc[idx[i], '평가시가평가액'] = 시가[i - 1]
+
+    # 통화 노출 매핑
+    sec_agg['노출통화'] = sec_agg['sec_id'].map(ccy_dict)
+    # fallback: ISIN 접두어 기반
+    na_ccy = sec_agg['노출통화'].isna()
+    sec_agg.loc[na_ccy & sec_agg['sec_id'].str.startswith('KR'), '노출통화'] = 'KRW'
+    sec_agg.loc[na_ccy & sec_agg['sec_id'].str.startswith('00'), '노출통화'] = 'KRW'
+    sec_agg.loc[sec_agg['노출통화'].isna() & (sec_agg['asset_gb'] == '기타비용'), '노출통화'] = 'KRW'
+    # R line 308-309: 유동 항목은 sec_id 접두어로 구분 (US→USD, KR/00→KRW)
+    유동_na = sec_agg['노출통화'].isna() & (sec_agg['asset_gb'] == '유동')
+    sec_agg.loc[유동_na & sec_agg['sec_id'].str[:2].isin(['KR', '00']), '노출통화'] = 'KRW'
+    sec_agg.loc[유동_na & sec_agg['sec_id'].str.startswith('US'), '노출통화'] = 'USD'
+    sec_agg.loc[유동_na & sec_agg['노출통화'].isna(), '노출통화'] = 'KRW'  # 기타 유동
+    sec_agg['노출통화'] = sec_agg['노출통화'].fillna('USD')
+
+    # 자산군 매핑
+    sec_agg['자산군'] = sec_agg['sec_id'].map(asset_dict)
+    # fallback
+    na_cls = sec_agg['자산군'].isna()
+    for idx in sec_agg[na_cls].index:
+        ag = str(sec_agg.loc[idx, 'asset_gb'])
+        ccy = sec_agg.loc[idx, '노출통화']
+        if ag in ('유동', '기타비용'):
+            sec_agg.loc[idx, '자산군'] = '유동성및기타'
+        elif '선물' in ag or '선도환' in ag:
+            sec_agg.loc[idx, '자산군'] = 'FX' if ccy != 'KRW' else '유동성및기타'
+        elif '주식' in ag:
+            sec_agg.loc[idx, '자산군'] = '해외주식' if ccy != 'KRW' else '국내주식'
+        elif '채권' in ag:
+            sec_agg.loc[idx, '자산군'] = '해외채권' if ccy != 'KRW' else '국내채권'
+        else:
+            sec_agg.loc[idx, '자산군'] = '유동성및기타'
+
+    # R 로직: 유동 USD 종목 → FX 재분류 (R line 591: asset_gb=="유동" & 노출통화!="KRW")
+    fx_reclass_mask = (
+        (sec_agg['asset_gb'] == '유동') &
+        (sec_agg['노출통화'] != 'KRW') &
+        (sec_agg['sec_id'] != '000000000000')
+    )
+    sec_agg.loc[fx_reclass_mask, '자산군'] = 'FX'
+
+    # SHORT 처리 (R: position_gb=="SHORT" → 시가평가액 음수)
+    short_mask = sec_agg['position_gb'] == 'SHORT'
+    sec_agg.loc[short_mask, '시가평가액'] *= -1
+    sec_agg.loc[short_mask, '평가시가평가액'] *= -1
+
+    # R line 342: 콜론 필터 (시가평가액==0인 콜론 종목 제거)
+    if 'ITEM_NM_pos' in sec_agg.columns:
+        콜론_mask = sec_agg['ITEM_NM_pos'].fillna('').str.contains(r'\(콜', regex=True) & (sec_agg['시가평가액'] == 0)
+        sec_agg = sec_agg[~콜론_mask].copy()
+
+    # ── 4) ETF발행시장환매 보정 + 조정_평가시가평가액 ──
+    # R line 361-367: left_join ETF_환매_평가시가평가액보정 → 평가시가평가액 += 보정
+    sec_agg['순설정액'] = sec_agg['시가평가액'] - (sec_agg['총손익금액'] + sec_agg['평가시가평가액'])
+    sec_agg.loc[sec_agg['순설정액'].abs() < 100, '순설정액'] = 0
+
+    if not etf_adj.empty:
+        sec_agg = sec_agg.merge(
+            etf_adj, left_on=['기준일자', 'sec_id'], right_on=['기준일자', 'item_cd'], how='left'
+        )
+        sec_agg['평가시가평가액보정'] = sec_agg['평가시가평가액보정'].fillna(0)
+        # R line 367: 평가시가평가액 += 보정 (순설정액은 원본 기준으로 유지)
+        sec_agg['평가시가평가액'] = sec_agg['평가시가평가액'] + sec_agg['평가시가평가액보정']
+        sec_agg.drop(columns=['item_cd', '평가시가평가액보정'], inplace=True, errors='ignore')
+
+    sec_agg['조정_평가시가평가액'] = np.where(
+        sec_agg['position_gb'] == 'SHORT',
+        sec_agg['평가시가평가액'],
+        np.where(
+            (sec_agg['순설정액'] < 0) | ((sec_agg['시가평가액'] == 0) & (sec_agg['평가시가평가액'] > 0)),
+            sec_agg['평가시가평가액'],
+            sec_agg['시가평가액'] - sec_agg['총손익금액']
+        )
+    )
+
+    # ── 5) 순자산총액(T-1) + 순설정금액 → weight_PA ──
+    fi = fund_info[['기준일자', 'NAST_AMT', 'daily_return', 'MOD_STPR']].copy()
+    fi['순자산총액_T1'] = fi['NAST_AMT'].shift(1).fillna(0)  # R: lag(default=0)
+
+    sec_agg = sec_agg.merge(fi[['기준일자', '순자산총액_T1', 'daily_return']], on='기준일자', how='left')
+
+    if not net_sub.empty:
+        sec_agg = sec_agg.merge(net_sub, on='기준일자', how='left')
+        sec_agg['순설정금액'] = sec_agg['순설정금액'].fillna(0)
+    else:
+        sec_agg['순설정금액'] = 0
+
+    denom = sec_agg['순자산총액_T1'] + sec_agg['순설정금액']
+    sec_agg['weight_PA'] = np.where(denom.abs() > 0, sec_agg['조정_평가시가평가액'] / denom, 0)
+
+    # 순자산비중 (시가평가액 / 순자산총액)
+    sec_agg = sec_agg.merge(fi[['기준일자', 'NAST_AMT']], on='기준일자', how='left', suffixes=('', '_cur'))
+    sec_agg['순자산비중'] = np.where(
+        sec_agg['NAST_AMT'].abs() > 0,
+        sec_agg['시가평가액'] / sec_agg['NAST_AMT'],
+        0
+    )
+
+    # ── 6) FX split ──
+    # R 로직: 증권(유동/기타비용/선도환/미국달러 제외) vs FX(overlay+직접포지션) vs 유동성잔차
+
+    sec_agg['종목별수익률'] = np.where(
+        sec_agg['조정_평가시가평가액'].abs() > 0,
+        sec_agg['총손익금액'] / sec_agg['조정_평가시가평가액'].abs(),
+        0
+    )
+
+    # 시가평가액(T-1) 계산 (R: lag(시가평가액))
+    sec_agg = sec_agg.sort_values(['sec_id', '기준일자'])
+    sec_agg['시가평가액_T1'] = sec_agg.groupby('sec_id')['시가평가액'].shift(1).fillna(0)
+
+    if fx_split and not usdkrw.empty:
+        sec_agg = sec_agg.merge(usdkrw[['기준일자', 'return_USDKRW']], on='기준일자', how='left')
+        sec_agg['return_USDKRW'] = sec_agg['return_USDKRW'].fillna(0)
+
+        # is_sec: 증권 여부 — sort/merge 후 재계산 (인덱스 정합성)
+        is_sec = ~sec_agg['자산군'].isin(['FX', '유동성및기타'])
+
+        # 증권에 대해: r_sec = (1+R_total)/(1+r_FX)-1
+        usd_sec_mask = (sec_agg['노출통화'] == 'USD') & is_sec
+        sec_agg['수익률_사용'] = sec_agg['종목별수익률']
+        sec_agg.loc[usd_sec_mask, '수익률_사용'] = (
+            (1 + sec_agg.loc[usd_sec_mask, '종목별수익률']) /
+            (1 + sec_agg.loc[usd_sec_mask, 'return_USDKRW']) - 1
+        )
+
+        # FX 환산_adjust (R line 552):
+        # 환산_adjust = 시가평가액(T-1)*r_FX + r_FX*r_sec*시가평가액(T-1)
+        #             = 시가평가액(T-1) * r_FX * (1 + r_sec)
+        sec_agg['FX효과금액'] = 0.0
+        sec_agg.loc[usd_sec_mask, 'FX효과금액'] = (
+            sec_agg.loc[usd_sec_mask, '시가평가액_T1'] *
+            sec_agg.loc[usd_sec_mask, 'return_USDKRW'] *
+            (1 + sec_agg.loc[usd_sec_mask, '수익률_사용'])
+        )
+    else:
+        sec_agg['수익률_사용'] = sec_agg['종목별수익률']
+        sec_agg['return_USDKRW'] = 0
+        sec_agg['FX효과금액'] = 0
+
+    # ── 7) 기여수익률 (일별) ──
+    # 증권: 기여수익률 = 수익률_사용(FX제외) × abs(weight_PA)
+    sec_agg['기여수익률_daily'] = sec_agg['수익률_사용'] * sec_agg['weight_PA'].abs()
+
+    # FX 직접포지션: 종목별수익률 × abs(weight_PA)
+    fx_direct_mask = sec_agg['자산군'] == 'FX'
+    sec_agg.loc[fx_direct_mask, '기여수익률_daily'] = (
+        sec_agg.loc[fx_direct_mask, '종목별수익률'] * sec_agg.loc[fx_direct_mask, 'weight_PA'].abs()
+    )
+
+    # ── 8) 분석기간 필터링 ──
+    from_dt = pd.Timestamp(start_date)
+    to_dt = pd.Timestamp(end_date)
+    analysis = sec_agg[(sec_agg['기준일자'] >= from_dt) & (sec_agg['기준일자'] <= to_dt)].copy()
+
+    if analysis.empty:
+        logger.warning(f"[SinglePA] 분석기간 내 데이터 없음")
+        return None
+
+    fi_period = fund_info[(fund_info['기준일자'] >= from_dt) & (fund_info['기준일자'] <= to_dt)].copy()
+    fi_period = fi_period.sort_values('기준일자').reset_index(drop=True)
+
+    # is_sec 재계산 (analysis 기준)
+    anal_is_sec = ~analysis['자산군'].isin(['FX', '유동성및기타'])
+
+    # ── 9) FX 자산군 구성 ──
+    # R 로직: FX = (증권 환산효과) + (유동성 USD + FX 직접포지션)
+    # FX 환산효과 / denom
+    fx_from_sec = analysis[anal_is_sec & (analysis['노출통화'] != 'KRW')].groupby('기준일자').agg(
+        FX효과합계=('FX효과금액', 'sum')
+    ).reset_index()
+
+    # FX 직접포지션 기여
+    fx_daily_contrib = analysis[analysis['자산군'] == 'FX'].groupby('기준일자')['기여수익률_daily'].sum().reset_index()
+    fx_daily_contrib.columns = ['기준일자', 'FX직접기여']
+
+    # denom 가져오기
+    denom_by_date = analysis.groupby('기준일자').agg(denom=('순자산총액_T1', 'first')).reset_index()
+    # 순설정금액 merge
+    if not net_sub.empty:
+        denom_by_date = denom_by_date.merge(net_sub, on='기준일자', how='left')
+        denom_by_date['순설정금액'] = denom_by_date['순설정금액'].fillna(0)
+        denom_by_date['denom'] = denom_by_date['denom'] + denom_by_date['순설정금액']
+
+    fx_merged = fi_period[['기준일자']].merge(fx_from_sec, on='기준일자', how='left')
+    fx_merged = fx_merged.merge(fx_daily_contrib, on='기준일자', how='left')
+    fx_merged = fx_merged.merge(denom_by_date[['기준일자', 'denom']], on='기준일자', how='left')
+    fx_merged = fx_merged.fillna(0)
+
+    # FX 기여수익률 = 환 효과/denom + FX 직접포지션
+    fx_merged['FX기여_total'] = np.where(
+        fx_merged['denom'].abs() > 0,
+        fx_merged['FX효과합계'] / fx_merged['denom'] + fx_merged['FX직접기여'],
+        fx_merged['FX직접기여']
+    )
+
+    # FX 순자산비중 = sum of USD-exposed securities' weight_순자산 (overlay, R line 582)
+    fx_weight_by_date = analysis[anal_is_sec & (analysis['노출통화'] != 'KRW')].groupby('기준일자')['순자산비중'].sum().reset_index()
+    fx_weight_by_date.columns = ['기준일자', 'FX순자산비중']
+
+    # ── 10) 자산군별/종목별 일별 집계 ──
+    # 증권 (FX, 유동성 제외)
+    sec_기여 = analysis[anal_is_sec].groupby(['기준일자', 'sec_id']).agg(
+        기여수익률=('기여수익률_daily', 'sum'),
+        weight_PA=('weight_PA', lambda x: x.abs().sum()),
+        순자산비중=('순자산비중', 'sum'),
+        자산군=('자산군', 'first'),
+        종목별수익률=('수익률_사용', 'first'),
+    ).reset_index()
+
+    # FX 직접포지션 종목
+    fx_종목 = analysis[analysis['자산군'] == 'FX'].groupby(['기준일자', 'sec_id']).agg(
+        기여수익률=('기여수익률_daily', 'sum'),
+        weight_PA=('weight_PA', lambda x: x.abs().sum()),
+        순자산비중=('순자산비중', 'sum'),
+        자산군=('자산군', 'first'),
+        종목별수익률=('종목별수익률', 'first'),
+    ).reset_index()
+
+    all_sec_daily = pd.concat([sec_기여, fx_종목], ignore_index=True)
+    all_sec_daily = all_sec_daily.merge(fi_period[['기준일자', 'daily_return']], on='기준일자', how='left')
+
+    # 유동성잔차 = port_return - sum(증권기여) - FX_total
+    daily_port_ret = fi_period.set_index('기준일자')['daily_return']
+    daily_sec_sum = all_sec_daily.groupby('기준일자')['기여수익률'].sum()
+    fx_total_series = fx_merged.set_index('기준일자')['FX기여_total'].reindex(daily_port_ret.index, fill_value=0)
+    # FX직접기여는 이미 all_sec_daily에 포함, overlay 환산효과만 추가분
+    fx_overlay_only = fx_merged.set_index('기준일자').apply(
+        lambda r: r['FX효과합계'] / r['denom'] if r['denom'] != 0 else 0, axis=1
+    ).reindex(daily_port_ret.index, fill_value=0)
+
+    유동성잔차 = daily_port_ret - daily_sec_sum.reindex(daily_port_ret.index, fill_value=0) - fx_overlay_only
+
+    # FX overlay weight_PA 및 수익률 계산 (R: sec_return_weight의 USD 증권 합산)
+    fx_overlay_stats = analysis[anal_is_sec & (analysis['노출통화'] != 'KRW')].groupby('기준일자').agg(
+        overlay_weight_PA=('weight_PA', lambda x: x.abs().sum()),
+        overlay_조정시가=('조정_평가시가평가액', lambda x: x.abs().sum()),
+        overlay_FX효과=('FX효과금액', 'sum'),
+    ).reset_index()
+    fx_overlay_stats['overlay_수익률'] = np.where(
+        fx_overlay_stats['overlay_조정시가'] > 0,
+        fx_overlay_stats['overlay_FX효과'] / fx_overlay_stats['overlay_조정시가'],
+        0
+    )
+
+    # 유동성잔차 + FX overlay를 종목으로 추가
+    유동성_rows = []
+    fx_overlay_rows = []
+    for dt in fi_period['기준일자']:
+        유동성_rows.append({
+            '기준일자': dt, 'sec_id': '유동성및기타', '자산군': '유동성및기타',
+            '기여수익률': 유동성잔차.get(dt, 0),
+            'weight_PA': 0, '순자산비중': 0,
+            '종목별수익률': 0,
+            'daily_return': daily_port_ret.get(dt, 0),
+        })
+        if fx_split:
+            # FX overlay (증권의 환산효과)
+            fx_w_row = fx_weight_by_date[fx_weight_by_date['기준일자'] == dt]
+            fx_w = fx_w_row['FX순자산비중'].iloc[0] if len(fx_w_row) > 0 else 0
+            fx_ow_row = fx_overlay_stats[fx_overlay_stats['기준일자'] == dt]
+            overlay_wp = fx_ow_row['overlay_weight_PA'].iloc[0] if len(fx_ow_row) > 0 else 0
+            overlay_ret = fx_ow_row['overlay_수익률'].iloc[0] if len(fx_ow_row) > 0 else 0
+            fx_overlay_rows.append({
+                '기준일자': dt, 'sec_id': 'USD(FX)', '자산군': 'FX',
+                '기여수익률': fx_overlay_only.get(dt, 0) if dt in fx_overlay_only.index else 0,
+                'weight_PA': overlay_wp, '순자산비중': fx_w,
+                '종목별수익률': overlay_ret,
+                'daily_return': daily_port_ret.get(dt, 0),
+            })
+
+    all_sec_daily = pd.concat([
+        all_sec_daily,
+        pd.DataFrame(유동성_rows),
+        pd.DataFrame(fx_overlay_rows) if fx_split else pd.DataFrame(),
+    ], ignore_index=True)
+
+    # ── 11) 경로의존적 누적기여도 ──
+    dates_sorted = sorted(fi_period['기준일자'].unique())
+    port_returns = fi_period.set_index('기준일자')['daily_return'].to_dict()
+
+    # 기준가격 계산
+    기준가격 = [1000.0]
+    for dt in dates_sorted:
+        기준가격.append(기준가격[-1] * (1 + port_returns.get(dt, 0)))
+    기준가격 = 기준가격[1:]  # 첫 번째 1000 제거
+    기준가증감 = [기준가격[0] - 1000] + [기준가격[i] - 기준가격[i-1] for i in range(1, len(기준가격))]
+    cum_기준가증감 = np.cumsum(기준가증감)
+    cum_return = [(g / 1000) for g in cum_기준가증감]  # = 기준가격/1000 - 1
+
+    dt_to_idx = {dt: i for i, dt in enumerate(dates_sorted)}
+
+    # ITEM_NM 매핑 (sec_id → 종목명) — DWPM10530 조인에서 이미 확보
+    if has_holdings and 'ITEM_NM_pos' in sec_agg.columns:
+        _nm = sec_agg[sec_agg['ITEM_NM_pos'].notna()].drop_duplicates('sec_id')
+        item_name_dict = dict(zip(_nm['sec_id'], _nm['ITEM_NM_pos']))
+    else:
+        try:
+            _holdings = load_fund_holdings_classified(class_m_fund)
+            if _holdings is not None and not _holdings.empty:
+                item_name_dict = dict(zip(_holdings['ITEM_CD'], _holdings['ITEM_NM']))
+            else:
+                item_name_dict = {}
+        except Exception:
+            item_name_dict = {}
+
+    # 종목별 누적기여도 계산
+    sec_ids = all_sec_daily['sec_id'].unique()
+    result_rows = []
+
+    for sid in sec_ids:
+        sid_data = all_sec_daily[all_sec_daily['sec_id'] == sid].sort_values('기준일자')
+        if sid_data.empty:
+            continue
+
+        ac = sid_data['자산군'].iloc[0]
+        item_nm = item_name_dict.get(sid, sid)
+        if sid == '유동성및기타':
+            item_nm = '유동성및기타'
+        elif sid == 'USD(FX)':
+            item_nm = 'USD(FX)'
+
+        cum_sec기여도 = 0.0
+        first_date = sid_data['기준일자'].iloc[0]
+        last_date = sid_data['기준일자'].iloc[-1]
+
+        for _, row in sid_data.iterrows():
+            dt = row['기준일자']
+            idx = dt_to_idx.get(dt)
+            if idx is None:
+                continue
+            port_ret = port_returns.get(dt, 0)
+            contrib = row['기여수익률']
+            기가증 = 기준가증감[idx]
+
+            # sec_id기여도 = (기여수익률/port_return) × 기준가증감
+            if port_ret != 0:
+                sec기여도 = (contrib / port_ret) * 기가증
+            else:
+                sec기여도 = 0
+            cum_sec기여도 += sec기여도
+
+            # 총손익기여도 = cum_return × cumsum(sec기여도) / cumsum(기준가증감)
+            if cum_기준가증감[idx] != 0:
+                총손익기여도 = cum_return[idx] * cum_sec기여도 / cum_기준가증감[idx]
+            else:
+                총손익기여도 = 0
+
+            result_rows.append({
+                '기준일자': dt,
+                '분석시작일': first_date,
+                '분석종료일': last_date,
+                '개별수익률': 0,  # placeholder, 아래에서 계산
+                '기여수익률': 총손익기여도,
+                '자산군': ac,
+                '순자산비중': row['순자산비중'],
+                '종목코드': sid,
+                '종목명': item_nm,
+                'weight_PA': row['weight_PA'],
+                '기여수익률_daily': contrib,
+                '종목별수익률_daily': row['종목별수익률'],
+            })
+
+    result_df = pd.DataFrame(result_rows)
+    if result_df.empty:
+        return None
+
+    # ── 12) 개별수익률 (누적) ──
+    # 일별 수익률로부터 누적수익률 계산
+    # 증권/FX: cumprod(1+daily_return)-1
+    for sid in result_df['종목코드'].unique():
+        mask = result_df['종목코드'] == sid
+        daily_rets = result_df.loc[mask, '종목별수익률_daily'].values
+        cum_rets = np.cumprod(1 + daily_rets) - 1
+        result_df.loc[mask, '개별수익률'] = cum_rets
+
+    # ── 13) 비중 시작/끝 ──
+    for sid in result_df['종목코드'].unique():
+        mask = result_df['종목코드'] == sid
+        weights = result_df.loc[mask, '순자산비중'].values
+        if len(weights) > 0:
+            result_df.loc[mask, '순자산비중_시작'] = weights[0]
+            result_df.loc[mask, '순자산비중_끝'] = weights[-1]
+            result_df.loc[mask, '순자산비중_평균'] = np.mean(weights)
+            result_df.loc[mask, '순비중변화'] = weights[-1] - weights[0]
+
+    # ── 14) 출력 테이블 구성 ──
+    # Sheet 4: 종목별 일별
+    sec_daily_out = result_df[['기준일자', '분석시작일', '분석종료일', '개별수익률', '기여수익률',
+                                '자산군', '순자산비중_시작', '순자산비중_끝', '순자산비중',
+                                '종목코드', '종목명', '순비중변화']].copy()
+
+    # Sheet 2: 종목별 요약 (마지막 행 — 비중은 종료일 기준)
+    sec_summary = sec_daily_out.groupby('종목코드').last().reset_index()
+    sec_summary['분석시작일'] = from_dt
+    sec_summary['분석종료일'] = to_dt
+    # 순자산비중 = 종료일 기준 (R Excel 출력과 동일)
+    for sid in sec_summary['종목코드'].unique():
+        m = result_df[result_df['종목코드'] == sid]
+        sec_summary.loc[sec_summary['종목코드'] == sid, '순자산비중'] = m['순자산비중_끝'].iloc[-1] if len(m) > 0 else 0
+
+    # Sheet 3: 자산군별 일별
+    # 자산군별 개별수익률: weight 가중평균 daily return → cumprod
+    asset_daily_list = []
+    for ac in result_df['자산군'].unique():
+        ac_data = all_sec_daily[all_sec_daily['자산군'] == ac].copy()
+        if ac_data.empty:
+            continue
+
+        ac_by_date = ac_data.groupby('기준일자').agg(
+            기여수익률_daily=('기여수익률', 'sum'),
+            weight_PA=('weight_PA', lambda x: x.abs().sum()),
+            순자산비중=('순자산비중', 'sum'),
+        ).reset_index().sort_values('기준일자')
+
+        # 자산군 개별수익률: weight 가중평균
+        ac_sec = ac_data.groupby('기준일자').apply(
+            lambda g: np.average(g['종목별수익률'], weights=g['weight_PA'].abs()) if g['weight_PA'].abs().sum() > 0 else 0
+        ).reset_index()
+        ac_sec.columns = ['기준일자', '자산군수익률_daily']
+        ac_by_date = ac_by_date.merge(ac_sec, on='기준일자', how='left')
+        ac_by_date['자산군수익률_daily'] = ac_by_date['자산군수익률_daily'].fillna(0)
+
+        # 누적
+        ac_by_date['개별수익률'] = np.cumprod(1 + ac_by_date['자산군수익률_daily'].values) - 1
+
+        # 기여수익률 (path-dependent, 자산군별)
+        ac_result = result_df[result_df['자산군'] == ac].groupby('기준일자').agg(
+            기여수익률=('기여수익률', 'sum'),
+            순자산비중=('순자산비중', 'sum'),
+        ).reset_index()
+
+        ac_by_date = ac_by_date.merge(ac_result[['기준일자', '기여수익률']], on='기준일자', how='left', suffixes=('_raw', ''))
+        ac_by_date['기여수익률'] = ac_by_date['기여수익률'].fillna(0)
+
+        weights = ac_by_date['순자산비중'].values
+        asset_daily_list.append(pd.DataFrame({
+            '기준일자': ac_by_date['기준일자'],
+            '분석시작일': from_dt,
+            '분석종료일': to_dt,
+            '개별수익률': ac_by_date['개별수익률'],
+            '기여수익률': ac_by_date['기여수익률'],
+            '자산군': ac,
+            '순자산비중_시작': weights[0] if len(weights) > 0 else 0,
+            '순자산비중_끝': weights[-1] if len(weights) > 0 else 0,
+            '순자산비중': ac_by_date['순자산비중'],
+            '순비중변화': (weights[-1] - weights[0]) if len(weights) > 0 else 0,
+        }))
+
+    asset_daily_out = pd.concat(asset_daily_list, ignore_index=True) if asset_daily_list else pd.DataFrame()
+
+    # Sheet 1: 자산군별 요약
+    asset_summary_list = []
+    # 포트폴리오 행
+    total_cum_ret = cum_return[-1] if cum_return else 0
+    asset_summary_list.append({
+        '자산군': '포트폴리오',
+        '분석시작일': from_dt,
+        '분석종료일': to_dt,
+        '개별수익률': total_cum_ret,
+        '기여수익률': total_cum_ret,
+        '순자산비중': 1.0,
+        '순비중변화': 0,
+    })
+
+    for ac in ['국내주식', '국내채권', '대체', '해외주식', '해외채권', 'FX', '유동성및기타']:
+        ac_rows = asset_daily_out[asset_daily_out['자산군'] == ac] if not asset_daily_out.empty else pd.DataFrame()
+        if ac_rows.empty:
+            asset_summary_list.append({
+                '자산군': ac, '분석시작일': from_dt, '분석종료일': to_dt,
+                '개별수익률': 0, '기여수익률': 0, '순자산비중': 0, '순비중변화': 0,
+            })
+        else:
+            last_row = ac_rows.iloc[-1]
+            asset_summary_list.append({
+                '자산군': ac,
+                '분석시작일': from_dt,
+                '분석종료일': to_dt,
+                '개별수익률': last_row['개별수익률'],
+                '기여수익률': last_row['기여수익률'],
+                '순자산비중': last_row['순자산비중'],  # 종료일 기준
+                '순비중변화': last_row['순비중변화'],
+            })
+
+    asset_summary = pd.DataFrame(asset_summary_list)
+
+    # Sheet 5: 분류현황
+    classification_df = pd.DataFrame()
+    try:
+        conn = get_pandas_connection('solution')
+        sql = """
+            SELECT ISIN, classification_method, classification
+            FROM universe_non_derivative
+            WHERE ISIN IS NOT NULL
+        """
+        cls_raw = pd.read_sql(sql, conn)
+        conn.close()
+
+        # 분석 기간 sec_id들에 대해서만
+        used_secs = analysis['sec_id'].unique()
+        cls_filtered = cls_raw[cls_raw['ISIN'].isin(used_secs)]
+        if not cls_filtered.empty:
+            cls_pivot = cls_filtered.pivot_table(
+                index='ISIN', columns='classification_method',
+                values='classification', aggfunc='first'
+            ).reset_index()
+            cls_pivot.columns.name = None
+
+            # asset_gb, 기준통화 추가
+            sec_info = analysis[['sec_id', 'asset_gb', '노출통화']].drop_duplicates(subset='sec_id')
+            classification_df = cls_pivot.merge(sec_info, left_on='ISIN', right_on='sec_id', how='left')
+            classification_df = classification_df.drop(columns=['sec_id'], errors='ignore')
+            classification_df = classification_df.rename(columns={'ISIN': 'ISIN', 'asset_gb': 'asset_gb', '노출통화': '기준통화'})
+    except Exception as e:
+        logger.warning(f"[SinglePA] 분류현황 로드 실패: {e}")
+
+    logger.info(f"[SinglePA] 완료: {fund_code} {start_date}~{end_date}, "
+                f"종목수={len(sec_ids)}, 자산군={asset_summary['자산군'].tolist()}")
+
+    return {
+        'asset_summary': asset_summary,
+        'sec_summary': sec_summary,
+        'asset_daily': asset_daily_out,
+        'sec_daily': sec_daily_out,
+        'classification': classification_df,
+        'fund_code': fund_code,
+        'class_m_fund': class_m_fund,
+        'start_date': start_date,
+        'end_date': end_date,
+        'fx_split': fx_split,
+        'mapping_method': mapping_method,
+    }
+
+
+# ============================================================
 # 매크로 지표 로딩 (SCIP 기반)
 # ============================================================
 
@@ -1733,3 +2781,525 @@ def load_holdings_history_8class(fund_code: str, start_date: str = None) -> pd.D
         return pd.DataFrame()
     finally:
         conn.close()
+
+
+# ============================================================
+# 결과4/5/6: 연율화수익률, 연율화위험, 무위험연율화수익률
+# R benchmark: module_00_Function_v3.R (return_res_tables, weekly_calculation_Portfolio 등)
+# ============================================================
+
+def load_korea_holidays_weekday() -> set:
+    """
+    한국 평일 공휴일 set 반환.
+    R: KOREA_holidays <- holiday_calendar %>% filter(hldy_yn=="Y") %>%
+       filter(!day_ds_cd %in% c("1","7"))
+    토/일(1,7)은 제외하고 평일 공휴일만.
+    """
+    conn = get_pandas_connection('dt')
+    try:
+        sql = """
+            SELECT std_dt, day_ds_cd
+            FROM DWCI10220
+            WHERE hldy_yn = 'Y'
+              AND day_ds_cd NOT IN ('1', '7')
+              AND std_dt >= '20000101'
+        """
+        df = pd.read_sql(sql, conn)
+        holidays = set(pd.to_datetime(df['std_dt'].astype(str), format='%Y%m%d'))
+        return holidays
+    finally:
+        conn.close()
+
+
+def _return_first_weekly_date(start_date: pd.Timestamp, end_date: pd.Timestamp,
+                              business_days: pd.DatetimeIndex) -> pd.Timestamp:
+    """
+    R: return_first_weekly_date() — 주간수익률 시작일 결정.
+    end_date와 같은 요일 중 start_date 이후 첫 번째 날짜를 찾되,
+    (첫째주-7일, start_date] 구간에 영업일이 있으면 7일 뒤로 밀림.
+    (첫 불완전 주를 건너뛰는 로직)
+    """
+    if pd.isna(start_date) or pd.isna(end_date):
+        return pd.NaT
+
+    target_weekday = end_date.weekday()  # 0=Mon ... 6=Sun
+
+    # start_date 이후 같은 요일 첫 날짜
+    all_days = pd.date_range(start_date, end_date, freq='D')
+    same_wday = all_days[all_days.map(lambda d: d.weekday()) == target_weekday]
+    if len(same_wday) == 0:
+        return pd.NaT
+    first_wday = same_wday[0]
+
+    # (first_wday - 7일, start_date] 구간에 영업일이 있는지
+    window_start = first_wday - pd.Timedelta(days=7)
+    bdays_in_window = business_days[(business_days > window_start) & (business_days <= start_date)]
+    if len(bdays_in_window) > 0:
+        first_wday = first_wday + pd.Timedelta(days=7)
+
+    return first_wday
+
+
+def _build_weekly_returns(nav_series: pd.Series, dates: pd.DatetimeIndex,
+                          korea_holidays: set) -> pd.DataFrame:
+    """
+    R: return_res_tables() 내 기준가→주간수익률 파이프라인.
+
+    1. 기준가 = 1000 * (1 + 누적수익률) — 이미 nav_series가 기준가(MOD_STPR)
+    2. 한국 평일 공휴일 → NA 처리
+    3. 전체 캘린더일 pad (ffill)
+    4. 요일별 group → lag(1) → 주간수익률 / 주간로그수익률
+
+    Args:
+        nav_series: 기준가 시계열 (index=날짜, values=기준가)
+        dates: 원본 영업일 DatetimeIndex
+        korea_holidays: 평일 공휴일 set
+
+    Returns:
+        DataFrame(기준일자, 기준가, 주간수익률, 주간로그수익률)
+    """
+    df = pd.DataFrame({'기준일자': dates, '기준가': nav_series.values})
+    df = df.set_index('기준일자').sort_index()
+
+    # 한국 평일 공휴일 → NA
+    holiday_mask = df.index.isin(korea_holidays)
+    df.loc[holiday_mask, '기준가'] = np.nan
+
+    # 전체 캘린더일 pad + ffill
+    full_range = pd.date_range(df.index.min(), df.index.max(), freq='D')
+    df = df.reindex(full_range)
+    df.index.name = '기준일자'
+    df['기준가'] = df['기준가'].ffill()
+
+    # 요일 칼럼
+    df['weekday'] = df.index.weekday  # 0=Mon ... 6=Sun
+
+    # 요일별 group → lag(1)
+    df['lagged_기준가'] = df.groupby('weekday')['기준가'].shift(1)
+
+    # 주간수익률 / 주간로그수익률
+    df['주간수익률'] = np.where(
+        df['lagged_기준가'].isna(),
+        df['기준가'] / 1000 - 1,  # 첫 주 (lag 없음)
+        df['기준가'] / df['lagged_기준가'] - 1
+    )
+    df['주간로그수익률'] = np.where(
+        df['lagged_기준가'].isna(),
+        np.log(df['기준가'] / 1000),
+        np.log(df['기준가'] / df['lagged_기준가'])
+    )
+
+    df = df.reset_index().rename(columns={'index': '기준일자'})
+    return df
+
+
+def compute_annualized_metrics(fund_code: str, end_date: str,
+                               start_date: str = None,
+                               return_method: str = 'v3',
+                               risk_method: str = 'v1',
+                               annualized_factor: int = 52,
+                               periods: list = None) -> dict:
+    """
+    결과4/5 계산: 연율화수익률 + 연율화위험.
+
+    R: return_res_tables → weekly_calculation_Portfolio + annualized_geometric_return
+
+    Args:
+        fund_code: 펀드코드 (예: '08N81')
+        end_date: 분석종료일 (YYYYMMDD 또는 YYYY-MM-DD)
+        start_date: 분석시작일 (None이면 전체)
+        return_method: 'v1'=주간수익률평균, 'v2'=주간로그수익률평균, 'v3'=기간수익률기하평균
+        risk_method: 'v1'=주간수익률표준편차, 'v2'=주간로그수익률표준편차
+        annualized_factor: 연환산 계수 (기본 52주)
+        periods: 계산할 기간 리스트 (기본: ['누적','1M','3M','6M','1Y','YTD'])
+
+    Returns:
+        dict with keys: 'annualized_return', 'annualized_risk', 'period_returns'
+        각 값은 {기간: 수치} dict
+    """
+    if periods is None:
+        periods = ['누적', '1M', '3M', '6M', '1Y', 'YTD']
+
+    end_dt = pd.Timestamp(str(end_date).replace('-', '')[:8])
+
+    # 1) 기준가 로드
+    nav_df = load_fund_nav([fund_code], start_date)
+    if nav_df.empty:
+        return {'annualized_return': {}, 'annualized_risk': {}, 'period_returns': {}}
+
+    nav_df = nav_df.sort_values('기준일자')
+    # T-1일에 1000 추가 (R: bind_rows로 T-1=1000 추가)
+    first_date = nav_df['기준일자'].iloc[0]
+    t_minus_1 = first_date - pd.Timedelta(days=1)
+    row_t1 = pd.DataFrame({
+        '기준일자': [t_minus_1], 'FUND_CD': [fund_code],
+        'MOD_STPR': [1000.0], 'NAST_AMT': [np.nan], 'DD1_ERN_RT': [0.0],
+        'STD_DT': [int(t_minus_1.strftime('%Y%m%d'))]
+    })
+    nav_df = pd.concat([row_t1, nav_df], ignore_index=True).sort_values('기준일자')
+
+    # 2) 영업일 / 공휴일
+    hol_df = load_holiday_calendar()
+    bdays = get_business_days(hol_df)
+    korea_holidays = load_korea_holidays_weekday()
+
+    # 3) 주간수익률 빌드
+    weekly_df = _build_weekly_returns(
+        nav_series=nav_df.set_index('기준일자')['MOD_STPR'],
+        dates=nav_df['기준일자'],
+        korea_holidays=korea_holidays
+    )
+
+    # 4) 기간별 ref_date 계산
+    ref_dates = _calc_ref_dates(end_dt, periods, bdays)
+
+    # 5) 기간별 수익률 / 연율화
+    results_return = {}
+    results_risk = {}
+    results_period_ret = {}
+
+    # 기준가 lookup용
+    price_df = weekly_df[['기준일자', '기준가']].drop_duplicates('기준일자').set_index('기준일자')
+
+    end_price = _lookup_price(price_df, end_dt)
+
+    for period_name, ref_date in ref_dates.items():
+        if period_name == '누적':
+            # 누적: 기준가 1000 대비
+            ref_price = 1000.0
+            ref_date = t_minus_1
+        elif pd.isna(ref_date):
+            results_return[period_name] = np.nan
+            results_risk[period_name] = np.nan
+            results_period_ret[period_name] = np.nan
+            continue
+        else:
+            ref_price = _lookup_price(price_df, ref_date)
+
+        if np.isnan(ref_price) or np.isnan(end_price) or ref_price == 0:
+            results_return[period_name] = np.nan
+            results_risk[period_name] = np.nan
+            results_period_ret[period_name] = np.nan
+            continue
+
+        # 기간 수익률
+        period_return = end_price / ref_price - 1
+        results_period_ret[period_name] = period_return
+
+        # 기간 캘린더 일수
+        total_days = (end_dt - ref_date).days
+
+        # 주간수익률 필터 (해당 기간, end_date와 같은 요일만)
+        target_weekday = end_dt.weekday()
+        first_weekly = _return_first_weekly_date(ref_date, end_dt, bdays)
+        mask = (
+            (weekly_df['기준일자'] <= end_dt) &
+            (weekly_df['기준일자'] >= first_weekly) &
+            (weekly_df['weekday'] == target_weekday)
+        )
+        period_weekly = weekly_df[mask]
+
+        simple_rets = period_weekly['주간수익률'].dropna().values
+        log_rets = period_weekly['주간로그수익률'].dropna().values
+
+        # 연율화수익률
+        if return_method == 'v1':
+            ann_ret = np.mean(simple_rets) * annualized_factor if len(simple_rets) > 0 else np.nan
+        elif return_method == 'v2':
+            ann_ret = np.mean(log_rets) * annualized_factor if len(log_rets) > 0 else np.nan
+        elif return_method == 'v3':
+            # 기하평균: (1 + period_return)^(365.25/total_days) - 1
+            if total_days > 0:
+                ann_ret = (1 + period_return) ** (365.25 / total_days) - 1
+            else:
+                ann_ret = np.nan
+        else:
+            ann_ret = np.nan
+        results_return[period_name] = ann_ret
+
+        # 연율화위험
+        if risk_method == 'v1':
+            ann_risk = np.std(simple_rets, ddof=1) * np.sqrt(annualized_factor) if len(simple_rets) > 1 else np.nan
+        elif risk_method == 'v2':
+            ann_risk = np.std(log_rets, ddof=1) * np.sqrt(annualized_factor) if len(log_rets) > 1 else np.nan
+        else:
+            ann_risk = np.nan
+        results_risk[period_name] = ann_risk
+
+    return {
+        'annualized_return': results_return,
+        'annualized_risk': results_risk,
+        'period_returns': results_period_ret,
+    }
+
+
+def _lookup_price(price_df: pd.DataFrame, target_date: pd.Timestamp) -> float:
+    """기준가 DataFrame에서 target_date에 가장 가까운 값 조회 (당일 또는 이전)."""
+    if target_date in price_df.index:
+        return float(price_df.loc[target_date, '기준가'])
+    # ffill된 데이터이므로 이전 날짜에서 찾기
+    prior = price_df[price_df.index <= target_date]
+    if len(prior) > 0:
+        return float(prior.iloc[-1]['기준가'])
+    return np.nan
+
+
+def _calc_ref_dates(end_date: pd.Timestamp, periods: list,
+                    business_days: pd.DatetimeIndex) -> dict:
+    """
+    R: return_ref_date_v2() — 기간별 기준일 계산.
+
+    '누적': None (특수 처리)
+    '1M': end_date - 1개월 이전 영업일
+    'YTD': 전년말 영업일
+    """
+    from dateutil.relativedelta import relativedelta
+    import re
+
+    ref = {}
+    for p in periods:
+        if p == '누적':
+            ref[p] = None  # 특수 처리: 1000 기준
+        elif p == 'YTD':
+            year_start = pd.Timestamp(f'{end_date.year}0101')
+            prior = business_days[business_days < year_start]
+            ref[p] = prior[-1] if len(prior) > 0 else pd.NaT
+        elif p == 'MTD':
+            month_start = pd.Timestamp(f'{end_date.year}{end_date.month:02d}01')
+            prior = business_days[business_days < month_start]
+            ref[p] = prior[-1] if len(prior) > 0 else pd.NaT
+        elif p == '1D':
+            prior = business_days[business_days < end_date]
+            ref[p] = prior[-1] if len(prior) > 0 else pd.NaT
+        elif p == '1W':
+            target = end_date - pd.Timedelta(days=7)
+            near = business_days[business_days <= target]
+            ref[p] = near[-1] if len(near) > 0 else pd.NaT
+        else:
+            # 'nM', 'nY' 패턴 파싱
+            m = re.match(r'(\d+)([MY])', p)
+            if m:
+                n, unit = int(m.group(1)), m.group(2)
+                if unit == 'M':
+                    target = end_date - relativedelta(months=n)
+                else:
+                    target = end_date - relativedelta(years=n)
+                near = business_days[business_days <= target]
+                ref[p] = near[-1] if len(near) > 0 else pd.NaT
+            else:
+                ref[p] = pd.NaT
+
+    return ref
+
+
+def load_rf_index_from_db(start_date: str = None, end_date: str = None) -> pd.DataFrame:
+    """
+    무위험수익률 지수 (KIS CD Index 총수익) 로드.
+    SCIP.back_datapoint dataset_id=194, dataseries_id=33
+    blob의 totRtnIndex 사용 (10000 기준 → 1000 리베이스).
+    """
+    conn = get_pandas_connection('SCIP')
+    try:
+        where_parts = ["dp.dataset_id = 194", "dp.dataseries_id = 33"]
+        if start_date:
+            s = str(start_date).replace('-', '')[:8]
+            where_parts.append(f"dp.timestamp_observation >= '{s[:4]}-{s[4:6]}-{s[6:8]}'")
+        if end_date:
+            e = str(end_date).replace('-', '')[:8]
+            where_parts.append(f"dp.timestamp_observation <= '{e[:4]}-{e[4:6]}-{e[6:8]}'")
+
+        sql = f"""
+            SELECT DATE(dp.timestamp_observation) AS 기준일자, dp.data
+            FROM back_datapoint dp
+            WHERE {' AND '.join(where_parts)}
+            ORDER BY dp.timestamp_observation
+        """
+        df = pd.read_sql(sql, conn)
+        if df.empty:
+            logger.warning("KIS CD Index 데이터 없음")
+            return pd.DataFrame()
+
+        df['기준일자'] = pd.to_datetime(df['기준일자'])
+        df['기준가'] = df['data'].apply(lambda b: float(
+            json.loads(b.decode('utf-8') if isinstance(b, (bytes, bytearray)) else b)['totRtnIndex']
+        ))
+        # 10000 기준 → 1000 리베이스
+        df['기준가'] = df['기준가'] / 10
+
+        # 전체 캘린더일 pad + ffill
+        full_range = pd.date_range(df['기준일자'].min(), df['기준일자'].max(), freq='D')
+        df = df[['기준일자', '기준가']].set_index('기준일자').reindex(full_range).ffill().reset_index()
+        df = df.rename(columns={'index': '기준일자'})
+
+        return df[['기준일자', '기준가']]
+    except Exception as e:
+        logger.error(f"KIS CD Index 로드 실패: {e}")
+        return pd.DataFrame()
+    finally:
+        conn.close()
+
+
+def compute_rf_annualized_metrics(end_date: str, start_date: str = None,
+                                  return_method: str = 'v3',
+                                  risk_method: str = 'v1',
+                                  annualized_factor: int = 52,
+                                  periods: list = None) -> dict:
+    """
+    결과6: 무위험 연율화수익률 계산.
+    R: weekly_calculation_Risk_free + annualized_geometric_return
+
+    ECOS CD(91일) 복리지수 → 주간수익률 → 연율화.
+    """
+    if periods is None:
+        periods = ['누적', '1M', '3M', '6M', '1Y', 'YTD']
+
+    end_dt = pd.Timestamp(str(end_date).replace('-', '')[:8])
+
+    # RF 지수 로드
+    rf_df = load_rf_index_from_db(start_date, end_date)
+    if rf_df.empty:
+        return {'annualized_return': {}, 'annualized_risk': {}}
+
+    # 영업일 / 공휴일
+    hol_df = load_holiday_calendar()
+    bdays = get_business_days(hol_df)
+    korea_holidays = load_korea_holidays_weekday()
+
+    # 주간수익률 빌드 (RF 지수에 대해)
+    weekly_df = _build_weekly_returns(
+        nav_series=rf_df.set_index('기준일자')['기준가'],
+        dates=rf_df['기준일자'],
+        korea_holidays=korea_holidays
+    )
+
+    # 기간별 ref_date
+    ref_dates = _calc_ref_dates(end_dt, periods, bdays)
+
+    # 기준가 lookup
+    price_df = weekly_df[['기준일자', '기준가']].drop_duplicates('기준일자').set_index('기준일자')
+    end_price = _lookup_price(price_df, end_dt)
+
+    results_return = {}
+    results_risk = {}
+
+    for period_name, ref_date in ref_dates.items():
+        if period_name == '누적':
+            # 누적: start 시점 기준가 사용
+            if start_date:
+                s_dt = pd.Timestamp(str(start_date).replace('-', '')[:8])
+            else:
+                s_dt = weekly_df['기준일자'].iloc[0]
+            ref_price = _lookup_price(price_df, s_dt)
+            ref_date = s_dt
+        elif pd.isna(ref_date):
+            results_return[period_name] = np.nan
+            results_risk[period_name] = np.nan
+            continue
+        else:
+            ref_price = _lookup_price(price_df, ref_date)
+
+        if np.isnan(ref_price) or np.isnan(end_price) or ref_price == 0:
+            results_return[period_name] = np.nan
+            results_risk[period_name] = np.nan
+            continue
+
+        period_return = end_price / ref_price - 1
+        total_days = (end_dt - ref_date).days
+
+        # 주간수익률 필터
+        target_weekday = end_dt.weekday()
+        first_weekly = _return_first_weekly_date(ref_date, end_dt, bdays)
+        mask = (
+            (weekly_df['기준일자'] <= end_dt) &
+            (weekly_df['기준일자'] >= first_weekly) &
+            (weekly_df['weekday'] == target_weekday)
+        )
+        period_weekly = weekly_df[mask]
+
+        simple_rets = period_weekly['주간수익률'].dropna().values
+        log_rets = period_weekly['주간로그수익률'].dropna().values
+
+        # 연율화수익률
+        if return_method == 'v3' and total_days > 0:
+            ann_ret = (1 + period_return) ** (365.25 / total_days) - 1
+        elif return_method == 'v1' and len(simple_rets) > 0:
+            ann_ret = np.mean(simple_rets) * annualized_factor
+        elif return_method == 'v2' and len(log_rets) > 0:
+            ann_ret = np.mean(log_rets) * annualized_factor
+        else:
+            ann_ret = np.nan
+        results_return[period_name] = ann_ret
+
+        # 연율화위험
+        if risk_method == 'v1' and len(simple_rets) > 1:
+            ann_risk = np.std(simple_rets, ddof=1) * np.sqrt(annualized_factor)
+        elif risk_method == 'v2' and len(log_rets) > 1:
+            ann_risk = np.std(log_rets, ddof=1) * np.sqrt(annualized_factor)
+        else:
+            ann_risk = np.nan
+        results_risk[period_name] = ann_risk
+
+    return {
+        'annualized_return': results_return,
+        'annualized_risk': results_risk,
+    }
+
+
+def compute_sharpe_ratio(annualized_return: float, annualized_risk: float,
+                         rf_annualized_return: float) -> float:
+    """샤프 비율 = (연율화수익률 - 무위험연율화수익률) / 연율화위험"""
+    if annualized_risk is None or np.isnan(annualized_risk) or annualized_risk == 0:
+        return np.nan
+    if any(np.isnan(x) for x in [annualized_return, rf_annualized_return]):
+        return np.nan
+    return (annualized_return - rf_annualized_return) / annualized_risk
+
+
+def compute_full_performance_stats(fund_code: str, end_date: str,
+                                   start_date: str = None,
+                                   return_method: str = 'v3',
+                                   risk_method: str = 'v1',
+                                   periods: list = None) -> dict:
+    """
+    결과4+5+6 통합 계산.
+    연율화수익률, 연율화위험, 무위험연율화수익률, 샤프비율을 한번에 반환.
+
+    Returns:
+        {
+            'periods': {기간: {
+                'annualized_return': float,
+                'annualized_risk': float,
+                'rf_annualized_return': float,
+                'sharpe_ratio': float,
+                'period_return': float
+            }}
+        }
+    """
+    fund_metrics = compute_annualized_metrics(
+        fund_code, end_date, start_date,
+        return_method=return_method, risk_method=risk_method,
+        periods=periods
+    )
+    rf_metrics = compute_rf_annualized_metrics(
+        end_date, start_date,
+        return_method=return_method, risk_method=risk_method,
+        periods=periods
+    )
+
+    all_periods = periods or ['누적', '1M', '3M', '6M', '1Y', 'YTD']
+    result = {}
+    for p in all_periods:
+        ann_ret = fund_metrics['annualized_return'].get(p, np.nan)
+        ann_risk = fund_metrics['annualized_risk'].get(p, np.nan)
+        rf_ret = rf_metrics['annualized_return'].get(p, np.nan)
+        period_ret = fund_metrics['period_returns'].get(p, np.nan)
+
+        result[p] = {
+            'annualized_return': ann_ret,
+            'annualized_risk': ann_risk,
+            'rf_annualized_return': rf_ret,
+            'sharpe_ratio': compute_sharpe_ratio(ann_ret, ann_risk, rf_ret),
+            'period_return': period_ret,
+        }
+
+    return {'periods': result}
