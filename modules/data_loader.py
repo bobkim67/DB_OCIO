@@ -2510,9 +2510,8 @@ def compute_single_port_pa(fund_code: str, start_date: str, end_date: str,
 
     asset_daily_out = pd.concat(asset_daily_list, ignore_index=True) if asset_daily_list else pd.DataFrame()
 
-    # Sheet 1: 자산군별 요약
+    # Sheet 1: 자산군별 요약 (sec_summary에서 자산군별 합산 — 정합성 보장)
     asset_summary_list = []
-    # 포트폴리오 행
     total_cum_ret = cum_return[-1] if cum_return else 0
     asset_summary_list.append({
         '자산군': '포트폴리오',
@@ -2525,22 +2524,30 @@ def compute_single_port_pa(fund_code: str, start_date: str, end_date: str,
     })
 
     for ac in ['국내주식', '국내채권', '대체', '해외주식', '해외채권', 'FX', '유동성및기타']:
-        ac_rows = asset_daily_out[asset_daily_out['자산군'] == ac] if not asset_daily_out.empty else pd.DataFrame()
-        if ac_rows.empty:
+        ac_secs = sec_summary[sec_summary['자산군'] == ac] if not sec_summary.empty else pd.DataFrame()
+        ac_daily = asset_daily_out[asset_daily_out['자산군'] == ac] if not asset_daily_out.empty else pd.DataFrame()
+        if ac_secs.empty and ac_daily.empty:
             asset_summary_list.append({
                 '자산군': ac, '분석시작일': from_dt, '분석종료일': to_dt,
                 '개별수익률': 0, '기여수익률': 0, '순자산비중': 0, '순비중변화': 0,
             })
         else:
-            last_row = ac_rows.iloc[-1]
+            # 기여수익률: sec_summary에서 합산 (경로의존 누적기여도, 정합성 보장)
+            ac_contrib = ac_secs['기여수익률'].sum() if not ac_secs.empty else 0
+            # 개별수익률, 비중: asset_daily 마지막 행 (있으면)
+            if not ac_daily.empty:
+                last_row = ac_daily.iloc[-1]
+                ac_ret = last_row['개별수익률']
+                ac_weight = last_row['순자산비중']
+                ac_wchg = last_row['순비중변화']
+            else:
+                ac_ret = 0
+                ac_weight = ac_secs['순자산비중'].sum() if not ac_secs.empty else 0
+                ac_wchg = 0
             asset_summary_list.append({
-                '자산군': ac,
-                '분석시작일': from_dt,
-                '분석종료일': to_dt,
-                '개별수익률': last_row['개별수익률'],
-                '기여수익률': last_row['기여수익률'],
-                '순자산비중': last_row['순자산비중'],  # 종료일 기준
-                '순비중변화': last_row['순비중변화'],
+                '자산군': ac, '분석시작일': from_dt, '분석종료일': to_dt,
+                '개별수익률': ac_ret, '기여수익률': ac_contrib,
+                '순자산비중': ac_weight, '순비중변화': ac_wchg,
             })
 
     asset_summary = pd.DataFrame(asset_summary_list)
