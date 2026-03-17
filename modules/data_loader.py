@@ -2167,22 +2167,32 @@ def compute_single_port_pa(fund_code: str, start_date: str, end_date: str,
         # is_sec: 증권 여부 — sort/merge 후 재계산 (인덱스 정합성)
         is_sec = ~sec_agg['자산군'].isin(['FX', '유동성및기타'])
 
-        # 증권에 대해: r_sec = (1+R_total)/(1+r_FX)-1
+        # 증권에 대해: r_sec = (1+R_total)/(1+r_FX)-1 (내부 계산용)
         usd_sec_mask = (sec_agg['노출통화'] == 'USD') & is_sec
-        sec_agg['수익률_사용'] = sec_agg['종목별수익률']
-        sec_agg.loc[usd_sec_mask, '수익률_사용'] = (
+        sec_agg['r_sec'] = sec_agg['종목별수익률']
+        sec_agg.loc[usd_sec_mask, 'r_sec'] = (
             (1 + sec_agg.loc[usd_sec_mask, '종목별수익률']) /
             (1 + sec_agg.loc[usd_sec_mask, 'return_USDKRW']) - 1
         )
 
-        # FX 환산_adjust (R line 552):
-        # 환산_adjust = 시가평가액(T-1)*r_FX + r_FX*r_sec*시가평가액(T-1)
-        #             = 시가평가액(T-1) * r_FX * (1 + r_sec)
+        # FX 환산_adjust (R line 552, R 동일):
+        # 환산_adjust = 시가평가액(T-1) * r_FX * (1 + r_sec)
+        # 시가평가액(T-1)=0이면 환산_adjust=0 (종목 첫 등장일)
         sec_agg['FX효과금액'] = 0.0
         sec_agg.loc[usd_sec_mask, 'FX효과금액'] = (
             sec_agg.loc[usd_sec_mask, '시가평가액_T1'] *
             sec_agg.loc[usd_sec_mask, 'return_USDKRW'] *
-            (1 + sec_agg.loc[usd_sec_mask, '수익률_사용'])
+            (1 + sec_agg.loc[usd_sec_mask, 'r_sec'])
+        )
+
+        # 수익률_사용 = 총손익금액_FX_adjust / 조정_평가시가평가액 (R line 561 동일)
+        # 총손익금액_FX_adjust = 총손익금액 - 환산_adjust
+        sec_agg['수익률_사용'] = sec_agg['종목별수익률']
+        sec_agg.loc[usd_sec_mask, '수익률_사용'] = np.where(
+            sec_agg.loc[usd_sec_mask, '조정_평가시가평가액'].abs() > 0,
+            (sec_agg.loc[usd_sec_mask, '총손익금액'] - sec_agg.loc[usd_sec_mask, 'FX효과금액']) /
+            sec_agg.loc[usd_sec_mask, '조정_평가시가평가액'].abs(),
+            0
         )
     else:
         sec_agg['수익률_사용'] = sec_agg['종목별수익률']
