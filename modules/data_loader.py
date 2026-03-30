@@ -630,7 +630,7 @@ def _classify_6class(row) -> str:
         return '유동성'
     if 'REPO' in item_nm:
         return '유동성'
-    if any(kw in item_nm for kw in ['모펀드', '모투자']):
+    if item_cd.startswith('0322800'):
         return '모펀드'
     # FX: 달러선물, 통화선물, NDF 등
     if any(kw in item_nm for kw in ['달러선물', '달러 선물', 'USD선물', 'NDF', '통화선물', 'FX FORWARD']):

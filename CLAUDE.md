@@ -95,7 +95,7 @@ if DB_CONNECTED:
 | 3 | 해외채권 | #AB63FA | AST에 '채권' + 해외 |
 | 4 | 대체투자 | #FFA15A | 금/리츠/인프라/부동산 |
 | 5 | FX | #19D3F3 | 달러선물/NDF/통화선물 |
-| 6 | 모펀드 | #FF6692 | ITEM_NM에 '모펀드'/'모투자' |
+| 6 | 모펀드 | #FF6692 | ITEM_CD가 '0322800'으로 시작 (자사 모투자신탁) |
 | 7 | 유동성 | #B6E880 | 콜론/예금/MMF/REPO/현금 등 |
 
 정렬 순서: `ASSET_CLASS_ORDER` dict로 관리. 테이블/차트 모두 이 순서 적용.
@@ -358,11 +358,12 @@ FX_split=TRUE일 때 증권 수익률에서 환효과 분리:
 ## PDCA Status
 
 - Feature: DB_OCIO_Webview
-- Phase: Do (Phase 4.2 PA 정밀화 완료)
+- Phase: Do (Phase 5 UI 개선 진행 중)
 - Phase 3 완료: 전체 탭 DB 연동
 - Phase 4.1 완료: 연율화수익률/위험/RF/샤프 (R 동일 로직, Excel 검증 통과)
 - Phase 4.2 완료: PA 정밀화 — FX split R 완벽 일치 (환산_adjust 금액 기반)
 - Phase 4.3 완료: DT BM 연동, 기간수익률 DT 일치, 설정후 수익률 보정
+- Phase 5 진행: UI 개선 — BM 미설정 처리, 모펀드 분류 수정, 변동성 추가, 스파크라인 개선
 - 개발일지: `devlog/` 디렉토리 (일별)
 - 디버그 파일: `debug/` 디렉토리 (R/Python PA 검증용)
   - `debug_pa_original.R` — R 원본 PA_from_MOS 핵심 파이프라인 (파생 그룹핑 포함, Shiny 제거)
@@ -371,3 +372,31 @@ FX_split=TRUE일 때 증권 수익률에서 환효과 분리:
   - `debug_pa_R_intermediate.csv` — R 간소화 버전 중간 데이터 (848rows)
   - `debug_fx_*.R` — FX split 환율/환산_adjust 디버깅
   - `debug_nast.R` — NAST_AMT 모자구조 확인
+
+## 2026-03-24 주요 변경사항
+
+### 모펀드 분류 수정
+- 기존: `ITEM_NM`에 '모펀드'/'모투자' 포함 여부 → "사모투자신탁"도 매칭되는 오분류 발생
+- 변경: `ITEM_CD.startswith('0322800')` — 자사 모투자신탁만 정확히 분류
+- 영향: 08P22 월넛은행채플러스일반사모투자신탁 → 모펀드에서 국내채권으로 정정
+
+### BM 미설정 펀드 처리
+- 11개 펀드(07G02, 07G03, 07J48, 07J49, 07P70, 07W15, 08N33, 08N81, 08P22, 09L94, 2JM23) BM 미설정
+- 기존: BM 없으면 mockup fallback → 변경: NAV만 표시, BM/초과수익 빈칸
+- 카드: vs BM delta 제거, BM 스파크라인 → "BM 미설정"
+- 기간수익률: BM/초과수익 행 조건부 삭제
+- 누적수익률 차트: BM/초과수익 선 조건부 제거
+
+### Overview 변경
+- 전체 보유종목 테이블 삭제 (편입종목 탭에서 확인)
+- 변동성 행 추가 (주간수익률 표준편차 × √52, R 동일)
+- 미니카드 delta(전월대비 등) 제거
+- 스파크라인 modebar(zoom/download 등) 제거
+- 스파크라인 hovering: 소숫점 둘째자리 + 수익률 % 접미사
+- 스파크라인 y축: 데이터 min/max에 5% 여유로 꽉 맞춤
+
+### 성과분석(Brinson) 변경
+- 분석기간 기본값: YTD (1/1~어제). 설정일이 당해년도면 설정일 시작
+- PA 차트 데이터 레이블: 소숫점 둘째자리
+- PA 종목 테이블: `.round(2)` + `.format`
+- FX 레이블 잘림: 차트 높이 400, margin 확대, automargin

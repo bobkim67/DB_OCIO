@@ -225,7 +225,7 @@ def hex_to_rgba(hex_color, alpha=0.08):
     r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
     return f'rgba({r},{g},{b},{alpha})'
 
-def make_sparkline(data, color='#636EFA', height=60, spark_dates=None):
+def make_sparkline(data, color='#636EFA', height=60, spark_dates=None, fmt=',.2f', suffix=''):
     """미니 스파크라인 차트 생성 (카드 내장용, x축 날짜 표기)"""
     if 'rgb' in color:
         fc = color.replace(')', f',0.08)').replace('rgb', 'rgba')
@@ -234,16 +234,21 @@ def make_sparkline(data, color='#636EFA', height=60, spark_dates=None):
     x_vals = spark_dates if spark_dates is not None else list(range(len(data)))
     fig = go.Figure(go.Scatter(
         x=x_vals, y=data, mode='lines', line=dict(color=color, width=1.5),
-        fill='tozeroy', fillcolor=fc
+        fill='tozeroy', fillcolor=fc,
+        hovertemplate=f'%{{y:{fmt}}}{suffix}<extra></extra>'
     ))
     show_xaxis = spark_dates is not None
     fig.update_layout(
         height=height, margin=dict(t=0, b=18 if show_xaxis else 0, l=0, r=0),
         xaxis=dict(visible=show_xaxis, showgrid=False, tickformat='%m/%d',
                    nticks=4, tickfont=dict(size=9, color='#aaa')),
-        yaxis=dict(visible=False),
+        yaxis=dict(visible=False,
+                   range=[min(data) - (max(data)-min(data))*0.05,
+                          max(data) + (max(data)-min(data))*0.05] if max(data) != min(data) else None),
         plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-        showlegend=False
+        showlegend=False,
+        modebar=dict(remove=['zoom', 'pan', 'select', 'lasso', 'zoomIn', 'zoomOut',
+                             'autoScale', 'resetScale', 'toImage']),
     )
     return fig
 
@@ -446,11 +451,15 @@ with tabs[0]:
                         dates_for_tab0 = pd.DatetimeIndex(_nav_dates)
                         _tab0_db = True
                     else:
-                        raise ValueError("BM align failed")
-                elif _bm_cfg is None:
-                    raise ValueError("BM 미설정")
+                        # BM align 실패 → BM 없이 NAV만
+                        bm_data = None
+                        dates_for_tab0 = pd.DatetimeIndex(_nav_dates)
+                        _tab0_db = True
                 else:
-                    raise ValueError("BM 데이터 부족")
+                    # BM 미설정 또는 데이터 부족 → BM 없이 NAV만
+                    bm_data = None
+                    dates_for_tab0 = pd.DatetimeIndex(_nav_dates)
+                    _tab0_db = True
             else:
                 raise ValueError("NAV empty")
         except Exception as _e:
@@ -463,8 +472,9 @@ with tabs[0]:
         dates_for_tab0 = dates
         _aum_series = fund_info['aum'] + np.cumsum(np.random.normal(0, 2, len(dates)))
 
+    _has_bm = bm_data is not None
     daily_ret = np.diff(nav_data) / nav_data[:-1]
-    daily_bm_ret = np.diff(bm_data) / bm_data[:-1]
+    daily_bm_ret = np.diff(bm_data) / bm_data[:-1] if _has_bm else np.full(len(daily_ret), np.nan)
 
     latest_nav = nav_data[-1]
     prev_nav = nav_data[-2]
@@ -475,8 +485,8 @@ with tabs[0]:
     _ytd_mask = dates_for_tab0 >= pd.Timestamp('2026-01-01')
     ytd_idx = len(dates_for_tab0) - _ytd_mask.sum()
     ytd_return = (nav_data[-1] / nav_data[max(ytd_idx, 0)] - 1) * 100 if ytd_idx < len(nav_data) else 0.0
-    bm_si = (bm_data[-1] / bm_data[0] - 1) * 100  # BM은 지수 기반이므로 첫 행 기준 유지
-    bm_ytd = (bm_data[-1] / bm_data[max(ytd_idx, 0)] - 1) * 100 if ytd_idx < len(bm_data) else 0.0
+    bm_si = (bm_data[-1] / bm_data[0] - 1) * 100 if _has_bm else np.nan
+    bm_ytd = (bm_data[-1] / bm_data[max(ytd_idx, 0)] - 1) * 100 if (_has_bm and ytd_idx < len(bm_data)) else np.nan
 
     # --- 지표 카드 + 3개월 스파크라인 (카드 내장) ---
     c1, c2, c3, c4 = st.columns(4)
@@ -485,32 +495,32 @@ with tabs[0]:
 
     with c1:
         with st.container(border=True):
-            st.metric("설정이후 수익률", f"{si_return:.2f}%", f"{si_return - bm_si:.2f}%p vs BM")
+            st.metric("설정이후 수익률", f"{si_return:.2f}%")
             spark_data = (nav_data[-spark_n:] / nav_data[-spark_n] - 1) * 100
-            st.plotly_chart(make_sparkline(spark_data, '#636EFA', spark_dates=spark_dates),
+            st.plotly_chart(make_sparkline(spark_data, '#636EFA', spark_dates=spark_dates, suffix='%'),
                             use_container_width=True, key="spark1")
 
     with c2:
         with st.container(border=True):
-            st.metric("YTD 수익률", f"{ytd_return:.2f}%", f"{ytd_return - bm_ytd:.2f}%p vs BM")
-            _bm_spark_n = min(spark_n, len(bm_data))
-            spark_data2 = (bm_data[-_bm_spark_n:] / bm_data[-_bm_spark_n] - 1) * 100
-            st.plotly_chart(make_sparkline(spark_data2, '#EF553B', spark_dates=spark_dates[-_bm_spark_n:]),
-                            use_container_width=True, key="spark2")
+            st.metric("YTD 수익률", f"{ytd_return:.2f}%")
+            if _has_bm:
+                _bm_spark_n = min(spark_n, len(bm_data))
+                spark_data2 = (bm_data[-_bm_spark_n:] / bm_data[-_bm_spark_n] - 1) * 100
+                st.plotly_chart(make_sparkline(spark_data2, '#EF553B', spark_dates=spark_dates[-_bm_spark_n:], suffix='%'),
+                                use_container_width=True, key="spark2")
+            else:
+                st.caption("BM 미설정")
 
     with c3:
         with st.container(border=True):
-            st.metric("기준가", f"{latest_nav:,.2f}",
-                      f"{nav_change:+,.2f} ({nav_change_pct:+.2f}%)", delta_color="normal")
+            st.metric("기준가", f"{latest_nav:,.2f}")
             st.plotly_chart(make_sparkline(nav_data[-spark_n:], '#00CC96', spark_dates=spark_dates),
                             use_container_width=True, key="spark3")
 
     with c4:
         with st.container(border=True):
             _aum_latest = _aum_series[-1] if len(_aum_series) > 0 else fund_info['aum']
-            _aum_prev_month = _aum_series[-22] if len(_aum_series) > 22 else _aum_latest
-            _aum_change = _aum_latest - _aum_prev_month
-            st.metric("AUM", f"{_aum_latest:.0f}억원", f"전월 대비 {_aum_change:+.0f}억")
+            st.metric("AUM", f"{_aum_latest:.0f}억원")
             aum_spark = _aum_series[-spark_n:] if len(_aum_series) >= spark_n else _aum_series
             st.plotly_chart(make_sparkline(aum_spark, '#AB63FA', spark_dates=spark_dates[-len(aum_spark):]),
                             use_container_width=True, key="spark4")
@@ -544,25 +554,25 @@ with tabs[0]:
         '설정 후': pd.Timestamp('1900-01-01'),  # 가장 오래된 데이터
     }
     _end_nav = nav_data[-1]
-    _end_bm = bm_data[-1]
+    _end_bm = bm_data[-1] if _has_bm else np.nan
 
     row_port = {}
     row_bm = {}
     row_excess = {}
+    row_vol = {}
     row_sharpe = {}
     period_order = ['1D', '1W', '1M', '3M', '6M', 'YTD', '1Y', '설정 후']
     for p in period_order:
         if p == '설정 후':
-            # 설정 후: 설정일 기준가 기준 (하드코딩 보정 우선)
             _nav_base = _FUND_INCEPTION_BASE.get(selected_fund, nav_data[0])
             pr = (_end_nav / _nav_base - 1) * 100
-            br = (_end_bm / bm_data[0] - 1) * 100
+            br = (_end_bm / bm_data[0] - 1) * 100 if _has_bm else np.nan
         else:
             target = _period_targets[p]
             ref_nav = _find_ref_value(dates_for_tab0, nav_data, target)
-            ref_bm = _find_ref_value(dates_for_tab0, bm_data, target)
+            ref_bm = _find_ref_value(dates_for_tab0, bm_data, target) if _has_bm else np.nan
             pr = (_end_nav / ref_nav - 1) * 100 if not np.isnan(ref_nav) and ref_nav != 0 else np.nan
-            br = (_end_bm / ref_bm - 1) * 100 if not np.isnan(ref_bm) and ref_bm != 0 else np.nan
+            br = (_end_bm / ref_bm - 1) * 100 if (_has_bm and not np.isnan(ref_bm) and ref_bm != 0) else np.nan
         row_port[p] = f"{pr:.2f}%" if not np.isnan(pr) else ""
         row_bm[p] = f"{br:.2f}%" if not np.isnan(br) else ""
         exc = pr - br if not (np.isnan(pr) or np.isnan(br)) else np.nan
@@ -573,13 +583,24 @@ with tabs[0]:
         _n = _bday_map.get(p, len(daily_ret))
         _sh = calc_sharpe(daily_ret[-min(_n, len(daily_ret)):]) if _n <= len(daily_ret) else np.nan
         row_sharpe[p] = f"{_sh:.2f}" if not np.isnan(_sh) else ""
+        # 변동성 (주간수익률 표준편차 × √52, R 동일)
+        _vol_slice = daily_ret[-min(_n, len(daily_ret)):]
+        if len(_vol_slice) >= 5:
+            _weekly = np.array([np.prod(1 + _vol_slice[i:i+5]) - 1 for i in range(0, len(_vol_slice)-4, 5)])
+            _vol = np.std(_weekly, ddof=1) * np.sqrt(52) * 100 if len(_weekly) > 1 else np.nan
+        else:
+            _vol = np.nan
+        row_vol[p] = f"{_vol:.2f}%" if not np.isnan(_vol) else ""
 
-    perf_df = pd.DataFrame({
-        '구분': ['포트폴리오', 'BM', '초과수익', 'Sharpe'],
-        **{p: [row_port[p], row_bm[p], row_excess[p], row_sharpe[p]] for p in period_order}
-    })
+    _rows = [{'구분': '포트폴리오', **{p: row_port[p] for p in period_order}}]
+    if _has_bm:
+        _rows.append({'구분': 'BM', **{p: row_bm[p] for p in period_order}})
+        _rows.append({'구분': '초과수익', **{p: row_excess[p] for p in period_order}})
+    _rows.append({'구분': '변동성', **{p: row_vol[p] for p in period_order}})
+    _rows.append({'구분': 'Sharpe', **{p: row_sharpe[p] for p in period_order}})
+    perf_df = pd.DataFrame(_rows)
 
-    st.dataframe(perf_df, hide_index=True, use_container_width=True, height=180)
+    st.dataframe(perf_df, hide_index=True, use_container_width=True, height=180 if _has_bm else 140)
 
     st.markdown("")
 
@@ -626,52 +647,36 @@ with tabs[0]:
         fig_donut.update_layout(height=260, margin=dict(t=10, b=10, l=10, r=10), showlegend=False)
         st.plotly_chart(fig_donut, use_container_width=True)
 
-        # 전체 보유종목 테이블 — 자산군 순서 → 비중 내림차순
-        st.markdown("#### 전체 보유종목")
-        if _holdings_db:
-            _h_display = _hold_df[['자산군', 'ITEM_NM', '비중(%)', '평가금액(억)']].copy()
-            _h_display = _h_display.rename(columns={'ITEM_NM': '종목명'})
-            _h_display['_sort'] = _h_display['자산군'].map(ASSET_CLASS_ORDER).fillna(99)
-            _h_display = _h_display.sort_values(['_sort', '비중(%)'], ascending=[True, False]).drop(columns='_sort')
-            st.dataframe(_h_display, hide_index=True, use_container_width=True, height=450)
-        else:
-            display_cols = ['자산군', '종목명', '비중(%)', '평가금액(억)', '1D(%)', '1W(%)', '1M(%)', 'YTD(%)']
-            holdings_display = SAMPLE_HOLDINGS_DETAIL[display_cols].copy()
-            num_cols = ['비중(%)', '평가금액(억)', '1D(%)', '1W(%)', '1M(%)', 'YTD(%)']
-            fmt_dict = {c: '{:.2f}' for c in num_cols}
-            st.dataframe(
-                holdings_display.style.format(fmt_dict).map(
-                    lambda v: 'color: #EF553B' if isinstance(v, (int, float)) and v < 0 else (
-                        'color: #00CC96' if isinstance(v, (int, float)) and v > 0 else ''),
-                    subset=['1D(%)', '1W(%)', '1M(%)', 'YTD(%)']
-                ),
-                hide_index=True, use_container_width=True, height=450
-            )
+        # 전체 보유종목 — Overview에서 삭제 (편입종목 탭에서 확인)
 
     with col_chart:
         _chart_nav_base = _FUND_INCEPTION_BASE.get(selected_fund, nav_data[0])
         cum_ret = (nav_data / _chart_nav_base - 1) * 100
-        cum_bm = (bm_data / bm_data[0] - 1) * 100
-        excess = cum_ret - cum_bm
 
         fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=dates_for_tab0, y=excess, name='초과수익',
-            fill='tozeroy',
-            fillcolor='rgba(144, 238, 144, 0.20)',
-            line=dict(color='rgba(144, 238, 144, 0.5)', width=0.8),
-        ))
+        if _has_bm:
+            cum_bm = (bm_data / bm_data[0] - 1) * 100
+            excess = cum_ret - cum_bm
+            fig.add_trace(go.Scatter(
+                x=dates_for_tab0, y=excess, name='초과수익',
+                fill='tozeroy',
+                fillcolor='rgba(144, 238, 144, 0.20)',
+                line=dict(color='rgba(144, 238, 144, 0.5)', width=0.8),
+            ))
         fig.add_trace(go.Scatter(
             x=dates_for_tab0, y=cum_ret, name='포트폴리오',
             line=dict(color='#636EFA', width=2.5)
         ))
-        fig.add_trace(go.Scatter(
-            x=dates_for_tab0, y=cum_bm, name='BM',
-            line=dict(color='#EF553B', width=2, dash='dot')
-        ))
+        if _has_bm:
+            fig.add_trace(go.Scatter(
+                x=dates_for_tab0, y=cum_bm, name='BM',
+                line=dict(color='#EF553B', width=2, dash='dot')
+            ))
+        fig.update_traces(hovertemplate='%{y:.2f}%')
         fig.update_layout(
             title='누적수익률 추이',
             yaxis_title='수익률 (%)',
+            yaxis_tickformat='.2f',
             legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
             height=500, margin=dict(t=50, b=30),
             hovermode='x unified'
@@ -1298,7 +1303,13 @@ with tabs[3]:
     # 분석기간
     bc1, bc2 = st.columns([3, 1])
     with bc1:
-        analysis_period = st.date_input("분석기간", value=(datetime(2025, 7, 1), datetime(2026, 2, 11)),
+        _ytd_start = datetime(datetime.now().year, 1, 1)
+        _inception_str = FUND_META.get(selected_fund, {}).get('inception', '20220101')
+        _inception_dt = datetime.strptime(_inception_str, '%Y%m%d')
+        if _inception_dt.year == datetime.now().year:
+            _ytd_start = _inception_dt
+        _ytd_end = datetime.now() - timedelta(days=1)
+        analysis_period = st.date_input("분석기간", value=(_ytd_start, _ytd_end),
                                          key='brinson_period')
     with bc2:
         pa_method = st.selectbox("자산군 분류", ["8분류", "5분류"], key='pa_method')
@@ -1612,8 +1623,10 @@ with tabs[3]:
                 _sec_sum['기여수익률(%)'] = (_sec_sum['기여수익률'] * 100).round(4)
                 _sec_sum['비중(%)'] = (_sec_sum['순자산비중'] * 100).round(2)
                 sec_display = _sec_sum[['자산군', '종목명', '비중(%)', '개별수익률(%)', '기여수익률(%)']].copy()
+                for _nc in ['비중(%)', '개별수익률(%)', '기여수익률(%)']:
+                    sec_display[_nc] = sec_display[_nc].round(2)
                 sec_display = sec_display.sort_values('기여수익률(%)', ascending=False).reset_index(drop=True)
-                st.dataframe(sec_display.style.map(
+                st.dataframe(sec_display.style.format({'비중(%)': '{:.2f}', '개별수익률(%)': '{:.2f}', '기여수익률(%)': '{:.2f}'}).map(
                     lambda v: 'color: #EF553B' if isinstance(v, (int, float)) and v < 0 else (
                         'color: #00CC96' if isinstance(v, (int, float)) and v > 0 else ''),
                     subset=['개별수익률(%)', '기여수익률(%)']
@@ -1644,8 +1657,11 @@ with tabs[3]:
                 _ac_contrib = (_spa_d['기여수익률'] * 100).tolist()
                 colors_cc = ['#EF553B' if c < 0 else '#636EFA' for c in _ac_contrib]
                 fig_ctb = go.Figure(go.Bar(x=_ac_names, y=_ac_contrib, marker_color=colors_cc,
-                                            text=[f"{c:+.4f}%" for c in _ac_contrib], textposition='outside'))
-                fig_ctb.update_layout(title='자산군별 기여수익률 (정밀PA)', height=350, yaxis_title='기여수익률(%)')
+                                            text=[f"{c:+.2f}%" for c in _ac_contrib], textposition='outside'))
+                fig_ctb.update_layout(title='자산군별 기여수익률 (정밀PA)', height=400, yaxis_title='기여수익률(%)',
+                                       margin=dict(t=60, b=40, l=40, r=40),
+                                       uniformtext_minsize=7, uniformtext_mode='show',
+                                       yaxis=dict(automargin=True))
             else:
                 colors_cc = ['#EF553B' if c < 0 else '#636EFA' for c in contrib_ret]
                 fig_ctb = go.Figure(go.Bar(x=pa_asset_classes_display, y=contrib_ret, marker_color=colors_cc,
@@ -1711,6 +1727,117 @@ with tabs[3]:
 with tabs[4]:
     st.markdown("#### 매크로 지표 대시보드")
     st.caption("SCIP DB 시계열 데이터 기반 | 자동 업데이트")
+
+    # ── 자산군별 벤치마크 수익률 (SCIP 실시간) ──
+    try:
+        import sys as _sys4
+        _sys4.path.insert(0, str(Path(__file__).resolve().parent.parent)) if 'market_research' not in str(_sys4.path) else None
+        from market_research.comment_engine import load_benchmark_period_returns, BENCHMARK_MAP as _BM_MAP
+        _bm_period = load_benchmark_period_returns()
+    except Exception:
+        _bm_period = {}
+
+    if _bm_period:
+        _bm_env_title, _bm_env_toggle = st.columns([4, 1])
+        with _bm_env_title:
+            st.markdown("### 자산군별 벤치마크 수익률")
+        with _bm_env_toggle:
+            _bm_krw_toggle = st.toggle("원화환산", key='bm_krw_toggle_top')
+
+        # 테이블 구축
+        _bm_rows = []
+        _bm_layout = [
+            ('주식', '글로벌', '', '글로벌주식'),
+            ('', '국내', '시장', 'KOSPI'),
+            ('', '', 'KOSPI200', 'KOSPI200'),
+            ('', '미국', '시장', 'S&P500'),
+            ('', '', '성장', '미국성장주'),
+            ('', '', '가치', '미국가치주'),
+            ('', '', '중소형', 'Russell2000'),
+            ('', '', '고배당', '고배당'),
+            ('', '미국외 선진국', '', '미국외선진국'),
+            ('', '신흥시장', '', '신흥국주식'),
+            ('채권', '글로벌(UH)', '', '글로벌채권UH'),
+            ('', '글로벌(H to USD)', '', '글로벌채권H'),
+            ('', '글로벌(H to KRW)', '', '글로벌채권HKRW'),
+            ('', '국내', '국채3년', '매경채권국채3년'),
+            ('', '', '국고10년', 'KRX10년채권'),
+            ('', '', '종합채권', 'KAP종합채권'),
+            ('', '미국', '종합채권', '미국종합채권'),
+            ('', '', '투자등급', '미국IG'),
+            ('', '', '하이일드', '미국HY'),
+            ('', '신흥시장', '달러표시', '신흥국채권'),
+            ('대체', '금', '', 'Gold'),
+            ('', 'WTI', '', 'WTI'),
+            ('', '미국리츠', '', '미국리츠'),
+            ('', '원자재종합', '', '원자재종합'),
+            ('통화', 'DXY', '', 'DXY'),
+            ('', 'EMCI', '', 'EMCI'),
+            ('', 'EUR/USD', '', 'EURUSD'),
+            ('', 'JPY/USD', '', 'JPYUSD'),
+            ('', 'GBP/USD', '', 'GBPUSD'),
+            ('', 'CAD/USD', '', 'CADUSD'),
+            ('', 'AUD/USD', '', 'AUDUSD'),
+            ('', 'USD/KRW', '', 'USDKRW'),
+        ]
+        _period_cols = ['1D', '1W', '1M', '3M', '6M', '1Y', 'YTD']
+        _ref_date_str = ''
+        for _cat, _mid, _sub, _key in _bm_layout:
+            _d = _bm_period.get(_key, {})
+            if not _ref_date_str and _d.get('ref_date'):
+                _ref_date_str = _d['ref_date']
+            _lv = _d.get('level')
+            _row = {
+                '대분류': _cat, '중분류': _mid, '소분류': _sub,
+                '지표': _key if not _mid else (_sub if _sub else _mid),
+                '현재값': f'{_lv:,.2f}' if _lv and _lv > 100 else (f'{_lv:.4f}' if _lv and _lv < 1 else (f'{_lv:,.2f}' if _lv else '')),
+            }
+            for _p in _period_cols:
+                _row[_p] = _d.get(_p)
+            _bm_rows.append(_row)
+
+        _bm_df = pd.DataFrame(_bm_rows)
+
+        # 원화환산: 해외 자산에 USDKRW 변동 가산
+        if _bm_krw_toggle:
+            _usdkrw_rets = _bm_period.get('USDKRW', {})
+            _bm_df_active = _bm_df.copy()
+            _domestic_keys = {'KOSPI', 'KOSPI200', 'KOSPI_PRICE', '매경채권국채3년', 'KRX10년채권', 'KAP종합채권', 'USDKRW'}
+            _fx_keys = {'DXY', 'EMCI', 'EURUSD', 'JPYUSD', 'GBPUSD', 'CADUSD', 'AUDUSD', 'USDKRW'}
+            for _i, (_cat, _mid, _sub, _key) in enumerate(_bm_layout):
+                if _key in _domestic_keys or _key in _fx_keys:
+                    continue
+                for _p in _period_cols:
+                    _v = _bm_df_active.at[_i, _p]
+                    _fx = _usdkrw_rets.get(_p)
+                    if _v is not None and _fx is not None:
+                        _bm_df_active.at[_i, _p] = _v + _fx
+        else:
+            _bm_df_active = _bm_df
+
+        # 포맷팅
+        _bm_display = _bm_df_active.copy()
+        for _p in _period_cols:
+            _bm_display[_p] = _bm_df_active[_p].apply(lambda v: f'{v:+.2f}%' if pd.notna(v) and v is not None else '')
+
+        def _style_bm_val(val):
+            if isinstance(val, str):
+                stripped = val.replace('%', '').strip()
+                try:
+                    v = float(stripped)
+                    return 'color: #636EFA' if v < 0 else ('color: #EF553B' if v > 0 else '')
+                except (ValueError, TypeError):
+                    pass
+            return ''
+
+        _bm_height = max(300, 32 * len(_bm_display) + 40)
+        _styled_bm = _bm_display.style.map(_style_bm_val, subset=_period_cols)
+        _styled_bm = _styled_bm.set_properties(**{'font-size': '12px'})
+        _styled_bm = _styled_bm.set_properties(subset=['대분류'], **{'font-weight': 'bold', 'background-color': '#f8f9fa'})
+        st.dataframe(_styled_bm, hide_index=True, use_container_width=True, height=_bm_height)
+        st.caption(f"📡 SCIP DB 실시간 | 기준일: {_ref_date_str} | 단위: % (수익률)")
+
+    st.markdown("---")
 
     with st.expander("Bloomberg 데이터 엑셀 업로드", expanded=False):
         st.markdown("""
@@ -2103,208 +2230,8 @@ with tabs[4]:
 
     st.markdown("---")
 
-    # --- 자산군별 벤치마크 수익률 (시장환경 종합 + 기존 벤치마크 테이블 병합) ---
-    env_title_col, env_toggle_col = st.columns([4, 1])
-    with env_title_col:
-        st.markdown("### 자산군별 벤치마크 수익률")
-    with env_toggle_col:
-        env_krw_toggle = st.toggle("원화환산", key='env_krw_toggle')
-    macro_env_data = pd.DataFrame([
-        # === 주식 ===
-        # 주식 - 국내
-        {'대분류': '주식', '중분류': '국내', '소분류': '시장', '지표': 'KOSPI', '현재값': '2,685.3', '1D': -0.15, '1W': -0.52, '1M': -1.23, '3M': 2.85, '6M': -3.10, '1Y': 5.42, 'YTD': -1.23, 'Source': 'Bloomberg', 'dataseries': 'TOT RETURN INDEX NET DVDS', 'dataset_name': 'KOSPI Index', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '', '소분류': '', '지표': 'KOSDAQ', '현재값': '812.5', '1D': 0.28, '1W': 0.65, '1M': 0.82, '3M': -1.35, '6M': -5.20, '1Y': -2.15, 'YTD': 0.82, 'Source': 'Bloomberg', 'dataseries': 'TOT RETURN INDEX NET DVDS', 'dataset_name': 'KOSDAQ Index', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '', '소분류': '', '지표': 'KOSPI 200', '현재값': '368.9', '1D': -0.12, '1W': -0.45, '1M': -0.95, '3M': 3.10, '6M': -2.85, '1Y': 6.15, 'YTD': -0.95, 'Source': 'Bloomberg', 'dataseries': 'TOT RETURN INDEX NET DVDS', 'dataset_name': 'KOSPI 200 Index', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '', '소분류': 'MSCI KR', '지표': 'MSCI Korea', '현재값': '72.5', '1D': 0.85, '1W': 3.20, '1M': 5.42, '3M': 12.50, '6M': 15.80, '1Y': 21.80, 'YTD': 5.42, 'Source': 'Factset', 'dataseries': 'FG Return', 'dataset_name': 'iShares MSCI South Korea ETF', '최근기준일': '2026-01-31'},
-        # 주식 - 미국
-        {'대분류': '', '중분류': '미국', '소분류': '시장', '지표': 'S&P 500', '현재값': '6,025.1', '1D': 0.45, '1W': 1.12, '1M': 2.31, '3M': 5.85, '6M': 8.42, '1Y': 18.50, 'YTD': 2.31, 'Source': 'Factset', 'dataseries': 'FG Total Return Index (Unhedged)', 'dataset_name': 'S&P 500 Index', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '', '소분류': '', '지표': 'NASDAQ 100', '현재값': '21,350.8', '1D': 0.68, '1W': 1.85, '1M': 3.12, '3M': 7.25, '6M': 10.80, '1Y': 24.30, 'YTD': 3.12, 'Source': 'Bloomberg', 'dataseries': 'TOT RETURN INDEX NET DVDS', 'dataset_name': 'NASDAQ100 Total Return Index', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '', '소분류': '성장', '지표': 'SPYG', '현재값': '82.3', '1D': 0.55, '1W': 1.65, '1M': 3.55, '3M': 8.10, '6M': 12.35, '1Y': 26.80, 'YTD': 3.55, 'Source': 'Factset', 'dataseries': 'FG Return', 'dataset_name': 'SPDR Portfolio S&P 500 Growth ETF', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '', '소분류': '', '지표': 'CRSP US Large Cap Growth', '현재값': '195.2', '1D': -0.32, '1W': -1.15, '1M': -4.95, '3M': -2.30, '6M': 5.80, '1Y': 15.20, 'YTD': -4.95, 'Source': 'Factset', 'dataseries': 'FG Return', 'dataset_name': 'CRSP US Large Growth Index', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '', '소분류': '가치', '지표': 'CRSP US Large Cap Value', '현재값': '158.7', '1D': 0.42, '1W': 1.35, '1M': 5.86, '3M': 8.50, '6M': 10.20, '1Y': 14.80, 'YTD': 5.86, 'Source': 'Factset', 'dataseries': 'FG Return', 'dataset_name': 'CRSP US Large Value Index', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '', '소분류': '', '지표': 'SPYV', '현재값': '52.8', '1D': 0.38, '1W': 1.20, '1M': 4.92, '3M': 7.85, '6M': 9.50, '1Y': 13.60, 'YTD': 4.92, 'Source': 'Factset', 'dataseries': 'FG Return', 'dataset_name': 'SPDR Portfolio S&P 500 Value ETF', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '', '소분류': '중소형', '지표': 'Russell 2000', '현재값': '2,280.5', '1D': 0.22, '1W': 0.75, '1M': 1.05, '3M': -0.85, '6M': 3.20, '1Y': 8.50, 'YTD': 1.05, 'Source': 'Factset', 'dataseries': 'FG Return', 'dataset_name': 'Russell 2000 Index', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '', '소분류': '고배당', '지표': 'DJ Dividend 100', '현재값': '5,120.3', '1D': 0.52, '1W': 1.80, '1M': 3.85, '3M': 7.20, '6M': 9.80, '1Y': 12.33, 'YTD': 3.85, 'Source': 'Bloomberg', 'dataseries': 'TOT RETURN INDEX NET DVDS', 'dataset_name': 'Dow Jones U.S. Dividend 100 Index', '최근기준일': '2026-01-31'},
-        # 주식 - 글로벌/선진국/EM
-        {'대분류': '', '중분류': '글로벌', '소분류': '', '지표': 'MSCI ACWI', '현재값': '812.5', '1D': 0.35, '1W': 0.92, '1M': 1.85, '3M': 4.50, '6M': 7.20, '1Y': 15.80, 'YTD': 1.85, 'Source': 'Factset', 'dataseries': 'FG Net Total Return Index', 'dataset_name': 'MSCI ACWI Index', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '선진국', '소분류': '', '지표': 'MSCI World', '현재값': '3,520.1', '1D': 0.30, '1W': 0.85, '1M': 1.13, '3M': 4.20, '6M': 6.80, '1Y': 16.50, 'YTD': 1.13, 'Source': 'Bloomberg', 'dataseries': 'TOT RETURN INDEX NET DVDS', 'dataset_name': 'M1WD Index', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '미국외 선진국', '소분류': '', '지표': 'MSCI World ex US', '현재값': '2,180.5', '1D': 0.48, '1W': 1.25, '1M': 4.96, '3M': 6.80, '6M': 5.20, '1Y': 8.90, 'YTD': 4.96, 'Source': 'Factset', 'dataseries': 'FG Return', 'dataset_name': 'MSCI World ex-USA Index', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '신흥시장', '소분류': '', '지표': 'MSCI EM', '현재값': '1,085.3', '1D': 0.25, '1W': 0.68, '1M': 2.45, '3M': 3.85, '6M': 1.50, '1Y': 5.20, 'YTD': 2.45, 'Source': 'Factset', 'dataseries': 'FG Return', 'dataset_name': 'MSCI EM (Emerging Markets) Index', '최근기준일': '2026-01-31'},
-        # === 채권 - 지수 ===
-        {'대분류': '채권', '중분류': '지수-글로벌(UH to USD)', '소분류': '', '지표': 'Barclays Global Agg. Bond', '현재값': '480.2', '1D': 0.02, '1W': 0.08, '1M': 0.35, '3M': -0.52, '6M': 1.20, '1Y': 2.85, 'YTD': 0.35, 'Source': 'Factset', 'dataseries': 'FG Total Return Index (Unhedged)', 'dataset_name': 'Bloomberg Global Aggregate Total Return Index', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '지수-글로벌(H to USD)', '소분류': '', '지표': 'Barclays Global Agg. Bond (H)', '현재값': '520.1', '1D': 0.01, '1W': 0.05, '1M': 0.12, '3M': -0.35, '6M': 0.85, '1Y': 2.10, 'YTD': 0.12, 'Source': 'Factset', 'dataseries': 'FG Total Return Index (Hedged)', 'dataset_name': 'Bloomberg Global Aggregate Total Return Index', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '지수-글로벌(H to KRW)', '소분류': '', '지표': 'Barclays Global Agg. Bond (KRW)', '현재값': '105.8', '1D': 0.00, '1W': 0.02, '1M': 0.00, '3M': -0.15, '6M': 0.55, '1Y': 1.80, 'YTD': 0.00, 'Source': 'Bloomberg', 'dataseries': 'TOT RETURN INDEX NET DVDS', 'dataset_name': 'Bloomberg Global Aggregate TR Index Hedged KRW', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '지수-국내', '소분류': '국채3년', '지표': '매경채권지수', '현재값': '230.5', '1D': -0.02, '1W': -0.08, '1M': -0.35, '3M': 0.45, '6M': 1.10, '1Y': 2.50, 'YTD': -0.35, 'Source': 'KIS', 'dataseries': 'KIS Bond Index', 'dataset_name': 'MK MSB Index', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '', '소분류': '국고10년', '지표': 'KRX 10년채권지수', '현재값': '145.8', '1D': -0.08, '1W': -0.35, '1M': -1.94, '3M': 0.85, '6M': 2.50, '1Y': 4.20, 'YTD': -1.94, 'Source': 'KIS', 'dataseries': 'KIS Bond Index', 'dataset_name': 'KIS 10Y KTB Index', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '', '소분류': '종합채권', '지표': 'KBP 종합지수', '현재값': '188.3', '1D': -0.05, '1W': -0.22, '1M': -1.51, '3M': 0.65, '6M': 1.80, '1Y': 3.50, 'YTD': -1.51, 'Source': 'Bloomberg', 'dataseries': 'TOT RETURN INDEX NET DVDS', 'dataset_name': 'KAP 종합채권 총수익 지수(AA- 이상)', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '지수-미국', '소분류': '종합채권', '지표': 'Barclays US Agg. Bond', '현재값': '2,180.5', '1D': -0.01, '1W': -0.05, '1M': -0.13, '3M': -0.85, '6M': 0.52, '1Y': 1.95, 'YTD': -0.13, 'Source': 'Factset', 'dataseries': 'FG Total Return Index (Unhedged)', 'dataset_name': 'Bloomberg US Aggregate Bond Index', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '', '소분류': '투자등급', '지표': 'iBoxx Investment Grade', '현재값': '320.8', '1D': -0.02, '1W': -0.08, '1M': -0.21, '3M': -0.55, '6M': 0.80, '1Y': 2.30, 'YTD': -0.21, 'Source': 'Factset', 'dataseries': 'FG Return', 'dataset_name': 'iBoxx USD Liquid Investment Grade Index', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '', '소분류': '하이일드', '지표': 'iBoxx High Yield', '현재값': '285.1', '1D': 0.05, '1W': 0.15, '1M': 0.54, '3M': 1.20, '6M': 2.85, '1Y': 5.80, 'YTD': 0.54, 'Source': 'Factset', 'dataseries': 'FG Return', 'dataset_name': 'iBoxx USD Liquid High Yield Index', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '지수-신흥시장', '소분류': '달러표시국채', '지표': 'JP Morgan EM Bond', '현재값': '880.5', '1D': 0.03, '1W': 0.10, '1M': 0.36, '3M': -0.25, '6M': 1.50, '1Y': 3.85, 'YTD': 0.36, 'Source': 'Bloomberg', 'dataseries': 'TOT RETURN INDEX NET DVDS', 'dataset_name': 'J.P. Morgan EMBI Global Core Index', '최근기준일': '2026-01-31'},
-        # === 채권 - 금리 (bp 단위) ===
-        {'대분류': '', '중분류': '금리-국내', '소분류': '국채', '지표': '국고채 3Y', '현재값': '2.65%', '1D': -1, '1W': -3, '1M': -8, '3M': 15, '6M': -25, '1Y': -42, 'YTD': -8, 'Source': 'Factset', 'dataseries': 'FG Yield (YTM)', 'dataset_name': 'KR Treasury 5Y', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '', '소분류': '', '지표': '국고채 10Y', '현재값': '2.85%', '1D': -1, '1W': -2, '1M': -3, '3M': 12, '6M': -18, '1Y': -35, 'YTD': -3, 'Source': 'Factset', 'dataseries': 'FG Yield (YTM)', 'dataset_name': 'KR Treasury 10Y', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '금리-미국', '소분류': '국채', '지표': 'US Treasury 2Y', '현재값': '4.15%', '1D': -2, '1W': -5, '1M': -15, '3M': -8, '6M': -45, '1Y': -72, 'YTD': -15, 'Source': 'Factset', 'dataseries': 'FG Yield (YTM)', 'dataset_name': 'Treasury 2Y', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '', '소분류': '', '지표': 'US Treasury 10Y', '현재값': '4.25%', '1D': -1, '1W': -4, '1M': -12, '3M': 5, '6M': -30, '1Y': -55, 'YTD': -12, 'Source': 'Factset', 'dataseries': 'FG Yield (YTM)', 'dataset_name': 'Treasury 10Y', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '금리-기준금리', '소분류': '정책금리', '지표': '한국 기준금리', '현재값': '3.00%', '1D': 0, '1W': 0, '1M': 0, '3M': -25, '6M': -50, '1Y': -50, 'YTD': 0, 'Source': 'Factset', 'dataseries': 'Interest Rate (Short Term)', 'dataset_name': 'KR Macro Data', '최근기준일': '2026-01-24'},
-        {'대분류': '', '중분류': '', '소분류': '', '지표': '미국 기준금리', '현재값': '4.50%', '1D': 0, '1W': 0, '1M': 0, '3M': 0, '6M': -25, '1Y': -75, 'YTD': 0, 'Source': 'Factset', 'dataseries': 'Interest Rate (Short Term)', 'dataset_name': 'US Macro Data', '최근기준일': '2026-01-29'},
-        # === 채권 - 스프레드 (bp 단위) ===
-        {'대분류': '', '중분류': '스프레드-크레딧', '소분류': '', '지표': 'US IG Spread', '현재값': '85bp', '1D': -1, '1W': -2, '1M': -5, '3M': -12, '6M': -18, '1Y': -25, 'YTD': -5, 'Source': 'Factset', 'dataseries': 'FG Yield (YTM)', 'dataset_name': 'iBoxx USD Liquid Investment Grade Index', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '', '소분류': '', '지표': 'US HY Spread', '현재값': '305bp', '1D': -2, '1W': -5, '1M': -12, '3M': -25, '6M': -35, '1Y': -55, 'YTD': -12, 'Source': 'Factset', 'dataseries': 'FG Yield (YTM)', 'dataset_name': 'ICE BofA US High Yield Constrained Index', '최근기준일': '2026-01-31'},
-        # === FX (% 단위) ===
-        {'대분류': 'FX', '중분류': '주요환율', '소분류': '달러', '지표': 'USD/KRW', '현재값': '1,432.5', '1D': 0.12, '1W': 0.35, '1M': 1.15, '3M': 2.80, '6M': 4.50, '1Y': 6.20, 'YTD': 1.15, 'Source': 'Bloomberg', 'dataseries': 'PX_LAST', 'dataset_name': 'USD-KRW', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '', '소분류': '', '지표': 'DXY', '현재값': '104.2', '1D': 0.08, '1W': 0.25, '1M': 0.82, '3M': 1.50, '6M': 3.20, '1Y': 4.80, 'YTD': 0.82, 'Source': 'Bloomberg', 'dataseries': 'PX_LAST', 'dataset_name': 'US Dollar Index', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '', '소분류': '유로', '지표': 'EUR/USD', '현재값': '1.0815', '1D': -0.05, '1W': -0.18, '1M': -0.65, '3M': -1.20, '6M': -2.80, '1Y': -4.50, 'YTD': -0.65, 'Source': 'Bloomberg', 'dataseries': 'PX_LAST', 'dataset_name': 'EURUSD', '최근기준일': '2026-01-31'},
-        # === 원자재 (% 단위) ===
-        {'대분류': '원자재', '중분류': '에너지', '소분류': '원유', '지표': 'WTI', '현재값': '$72.1', '1D': -0.35, '1W': -0.85, '1M': -1.52, '3M': -5.20, '6M': -8.50, '1Y': -12.30, 'YTD': -1.52, 'Source': 'Factset', 'dataseries': 'FG Price', 'dataset_name': 'Crude Oil WTI NYM $/bbl', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '귀금속', '소분류': '', '지표': 'Gold', '현재값': '$2,850', '1D': 0.25, '1W': 0.80, '1M': 3.21, '3M': 5.50, '6M': 12.80, '1Y': 18.50, 'YTD': 3.21, 'Source': 'Factset', 'dataseries': 'FG Price', 'dataset_name': 'Gold NYM $/ozt', '최근기준일': '2026-01-31'},
-        # === 변동성 (포인트 단위) ===
-        {'대분류': '변동성', '중분류': '주식', '소분류': '', '지표': 'VIX', '현재값': '14.5', '1D': -0.35, '1W': -0.80, '1M': -2.30, '3M': -3.50, '6M': -5.20, '1Y': -8.50, 'YTD': -2.30, 'Source': 'Bloomberg', 'dataseries': 'PX_LAST', 'dataset_name': 'VIX Index', '최근기준일': '2026-01-31'},
-        {'대분류': '', '중분류': '채권', '소분류': '', '지표': 'MOVE', '현재값': '98.3', '1D': -0.50, '1W': -1.20, '1M': -5.20, '3M': -8.50, '6M': -12.30, '1Y': -18.50, 'YTD': -5.20, 'Source': 'Bloomberg', 'dataseries': 'PX_LAST', 'dataset_name': 'MOVE Index', '최근기준일': '2026-01-30'},
-        # === 경제지표 (%p 단위) ===
-        {'대분류': '경제지표', '중분류': '물가', '소분류': '한국', '지표': 'CPI (YoY)', '현재값': '2.3%', '1D': 0.0, '1W': 0.0, '1M': -0.1, '3M': -0.3, '6M': -0.5, '1Y': -0.8, 'YTD': -0.1, 'Source': 'Factset', 'dataseries': 'CPI Inflation (%Chg YoY)', 'dataset_name': 'KR Macro Data', '최근기준일': '2026-01-05'},
-        {'대분류': '', '중분류': '', '소분류': '미국', '지표': 'CPI (YoY)', '현재값': '2.9%', '1D': 0.0, '1W': 0.0, '1M': -0.2, '3M': -0.4, '6M': -0.6, '1Y': -1.0, 'YTD': -0.2, 'Source': 'Factset', 'dataseries': 'CPI Inflation (%Chg YoY)', 'dataset_name': 'US Macro Data', '최근기준일': '2026-01-15'},
-    ])
-
-    # 비수익률 행 식별 (금리/스프레드/변동성/경제지표): bp/포인트/%p 단위
-    _env_ff = macro_env_data.copy()
-    _env_ff['_대분류'] = _env_ff['대분류'].replace('', np.nan).ffill()
-    _env_ff['_중분류'] = _env_ff['중분류'].replace('', np.nan).ffill()
-    _is_bp_row = _env_ff['_중분류'].str.contains('금리|스프레드', na=False)
-    _is_vol_row = _env_ff['_대분류'] == '변동성'
-    _is_econ_row = _env_ff['_대분류'] == '경제지표'
-
-    period_cols = ['1D', '1W', '1M', '3M', '6M', '1Y', 'YTD']
-
-    # 원화환산: 해외 자산(국내주식/국내채권/경제지표 제외)에 +1.5% 가산 (mockup)
-    _domestic_cats = {'국내', '지수-국내', '금리-국내', '금리-기준금리'}
-    _non_fx_cats = {'변동성', '경제지표'}
-    _is_domestic = _env_ff['_중분류'].isin(_domestic_cats) | _env_ff['_대분류'].isin(_non_fx_cats)
-    _is_non_return = _is_bp_row | _is_vol_row | _is_econ_row
-
-    if env_krw_toggle:
-        macro_env_data_active = macro_env_data.copy()
-        for col in period_cols:
-            macro_env_data_active.loc[~_is_domestic & ~_is_non_return, col] = \
-                macro_env_data.loc[~_is_domestic & ~_is_non_return, col] + 1.5
-    else:
-        macro_env_data_active = macro_env_data
-
-    # 행별 유형 태그 칼럼 추가 (포맷/스타일링 용)
-    _row_type = pd.Series('return', index=macro_env_data.index)
-    _row_type[_is_bp_row] = 'bp'
-    _row_type[_is_vol_row] = 'vol'
-    _row_type[_is_econ_row] = 'econ'
-
-    def _make_env_formatter(row_types, src_data):
-        """행별 유형에 맞는 포맷터 dict 생성"""
-        def _fmt(val, rtype):
-            if pd.isna(val):
-                return ''
-            v = float(val)
-            if rtype == 'bp':
-                return '0bp' if v == 0 else (f'{v:+.0f}bp' if abs(v) >= 1 else f'{v:+.1f}bp')
-            if rtype == 'vol':
-                return f'{v:+.2f}' if v != 0 else '0.00'
-            if rtype == 'econ':
-                return f'{v:+.1f}%p' if v != 0 else '0.0%p'
-            return f'{v:+.2f}%' if v != 0 else '0.00%'
-        # 포맷된 문자열 DataFrame 생성 (표시 전용)
-        fmt_df = pd.DataFrame(index=src_data.index, columns=period_cols)
-        for idx in src_data.index:
-            rt = row_types.iloc[idx]
-            for col in period_cols:
-                fmt_df.at[idx, col] = _fmt(src_data.at[idx, col], rt)
-        return fmt_df
-
-    _fmt_df = _make_env_formatter(_row_type, macro_env_data_active)
-
-    # 표시용 DataFrame: 숫자 칼럼은 포맷된 문자열로 교체
-    macro_env_display = macro_env_data_active.copy()
-    for col in period_cols:
-        macro_env_display[col] = _fmt_df[col]
-
-    def style_env_period(val):
-        """기간 칼럼 텍스트 색상: 음수 파랑, 양수 빨강"""
-        if isinstance(val, str):
-            stripped = val.replace('%', '').replace('bp', '').replace('%p', '').strip()
-            try:
-                v = float(stripped)
-                if v < 0:
-                    return 'color: #636EFA'
-                elif v > 0:
-                    return 'color: #EF553B'
-            except (ValueError, TypeError):
-                pass
-        return ''
-
-    def style_env_source(val):
-        colors = {'Factset': '#e8f0fe', 'Bloomberg': '#fef7e0', 'KIS': '#e8f5e9'}
-        bg = colors.get(val, '')
-        return f'background-color: {bg}' if bg else ''
-
-    env_height = max(200, 35 * len(macro_env_display) + 40)
-    # 1. 기간 칼럼 텍스트 색상
-    styled_env = macro_env_display.style.map(style_env_period, subset=period_cols)
-    # 2. Source 배경색
-    styled_env = styled_env.map(style_env_source, subset=['Source'])
-    # 3. 기본 스타일
-    styled_env = styled_env.set_properties(**{'font-size': '12px'})
-    styled_env = styled_env.set_properties(subset=['대분류'], **{'font-weight': 'bold', 'background-color': '#f8f9fa'})
-    styled_env = styled_env.set_properties(subset=['dataseries', 'dataset_name'], **{'font-size': '10px', 'color': '#888'})
-    st.dataframe(styled_env, hide_index=True, use_container_width=True, height=env_height)
-    st.caption("* Source: 데이터 출처 | dataseries/dataset_name: SCIP DB 매핑 정보 | 금리/스프레드: bp 단위, 변동성: 포인트, 경제지표: %p")
-
-    st.markdown("---")
-
-    # --- 벤치마크 수익률 히트맵 (고정 기간) (#8, #13) ---
-    st.markdown("### 주요 벤치마크 기간수익률")
-    bm_selected_periods = ['1M', '3M', 'YTD', '1Y']
-
-    # DB에서 기간수익률 계산 시도
-    _hm_db = False
-    _hm_tickers = {
-        'MSCI ACWI': 'MSCI ACWI', 'S&P 500': 'S&P 500', 'MSCI Korea': 'MSCI Korea',
-        'MSCI EM': 'MSCI EM', 'MSCI World ex US': 'MSCI World ex US', 'Gold': 'Gold'
-    }
-    _hm_data = {}
-    if _macro_db:
-        try:
-            _hm_returns = cached_load_macro_period_returns(_macro_keys, '2017-01-01')
-            if _hm_returns:
-                _hm_db = True
-                for disp_name, key in _hm_tickers.items():
-                    if key in _hm_returns:
-                        _hm_data[disp_name] = _hm_returns[key]
-        except Exception:
-            pass
-
-    bm_names = list(_hm_tickers.keys())
-    if _hm_db and _hm_data:
-        heatmap_rows = []
-        for nm in bm_names:
-            if nm in _hm_data:
-                row = [_hm_data[nm].get(p, 0) for p in bm_selected_periods]
-            else:
-                row = [np.random.uniform(-5, 15) for _ in bm_selected_periods]
-            heatmap_rows.append(row)
-        heatmap_df = pd.DataFrame(heatmap_rows, index=bm_names, columns=bm_selected_periods)
-    else:
-        heatmap_data = np.random.uniform(-5, 15, (len(bm_names), len(bm_selected_periods)))
-        heatmap_df = pd.DataFrame(heatmap_data, index=bm_names, columns=bm_selected_periods)
-
-    pastel_colorscale = [
-        [0.0, '#f8d7da'], [0.25, '#fef3cd'], [0.5, '#fff9e6'],
-        [0.75, '#d4edda'], [1.0, '#c3e6cb']
-    ]
-    fig_hm = px.imshow(heatmap_df, text_auto='.1f', color_continuous_scale=pastel_colorscale,
-                        aspect='auto', labels=dict(color='수익률(%)'))
-    fig_hm.update_layout(height=420, margin=dict(t=20, b=20, l=150),
-                          font=dict(size=12))
-    fig_hm.update_traces(textfont=dict(size=11, color='#333'))
-    st.plotly_chart(fig_hm, use_container_width=True)
-
-    st.markdown("---")
+    # (기존 자산군별 벤치마크 mockup + 히트맵 삭제 — 상단 SCIP 실시간 테이블로 대체)
+    # (기존 히트맵 삭제 — SCIP 실시간 테이블로 대체)
 
 
 
@@ -2313,6 +2240,10 @@ with tabs[4]:
 # ============================================================
 
 with tabs[5]:
+    from modules.comment_ui import render_comment_tab
+    render_comment_tab()
+
+if False:  # ── 기존 운용보고 코드 (비활성화) ──
     st.markdown("#### 운용보고서")
 
     # #9: 보고서 드롭다운 (상단 배치)
@@ -2676,6 +2607,8 @@ with tabs[5]:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         disabled=True
     )
+
+    pass  # 기존 운용보고 코드 끝
 
 
 # ============================================================
