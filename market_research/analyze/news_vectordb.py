@@ -11,8 +11,9 @@ if sys.stdout.encoding != 'utf-8':
 
 import chromadb
 
-NEWS_DIR = Path(__file__).resolve().parent / "data" / "news"
-DB_DIR = Path(__file__).resolve().parent / "data" / "news_vectordb"
+_BASE = Path(__file__).resolve().parent.parent  # market_research/
+NEWS_DIR = _BASE / "data" / "news"
+DB_DIR = _BASE / "data" / "news_vectordb"
 
 # 임베딩 모델 (영어 뉴스용, 가벼움)
 _model = None

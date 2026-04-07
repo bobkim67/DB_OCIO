@@ -43,7 +43,7 @@ from market_research.report.comment_engine import (
 )
 from modules.data_loader import compute_single_port_pa
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent  # market_research/
 CACHE_DIR = BASE_DIR / 'data' / 'report_cache'
 COMMENTS_DIR = BASE_DIR.parent / 'comments'
 OUTPUT_DIR = BASE_DIR / 'output'

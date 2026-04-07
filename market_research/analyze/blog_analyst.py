@@ -23,7 +23,7 @@ from pathlib import Path
 if sys.stdout.encoding != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent  # market_research/
 POSTS_FILE = BASE_DIR / 'data' / 'monygeek' / 'posts.json'
 WORLDVIEW_FILE = BASE_DIR / 'data' / 'monygeek' / 'analysis_worldview.json'
 INSIGHT_DIR = BASE_DIR / 'data' / 'blog_insight'

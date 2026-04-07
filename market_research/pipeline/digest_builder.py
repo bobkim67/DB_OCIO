@@ -23,7 +23,7 @@ sys.stdout.reconfigure(encoding='utf-8')
 # ═══════════════════════════════════════════════════════
 # 경로
 # ═══════════════════════════════════════════════════════
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent  # market_research/
 POSTS_FILE = BASE_DIR / 'data' / 'monygeek' / 'posts.json'
 DIGEST_DIR = BASE_DIR / 'data' / 'monygeek' / 'monthly_digests'
 

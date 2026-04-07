@@ -1,7 +1,2698 @@
 {
   "month": "2026-04",
-  "total": 782,
+  "total": 1071,
   "articles": [
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T07:59:17",
+      "source": "Reuters",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "Trump says he agrees to suspend bombing of Iran for two weeks - Reuters",
+      "description": "Trump says he agrees to suspend bombing of Iran for two weeks  Reuters",
+      "url": "https://news.google.com/rss/articles/CBMitwFBVV95cUxNcWVWZ1N5T1pYQ1BZN1Q4ekRJOVhkeEx6bXFWMDl5M294YlNLWW1GR0tqZ1FFR2JqS2FBZGc2N2VFU0tfdmVDVEEtTGdvOTJvbGNHLUJLRXp2Qmg5ODZGYWg3VFJ1bFg2eEZaMDY4Z2N6MWM4dkZsNGVCUlFJWTNSQ0JNNy04TEZkYUpmQTRvbUloT3pLSjRoSHN6Sm01bFdLWXVaMW1JNWwtd0F2V21URFJvVFRuenc?oc=5",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T07:33:10",
+      "source": "Reuters",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "China and Russia veto UN resolution on protecting Hormuz shipping - Reuters",
+      "description": "China and Russia veto UN resolution on protecting Hormuz shipping  Reuters",
+      "url": "https://news.google.com/rss/articles/CBMiowFBVV95cUxQZnQ3VEVjeTRWSWZFNWtTSjUwenM1dGFlaW95Q3pmcUxackF0ZlBYTkdUeEZ4QWROdGpDbGpPb2Q4VFdWeW1hV0w2U1cxaW82ZXNIMU82U3J2V0VOMk1XRndMQzlfMmVBbmpORFFvdWF6R094THE0bGk2cXl4Z0hqUTVDM01sQ09XOG83QXVvOTByRzBMaW9jOHZycTFMZmVOb29B?oc=5",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T07:29:43",
+      "source": "Reuters",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "Pope Leo calls Trump's threat against Iran 'truly unacceptable' - Reuters",
+      "description": "Pope Leo calls Trump's threat against Iran 'truly unacceptable'  Reuters",
+      "url": "https://news.google.com/rss/articles/CBMirgFBVV95cUxQdXdiMU9JX2NKUmp6ajBtQlM1Sm9nSVRQeU1oTUtTVk9uaGE4ajJqeGUyMmY4VkdXdHpEX21SVHZ2THMycng2WmZaclNZQm9aWnFSSVpXOXdRdlBMZDNBLXN1NGRNQzVrbFhlVk1vYVhGRXFMWWlyY2psSHZZamRmMFVTalBuNVB0TGE3U2VOQ2hYWlBMbTBOaTNxUVJuS2phcEtfZ2lfWERZMERUMFE?oc=5",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T07:24:13",
+      "source": "CNBC",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "Google CEO Sundar Pichai says 'AI shift' opens opportunities to invest in startups",
+      "description": "Alphabet is in investor in some of the highest-valued private companies, including SpaceX, Anthropic and Stripe.",
+      "url": "https://www.cnbc.com/2026/04/07/google-ceo-pichai-says-ai-shift-opens-opportunities-invest-startups.html",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T07:23:38",
+      "source": "CNBC",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "Cramer says Tuesday’s stock market action gives investors a glimpse of the U.S. economy’s fate if Iran war persists",
+      "description": "CNBC's Jim Cramer said that the session showed \"a heck of a lot of bad news,\" citing a \"weak consumer, coupled with inflation.\"",
+      "url": "https://www.cnbc.com/2026/04/07/cramer-tuesday-market-us-economy-iran-war.html",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T07:20:22",
+      "source": "Reuters",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "Pakistan seeks two-week ceasefire, extension to Trump's deadline on Iran - Reuters",
+      "description": "Pakistan seeks two-week ceasefire, extension to Trump's deadline on Iran  Reuters",
+      "url": "https://news.google.com/rss/articles/CBMisgFBVV95cUxNcllYOEthNEVMQW9TZmtvd2pYNzVxRVl5NkJHMTVSZUxIOVBsZVpQbkphLWpwcFhvanJXVXBjMExCZ25senFBX1lqQXVnRmxvd3BxbjhRT1IzSm5nbGwzUXBQRkhNQmVFU3dKU0E5V19XclFxVURvWEpWTzlOcnNXdEVFNTVYSDJjblZzTUppQU1MWFVkRS1xdS00ZlZDTm5HdFhwcWxYc1RDanktOEFXZjh3?oc=5",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T06:10:11",
+      "source": "CNBC",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "USDA Secretary Brooke Rollins sent Easter email to staff touting 'Jesus' and 'God'",
+      "description": "Defense Secretary Pete Hegseth on Monday compared the rescue of a downed U.S. airman in Iran to the story of Jesus's resurrection.",
+      "url": "https://www.cnbc.com/2026/04/07/usda-brooke-rollins-easter-jesus-god.html",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T05:20:33",
+      "source": "Reuters",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "Wall Street closes mixed, with signs of progress as Trump's Iran deadline draws near - Reuters",
+      "description": "Wall Street closes mixed, with signs of progress as Trump's Iran deadline draws near  Reuters",
+      "url": "https://news.google.com/rss/articles/CBMirwFBVV95cUxPUndxdEZZYkw0UTcxeDlIdDFmU29YYVRRRFRxWG83Y3M5bmtYQUI1d1VYNXFYdGZfYjFhcHhiZXpYSElWcTJrazFUTi1YQVB0WUdnYm5xbkx0aUREV25zRDFfaVJHYXppbnpoTzRTclJjd3U5SzBVN2dqemVvX1VpWF9jQlVIamVzdmt3Yi1GYnB0WU02Nm9EQUMwbzJXWTE3TXRrcjBGQnBNcjlaUTJZ?oc=5",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T05:13:05",
+      "source": "Reuters",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "Iran war may boost inflation, but not expectations, per Dallas Fed research - Reuters",
+      "description": "Iran war may boost inflation, but not expectations, per Dallas Fed research  Reuters",
+      "url": "https://news.google.com/rss/articles/CBMitAFBVV95cUxOWXFWVW9ZYXpUNzRUS0dTS3NYRDk5ZWFyMGlRaVRjZlR0ZDc5ejlfQlJfcVpmclBCMFhFSDFWQ1JDeG43bDZ1Z2FOcDg0VTFDYVhOSmVuX1ZyUWpKZW1wTndUaE5vaG9oN2p5Z01hNWZ6amZDS2J2RkV4RXhMNWpfbHBMZW1wTWV1TnRmRGgyNTV6dUtNLXlvNHBYY0VyXzd0TlJCb2NYQWdaby01cVh2MEVxcVk?oc=5",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T05:10:54",
+      "source": "CNBC",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "Levi Strauss beats expectations on the top and bottom lines, raises guidance",
+      "description": "Levi Strauss beat expectations on the top and bottom lines but its guidance doesn't take into account recent tariff rollbacks from the Supreme Court.",
+      "url": "https://www.cnbc.com/2026/04/07/levi-strauss-levi-earnings-q1-2026.html",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T04:09:43",
+      "source": "Reuters",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "US short-term credit market shows early signs of stress as Iran war persists - Reuters",
+      "description": "US short-term credit market shows early signs of stress as Iran war persists  Reuters",
+      "url": "https://news.google.com/rss/articles/CBMiwAFBVV95cUxNUW12bEpUdTFzMDJLM2tCRFJXOUZTMFZ6ZTJ4dUFSRmtfbTEtNUpIa2xaUnUyakd5RllWdHhRMVh3ZkYtWEx4anMyVVJWbVZNcDlkYl9MYmhHbHVITkJjcnkzMy1IUVp4NFgxSWstU29wbWptc2g5akdmY0IzZW84Qnc2UkJQTElPQTBzTlVqY0R4dHhmSDFxLVcxUVlzRmc5UHhPWTZva0U5dWhjT1dnaGZ6WDcxWE1qOGc3MDJXV0g?oc=5",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T04:03:48",
+      "source": "Reuters",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "French nationals leave Iran after three and a half years amid softer France tone on war - Reuters",
+      "description": "French nationals leave Iran after three and a half years amid softer France tone on war  Reuters",
+      "url": "https://news.google.com/rss/articles/CBMirAFBVV95cUxPVDVnSmFrbmhaQWF1WnlzdldxZHpycXZyb3NoYW1kUTlNa3c5RWJzVnpJMXN6SHBjOFRIcnZNZ0ZWc2VqRzZiT0J2RmFneDkyYXQyMk41RlU5eGE0eEZ3MlRacGFBNWQxUmliWmtUZV9vVUdBa2pfYkRmc2N2bHJpNlhfcTRZVFlSeTg4SDZYTFhhcFJIZkR5UWZyUVh3eTRhQ2JCaElMNTV4MzFY?oc=5",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T04:03:28",
+      "source": "CNBC",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "The strategy P&G calls its 'lifeblood' and why it's key to the stock's turnaround",
+      "description": "It starts and ends with what P&G calls its \"lifeblood\": innovation. Here is what that means in practice.",
+      "url": "https://www.cnbc.com/2026/04/07/jim-cramer-investing-club-procter-gamble-innovation-strategy.html",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T03:44:42",
+      "source": "Reuters",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "French Foreign Minister Barrot hopes Trump does not go ahead with threat against Iran - Reuters",
+      "description": "French Foreign Minister Barrot hopes Trump does not go ahead with threat against Iran  Reuters",
+      "url": "https://news.google.com/rss/articles/CBMivwFBVV95cUxObnQtNFhCejRPWnVBZ1VPMzhZUUlhMGJ5c0VkSkMwWHNueURyWm1kUWtWbEtJZ0plLXBBdUkyc1VlREF1alRNV3NYVjlEVnZQWkJPaTJYQzlqSUVhemRQbHJPcVRfc3paTUlzNmZ6QUw0bGh2V3FfazlLc1ZXazVEazNXRDVsQ3hCLTZIVm9tRzJVSDRYLXNfbTN3SklHQXBqSlNHNkdaN096SzdMOW52QlVVRGJkMkM1aUVLVGZEVQ?oc=5",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T03:36:30",
+      "source": "Reuters",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "Gold ticks up ahead of Trump's Iran deadline - Reuters",
+      "description": "Gold ticks up ahead of Trump's Iran deadline  Reuters",
+      "url": "https://news.google.com/rss/articles/CBMipgFBVV95cUxOTTh4dGc3TVg3MGs1LXBfMVJhdFJRTGJmS01zbDNjZ2pjRXZiNG1Ram51dElkdFVaNGJodEhnRnpiMTdNeC1GLUREay0yRENaU1ZIdnAzTUg0Nk5RbWItSkMzX3NFalVPVFNzdDlmX2R0b0l6cl82LV9ONmxpTU9mX0VGSlNqTC10bE5SazZGT3dBbU9ndkZzOHh5anJvZ1UyQ09vNkVR?oc=5",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T03:35:45",
+      "source": "CNBC",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "Conflicting reports on the foldable iPhone show the value of our Apple mantra",
+      "description": "Every weekday, the Investing Club releases the Homestretch; an actionable afternoon update just in time for the last hour of trading.",
+      "url": "https://www.cnbc.com/2026/04/07/conflicting-reports-on-the-foldable-iphone-show-the-value-of-our-apple-mantra.html",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T03:27:05",
+      "source": "Reuters",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "Iranian hackers' targeting of US critical infrastructure has escalated since start of war, US says - Reuters",
+      "description": "Iranian hackers' targeting of US critical infrastructure has escalated since start of war, US says  Reuters",
+      "url": "https://news.google.com/rss/articles/CBMizAFBVV95cUxNUndNMFF2b3JORnNrNDViUktLOS1WWndUTmVTMjJERTc3bm9lZTJaNHdhSGFpQU1rQTk3ajBJZGhwdDdmTk5RXzRjOGdydWlrSjBMRzN5bmZ3bjNqLTB3LUZBOGZ3RF9PZmNfMnlXNFVFWEx2WW5BRWRielFTSU1HVjRPaHcxbzdZekhyemRKTlZlclFuOWp2c2luUVFkb2FRcnRIMlAtcEdMRUVTRGVIS1BJX2JsX1ZXMzNYbHdvOWpLN05wVW5HQl8tUXg?oc=5",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T02:42:33",
+      "source": "CNBC",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "41-year-old high school teacher's side hustle brings in $3.8 million a year—he shares 'every high and every low' with students",
+      "description": "Kevin Corey, a high school business teacher in New York, shares real-life lessons with students — including from Stall Mates, his own flushable wipes brand.",
+      "url": "https://www.cnbc.com/2026/04/07/stall-mates-high-school-business-teacher-side-hustle-brings-in-millions.html",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T02:21:53",
+      "source": "Reuters",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "Fuel prices could keep rising for months even if Hormuz reopens, US EIA says - Reuters",
+      "description": "Fuel prices could keep rising for months even if Hormuz reopens, US EIA says  Reuters",
+      "url": "https://news.google.com/rss/articles/CBMivgFBVV95cUxQcHNVVldhTmc2clpkY19uZUdoOTNSQnZMWVdpWVVIQ2RtaWVnbzgzRl9EZ1BTMzNhcWN5dUoyQUdtWGsybFRZbE5zWVVZb1dkWnFJZVdHX09SZlEtYnNEdTBkR0RSZkdWNWRFT0poR0JvNm15OE51WnNKYnNBZ3VQNEVRSUxTMVd3elVZYWgwaVNRalpMUTh5eVRiaDh4Qlc4NndWQ1NaeWpzcXdTaFJidVUxbHMtNWx1MUtJb1Fn?oc=5",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T02:21:45",
+      "source": "Reuters",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "Madagascar declares state of emergency over energy situation due to Iran war - Reuters",
+      "description": "Madagascar declares state of emergency over energy situation due to Iran war  Reuters",
+      "url": "https://news.google.com/rss/articles/CBMivwFBVV95cUxNRHJXVmhjckxiRnI3SFdkSDhhWTFRSFRhMWhiakU5aVIwQW5CSVVRaGhQb3lWV3FNV25GNWhROThKVnR5S2FBUU1BXzJxZHRiMWRpYlhuUmNUTjVMNkhfZWFKZk9naWpUSTBlaHdWX0dCdjlDVUFvZkZvUXNnRWQzSnQ0NXNGejZlVlBWeElEX3FFMjU3OTNtTTZhVEI0UzdZZVAyZTJBdmhFTXlhdGdaQ2RYczk5NWphV212OC1zcw?oc=5",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T01:47:39",
+      "source": "CNBC",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "Jim Cramer sees a buying opportunity in this tech giant — plus, a name he may trim",
+      "description": "The Investing Club holds its \"Morning Meeting\" every weekday at 10:20 a.m. ET.",
+      "url": "https://www.cnbc.com/2026/04/07/jim-cramer-sees-a-buying-opportunity-in-this-tech-giant-plus-a-name-he-may-trim.html",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T01:43:09",
+      "source": "Reuters",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "World Bank says Nigerian economy to grow in 2026 but Iran war lifts inflation - Reuters",
+      "description": "World Bank says Nigerian economy to grow in 2026 but Iran war lifts inflation  Reuters",
+      "url": "https://news.google.com/rss/articles/CBMitwFBVV95cUxNUUVXUWdJMjFBNEhCWlBLNHFwN3h2WUx2eTJfUV8zalpiaDRzNENTMkRkN0xfLWxzbGszVkVfYVA5b3J6RjMxb0x0ODdjWkNjU1FYUFlWRGRJMUpqdjl1a3VCaEFwUy1BUV8tZzNHUnRvN1FVVzlaTzBGUTZjR0dHTHJVekJOVTNhYnByNmo5X1BpSnBvb2x6b1hyWC1xRVNrUUFiLTUzaW1rQTZUZm1vOVByYmI1VHc?oc=5",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T01:29:48",
+      "source": "CNBC",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "The 'magic number' Americans say they need to retire comfortably is $1.46 million—how to catch up if you're behind",
+      "description": "Data from Northwestern Mutual shows that Americans say they need a bigger number to retire, and they're having trouble getting there.",
+      "url": "https://www.cnbc.com/2026/04/07/how-much-money-americans-say-they-need-to-retire-comfortably.html",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T01:23:24",
+      "source": "Reuters",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "UK stocks fall in broad-based declines as Trump's Iran deadline looms - Reuters",
+      "description": "UK stocks fall in broad-based declines as Trump's Iran deadline looms  Reuters",
+      "url": "https://news.google.com/rss/articles/CBMiqAFBVV95cUxNdFZRdUZTR3RhdHVnNFpOWjJYNW55TDNsQU5fX3A1Q1B2bWFJcWJDNXk1YWQ2NWdycGdnNzlXYjB0RGQwanpFZnZvallRbFcwUG42Qm52MV9WNC1kLVh5Nzh0TnVwR1NxSG9BTXZQRUFHNFNWUGs3UzVibmg0a2lNcGt4bUJrUk5XeEVZYll4WTZPcjRRZGZHdXFXbFJWUFVpSWJwaURtX1c?oc=5",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T01:22:19",
+      "source": "Reuters",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "European shares decline as markets turn wary ahead of Trump's Iran deadline - Reuters",
+      "description": "European shares decline as markets turn wary ahead of Trump's Iran deadline  Reuters",
+      "url": "https://news.google.com/rss/articles/CBMixAFBVV95cUxOaURJVGl1d1JXLXUwZ2VoTVhOUW1XcmdTTVRBV1ZhT1NkZnFYaElyY3FEUkw4TWd0NEg1VWFUMlNyQUt2dWZ6dmpRQm5KcHJJTnphNFk4UUNUMWNoNlJDRVZycHZlN01UM1VTZmtiU1BVYXgxd2NYTjZCdjdfZEpNSFQ4Y3lVQjlZM2NpcGY4VWlLZll5Tnp5a1dScUNwVWZpN2VJTVNqeGxYTXdWYmVQOTJZOXA4Mk8tTmFLbmdmb3UzNjdE?oc=5",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T01:21:55",
+      "source": "Reuters",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "Can Iran charge fees for ships to transit the Strait of Hormuz? - Reuters",
+      "description": "Can Iran charge fees for ships to transit the Strait of Hormuz?  Reuters",
+      "url": "https://news.google.com/rss/articles/CBMipAFBVV95cUxORzRwbnZrSGQ2STBZSzVDQVBrN1dZdU9HVkRpNTNzV1ZBRTJZMUx6RXQ4U3ZxcWtzcDh6UDVKVThBTXhNOUZ2Q1ZFQ1g2NmdyeVN1RlJ5OHd4QVNBVENMY0V2QWNmcEIwWlhHZTNnVGZkWDk4WVQxMENEU29GYUxKcTdFUGh2aGhjckZES194YnprX1U4TV9SbHpGV0NPN1RSdG85MQ?oc=5",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T01:15:38",
+      "source": "Reuters",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "US-Iran talks continuing, but strikes on Saudi Arabia may derail effort, say sources - Reuters",
+      "description": "US-Iran talks continuing, but strikes on Saudi Arabia may derail effort, say sources  Reuters",
+      "url": "https://news.google.com/rss/articles/CBMiwwFBVV95cUxPMHlxMUhLSmtud0VaTFRhZWNqYTN3YjA4UHlkeDB6dl9DS241NElqck52eElVb0g3emxQT3FjcTB6NUlIRldIUzI0UHB1SnVhUmI4R3I0RHFJYWNWTWRBSmRvUTdwZkJOU3VTUmIxVVV5bDRfUnlFZm96Y2dNRW1hQkdnd1dtcG82NzNTVGdxcjdEOVplMVVISkJhS3FSazJndTFTemdxTXRvaHViTzF5aENWelpxTUNDb3M3YkhFOW1LWms?oc=5",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T01:06:55",
+      "source": "Reuters",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "India plans sovereign guarantees for insurers as Iran war heightens shipping risks, sources say - Reuters",
+      "description": "India plans sovereign guarantees for insurers as Iran war heightens shipping risks, sources say  Reuters",
+      "url": "https://news.google.com/rss/articles/CBMi5gFBVV95cUxOb1J1V2E0YTdvS0pFaFJRbHl0MEdfWGJZc2pxdVAxZ252NFdsTFQ1R0JBbUNwZ1pqSXBHcVVrZGtGcW5ZZmN2WWJ6bnhLYmE4SUpaYlVrR1BhcEtuMTU4RnF1RkNBdHB3N1ZSVU0zTnJGQjNsSVVORmhBQUdtVEdaQm1CaVdKeV9KM05wbS1wcFNLTTBvVlZaNWhYT3JhMk9xenpzVTFOMm5nVzdoYUQ4LW91TDB6aTRGdWFDX3dvLUx3anFITnB0b0pKczRwVVFYZUpLMzh3aFRORnAwY3BXVXdpdkxJZw?oc=5",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T01:02:31",
+      "source": "Reuters",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "US business spending on equipment on solid ground before Iran war - Reuters",
+      "description": "US business spending on equipment on solid ground before Iran war  Reuters",
+      "url": "https://news.google.com/rss/articles/CBMirgFBVV95cUxPOXlrY1dXbHlVY2RFdHRuVmt1OGVnclFsWDJmbTlEdXc2N2dKU3VNU1FLX3lDb0tHSk9WNnpVcUpWTU1jN3h5V0doZFNjbWhnWmZwQk0tRDZEMzNybDNzTkVZeEJwSzEzNERhWEhSRnh2enZsX3E4cU1JOFFoMURQTnpYOEQ5cjRGcmV3LURIRkJoM0sxb05UVjl4WURQb3RWQmo4WmQ2Xy05ZnpseWc?oc=5",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T00:59:43",
+      "source": "Reuters",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "Deal, delay or strike? Investors on edge as Trump's Iran deadline nears - Reuters",
+      "description": "Deal, delay or strike? Investors on edge as Trump's Iran deadline nears  Reuters",
+      "url": "https://news.google.com/rss/articles/CBMitwFBVV95cUxPSmVER05PV181b2x3YVJjM0NWcFBoTkoxX1YwcklOSXNubG5RVjBiLTRkckt2Nkl1NEVNRWFjejN3dFJnWVhnaHR1Y1dHd3ZBd1RDTWl6N3RHblJTRkpaUUVTNEJYMEdSWVRKV2lSamRiVDU1TlcwWGRSYkkzUkhLcWhWbWtsVW5vUDByU1B6S3A4X3g1dV9waGdka0RYTFdvRE05SzFTNWJfZUw1TFh4TXF1cmZTWEk?oc=5",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T00:37:20",
+      "source": "Reuters",
+      "asset_class": "general",
+      "symbol": "",
+      "title": "Iran has attacked Saudi Arabia's Jubail petrochemical complex, IRGC says - Reuters",
+      "description": "Iran has attacked Saudi Arabia's Jubail petrochemical complex, IRGC says  Reuters",
+      "url": "https://news.google.com/rss/articles/CBMixwFBVV95cUxNSEM5cWZjVWlTaUJjcDVPV3JtVnlWcEt5OWJqYTdmbHczbktFYkRSUjRZb055dGRZeXMwcExBLVAzSVNVUmxpWlc0YTdwTVdJMk1TLVcydUJ3c1RXUGZwM2ktV1R3UTA4dHBqZ0VWN2M4clYtdkxaUlNQQ2dFaFRHaW41b0xVRjdlS2ZDZmswYUR4Ym9sMTFiZkx1bU81SUt4V2tCN2VFaWhpV0FrZ19iZURvQlJSa0RDdTNfMHNFMGxIb2hTMzhr?oc=5",
+      "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T00:00:00",
+      "source": "네이버금융",
+      "asset_class": "국내주식",
+      "symbol": "",
+      "title": "교보증권, KOSPI200 지수 기초자산 원금지급형 ELB 공모",
+      "description": "",
+      "url": "https://finance.naver.com/news/news_read.naver?article_id=0005503877&office_id=014&mode=search&query=KOSPI&page=1",
+      "provider": "naver"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T00:00:00",
+      "source": "네이버금융",
+      "asset_class": "국내주식",
+      "symbol": "",
+      "title": "한화자산운용 &lsquo;K방산&middot;조선&middot;원전 펀드&rsquo; 1000억 돌파&hellip;변동장 속 방어력 부각",
+      "description": "",
+      "url": "https://finance.naver.com/news/news_read.naver?article_id=0002782963&office_id=021&mode=search&query=KOSPI&page=1",
+      "provider": "naver"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T00:00:00",
+      "source": "네이버금융",
+      "asset_class": "국내주식",
+      "symbol": "",
+      "title": "교보증권, KOSPI200 기초자산 원금지급형 ELB 공모",
+      "description": "",
+      "url": "https://finance.naver.com/news/news_read.naver?article_id=0013871982&office_id=003&mode=search&query=KOSPI&page=1",
+      "provider": "naver"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T00:00:00",
+      "source": "네이버금융",
+      "asset_class": "국내주식",
+      "symbol": "",
+      "title": "한화운용 '한화K방산조선원전펀드', 순자산 1000억 돌파",
+      "description": "",
+      "url": "https://finance.naver.com/news/news_read.naver?article_id=0005745865&office_id=277&mode=search&query=KOSPI&page=1",
+      "provider": "naver"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T00:00:00",
+      "source": "네이버금융",
+      "asset_class": "국내주식",
+      "symbol": "",
+      "title": "설립 1년도 안 된 컨설팅社, 월가 거물급 방한 성사시켜 업계 주목 [더 나은 경...",
+      "description": "",
+      "url": "https://finance.naver.com/news/news_read.naver?article_id=0004118538&office_id=022&mode=search&query=KOSPI&page=1",
+      "provider": "naver"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T00:00:00",
+      "source": "네이버금융",
+      "asset_class": "통화",
+      "symbol": "",
+      "title": "&ldquo;월가는 이미 &lsquo;디지털 달러&rsquo;로 무장&rdquo;&hellip;이종섭 교수 &ldquo;달러 패권 맞설 원화 스테이...",
+      "description": "",
+      "url": "https://finance.naver.com/news/news_read.naver?article_id=0005662371&office_id=009&mode=search&query=USD&page=1",
+      "provider": "naver"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T00:00:00",
+      "source": "네이버금융",
+      "asset_class": "통화",
+      "symbol": "",
+      "title": "[달러&middot;원] 환율 2.1원 내린 1504.2원 마감",
+      "description": "",
+      "url": "https://finance.naver.com/news/news_read.naver?article_id=0008875602&office_id=421&mode=search&query=USD&page=1",
+      "provider": "naver"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T00:00:00",
+      "source": "네이버금융",
+      "asset_class": "통화",
+      "symbol": "",
+      "title": "민병덕 민주당 의원 &quot;스테이블코인, 국가 전략 영역&hellip;경쟁력 문제&quot;",
+      "description": "",
+      "url": "https://finance.naver.com/news/news_read.naver?article_id=0001137893&office_id=417&mode=search&query=USD&page=1",
+      "provider": "naver"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T00:00:00",
+      "source": "네이버금융",
+      "asset_class": "통화",
+      "symbol": "",
+      "title": "&ldquo;송금수수료 87% 절감&rdquo; 원화 스테이블코인, 입법 지연에 글로벌 경쟁 &lsquo;발목&rsquo;",
+      "description": "",
+      "url": "https://finance.naver.com/news/news_read.naver?article_id=0005662265&office_id=009&mode=search&query=USD&page=1",
+      "provider": "naver"
+    },
+    {
+      "date": "2026-04-08",
+      "datetime": "2026-04-08T00:00:00",
+      "source": "네이버금융",
+      "asset_class": "통화",
+      "symbol": "",
+      "title": "[달러&middot;원] 환율 2.4원 오른 1508.7원 출발",
+      "description": "",
+      "url": "https://finance.naver.com/news/news_read.naver?article_id=0008874082&office_id=421&mode=search&query=USD&page=1",
+      "provider": "naver"
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:43:51Z",
+      "source": "New York Post",
+      "category": "미국주식",
+      "title": "Birthright citizenship’s threat, NATO’s diminishing value to US and other commentary",
+      "description": "“Nothing is certain” regarding Trump v. Barbara, the Supreme Court case about birthright citizenship, though there are “signals” the “conservative justices are unlikely to reject” the customary reading of the 14th Amendment, observes Jonathan Turley at The Hi…",
+      "url": "https://nypost.com/2026/04/06/opinion/birthright-citizenships-threat-natos-diminishing-value-to-us-and-other-commentary/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:42:16Z",
+      "source": "Electrek",
+      "category": "지정학",
+      "title": "US war in Iran is pushing up gas prices and making a case for home solar",
+      "description": "On today’s independent episode of Quick Charge, we take a look at refining and distributing our own fuel supply with home solar as America’s war in Iran rages on, shooting gas prices (and EV sales) into the stratosphere.\n\n\n\n more…",
+      "url": "http://electrek.co/2026/04/06/us-war-in-iran-is-pushing-up-gas-prices-and-making-a-case-for-home-solar/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:42:00Z",
+      "source": "Newser",
+      "category": "미국주식",
+      "title": "Amazon, USPS Strike New Deal",
+      "description": "Amazon just dialed back a threat that could have rocked the US Postal Service. After warning it might slash by two-thirds the number of packages it routes through USPS, the e-commerce giant has instead reached a tentative deal that would trim volume by about …",
+      "url": "https://www.newser.com/story/386824/amazon-usps-strike-new-deal.html",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:41:41Z",
+      "source": "Crypto Briefing",
+      "category": "경기",
+      "title": "Jim Ferraioli: Bitcoin is a hedge against monetary debasement, behaves like a risk asset despite being supply-constrained, and has low correlation with traditional assets | Unchained",
+      "description": "Bitcoin's potential as a hedge against monetary debasement challenges its classification as a mere risk asset.\nThe post Jim Ferraioli: Bitcoin is a hedge against monetary debasement, behaves like a risk asset despite being supply-constrained, and has low corr…",
+      "url": "https://cryptobriefing.com/jim-ferraioli-bitcoin-is-a-hedge-against-monetary-debasement-behaves-like-a-risk-asset-despite-being-supply-constrained-and-has-low-correlation-with-traditional-assets-unchained/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:40:13Z",
+      "source": "Louder",
+      "category": "통화",
+      "title": "\"Like Blondie with Teeth.\" Shakin' Street mix high-energy rock with post-punk pop sensibility on album starring Ross The Boss and Fabienne Shine",
+      "description": "What Ross The Boss did after the Dictators but before Manowar",
+      "url": "https://www.loudersound.com/music/albums/shakin-street-shakin-street",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:39:53Z",
+      "source": "Digital Journal",
+      "category": "경기",
+      "title": "Op-Ed: Mamdani vs NYC vs greed vs unsustainability – Who’s winning?",
+      "description": "America is pricing itself out of America in plain sight.\nThe post Op-Ed: Mamdani vs NYC vs greed vs unsustainability – Who’s winning? appeared first on Digital Journal.",
+      "url": "https://www.digitaljournal.com/world/op-ed-mamdani-vs-nyc-vs-greed-vs-unsustainability-whos-winning/article",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:39:00Z",
+      "source": "GlobeNewswire",
+      "category": "미국주식",
+      "title": "ROSEN, A TOP RANKED LAW FIRM, Encourages Soleno Therapeutics, Inc. Investors to Secure Counsel Before Important Deadline in Securities Class Action – SLNO",
+      "description": "NEW YORK, April 06, 2026 (GLOBE NEWSWIRE) -- WHY: Rosen Law Firm, a global investor rights law firm, reminds purchasers of common stock of Soleno Therapeutics, Inc. (NASDAQ: SLNO) between March 26, 2025 and November 4, 2025, both dates inclusive (the “Class P…",
+      "url": "https://www.globenewswire.com/news-release/2026/04/06/3268776/673/en/ROSEN-A-TOP-RANKED-LAW-FIRM-Encourages-Soleno-Therapeutics-Inc-Investors-to-Secure-Counsel-Before-Important-Deadline-in-Securities-Class-Action-SLNO.html",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:38:42Z",
+      "source": "CBS Sports",
+      "category": "통화",
+      "title": "What is UNC getting with Michael Malone? NBA perspective on strengths and weaknesses of title-winning coach",
+      "description": "Three years after winning an NBA title in Denver, Michael Malone, an old-school coach, is off to North Carolina",
+      "url": "https://www.cbssports.com/college-basketball/news/north-carolina-michael-malone-nba-perspective-strengths-weaknesses/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:37:44Z",
+      "source": "New York Post",
+      "category": "지정학",
+      "title": "America may be the greatest in space travel — but the average American can barley afford milk",
+      "description": "WE’RE off to the moon. It’s costing trillions of jillions. Great. Terrific. Hooray to America.",
+      "url": "https://nypost.com/2026/04/06/opinion/america-may-be-the-greatest-in-space-travel-but-the-average-american-can-barley-afford-milk/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:37:00Z",
+      "source": "GlobeNewswire",
+      "category": "미국주식",
+      "title": "Q1 2026: Strong Revenue Growth and Therapeutics Pipeline Advancement",
+      "description": "MELBOURNE, Australia and INDIANAPOLIS, April 07, 2026 (GLOBE NEWSWIRE) -- Telix Pharmaceuticals Limited (ASX: TLX, NASDAQ: TLX, “Telix”) provides a market update on its commercial and operational performance for the quarter ended March 31, 2026 (Q1 2026).",
+      "url": "https://www.globenewswire.com/news-release/2026/04/06/3268775/0/en/Q1-2026-Strong-Revenue-Growth-and-Therapeutics-Pipeline-Advancement.html",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:36:49Z",
+      "source": "Financial Post",
+      "category": "지정학",
+      "title": "Gold Steadies as Traders Weigh Trump’s Deadline to Strike Iran",
+      "description": "Gold steadied after a two-day decline, as traders weighed US President Donald Trump’s latest threat to destroy Iranian infrastructure and the impact of a protracted war on inflation and economic growth.",
+      "url": "https://financialpost.com/pmn/business-pmn/gold-steadies-as-traders-weigh-trumps-deadline-to-strike-iran",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:36:25Z",
+      "source": "Kotaku",
+      "category": "headline_technology",
+      "title": "Overwatch Reveals The Anran Redesign Fans Begged For - Kotaku",
+      "description": "The character looked more like Kiriko and Juno than her brother Wuyang",
+      "url": "https://kotaku.com/overwatch-season-2-anran-face-redesign-fareeha-voice-2000685284",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:34:35Z",
+      "source": "Freerepublic.com",
+      "category": "지정학",
+      "title": "Traumatic brain injury emerging as signature injury in Iran war: US official",
+      "description": "Traumatic brain injuries are quickly emerging as the signature wound of the U.S. war with Iran so far, echoing a pattern of post-9/11 wars... More than 200 U.S. troops have so far been wounded in the war, and at least 140 of those were TBI-related injuries...…",
+      "url": "https://freerepublic.com/focus/f-chat/4373908/posts",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:32:52Z",
+      "source": "Slashdot.org",
+      "category": "지정학",
+      "title": "Trump threatens to jail reporters if they don’t turn over Iran source - The Washington Post",
+      "description": "Trump threatens to jail reporters if they don’t turn over Iran sourceThe Washington Post Trump seizes on rescue of downed airman to recast unpopular Iran warReuters When is Trump speaking today? Here's what time to watch news conferencedelawareonline.com Trum…",
+      "url": "https://slashdot.org/firehose.pl?op=view&amp;id=181394424",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:32:13Z",
+      "source": "CBS Sports",
+      "category": "통화",
+      "title": "2026 March Madness championship game odds, picks: Michigan vs. UConn predictions from expert on 38-25 run",
+      "description": "SportsLine's expert Thomas Casale reveals his Michigan Wolverines vs. Connecticut Huskies NCAA Tournament championship game 2026 picks for Monday",
+      "url": "https://www.cbssports.com/general/news/2026-march-madness-final-odds-line-spread-game-time-picks-michigan-uconn-prediction/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:32:01Z",
+      "source": "pymnts.com",
+      "category": "통화",
+      "title": "Polymarket Readies Platform Overhaul With New Collateral Token",
+      "description": "Polymarket plans to introduce a stablecoin as part of an upgrade of its prediction market exchange. The company’s Polymarket Developers account said in a Monday (April 6) post on X that this upgrade will take place over the next two to three weeks and that it…",
+      "url": "https://www.pymnts.com/cryptocurrency/2026/polymarket-readies-platform-overhaul-with-new-collateral-token/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:31:43Z",
+      "source": "Financial Post",
+      "category": "원자재",
+      "title": "RBNZ Set to Extend Rate Pause, Keep Gauging Fuel Shock Fallout",
+      "description": "New Zealand’s central bank is expected to keep interest rates unchanged on Wednesday and restate its willingness to look through the initial inflationary impact of surging fuel prices that threaten a stuttering recovery.",
+      "url": "https://financialpost.com/pmn/business-pmn/rbnz-set-to-extend-rate-pause-keep-gauging-fuel-shock-fallout",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:30:47Z",
+      "source": "Tubefilter",
+      "category": "지정학",
+      "title": "Top 5 Branded Videos of the Week: Just get a yacht, ez gg",
+      "description": "'Tis the season for festive holiday beverages, and some of YouTube's biggest channels are raising their glasses. MrBeast led the way with an assortment of hot drinks on offer, while a handful of other sponsored videos depicted boozier methods for keeping warm…",
+      "url": "https://www.tubefilter.com/2026/04/06/top-5-branded-videos-mrbeast-ryan-trahan-aquaholic/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:30:43Z",
+      "source": "USA Today",
+      "category": "통화",
+      "title": "Patrick Reed on decision to leave LIV, quest for second green jacket",
+      "description": "Patrick Reed, a former Masters champion, is well-rested and in top form as he seeks a second green jacket at Augusta National.",
+      "url": "https://golfweek.usatoday.com/story/sports/golf/majors/masters/2026/04/06/patrick-reed-2026-masters-defection-liv-golf/89491568007/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:30:40Z",
+      "source": "Bitcoinist",
+      "category": "채권",
+      "title": "Expert Explains What Strategy’s 89,599 BTC Buy In Q1 Means For The Bitcoin Price",
+      "description": "Strategy purchased about 89,599 Bitcoin in the first quarter of 2026, its second-largest quarterly accumulation on record, doing so while Bitcoin traded in a downtrend and sentiment across the crypto market was pessimistic. According to crypto expert Adam Liv…",
+      "url": "https://bitcoinist.com/strategys-89599-btc-buy-means/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:30:29Z",
+      "source": "New York Post",
+      "category": "통화",
+      "title": "What everyone gets wrong about Michigan’s transfer-fueled March Madness run",
+      "description": "Coach Dusty May expertly hit the portal last spring, and created a super team, adding Yaxel Lendeborg, Morez Johnson Jr., Aday Mara and Elliot Cadeau.",
+      "url": "https://nypost.com/2026/04/06/sports/what-everyone-gets-wrong-about-michigans-transfer-fueled-march-madness-run/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:30:06Z",
+      "source": "The Hockey News",
+      "category": "통화",
+      "title": "Could The Canucks Lose Malhotra To The Maple Leafs This Off-Season?",
+      "description": "Reports indicate that Manny Malhotra will get some NHL head coaching interviews this off-season.",
+      "url": "https://thehockeynews.com/nhl/vancouver-canucks/latest-news/could-the-canucks-lose-malhotra-to-the-maple-leafs-this-off-season",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:30:00Z",
+      "source": "Playmakerstats.com",
+      "category": "통화",
+      "title": "PREVIEW | Wrexham vs Southampton - team news, lineups, predictions",
+      "description": "Wrexham and Southampton clash this Tuesday at the Racecourse Ground, Wrexham for round 41 of the EFL Championship. The match will be broadcast live at 20:00 on Sky Sports +.Wrexham have 64 points to t...",
+      "url": "https://www.playmakerstats.com/news/preview-wrexham-vs-southampton-team-news-lineups-predictions/1089128",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:29:12Z",
+      "source": "Crypto Briefing",
+      "category": "지정학",
+      "title": "Steve Kamin: The US dollar will remain dominant despite economic policy threats, the notion of exorbitant privilege is overrated, and geopolitical actions are challenging its safe haven status | Macro Musings",
+      "description": "US dollar's dominance persists despite geopolitical shifts and policy challenges threatening its global influence.\nThe post Steve Kamin: The US dollar will remain dominant despite economic policy threats, the notion of exorbitant privilege is overrated, and g…",
+      "url": "https://cryptobriefing.com/steve-kamin-the-us-dollar-will-remain-dominant-despite-economic-policy-threats-the-notion-of-exorbitant-privilege-is-overrated-and-geopolitical-actions-are-challenging-its-safe-haven-status-macro/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:29:00Z",
+      "source": "Snopes.com",
+      "category": "지정학",
+      "title": "Don't believe claim Texas televangelist accidentally emailed Grindr account info to congregation",
+      "description": "In April 2026, a televangelist in Texas who predicted Iran would surrender to the U.S. on Easter accidentally emailed his account information for Grindr, a gay dating app, to his congregation.",
+      "url": "https://www.snopes.com//fact-check/texas-televangelist-email-grindr/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:26:38Z",
+      "source": "Financial Post",
+      "category": "지정학",
+      "title": "Brazil Expands Fuel Tax Cuts, Subsidies as Iran War Carries On",
+      "description": "Brazil’s government will expand federal tax cuts and subsidies on fuels as it attempts to shield consumers from rising prices due to the war in Iran, broadening measures it had previously unveiled amid the conflict.",
+      "url": "https://financialpost.com/pmn/business-pmn/brazil-expands-fuel-tax-cuts-subsidies-as-iran-war-carries-on",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:26:30Z",
+      "source": "The Daily Caller",
+      "category": "지정학",
+      "title": "Iran Compares Trump To Profane Caveman",
+      "description": "Iran escalated its war of words with President Donald Trump, unleashing a barrage of attacks across its diplomatic social media channels.",
+      "url": "https://dailycaller.com/2026/04/06/iran-compares-trump-profane-caveman/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:26:05Z",
+      "source": "Abcnews.com",
+      "category": "지정학",
+      "title": "WATCH: Woman rescues toddler moments before hundreds of Easter eggs drop",
+      "description": "A woman whisked away a boy who ran into the center of a field during an Easter egg drop.",
+      "url": "https://abcnews.com/video/131778905/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:26:03Z",
+      "source": "Crypto Briefing",
+      "category": "지정학",
+      "title": "Shyam Sankar: Deterrence is crucial for national security, Silicon Valley’s role in defense is evolving, and US military production capabilities are eroding | All-In Podcast",
+      "description": "Silicon Valley's defense tech evolution raises concerns about America's declining industrial base and national security readiness.\nThe post Shyam Sankar: Deterrence is crucial for national security, Silicon Valley’s role in defense is evolving, and US militar…",
+      "url": "https://cryptobriefing.com/shyam-sankar-deterrence-is-crucial-for-national-security-silicon-valleys-role-in-defense-is-evolving-and-us-military-production-capabilities-are-eroding-all-in-podcast/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:24:16Z",
+      "source": "Abcnews.com",
+      "category": "지정학",
+      "title": "WATCH: Artemis II flyby delivers key lunar science insights",
+      "description": "Science editor Asa Stahl explains how Artemis II flyby research informs future lunar missions, base-building and international cooperation, and what to watch as the crew returns to Earth.",
+      "url": "https://abcnews.com/video/131778126/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:24:00Z",
+      "source": "CNBC",
+      "category": "headline_business",
+      "title": "S&P 500 futures are little changed as Trump’s deadline to reopen Strait of Hormuz nears: Live updates - CNBC",
+      "description": "Stocks moved higher on Monday as investors bet that the end to the Middle East conflict was near.",
+      "url": "https://www.cnbc.com/2026/04/06/stock-market-today-live-updates.html",
+      "trusted": true
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:23:35Z",
+      "source": "Breitbart News",
+      "category": "지정학",
+      "title": "Democrats Plot Impeachment of Trump a Third Time",
+      "description": "Free Speech For People said in a press release Monday that a new national poll found “a majority of likely 2026 voters nationwide support impeaching President Donald Trump,” which the group called “an extraordinary and unprecedented level of support so early …",
+      "url": "https://www.breitbart.com/politics/2026/04/06/democrats-plot-impeachment-of-trump-a-third-time/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:23:19Z",
+      "source": "Common Dreams",
+      "category": "지정학",
+      "title": "Rejecting Temporary Ceasefire Deal, Iran Demands Total End of US-Israeli Hostilities",
+      "description": "As President Donald Trump escalated his threats to commit war crimes in Iran if its government does not reopen the Strait of Hormuz, Iranian officials on Monday rejected what they called an inadequate ceasefire proposal and insisted on a guarantee that the US…",
+      "url": "https://www.commondreams.org/news/trump-iran-ceasfire",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:21:49Z",
+      "source": "Financial Post",
+      "category": "신흥국",
+      "title": "Yuan to Dodge Seasonal Slump on Iran War Resilience, Economy",
+      "description": "China’s yuan is poised to defy its typical second-quarter slump as the nation’s resilience to the Iran war and a burgeoning economic recovery offset seasonal pressures.",
+      "url": "https://financialpost.com/pmn/business-pmn/yuan-to-dodge-seasonal-slump-on-iran-war-resilience-economy",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:21:34Z",
+      "source": "Financial Post",
+      "category": "채권",
+      "title": "Asian Coal Bonds Beat Peers as Iran War Triggers Energy Rethink",
+      "description": "An unprecedented global energy crisis is driving Asia back to coal, in a pivot that’s generating a surprise boon for miners of the dirtiest fossil fuel and their bondholders.",
+      "url": "https://financialpost.com/pmn/business-pmn/asian-coal-bonds-beat-peers-as-iran-war-triggers-energy-rethink",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:15:46Z",
+      "source": "New York Post",
+      "category": "경기",
+      "title": "How Mamdani’s Rent Guidelines Board is cooking the numbers to set up his rent freeze",
+      "description": "Landlords face losses from past freezes and costly upgrades like Local Law 97.",
+      "url": "https://nypost.com/2026/04/06/opinion/how-mamdanis-rent-guidelines-board-is-cooking-the-numbers-to-set-up-his-rent-freeze/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:15:38Z",
+      "source": "CBS Sports",
+      "category": "통화",
+      "title": "2026 Masters odds, picks: Scottie Scheffler, Rory McIlroy predictions by model that nailed 4 straight winners",
+      "description": "Picks for 2026 Masters golfers and the Masters favorite to win ahead of the year's first major at Augusta National",
+      "url": "https://www.cbssports.com/golf/news/2026-masters-odds-field-pga-picks-scottie-scheffler-rory-mcilroy-jon-rahm-predictions-finish-projections/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:15:00Z",
+      "source": "Swish Appeal",
+      "category": "통화",
+      "title": "Angel Reese deserved better from the Chicago Sky, and is going to deserve better",
+      "description": "Through no fault of her own, Angel Reese’s time with the Chicago Sky couldn’t last.",
+      "url": "https://www.swishappeal.com/wnba/76724/angel-reese-trade-chicago-sky-atlanta-dream-general-manager-jeff-pagliocca-dysfuntion-mismangement-picks-free-agency-plan-poor-organization",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:14:34Z",
+      "source": "Sportsnaut",
+      "category": "통화",
+      "title": "Peter DeBoer Opens Up About Why He Joined Islanders Now",
+      "description": "Pete DeBoer was sitting at his home in Las Vegas on Saturday night when Mathieu Darche called him about the […]",
+      "url": "https://sportsnaut.com/nhl/new-york-islanders/peter-deboer-opens-up-about-why-he-joined-islanders-now",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:13:30Z",
+      "source": "pymnts.com",
+      "category": "신흥국",
+      "title": "CBDC Debate Signals Privacy Fault Line in Digital Money’s Future",
+      "description": "The progress of crypto policy in Washington has been nearly as volatile as digital asset markets themselves. The result is that crypto policies are increasingly being shoehorned into separate legislative packages. Last month, for example, the U.S. Senate pass…",
+      "url": "https://www.pymnts.com/cbdc/2026/cbdc-debate-signals-privacy-fault-line-in-digital-moneys-future/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:13:20Z",
+      "source": "Golf.com",
+      "category": "통화",
+      "title": "Meet the 6 amateurs making their Masters debut in 2026",
+      "description": "Six amateurs are set to make Masters debut: Ethan Fang, Jackson Herrington, Brandon Holtz, Mason Howell, Fifa Laopakdee and Mateo Pulcini.",
+      "url": "https://golf.com/news/meet-amateurs-making-masters-debut/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:12:00Z",
+      "source": "Covers.com",
+      "category": "통화",
+      "title": "Masters Odds History: Using Past Odds to Predict the 2026 Masters Champion",
+      "description": "Masters odds history reveals how past betting lines can hint at future winners. Explore trends, value picks, and predictive insights to forecast the 2026 Masters champion.",
+      "url": "https://www.covers.com/golf/masters/using-past-odds-to-predict-the-2026-masters-champion",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:10:03Z",
+      "source": "Sporting News",
+      "category": "통화",
+      "title": "Report: Phillies likely to activate injured reliever for Giants series",
+      "description": "The Philadelphia Phillies open a three-game series in San Francisco against the Giants and will activate right-hander Orion Kerkering (hamstring) on Tuesday.",
+      "url": "https://www.sportingnews.com/us/mlb/philadelphia-phillies/news/report-phillies-may-activate-injured-reliever-giants-series/856703f506c11fd04bb777ae",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:10:00Z",
+      "source": "The Peoples Person",
+      "category": "통화",
+      "title": "Mamadou Sangare: United vs Chelsea for midfield gem",
+      "description": "Manchester United will need to recruit more than one midfielder in the summer if the latest rumours are true.Casemiro has already announced his departure once the current campaign concludes, and despi...",
+      "url": "https://thepeoplesperson.com/2026/04/07/mamadou-sangare-united-vs-chelsea-for-midfield-gem-308460/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:09:57Z",
+      "source": "Yahoo Entertainment",
+      "category": "통화",
+      "title": "New Jersey Devils part ways with general manager Tom Fitzgerald after 5-plus seasons",
+      "description": "Tom Fitzgerald is out as general manager of the New Jersey Devils, the latest NHL team to make an abrupt late-season change in the front office or behind the...",
+      "url": "https://sports.yahoo.com/articles/jersey-devils-part-ways-general-230957789.html",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:07:36Z",
+      "source": "The-independent.com",
+      "category": "경기",
+      "title": "Howard Stern’s former assistant sues claiming famed radio personality created hostile workplace",
+      "description": "Exclusive details: Leslie Kuhn’s choice to take shock jock to court ‘was a decision that was not made lightly,’ her attorney John Leonard told The Independent",
+      "url": "https://www.the-independent.com/news/world/americas/howard-stern-leslie-kuhn-sirius-xm-lawsuit-b2952648.html",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:06:08Z",
+      "source": "Financial Post",
+      "category": "미국주식",
+      "title": "Oil Holds Gains With US-Iran Deadline in Focus: Markets Wrap",
+      "description": "US equity futures were steady and oil held onto gains as President Donald Trump signaled a potential escalation of strikes on Iran as soon as Tuesday, overshadowing hopes for a ceasefire.",
+      "url": "https://financialpost.com/pmn/business-pmn/oil-holds-gains-with-us-iran-deadline-in-focus-markets-wrap",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:06:08Z",
+      "source": "Princeton University",
+      "category": "경기",
+      "title": "Capoeira",
+      "description": "The Art of Capoeira - come learn from masters",
+      "url": "https://www.princeton.edu/events/2025/capoeira-20",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:05:36Z",
+      "source": "Rolling Stone",
+      "category": "통화",
+      "title": "Queen Latifah Returns to Host the 2026 American Music Awards",
+      "description": "Queen Latifah will return to lead the American Music Awards on May 25 at the MGM Grand Garden Area in Las Vegas.",
+      "url": "http://www.rollingstone.com/music/music-news/queen-latifa-host-american-music-awards-2026-1235542761/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:05:01Z",
+      "source": "Deseret News",
+      "category": "경기",
+      "title": "Just how pricey are tickets for LA’s 2028 Olympics?",
+      "description": "Tickets to Utah’s 2034 Winter Games will start at $34, but many will be “very expensive.”",
+      "url": "https://www.deseret.com/utah/2026/04/06/how-expensive-are-tickets-for-la-2028-olympics-will-utah-2034-winter-games-tickets-cost-more/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:02:51Z",
+      "source": "BBC News",
+      "category": "경기",
+      "title": "Disruption expected as six-day doctors' strike begins",
+      "description": "The NHS is advising patients in England to only use emergency services when necessary but attend any confirmed appointments.",
+      "url": "https://www.bbc.co.uk/news/articles/c8ej461k3e5o",
+      "trusted": true
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:02:35Z",
+      "source": "Digital Journal",
+      "category": "글로벌주식",
+      "title": "Consumer confidence drops across all US states",
+      "description": "In the US, housing and child care in particular are largely unavailable and unaffordable. \nThe post Consumer confidence drops across all US states appeared first on Digital Journal.",
+      "url": "https://www.digitaljournal.com/world/consumer-confidence-drops-across-all-us-states/article",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:02:23Z",
+      "source": "CNBC",
+      "category": "신흥국",
+      "title": "CNBC's The China Connection newsletter: Why AI isn't replacing jobs in China (yet)",
+      "description": "Rapid adoption of artificial intelligence has many in Silicon Valley reeling from news of layoffs. Engineers in China appear to be more insulated.",
+      "url": "https://www.cnbc.com/2026/04/07/ai-jobs-layoffs-us-china-engineers-hiring.html",
+      "trusted": true
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:02:00Z",
+      "source": "GlobeNewswire",
+      "category": "미국주식",
+      "title": "Organogenesis Achieves Primary Endpoint in Randomized Controlled Trial of PuraPly®AM",
+      "description": "CANTON, Mass., April 06, 2026 (GLOBE NEWSWIRE) -- Organogenesis Holdings Inc. (Nasdaq: ORGO), a leading regenerative medicine company focused on the development, manufacture and commercialization of product solutions for the Advanced Wound Care and Surgical a…",
+      "url": "https://www.globenewswire.com/news-release/2026/04/06/3268773/0/en/Organogenesis-Achieves-Primary-Endpoint-in-Randomized-Controlled-Trial-of-PuraPly-AM.html",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:00:50Z",
+      "source": "Fox News",
+      "category": "통화",
+      "title": "AI-backed super PAC expands into multiple GOP primaries after claiming early wins",
+      "description": "Leading the Future, a pro-AI super PAC backed by tech executives, announced $1.5 million in spending to support three GOP candidates in key midterm primaries.",
+      "url": "https://www.foxnews.com/politics/ai-backed-super-pac-expands-multiple-gop-primaries-claiming-early-wins",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:00:00Z",
+      "source": "Royal Society of Chemistry",
+      "category": "신흥국",
+      "title": "Iodine-catalyzed isomerization of enamides",
+      "description": "Org. Biomol. Chem., 2025, Accepted ManuscriptDOI: 10.1039/D6OB00155F, CommunicationYuntao Yuan, Wenhao Wang, Yong Wang, Daming Feng, Shiyong Peng, Chunhua Ge, Peng HuangA highly efficient and practical iodine-catalyzed Z-to-E isomerization of enamides under m…",
+      "url": "https://pubs.rsc.org/en/content/articlelanding/2025/ob/d6ob00155f",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:00:00Z",
+      "source": "Royal Society of Chemistry",
+      "category": "신흥국",
+      "title": "Stereodivergent Photooxidative Synthesis of Cyclocariols A, B, and E from Ginsenoside Rg1",
+      "description": "Org. Biomol. Chem., 2025, Accepted ManuscriptDOI: 10.1039/D6OB00346J, CommunicationJie Yuan, Shaomin Fu, Bo LiuWe report a stereodivergent photooxidative synthesis of the 3,4-seco-dammarane triterpenoids cyclocariols A, B, and E from the commercially availabl…",
+      "url": "https://pubs.rsc.org/en/content/articlelanding/2025/ob/d6ob00346j",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:00:00Z",
+      "source": "Royal Society of Chemistry",
+      "category": "신흥국",
+      "title": "Structure–property relationships in organic framework materials: the role of linkage modes and building units",
+      "description": "J. Mater. Chem. C, 2026, Advance ArticleDOI: 10.1039/D6TC00360E, Review ArticleHong-Qiang Dong, Yuan Gong, Ling-Hong Zhang, Hai-Xiong Shi, Tai-Bao WeiCommon types of organic framework materials and their applications in conductivity, catalysis, adsorption, se…",
+      "url": "https://pubs.rsc.org/en/content/articlelanding/2026/tc/d6tc00360e",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:00:00Z",
+      "source": "Royal Society of Chemistry",
+      "category": "신흥국",
+      "title": "Correction: Designed peptide-grafted hydrogels for human pluripotent stem cell culture and differentiation",
+      "description": "J. Mater. Chem. B, 2026, Advance ArticleDOI: 10.1039/D6TB90048H, Correction Open Access &nbsp This article is licensed under a Creative Commons Attribution 3.0 Unported Licence.Ting Wang, Qian Liu, Yu-Tang Chang, Jun Liu, Tao Yu, Kailibinuer Maitiruze, Lee-Ki…",
+      "url": "https://pubs.rsc.org/en/content/articlelanding/2026/tb/d6tb90048h",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:00:00Z",
+      "source": "Royal Society of Chemistry",
+      "category": "신흥국",
+      "title": "Lanthanide complex-based dual-modal probes for background-free time-gated luminescence and 19F magnetic resonance detection of hypochlorous acid in acute kidney injury",
+      "description": "Analyst, 2026, Accepted ManuscriptDOI: 10.1039/D6AN00197A, PaperShuqi Duan, Qi Liu, Xinyue Zhang, Wenzhu Zhang, Jingli Yuan, Bo SongAcute kidney injury (AKI) is a life-threatening clinical syndrome often triggered by drug-induced nephrotoxicity, yet its early…",
+      "url": "https://pubs.rsc.org/en/content/articlelanding/2026/an/d6an00197a",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:00:00Z",
+      "source": "RTE",
+      "category": "채권",
+      "title": "Credit unions to expand further into mortgage market",
+      "description": "Ireland's credit union movement has taken a step to significantly increase its ability to expand further into the mortgage market in competition with the banks.",
+      "url": "https://www.rte.ie/news/2026/0407/1566943-credit-union-mortgage/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:00:00Z",
+      "source": "OilPrice.com",
+      "category": "원자재",
+      "title": "Oil Supply Shock Ripples Through Fertilizer, Plastics, and Tech",
+      "description": "The worst supply shock in the history of the oil market is spilling over to critical supply chains, threatening shortages of medical supplies, fertilizers, semiconductors, and everyday consumer goods, including textiles, footwear, and cosmetics. When the Stra…",
+      "url": "https://oilprice.com/Energy/Energy-General/Oil-Supply-Shock-Ripples-Through-Fertilizer-Plastics-and-Tech.html",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:00:00Z",
+      "source": "Royal Society of Chemistry",
+      "category": "통화",
+      "title": "A tellurium-free GeSbSe thin film for reliable selector-only memory operation",
+      "description": "Mater. Horiz., 2026, Advance ArticleDOI: 10.1039/D6MH00158K, Communication Open Access &nbsp This article is licensed under a Creative Commons Attribution-NonCommercial 3.0 Unported Licence.Inchan Oh, Won Hee Jeong, Jaeho Jung, Min Kyu Yang, Gun Hwan KimBy el…",
+      "url": "https://pubs.rsc.org/en/content/articlelanding/2026/mh/d6mh00158k",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T23:00:00Z",
+      "source": "Amazin' Avenue",
+      "category": "통화",
+      "title": "Mets Player Meter: Pitchers, March 26-April 5",
+      "description": "A quick review of how the Mets’ pitchers fared in the first ten games of the 2026 season.",
+      "url": "https://www.amazinavenue.com/new-york-mets-analysis/92649/mets-player-meter-pitchers-march-26-april-5-holmes-senga-mclean-williams-brazoban-weaver-raley-myers",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T22:53:39Z",
+      "source": "RTE",
+      "category": "경기",
+      "title": "Liverpool supporters to stage protests over ticket prices",
+      "description": "Liverpool fans are to stage a series of protests against ticket price rises made in the face of \"overwhelming opposition\" from supporters.",
+      "url": "https://www.rte.ie/sport/soccer/2026/0406/1566961-liverpool-supporters-to-stage-protests-over-ticket-prices/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T22:50:47Z",
+      "source": "NerdWallet",
+      "category": "채권",
+      "title": "5 Steps to File a Car Warranty Claim – And Wrap It Up",
+      "description": "There’s no guarantee your repair will be covered, but there are ways to improve your odds.",
+      "url": "https://www.nerdwallet.com/auto-loans/learn/how-to-file-a-car-warranty-claim#article",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T22:48:33Z",
+      "source": "CNA",
+      "category": "미국주식",
+      "title": "Samsung flags eightfold jump in Q1 profit as AI chip demand drives up prices",
+      "description": "SEOUL, April 7 : Samsung Electronics on Tuesday projected a record-high first-quarter profit, up more than eightfold from a year earlier and well above expectations as booming demand for artificial intelligence infrastructure caused supply bottlenecks and dro…",
+      "url": "https://www.channelnewsasia.com/business/samsung-flags-eightfold-jump-in-q1-profit-ai-chip-demand-drives-up-prices-6039786",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T22:48:00Z",
+      "source": "CNA",
+      "category": "미국주식",
+      "title": "Samsung flags eightfold jump in quarterly profit as AI chip demand stokes prices",
+      "description": "SEOUL: Samsung Electronics on Tuesday (Apr 7) projected its first-quarter earnings would exceed its entire profit for last year, beating expectations as booming demand for artificial intelligence infrastructure caused supply bottlenecks and drove chip prices …",
+      "url": "https://www.channelnewsasia.com/business/samsung-flags-eightfold-jump-in-quarterly-profit-ai-chip-demand-stokes-prices-6039786",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T22:45:00Z",
+      "source": "Memeorandum.com",
+      "category": "미국주식",
+      "title": "Jamie Dimon Warns of Higher Inflation, Interest Rates From Iran War (Alexander Saeedy/Wall Street Journal)",
+      "description": "Alexander Saeedy / Wall Street Journal:\nJamie Dimon Warns of Higher Inflation, Interest Rates From Iran War  —  JPMorgan Chase CEO says threat of Iran must be addressed while economic risks from prolonged conflict remain  —  JPMorgan Chase Chief Executive Jam…",
+      "url": "https://www.memeorandum.com/260406/p86",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T22:44:08Z",
+      "source": "Yahoo Entertainment",
+      "category": "글로벌주식",
+      "title": "Stock market today: Dow, S&P 500, Nasdaq futures waver as Trump's deadline for Iran ultimatum looms",
+      "description": "",
+      "url": "https://consent.yahoo.com/v2/collectConsent?sessionId=1_cc-session_473d46c5-82cb-40f3-81cf-c876b55f095d",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T22:43:32Z",
+      "source": "Just Jared",
+      "category": "미국주식",
+      "title": "Wireless Festival Director Asks People to Consider Giving Kanye West a 'Second Chance' After Sponsors Pull Out Over Rapper's Past Antisemitic Behaviors",
+      "description": "The Wireless Festival calling for people to give Ye, the rapper formerly known as Kanye West, a second chance. After naming the rapper as their headline performer, Wireless has been at the center of significant controversy, with multiple sponsors already pull…",
+      "url": "https://www.justjared.com/2026/04/06/wireless-festival-director-asks-people-to-consider-giving-kanye-west-a-second-chance-after-sponsors-pull-out-over-rappers-past-antisemitic-behaviors/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T22:40:00Z",
+      "source": "Newser",
+      "category": "채권",
+      "title": "Refunds Are Up, IRS Reports, but They're Not Nearly $1K",
+      "description": "Tax season is delivering fatter checks than last year, but not quite as hefty as the White House once hinted. IRS data through March 27 shows the average refund at $3,521, about $350 higher than a year ago, based on 88.4 million individual returns processed s…",
+      "url": "https://www.newser.com/story/386814/refunds-are-up-irs-reports-but-theyre-not-nearly-1k.html",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T22:37:52Z",
+      "source": "Freerepublic.com",
+      "category": "채권",
+      "title": "Federal judge upholds conviction of ex-Wisconsin judge who tried to help illegal migrant escape",
+      "description": "A federal judge has rejected a desperate attempt by a former Wisconsin state judge to overturn her federal felony conviction after she helped an illegal migrant escape through her courtroom back door. U.S. District Judge Lynn Adelman on April 6 denied a motio…",
+      "url": "https://freerepublic.com/focus/f-bloggers/4373900/posts",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T22:36:00Z",
+      "source": "GlobeNewswire",
+      "category": "미국주식",
+      "title": "LGI Homes Reports March and First Quarter 2026 Home Closings and Announces Date for First Quarter Earnings Conference Call",
+      "description": "THE WOODLANDS, Texas, April 06, 2026 (GLOBE NEWSWIRE) -- LGI Homes, Inc. (NASDAQ: LGIH) today announced it closed 451 homes in March 2026, which includes the closing of 9 currently or previously leased single-family rental homes. The Company closed 916 homes …",
+      "url": "https://www.globenewswire.com/news-release/2026/04/06/3268770/28788/en/LGI-Homes-Reports-March-and-First-Quarter-2026-Home-Closings-and-Announces-Date-for-First-Quarter-Earnings-Conference-Call.html",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T22:35:00Z",
+      "source": "GlobeNewswire",
+      "category": "미국주식",
+      "title": "ROSEN, RECOGNIZED INVESTOR COUNSEL, Encourages Nektar Therapeutics Investors to Secure Counsel Before Important Deadline in Securities Class Action - NKTR",
+      "description": "NEW YORK, April 06, 2026 (GLOBE NEWSWIRE) -- WHY: Rosen Law Firm, a global investor rights law firm, reminds purchasers of securities of Nektar Therapeutics (NASDAQ: NKTR) between February 26, 2025 and December 15, 2025, both dates inclusive (the “Class Perio…",
+      "url": "https://www.globenewswire.com/news-release/2026/04/06/3268769/673/en/ROSEN-RECOGNIZED-INVESTOR-COUNSEL-Encourages-Nektar-Therapeutics-Investors-to-Secure-Counsel-Before-Important-Deadline-in-Securities-Class-Action-NKTR.html",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T22:31:40Z",
+      "source": "Variety",
+      "category": "미국주식",
+      "title": "Why the Rehabilitation of Kanye West Says So Much About America",
+      "description": "It’s hard not to imagine that, for around 140,000 people over two nights at Los Angeles’ SoFi Stadium last week, a sort of collective willful amnesia took place — as if the man onstage had never declared “Death Con 3 on Jewish people,” had never said “I love …",
+      "url": "https://variety.com/2026/music/opinion/why-kanye-west-rehabilitation-says-so-much-about-america-1236709926/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T22:30:00Z",
+      "source": "Radaronline.com",
+      "category": "채권",
+      "title": "EXCLUSIVE: Royal Family Sparks Fresh Outrage Over Huge Handouts From Broke Taxpayers as Sleaze Scandals Continue to Ravage The Firm's Brand",
+      "description": "The monarchy has been criticized over public funding as ongoing scandals damaged its reputation.",
+      "url": "https://radaronline.com/p/royal-family-taxpayer-handouts-outrage-king-charles/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T22:29:36Z",
+      "source": "The Intercept",
+      "category": "미국주식",
+      "title": "The Media Just Can’t Help Turning Iran Fighter Jet Rescue Into “Black Hawk Down”",
+      "description": "Everyone reported the exact same story at the exact same time — and they all relied on the same liars who got us into this mess.\nThe post The Media Just Can’t Help Turning Iran Fighter Jet Rescue Into “Black Hawk Down” appeared first on The Intercept.",
+      "url": "https://theintercept.com/2026/04/06/iran-fighter-jet-rescue-media-coverage/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T22:29:12Z",
+      "source": "Complex",
+      "category": "경기",
+      "title": "Michael Jordan Is All-Time Highest-Paid Athlete, Tiger Woods and Cristiano Ronaldo Follow",
+      "description": "Jordan leads a list of top-earning athletes with his total career earnings at $4.5 billion.",
+      "url": "https://www.complex.com/sports/a/markelibert/michael-jordan-highest-paid-athlete?utm_source=yahoosyndication&amp;utm_medium=referral-distro",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T22:25:46Z",
+      "source": "CNBC",
+      "category": "글로벌주식",
+      "title": "Jim Cramer says potential stock market bottom is tied to interest rates, not war headlines",
+      "description": "CNBC's Jim Cramer said investors shouldn't get comfortable calling a market bottom just yet, because the real driver of this market isn't geopolitics.",
+      "url": "https://www.cnbc.com/2026/04/06/jim-cramer-stock-market-bottom-interest-rates-war.html",
+      "trusted": true
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T22:22:31Z",
+      "source": "CNET",
+      "category": "미국주식",
+      "title": "Trump Administration Bans Chinese Routers. Phones and Cameras Could Follow",
+      "description": "Major companies, including Huawei and Hikvision, could see the last of their import orders cut off from the US within 30 days of implementation.",
+      "url": "https://www.cnet.com/tech/mobile/the-trump-administration-banned-chinese-made-routers-now-mobile-phones-and-cameras-could-be-next/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T22:17:45Z",
+      "source": "pymnts.com",
+      "category": "채권",
+      "title": "Senator Hagerty Expects CLARITY Act to Reach Full Senate This Month",
+      "description": "The cryptocurrency-focused CLARITY Act could be advanced by the Senate Banking Committee and reach the full Senate by the end of the month, Sen. Bill Hagerty, R-Tenn., said Monday (April 6), Cointelegraph reported. Speaking at the Vanderbilt University Digita…",
+      "url": "https://www.pymnts.com/cryptocurrency/2026/senator-hagerty-expects-clarity-act-to-reach-full-senate-this-month/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T22:16:00Z",
+      "source": "GlobeNewswire",
+      "category": "미국주식",
+      "title": "ROSEN, LEADING INVESTOR COUNSEL, Encourages New Era Energy & Digital, Inc. Investors to Secure Counsel Before Important Deadline in Securities Class Action – NUAI",
+      "description": "NEW YORK, April 06, 2026 (GLOBE NEWSWIRE) -- WHY: Rosen Law Firm, a global investor rights law firm, announces a class action lawsuit on behalf of purchasers of securities of New Era Energy & Digital, Inc. (NASDAQ: NUAI) between November 6, 2024 and December …",
+      "url": "https://www.globenewswire.com/news-release/2026/04/06/3268768/673/en/ROSEN-LEADING-INVESTOR-COUNSEL-Encourages-New-Era-Energy-Digital-Inc-Investors-to-Secure-Counsel-Before-Important-Deadline-in-Securities-Class-Action-NUAI.html",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T22:16:00Z",
+      "source": "GlobeNewswire",
+      "category": "미국주식",
+      "title": "OceanFirst Financial Corp. and Flushing Financial Corporation Announce Receipt of the Requisite Shareholder Approvals for Pending Merger Transaction",
+      "description": "RED BANK, N.J. and UNIONDALE, N.Y., April 06, 2026 (GLOBE NEWSWIRE) -- OceanFirst Financial Corp. (NASDAQ: “OCFC”) (“OceanFirst”), the holding company for OceanFirst Bank N.A., and Flushing Financial Corp. (NASDAQ: “FFIC”) (“Flushing”), the holding company fo…",
+      "url": "https://www.globenewswire.com/news-release/2026/04/06/3268767/8280/en/OceanFirst-Financial-Corp-and-Flushing-Financial-Corporation-Announce-Receipt-of-the-Requisite-Shareholder-Approvals-for-Pending-Merger-Transaction.html",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T22:12:16Z",
+      "source": "Slashdot.org",
+      "category": "원자재",
+      "title": "'Microshifting' Puts a New Spin On 9-To-5 Schedules",
+      "description": "A federal appeals court ruled on Monday that New Jersey gaming regulators cannot prevent Kalshi from allowing people in the state to use its prediction market to place financial bets on the outcome of sporting events.\nA three-judge panel of the Philadelphia-b…",
+      "url": "https://slashdot.org/submission/17346256/microshifting-puts-a-new-spin-on-9-to-5-schedules",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T22:10:59Z",
+      "source": "The Irish Times",
+      "category": "미국주식",
+      "title": "Pressure mounts on UK government to ban Kanye West after Wireless Festival backlash",
+      "description": "Australia cancelled the rapper’s visa last July after ‌he released a song promoting nazism",
+      "url": "https://www.irishtimes.com/world/uk/2026/04/06/pressure-mounts-on-uk-government-to-ban-kanye-west-after-wireless-festival-backlash/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T22:10:17Z",
+      "source": "Financial Post",
+      "category": "원자재",
+      "title": "North American Oil Is In Demand as World Grasps for Supplies",
+      "description": "The spiderweb of cracks in the global oil market are spreading across the Rocky Mountains and US Great Plains as demand for a shrinking pool of accessible crude escalates.",
+      "url": "https://financialpost.com/pmn/business-pmn/north-american-oil-is-in-demand-as-world-grasps-for-supplies",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T22:10:00Z",
+      "source": "Memeorandum.com",
+      "category": "미국주식",
+      "title": "Amazon and U.S. Postal Service Reach Delivery Deal (Esther Fung/Wall Street Journal)",
+      "description": "Esther Fung / Wall Street Journal:\nAmazon and U.S. Postal Service Reach Delivery Deal  —  The e-commerce giant would cut back the packages it ships through USPS by 20%, less than the proposal the sides had discussed earlier  —  Amazon.com and the U.S. Postal …",
+      "url": "https://www.memeorandum.com/260406/p81",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T22:00:46Z",
+      "source": "Dailyreckoning.com",
+      "category": "신흥국",
+      "title": "Setting Kids Up for Success",
+      "description": "This post Setting Kids Up for Success appeared first on Daily Reckoning.\nIn an uncertain world, the best we can do is prepare...\nThe post Setting Kids Up for Success appeared first on Daily Reckoning.",
+      "url": "https://dailyreckoning.com/setting-kids-up-for-success/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T22:00:34Z",
+      "source": "Bitcoinist",
+      "category": "채권",
+      "title": "Metaplanet Just Bought 5,000 More Bitcoin. Here Is What It Is Planning Next",
+      "description": "Bitcoin is trying to reclaim $70,000. The market is preparing for a decisive move. And a publicly listed company just removed another 5,075 Bitcoin from the available supply — without announcing a ceiling on how many more it intends to buy. Related Reading: E…",
+      "url": "https://bitcoinist.com/metaplanet-bought-5000-more-bitcoin-here-planning/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T22:00:00Z",
+      "source": "OilPrice.com",
+      "category": "채권",
+      "title": "Iraq Is Running Out of Time to Move Its Oil — And Every Option Is Dangerous",
+      "description": "With over 90% of its annual budget historically coming from oil and around 95% of that black gold having to pass through the Strait of Hormuz before it is monetised, Iraq has at least as big a problem from the waterway’s closure as any country in the world. T…",
+      "url": "https://oilprice.com/Energy/Crude-Oil/Iraq-Is-Running-Out-of-Time-to-Move-Its-Oil-And-Every-Option-Is-Dangerous.html",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T22:00:00Z",
+      "source": "GlobeNewswire",
+      "category": "채권",
+      "title": "Crypto News: AlphaPepe AI DEX Demo Drops Soon While Bitcoin Price Prediction Forecasts $125K",
+      "description": "MONACO, April 06, 2026 (GLOBE NEWSWIRE) -- AlphaPepe is preparing to drop the first public demo of its AI-powered decentralized exchange and the presale response has been immediate. Stages are selling out faster than any previous round as capital positions ah…",
+      "url": "https://www.globenewswire.com/news-release/2026/04/06/3268765/0/en/Crypto-News-AlphaPepe-AI-DEX-Demo-Drops-Soon-While-Bitcoin-Price-Prediction-Forecasts-125K.html",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T21:58:07Z",
+      "source": "pymnts.com",
+      "category": "채권",
+      "title": "Mapping the Digital Dollar Graveyard of Failed Stablecoin Pilots",
+      "description": "Stablecoins seem to have found their winning enterprise narrative. Having evolved past their history as crypto-native instruments, stablecoins are instead becoming programmable financial primitives embedded within institutional workflows. At least that’s how …",
+      "url": "https://www.pymnts.com/cryptocurrency/2026/mapping-the-digital-dollar-graveyard-of-failed-stablecoin-pilots/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T21:52:06Z",
+      "source": "Slashdot.org",
+      "category": "원자재",
+      "title": "New Jersey has no right to ban Kalshi's prediction market, US appeals court rules",
+      "description": "Kalshi can't be stopped in New Jersey. A 3rd US Circuit Court of Appeals panel ruled on Monday that New Jersey has no authority to regulate Kalshi's prediction market allowing people to bet on the outcome of sports events. That power rests with the Commodity …",
+      "url": "https://slashdot.org/firehose.pl?op=view&amp;id=181392000",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T21:51:56Z",
+      "source": "The New Republic",
+      "category": "채권",
+      "title": "Trump Suggests Gutting TSA After Blaming Shutdown on Democrats",
+      "description": "President Donald Trump wants to cut more than $1.5 billion—and thousands of jobs—from the Transportation Security Administration’s budget after subjecting its employees to weeks without pay. The Trump administration wants to gut 9,400 workers from the 60,000-…",
+      "url": "https://newrepublic.com/post/208695/donald-trump-gut-tsa-budget-department-homeland-security-shutdown",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T21:40:07Z",
+      "source": "Cointelegraph",
+      "category": "원자재",
+      "title": "Polymarket drops USDC.e for USDC-backed token in exchange overhaul",
+      "description": "Polymarket is upgrading its exchange with new contracts and a USDC-backed token, phasing out bridged USDC.e as it seeks to improve trading infrastructure and risk control.",
+      "url": "https://cointelegraph.com/news/polymarket-replace-usdce-usdc-backed-token-exchange-upgrade",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T21:39:00Z",
+      "source": "Motley Fool Australia",
+      "category": "글로벌주식",
+      "title": "3 simple ASX ETFs to start investing with $5,000",
+      "description": "With just $5,000, it is possible to build a diversified portfolio using a handful of ASX ETFs.\nThe post 3 simple ASX ETFs to start investing with $5,000 appeared first on The Motley Fool Australia.",
+      "url": "https://www.fool.com.au/2026/04/07/3-simple-asx-etfs-to-start-investing-with-5000/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T21:34:06Z",
+      "source": "New York Post",
+      "category": "원자재",
+      "title": "Kalshi clinches legal win in New Jersey case as states fight to restrict prediction markets",
+      "description": "A federal appeals court rejected New Jersey’s attempts to ban sports bets on the platform.",
+      "url": "https://nypost.com/2026/04/06/business/kalshi-clinches-legal-win-in-new-jersey-case-as-states-fight-to-restrict-prediction-markets/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T21:31:42Z",
+      "source": "Yahoo Entertainment",
+      "category": "글로벌주식",
+      "title": "Stock Market Today, April 6: Plug Power Jumps After Securing 275-Megawatt Electrolyzer Award",
+      "description": "",
+      "url": "https://consent.yahoo.com/v2/collectConsent?sessionId=1_cc-session_910f1c8b-7900-4933-8b85-5c91de8b0abd",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T21:28:05Z",
+      "source": "MacRumors",
+      "category": "headline_technology",
+      "title": "iPhone Fold Enters Trial Production Phase Ahead of 2026 Launch - MacRumors",
+      "description": "Apple partner Foxconn has started trial production on the iPhone Fold, according to Chinese leaker Instant Digital. Trial production comes before...",
+      "url": "https://www.macrumors.com/2026/04/06/iphone-fold-trial-production/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T21:23:36Z",
+      "source": "Ars Technica",
+      "category": "headline_business",
+      "title": "“The problem is Sam Altman”: OpenAI Insiders don’t trust CEO - Ars Technica",
+      "description": "OpenAI brainstorms ways AI can benefit humanity in effort to counter bad vibes.",
+      "url": "https://arstechnica.com/tech-policy/2026/04/the-problem-is-sam-altman-openai-insiders-dont-trust-ceo/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T21:16:40Z",
+      "source": "CNBC",
+      "category": "headline_business",
+      "title": "Trump administration finalizes better-than-feared Medicare Advantage payment rate in boost to health insurers - CNBC",
+      "description": "The Trump administration will increase average Medicare Advantage payments by 2.48%, or more than $13 billion, in 2027.",
+      "url": "https://www.cnbc.com/2026/04/06/trump-medicare-advantage.html",
+      "trusted": true
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T21:15:32Z",
+      "source": "Gizmodo.com",
+      "category": "신흥국",
+      "title": "The Best Anti-Meta Smart Glasses Are About to Have Tough Competition",
+      "description": "If camera-equipped smart glasses aren't your thing, you're about to have a new pair at your disposal.",
+      "url": "https://gizmodo.com/best-anti-meta-smart-glasses-are-about-to-have-tough-competition-2000742998",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T21:15:09Z",
+      "source": "TechCrunch",
+      "category": "headline_business",
+      "title": "Gas prices aren’t the only factor fueling used EV sales - TechCrunch",
+      "description": "The most recent electric vehicle sales data provided a grim picture — at least for new EVs. Used EVs are moving in the opposite direction.",
+      "url": "https://techcrunch.com/2026/04/06/gas-prices-arent-the-only-factor-fueling-used-ev-sales/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T21:08:58Z",
+      "source": "Bloomberg",
+      "category": "headline_business",
+      "title": "OpenAI, Anthropic, Google Unite to Combat Model Copying in China - Bloomberg.com",
+      "description": "Rivals OpenAI, Anthropic PBC, and Alphabet Inc.’s Google have begun working together to try to clamp down on Chinese competitors extracting results from cutting-edge US artificial intelligence models to gain an edge in the global AI race.",
+      "url": "https://www.bloomberg.com/news/articles/2026-04-06/openai-anthropic-google-unite-to-combat-model-copying-in-china",
+      "trusted": true
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T21:00:00Z",
+      "source": "Motley Fool Australia",
+      "category": "글로벌주식",
+      "title": "How long does it take to become a millionaire with ASX shares?",
+      "description": "Never underestimate the power of compounding. \nThe post How long does it take to become a millionaire with ASX shares? appeared first on The Motley Fool Australia.",
+      "url": "https://www.fool.com.au/2026/04/07/how-long-does-it-take-to-become-a-millionaire-with-asx-shares-2/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T20:58:36Z",
+      "source": "Windows Central",
+      "category": "headline_technology",
+      "title": "Delisted Xbox 360 games show up on the Xbox Store ahead of Backwards Compatibility Program return - Windows Central",
+      "description": "Several delisted Xbox and Xbox 360 games have recently appeared on the Xbox Store, leading many to wonder if they'll be made backwards compatible soon.",
+      "url": "https://www.windowscentral.com/gaming/xbox/whoa-delisted-xbox-360-games-just-showed-up-on-the-xbox-store-did-microsoft-leak-new-xbox-backwards-compatibility-games",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T20:56:29Z",
+      "source": "Breitbart News",
+      "category": "원자재",
+      "title": "Services Demand Surges to Three-Year High Despite Rising Energy Costs",
+      "description": "New orders for services rose to their highest level in more than three years in March, the Institute for Supply Management reported Monday, as strong demand across the economy proved resilient to the spike in energy prices driven by the U.S.-Israel military c…",
+      "url": "https://www.breitbart.com/economy/2026/04/06/services-demand-surges-to-three-year-high-despite-rising-energy-costs/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T20:55:59Z",
+      "source": "Motley Fool Australia",
+      "category": "원자재",
+      "title": "5 things to watch on the ASX 200 on Tuesday",
+      "description": "Here's what to expect on the ASX 200 after the Easter break.\nThe post 5 things to watch on the ASX 200 on Tuesday appeared first on The Motley Fool Australia.",
+      "url": "https://www.fool.com.au/2026/04/07/5-things-to-watch-on-the-asx-200-on-tuesday-07-april-2026/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T20:55:00Z",
+      "source": "GlobeNewswire",
+      "category": "글로벌주식",
+      "title": "Apogee Acquisition Corp Announces Pricing of $150 Million Initial Public Offering",
+      "description": "Cheyenne, WY, April 06, 2026 (GLOBE NEWSWIRE) -- Apogee Acquisition Corp (the “Company”) announced the pricing of its initial public offering of 15,000,000 units at a price of $10.00 per unit on April 6, 2026. The units are expected to be listed for trading o…",
+      "url": "https://www.globenewswire.com/news-release/2026/04/06/3268737/0/en/Apogee-Acquisition-Corp-Announces-Pricing-of-150-Million-Initial-Public-Offering.html",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T20:53:21Z",
+      "source": "Financial Post",
+      "category": "원자재",
+      "title": "InterCement Deal ‘Once In a Lifetime Opportunity,’ Mindlin Says",
+      "description": "A deal spearheaded by Argentine energy mogul Marcelo Mindlin to restructure one of Brazil’s top cement producers was a unique chance to gain exposure to two of Latin America’s biggest economies, he said in a Bloomberg TV interview.",
+      "url": "https://financialpost.com/pmn/business-pmn/intercement-deal-once-in-a-lifetime-opportunity-mindlin-says",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T20:49:44Z",
+      "source": "Ai-cio.com",
+      "category": "신흥국",
+      "title": "New York Common Commits $1.4B in Emerging Market Equities",
+      "description": "The $300 billion pension giant has been increasing its holdings of international and emerging markets equities.",
+      "url": "https://www.ai-cio.com/news/new-york-common-commits-1-4b-in-emerging-market-equities/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T20:44:20Z",
+      "source": "Newser",
+      "category": "글로벌주식",
+      "title": "Stocks Drift Higher Ahead of Trump's Iran Deadline",
+      "description": "The US stock market drifted higher Monday in tentative trading ahead of a deadline President Trump has set to bomb Iranian power plants. The S&P 500 rose 29.14 points, or 0.4%, to 6,611.83. The Dow Jones Industrial Average rose 165.21 points, or 0.4%, to...",
+      "url": "https://www.newser.com/story/386818/stocks-drift-higher-ahead-of-trumps-iran-deadline.html",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T20:43:00Z",
+      "source": "Gothamist",
+      "category": "headline_business",
+      "title": "Grand theft uh-oh: Luxury vehicle thieves botch Hells Kitchen heist, NYPD says - Gothamist",
+      "description": "They smashed one car into a pole on the way out, police said.",
+      "url": "https://gothamist.com/news/grand-theft-uh-oh-luxury-vehicle-thieves-botch-hells-kitchen-heist-nypd-says",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T20:38:19Z",
+      "source": "seattlepi.com",
+      "category": "글로벌주식",
+      "title": "How major US stock indexes fared Monday 4/6/2026",
+      "description": "The U.S. stock market drifted higher in tentative trading ahead of a deadline President Donald Trump has set to bomb Iranian power plants. The S&P 500 rose 0.4% Monday. The Dow Jones Industrial Average added 0.4%, and the Nasdaq composite climbed 0.5%. Like s…",
+      "url": "https://www.seattlepi.com/business/article/how-major-us-stock-indexes-fared-monday-4-6-2026-22192154.php",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T20:31:21Z",
+      "source": "Rigzone",
+      "category": "원자재",
+      "title": "Crude Climbs On Escalation Fears",
+      "description": "Oil prices rose as escalating US-Iran tensions raised fears of persistent supply disruptions through the Strait of Hormuz.",
+      "url": "https://www.rigzone.com/news/wire/crude_climbs_on_escalation_fears-06-apr-2026-183386-article/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T20:21:49Z",
+      "source": "pymnts.com",
+      "category": "원자재",
+      "title": "Service Industry Prices Climb As Iran War Persists",
+      "description": "America’s service economy expanded last month amid a sharp uptick in input prices and shrinking employment levels. That’s according to the Institute for Supply Management’s (ISM) Services PMI Index, released Monday (April 6) and showing that the measure of pr…",
+      "url": "https://www.pymnts.com/economy/2026/service-industry-prices-climb-as-iran-war-persists/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T20:18:39Z",
+      "source": "pymnts.com",
+      "category": "원자재",
+      "title": "Appeals Court Rules CFTC Has Exclusive Jurisdiction Over Event Contracts",
+      "description": "A federal appeals court has ruled for the first time that the Commodity Futures Trading Commission (CFTC) has exclusive jurisdiction over sports-related event contracts, Reuters reported Monday (April 6). This decision by the U.S. Court of Appeals for the Thi…",
+      "url": "https://www.pymnts.com/legal/2026/appeals-court-rules-cftc-has-exclusive-jurisdiction-over-event-contracts/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T20:13:38Z",
+      "source": "Cointelegraph",
+      "category": "원자재",
+      "title": "US appeals court upholds preventing New Jersey enforcement against Kalshi",
+      "description": "The US Court of Appeals for the Third Circuit ruled against New Jersey gaming authorities for bringing an enforcement action against prediction market platform Kalshi.",
+      "url": "https://cointelegraph.com/news/appellate-court-new-jersey-enforcement-kalshi",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T20:10:41Z",
+      "source": "Yahoo Entertainment",
+      "category": "원자재",
+      "title": "Trump backs away from seizing Iran's oil: 'Unfortunately, the American people would like to see us come home'",
+      "description": "President Trump on Monday took a significant step back on one key issue for energy markets: a US campaign to control Iran's oil.",
+      "url": "https://finance.yahoo.com/sectors/energy/article/trump-backs-away-from-seizing-irans-oil-unfortunately-the-american-people-would-like-to-see-us-come-home-201041843.html",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T20:03:00Z",
+      "source": "Investor's Business Daily",
+      "category": "headline_business",
+      "title": "Analysts Cut Tesla Price Targets As Regulators Shutter Investigation - Investor's Business Daily",
+      "description": "Tesla stock sank around 3.5% on Monday, as two analysts offered bearish views on the EV carmaker's near-term prospects.",
+      "url": "https://www.investors.com/news/tesla-elon-musk-electric-vehicles-cars-autos-robotaxi/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T20:01:28Z",
+      "source": "Yahoo Entertainment",
+      "category": "원자재",
+      "title": "US gas prices risk topping $5 per gallon if Strait of Hormuz stays closed: JPMorgan",
+      "description": "JPMorgan sees $5 gasoline if the Strait of Hormuz stays closed for much longer.",
+      "url": "https://finance.yahoo.com/news/us-gas-prices-risk-topping-5-per-gallon-if-strait-of-hormuz-stays-closed-jpmorgan-200128577.html",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T20:00:59Z",
+      "source": "CryptoSlate",
+      "category": "글로벌주식",
+      "title": "Why Bitcoin briefly jumped above $70,000 on Iran deal hopes as Trump’s Hormuz threat keeps rally fragile",
+      "description": "Bitcoin rose with the rest of the crypto market on Monday after President Donald Trump struck a mixed tone on a possible deal with Iran to reopen the Strait of Hormuz, prompting a relief rally that lifted prices but left the broader market setup unresolved. A…",
+      "url": "https://cryptoslate.com/bitcoin-70000-iran-deal-oil-risk-fragile-rally/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T19:36:44Z",
+      "source": "Forbes",
+      "category": "headline_technology",
+      "title": "Google Changes Gmail After 22 Years—Why You Need A New Email Address - Forbes",
+      "description": "Google's upgrade means 2 billion Gmail  users must now decide what to do next.",
+      "url": "https://www.forbes.com/sites/zakdoffman/2026/04/06/google-changes-gmail-after-22-years-why-you-need-a-new-email-address/",
+      "trusted": true
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T19:35:11Z",
+      "source": "Bloomberg",
+      "category": "headline_business",
+      "title": "SpaceX’s IPO Pitch Centers on Elon Musk’s Ability to ‘Sell the Dream’ - Bloomberg.com",
+      "description": "SpaceX and investment bankers will host meetings to pressure-test the Elon Musk-led company’s targeted $2 trillion valuation, a crucial step as it drives toward the largest-ever initial public offering, people familiar with the matter said.",
+      "url": "https://www.bloomberg.com/news/articles/2026-04-06/spacex-s-ipo-pitch-centers-on-elon-musk-s-ability-to-sell-the-dream",
+      "trusted": true
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T19:33:40Z",
+      "source": "Asymco.com",
+      "category": "글로벌주식",
+      "title": "The Motley Fool asks: Where Will Apple Stock Be in 5 Years?",
+      "description": "Not reading this article is probably a wise decision. Shares could perform in line with the S&P 500’s long-term average Investors can follow a straightforward exercise to try and figure out where Apple’s stock price will be in late March 2031. It’s important …",
+      "url": "https://asymco.com/2026/04/06/the-motley-fool-asks-where-will-apple-stock-be-in-5-years/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T19:32:44Z",
+      "source": "New York Magazine",
+      "category": "글로벌주식",
+      "title": "Trump and Hegseth Frame Rescue of Airman as Easter Miracle",
+      "description": "President Trump and Pete Hegseth both suggested that the U.S. rescue of a downed airman in Iran was an Easter miracle. Hegseth compared the airman to Jesus and Trump insisted that God ‘was watching’ and supports the U.S. in the war.",
+      "url": "http://nymag.com/intelligencer/article/trump-and-hegseth-frame-rescue-of-airman-as-easter-miracle.html",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T19:31:20Z",
+      "source": "BBC News",
+      "category": "headline_business",
+      "title": "Oil prices choppy after expletive-laden Trump threat to Iran - BBC",
+      "description": "Brent crude rose above $110 then eased as the US and Iran traded plans for a potential ceasefire.",
+      "url": "https://www.bbc.com/news/articles/c8dl7g6e59eo",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T19:30:35Z",
+      "source": "Stampede Blue",
+      "category": "원자재",
+      "title": "Are the Colts banking on Hunter Wohler?",
+      "description": "As of now, the 7th-rounder with no regular season experience is set to fill the void that Nick Cross left.",
+      "url": "https://www.stampedeblue.com/indianapolis-colts-analysis/123083/are-the-colts-banking-on-hunter-wohler",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T19:30:02Z",
+      "source": "newsBTC",
+      "category": "신흥국",
+      "title": "Crypto Tokenization Boom Or Time Bomb? Four Hidden Risks Wall Street Is Ignoring",
+      "description": "A new report claims crypto tokenization is a structural overhaul of market plumbing, not just an efficiency tweak. Crypto Tokenization: The Hot New Thing? The International Monetary Fund (IMF) released a new report with fresh warnings related to crypto tokeni…",
+      "url": "http://www.newsbtc.com/news/crypto-tokenization-boom-or-time-bomb-four-hidden-risks-wall-street-is-ignoring/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T19:19:27Z",
+      "source": "BleepingComputer",
+      "category": "headline_technology",
+      "title": "Disgruntled researcher leaks “BlueHammer” Windows zero-day exploit - BleepingComputer",
+      "description": "Exploit code has been released for an unpatched Windows privilege escalation flaw reported privately to Microsoft, allowing attackers to gain SYSTEM or elevated administrator permissions.",
+      "url": "https://www.bleepingcomputer.com/news/security/disgruntled-researcher-leaks-bluehammer-windows-zero-day-exploit/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T19:06:41Z",
+      "source": "Axios",
+      "category": "headline_business",
+      "title": "Why JPMorgan Chase CEO Jamie Dimon isn't sweating private credit - Axios",
+      "description": "",
+      "url": "https://www.axios.com/2026/04/06/jpmorgan-chase-jamie-dimon-private-credit",
+      "trusted": true
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T19:01:41Z",
+      "source": "Decrypt",
+      "category": "글로벌주식",
+      "title": "Tokenized Stocks Take Next Step With First On-Chain Vote for Galaxy Shareholders",
+      "description": "Holders of tokenized shares in Galaxy (GLXY) will soon be able to participate in proxy voting on-chain via Broadridge.",
+      "url": "https://decrypt.co/363432/tokenized-stocks-first-on-chain-vote-galaxy-shareholders",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T19:00:00Z",
+      "source": "Googleblog.com",
+      "category": "신흥국",
+      "title": "Kubernetes goes AI-First: Unpacking the new AI conformance program",
+      "description": "Learn how the Kubernetes AI Conformance program sets open, industry-wide standards for AI workloads via collaboration. Go far, go together!",
+      "url": "https://opensource.googleblog.com/2026/04/kubernetes-goes-ai-first-unpacking-the-new-ai-conformance-program.html",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T18:59:00Z",
+      "source": "Barron's",
+      "category": "headline_business",
+      "title": "Jamie Dimon Has Moved on From Cockroaches. Why a ‘Skunk at the Party’ Is His New Concern. - Barron's",
+      "description": "Dimon’s annual letter to shareholders comes at a time when investors are worrying that the war in Iran will push up inflation.",
+      "url": "https://www.barrons.com/articles/jamie-dimon-letter-stock-market-jpmorgan-inflation-12323cde",
+      "trusted": true
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T18:55:22Z",
+      "source": "Business Insider",
+      "category": "글로벌주식",
+      "title": "JPMorgan's ex-quant chief thinks Trump should pursue a new strategy to get Iran to negotiate: Let stocks fall",
+      "description": "Marko Kolanovic has said the TACO trade can't save markets from the war. Now, he says Trump should let stocks tumble to show Iran he's serious.",
+      "url": "https://www.businessinsider.com/stock-market-iran-war-trump-taco-trade-ceasfire-deal-negotiations-2026-4",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T18:54:33Z",
+      "source": "TechCrunch",
+      "category": "headline_technology",
+      "title": "Google quietly launched an AI dictation app that works offline - techcrunch.com",
+      "description": "Google's new offline-first dictation app uses Gemma AI models to take on the apps like Wispr Flow.",
+      "url": "https://techcrunch.com/2026/04/06/google-quietly-releases-an-offline-first-ai-dictation-app-on-ios/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T18:46:49Z",
+      "source": "The Daily Hodl",
+      "category": "글로벌주식",
+      "title": "Stock Market 90–95% Done With War-Related Sell-Offs, Says Fundstrat’s Tom Lee – Here’s His Forecast",
+      "description": "Fundstrat’s Tom Lee thinks historical precedent indicates April could be a strong month for stocks. In a new interview on CNBC, Lee estimates that 90-95% of the market’s Iran war-related sell-offs are already in the past. “As March unfolded, the war looked li…",
+      "url": "https://dailyhodl.com/2026/04/06/stock-market-90-95-done-with-war-related-sell-offs-says-fundstrats-tom-lee-heres-his-forecast/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T18:45:25Z",
+      "source": "GameSpot",
+      "category": "headline_technology",
+      "title": "WoW Race To World First Thrown Into Chaos After Secret Boss Phase Reveal - GameSpot",
+      "description": "Screams of joy were quickly replaced by panic.",
+      "url": "https://www.gamespot.com/articles/wow-race-to-world-first-thrown-into-chaos-after-secret-boss-phase-reveal/1100-6539231/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T18:24:05Z",
+      "source": "GoNintendo",
+      "category": "headline_technology",
+      "title": "Over 1,000 Super Mario Maker 2 levels have been deleted, and a cheater may be behind it all - GoNintendo",
+      "description": "Someone's got too much time on their hands",
+      "url": "https://www.gonintendo.com/contents/59635-over-1-000-super-mario-maker-2-levels-have-been-deleted-and-a-cheater-may-be-behind",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T18:13:32Z",
+      "source": "GameSpot",
+      "category": "headline_technology",
+      "title": "Starfield Free Lanes And Terran Armada Release Date And Times Confirmed - GameSpot",
+      "description": "The next era of Starfield blasts off this week.",
+      "url": "https://www.gamespot.com/articles/starfield-free-lanes-and-terran-armada-global-launch-times-confirmed/1100-6539229/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T18:11:58Z",
+      "source": "The American Prospect",
+      "category": "글로벌주식",
+      "title": "Organized Money: Up Ship’s Creek: The Crisis At The Strait",
+      "description": "Ever since the U.S. and Israel began bombing Iran, the Strait Of Hormuz has become the most watched shipping lane in the world economy. The strait itself is just a narrow waterway between the Persian Gulf and the Gulf Of Oman, but much of the world’s oil and …",
+      "url": "http://prospect.org/2026/04/06/organized-money-up-ships-creek-the-crisis-at-the-strait/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T18:06:28Z",
+      "source": "TechCrunch",
+      "category": "headline_business",
+      "title": "Iran threatens ‘Stargate’ AI data centers - TechCrunch",
+      "description": "Iran said it will target U.S.-linked data centers with new missile strikes, as the war between the U.S. and Iran escalates.",
+      "url": "https://techcrunch.com/2026/04/06/iran-threatens-stargate-ai-data-centers/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T18:05:42Z",
+      "source": "Rlsbb.to",
+      "category": "신흥국",
+      "title": "Exhaustion Lines 2025 1080p SCREENER WEB-DL H264-AOC",
+      "description": "Plot: A sleep deprived drifter looks for a place to get some shuteye after narrowly avoiding a car crash, but every hotel is booked, overnight parking is restricted, and people just keep telling him he needs to move his car. Genre: ComedyIMDB Rating Live: N/A…",
+      "url": "https://post.rlsbb.to/exhaustion-lines-2025-1080p-screener-web-dl-h264-aoc/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T18:04:00Z",
+      "source": "Covers.com",
+      "category": "글로벌주식",
+      "title": "UConn vs Michigan Win Probability at Prediction Markets Like Kalshi",
+      "description": "We break down the UConn vs. Michigan win probability for April 6, as well as other National Championship odds markets available to trade at prediction markets tonight.",
+      "url": "https://www.covers.com/ncaab/march-madness/uconn-vs-michigan-win-probability-national-championship-prediction-markets-april-6-2026",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T18:03:11Z",
+      "source": "NBC News",
+      "category": "headline_business",
+      "title": "Passenger gives birth mid-air during flight to New York - NBC News",
+      "description": "A Caribbean Airlines passenger traveling to New York from Jamaica went into labor and gave birth over the weekend just as the flight was landing.",
+      "url": "https://www.nbcnews.com/news/us-news/passenger-gives-birth-air-flight-new-york-rcna266898",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T18:01:20Z",
+      "source": "PCMag.com",
+      "category": "headline_business",
+      "title": "The FCC's Router Ban Could Hit These Brands Hard. Is Yours on the List? - pcmag.com",
+      "description": "Speedtest.net data reveals the most popular Wi-Fi router brands in the US, many of which could face trouble licensing new models without an FCC exemption.",
+      "url": "https://www.pcmag.com/news/fcc-router-ban-could-hit-these-brands-hard-is-yours-on-the-list",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T17:54:00Z",
+      "source": "Forbes",
+      "category": "headline_technology",
+      "title": "FBI Warns iPhone And Android Users—Do Not Install These Apps - Forbes",
+      "description": "Check your smartphone now — these apps are dangerous and should be deleted.",
+      "url": "https://www.forbes.com/sites/zakdoffman/2026/04/06/fbi-warns-iphone-and-android-users-do-not-install-these-apps/",
+      "trusted": true
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T17:51:57Z",
+      "source": "pymnts.com",
+      "category": "글로벌주식",
+      "title": "OpenAI Urges New Economic Rules for the AI Era",
+      "description": "As artificial intelligence (AI) advances toward superintelligence, there will be a need for an industrial policy to manage the challenges it will pose, OpenAI said in a report issued Monday (April 6). The report, “Industrial Policy for the Intelligence Age: I…",
+      "url": "https://www.pymnts.com/artificial-intelligence-2/2026/openai-urges-new-economic-rules-for-the-ai-era/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T17:51:31Z",
+      "source": "Freerepublic.com",
+      "category": "글로벌주식",
+      "title": "What's the real inflation rate?",
+      "description": "Based on the CPI, inflation is relatively cool. Don't be fooled. It's much higher than advertised, and you can see it clearly if you look at the right data. When talking heads on CNBC or Fox Business talk about inflation, they always reference the Consumer Pr…",
+      "url": "https://freerepublic.com/focus/f-news/4373876/posts",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T17:48:09Z",
+      "source": "Push Square",
+      "category": "headline_technology",
+      "title": "Assassin's Creed Shadows Patch 1.1.10 Pushes PSSR 2 on PS5 Pro, Unshackles the Bo Staff - Push Square",
+      "description": "Bo selector",
+      "url": "https://www.pushsquare.com/news/2026/04/assassins-creed-shadows-patch-1-1-10-pushes-pssr-2-on-ps5-pro-unshackles-the-bo-staff",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T17:43:00Z",
+      "source": "Deadline",
+      "category": "headline_business",
+      "title": "Paramount Secures Agreements For Gulf State Funds To Back WBD Acquisition - Deadline",
+      "description": "Paramount Skydance has secured funding commitments from three Gulf nation sovereign wealth funds to back its proposed acquisition of WBD.",
+      "url": "http://deadline.com/2026/04/paramount-wbd-merger-foreign-backing-gulf-funds-deal-1236780058/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T17:40:10Z",
+      "source": "Minecraft.net",
+      "category": "headline_technology",
+      "title": "Tiny Takeover challenges – completed! - Minecraft",
+      "description": "The Tiny Takeover challenge is officially completed, and we have one team that triumphed. Find out which and claim your rewards!",
+      "url": "https://www.minecraft.net/en-us/article/tiny-takeover-challenges---completed-",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T17:35:00Z",
+      "source": "Gizmodo.com",
+      "category": "headline_business",
+      "title": "Check Your Medicine Cabinet for These Eye Drop Bottles After Millions Recalled - Gizmodo",
+      "description": "The eye drops are sold at Rite-Aid, Walgreens, CVS, and more.",
+      "url": "https://gizmodo.com/check-your-medicine-cabinet-for-these-eye-drop-bottles-after-millions-recalled-2000742901",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T17:30:03Z",
+      "source": "MacRumors",
+      "category": "headline_technology",
+      "title": "iOS 26.4.1 Update for iPhones is Coming Soon - macrumors.com",
+      "description": "Apple's software engineers are testing iOS 26.4.1, according to the MacRumors visitor logs, which have been a reliable indicator of upcoming iOS...",
+      "url": "https://www.macrumors.com/2026/04/06/ios-26-4-1-coming-soon/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T17:30:00Z",
+      "source": "Electrek",
+      "category": "headline_business",
+      "title": "Rivian R2 EPA numbers out: 217 kW DC charge, up to 335mi range, heat pump - Electrek",
+      "description": "Rivian's EPA certification for its upcoming R2 shows high efficiency, weight savings, and a quick DC charge speed.",
+      "url": "http://electrek.co/2026/04/06/rivian-r2-epa-numbers-out-217-kw-dc-charge-up-to-335mi-range-heat-pump/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T17:30:00Z",
+      "source": "Business Insider",
+      "category": "headline_technology",
+      "title": "Microsoft says Copilot isn't just 'for entertainment purposes' after its terms of service language goes viral - Business Insider",
+      "description": "Microsoft said it will update the terms of use for Copilot after they went viral.",
+      "url": "https://www.businessinsider.com/microsoft-copilot-entertainment-purposes-terms-of-service-agreement-2026-4",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T17:30:00Z",
+      "source": "New Atlas",
+      "category": "신흥국",
+      "title": "Toyota’s new flagship EV is off to a flying start: 3,000+ orders in 1 hour",
+      "description": "What does US$21,000 get you in automotive terms? Kia Soul, Chevrolet Trax, Nissan Versa, Hyundai Venue … You see a trend there, right? None of those cars is electric, and none of them are flagships by any stretch of imagination.Continue ReadingCategory: Autom…",
+      "url": "https://newatlas.com/automotive/toyota-bz7/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T17:17:29Z",
+      "source": "Insider-gaming.com",
+      "category": "headline_technology",
+      "title": "Star Wars Eclipse Development Is \"Very Slow Going\" - insider-gaming.com",
+      "description": "With the silence continuing surrounding the game, Insider Gaming has details on Star Wars Eclipse and developer Quantic Dream.",
+      "url": "https://insider-gaming.com/star-wars-eclipse-development-is-very-slow-going/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T17:15:00Z",
+      "source": "9to5Mac",
+      "category": "headline_technology",
+      "title": "Apple showcases apps using Liquid Glass in new developer gallery - 9to5Mac",
+      "description": "Apple showcased apps using Liquid Glass design well, including Carrot Weather, Denim, AllTrails, and Fantastical in an updated gallery.",
+      "url": "https://9to5mac.com/2026/04/06/apple-showcases-apps-using-liquid-glass-in-new-developer-gallery/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T17:07:00Z",
+      "source": "Associated Press",
+      "category": "headline_business",
+      "title": "Key Fed official sees possible rate hike amid higher gas prices, inflation concerns - AP News",
+      "description": "A top Federal Reserve official said Monday that an interest rate hike could be appropriate if inflation remains persistently above the central bank’s 2% target, the latest sign that some policymakers are moving away from a bias toward reducing borrowing costs…",
+      "url": "https://apnews.com/article/inflation-federal-reserve-interest-rates-de214f6eb7853bef424967f6d1caf11d",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T17:05:00Z",
+      "source": "TechRadar",
+      "category": "신흥국",
+      "title": "Stickers, live lobster, plush toys, and queues: No, it's not a rock concert, it's China's insatiable appetite for AI's new superstar, OpenClaw",
+      "description": "OpenClaw mania sweeps China as AI automates tasks, excites tech enthusiasts, raises cybersecurity alarms, and sparks workforce anxiety.",
+      "url": "https://www.techradar.com/pro/stickers-live-lobster-plush-toys-and-queues-no-its-not-a-rock-concert-its-chinas-insatiable-appetite-for-ais-new-superstar-openclaw",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T17:00:10Z",
+      "source": "Minecraft.net",
+      "category": "headline_technology",
+      "title": "Join our Twitch Tiny Takeover - Minecraft",
+      "description": "We are about to launch a Tiny Takeover campaign on Twitch! This special event has something for everyone, whether you’re streaming or watching!",
+      "url": "https://www.minecraft.net/en-us/article/tiny-takeover-on-twitch",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T16:31:14Z",
+      "source": "Futurism",
+      "category": "headline_technology",
+      "title": "Sam Altman Watches Awkwardly As He's Shown Bizarre ChatGPT Issue: \"Uh, Maybe, Uhhh...\" - futurism.com",
+      "description": "OpenAI CEO Sam Altman had an awkward and telling reaction after he was shown a bizarre issue with ChatGPT's voice mode.",
+      "url": "http://futurism.com/artificial-intelligence/sam-altman-awkward-reaction-chatgpt-issue",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T16:30:48Z",
+      "source": "Gizmodo.com",
+      "category": "headline_technology",
+      "title": "Scientists Are Recycling Centuries-Old Bullets for a Badly Needed Toxic Compound - Gizmodo",
+      "description": "Researchers want to recycle more lead waste for high-tech solar panels via a new method.",
+      "url": "https://gizmodo.com/scientists-are-recycling-centuries-old-bullets-for-a-badly-needed-toxic-compound-2000742666",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T16:29:12Z",
+      "source": "PBS",
+      "category": "headline_business",
+      "title": "AP says it will offer buyouts as part of pivot away from newspaper journalism - PBS",
+      "description": "The news organization is becoming more focused on visual journalism and developing new revenue sources, particularly through companies investing in artificial intelligence.",
+      "url": "https://www.pbs.org/newshour/nation/ap-says-it-will-offer-buyouts-as-part-of-pivot-away-from-newspaper-journalism",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T16:25:00Z",
+      "source": "9to5google.com",
+      "category": "headline_technology",
+      "title": "Walmart’s new Chromecast with Google TV replacement starts showing up in stores, $30 - 9to5Google",
+      "description": "After leaking just last week, the new Chromecast with Google TV replacement from Walmart is already showing up in stores,...",
+      "url": "http://9to5google.com/2026/04/06/walmart-google-tv-4k-stick-hits-stores-early/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T16:24:52Z",
+      "source": "The Punch",
+      "category": "신흥국",
+      "title": "4 Best Cryptos to Buy Right Now in 2026: BlockDAG, Solana, Toncoin, & Cardano!",
+      "description": "Discover the best cryptos to buy right now. Our 2026 guide explores BlockDAG, Solana, Toncoin, and Cardano to find top investment opportunities.\n\nRead More: https://punchng.com/4-best-cryptos-to-buy-right-now-in-2026-blockdag-solana-toncoin-cardano/",
+      "url": "https://punchng.com/4-best-cryptos-to-buy-right-now-in-2026-blockdag-solana-toncoin-cardano/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T16:16:15Z",
+      "source": "CarScoops",
+      "category": "headline_technology",
+      "title": "Porsche Built The GT3 For The Track, Now It May Take It Somewhere Else - Carscoops",
+      "description": "A new 911 is on the way, and early clues suggest it could pair GT3 hardware with a convertible twist",
+      "url": "https://www.carscoops.com/2026/04/porsche-911-gt3-cabriolet-teaser/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T16:15:48Z",
+      "source": "Bloomberg",
+      "category": "headline_business",
+      "title": "Growth Slows at US Service Providers as Price Gauge Surges - Bloomberg.com",
+      "description": "The US service economy expanded in March at a slower pace as employment shrank by the most since 2023 and input prices accelerated sharply.",
+      "url": "https://www.bloomberg.com/news/articles/2026-04-06/growth-slows-at-us-service-providers-as-price-gauge-surges",
+      "trusted": true
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T16:03:14Z",
+      "source": "The Verge",
+      "category": "headline_technology",
+      "title": "Samsung’s Galaxy S27 ‘Pro’ could squeeze in between the Ultra and Plus phones - The Verge",
+      "description": "Samsung is reportedly adding a fourth phone to its flagship lineup, the Galaxy S27 Pro, which would be a premium option between the Plus and Ultra models.",
+      "url": "https://www.theverge.com/tech/907431/samsung-galaxy-s27-pro-privacy-display-rumor",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T16:00:00Z",
+      "source": "The Washington Post",
+      "category": "headline_business",
+      "title": "He survived working for Elon Musk. Here’s how. - The Washington Post",
+      "description": "Musk’s demanding leadership style shaped one of the world’s most valuable companies. A former Tesla president shares how he hung on.",
+      "url": "https://www.washingtonpost.com/technology/2026/04/06/elon-musk-tesla-management-style/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T16:00:00Z",
+      "source": "9to5google.com",
+      "category": "headline_technology",
+      "title": "Pixel 10a after one month: More than the sum of its parts [Video] - 9to5Google",
+      "description": "The Pixel 10a is a month old, but it's just the Pixel 9a again, right? While that's a fair assumption, but there's more to this phone.",
+      "url": "http://9to5google.com/2026/04/06/pixel-10a-after-one-month-more-than-the-sum-of-its-parts-video/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T16:00:00Z",
+      "source": "Pure Xbox",
+      "category": "headline_technology",
+      "title": "State Of Decay 3 Dev Explains Why It's Been So Long Since The First 2020 Xbox Trailer - Pure Xbox",
+      "description": "\"The game was in a Word document\"",
+      "url": "https://www.purexbox.com/news/2026/04/state-of-decay-3-dev-explains-why-its-been-so-long-since-the-first-2020-xbox-trailer",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T15:59:29Z",
+      "source": "Kotaku",
+      "category": "headline_technology",
+      "title": "Mass Effect Legendary Edition Is On Sale For $6 - Kotaku",
+      "description": "Mass Effect: Legendary Edition is three games for an insane price for the next few days",
+      "url": "https://kotaku.com/mass-effect-legendary-edition-sale-playstation-xbox-2000685209",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T15:55:55Z",
+      "source": "TechCrunch",
+      "category": "headline_business",
+      "title": "OpenAI’s vision for the AI economy: public wealth funds, robot taxes, and a four-day work week - techcrunch.com",
+      "description": "OpenAI proposes taxes on AI profits, public wealth funds, and expanded safety nets to address job loss and inequality, blending redistribution with capitalism as policymakers debate AI’s economic impact.",
+      "url": "https://techcrunch.com/2026/04/06/openais-vision-for-the-ai-economy-public-wealth-funds-robot-taxes-and-a-four-day-work-week/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T15:38:59Z",
+      "source": "Buzzfeed",
+      "category": "headline_technology",
+      "title": "I Cannot Process The Fact That NASA Just Replied To A 16-Year-Old Travis Kelce Tweet - BuzzFeed",
+      "description": "Yeah, so, I wasn't expecting that.",
+      "url": "https://www.buzzfeed.com/mjs538/travis-kelce-and-nasa",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T15:31:18Z",
+      "source": "Abcnews.com",
+      "category": "headline_technology",
+      "title": "Samsung is discontinuing its texting app, tells impacted users to switch to Google Messages - ABC News",
+      "description": "Samsung is saying goodbye its namesake texting app",
+      "url": "https://abcnews.com/Technology/wireStory/samsung-discontinuing-texting-app-tells-impacted-users-switch-131766567",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T15:20:49Z",
+      "source": "Wnd.com",
+      "category": "신흥국",
+      "title": "The unholy alliance: Moscow and Beijing’s invisible shield over Tehran",
+      "description": "'The strategic landscape of the Middle East has undergone a terminal shift'",
+      "url": "https://www.wnd.com/2026/04/unholy-alliance-moscow-beijings-invisible-shield-tehran/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T15:20:13Z",
+      "source": "The Verge",
+      "category": "headline_technology",
+      "title": "Logitech’s haptics-enhanced MX Master 4 mouse is on sale for under $100 - The Verge",
+      "description": "Logitech’s MX Master 4 is a great wireless mouse, and the black model is down to $99.99 at Newegg. There are also big savings available on the new M5 MacBook Air.",
+      "url": "https://www.theverge.com/gadgets/907302/logitech-mx-master-4-mouse-apple-macbook-air-m5-deal-sale",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T15:16:48Z",
+      "source": "Associated Press",
+      "category": "신흥국",
+      "title": "IAVI Begins First-in-Human Phase 1 Trial of Single-Dose Marburg Virus Vaccine Candidate",
+      "description": "Trial to generate foundational human safety and immunogenicity data, advancing a vaccine platform suited for rapid outbreak response",
+      "url": "https://apnews.com/press-release/access-newswire/iavi-begins-first-in-human-phase-1-trial-of-single-dose-marburg-virus-vaccine-candidate-02014723dbed05a0136d922c0621e103",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T15:16:29Z",
+      "source": "Seeking Alpha",
+      "category": "headline_business",
+      "title": "3 Reasons Why There Will Be No Ceasefire In Iran (NYSEARCA:USO) - Seeking Alpha",
+      "description": "The Iran Strait deadline looms as markets bet on a ceasefire. Click for a look at the latest geopolitical events and where they are leading markets.",
+      "url": "https://seekingalpha.com/article/4888652-3-reasons-why-there-will-be-no-ceasefire-in-iran",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T14:58:00Z",
+      "source": "Business Insider",
+      "category": "headline_business",
+      "title": "'The end of the road': Market heavyweights Michael Burry and Jeff Gundlach eye trouble ahead for private credit - Business Insider",
+      "description": "The list of market voices warning of trouble in private credit is growing, with many comparing the climate to the market just before the 2008 crisis.",
+      "url": "https://www.businessinsider.com/michael-burry-jeff-gundlach-private-credit-markets-investing-jpmorgan-2026",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T14:56:10Z",
+      "source": "Forbes",
+      "category": "headline_technology",
+      "title": "This Is The Longest I Haven’t Played ‘Destiny 2’ Since Curse Of Osiris - Forbes",
+      "description": "Destiny 2 is not just in a content drought, it is in a content graveyard, and I have not played in months as a result.",
+      "url": "https://www.forbes.com/sites/paultassi/2026/04/06/this-is-the-longest-i-havent-played-destiny-2-since-curse-of-osiris/",
+      "trusted": true
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T14:56:00Z",
+      "source": "Fortune",
+      "category": "headline_business",
+      "title": "JPMorgan CEO Jamie Dimon predicts AI will cut the workweek down to 3.5 days - Fortune",
+      "description": "Jamie Dimon believes that future generations will have more job opportunities, and human skills like curiosity and work ethic will reign supreme.",
+      "url": "https://fortune.com/2026/04/06/jpmorgan-ceo-jamie-dimon-ai-cut-workweek-3-5-days-gen-z-developing-eq-important/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T14:36:00Z",
+      "source": "9to5google.com",
+      "category": "headline_technology",
+      "title": "Galaxy Z Fold ‘Wide’ will be easier to handle as One UI 9 leaks spout - 9to5Google",
+      "description": "Samsung’s Galaxy Z Fold “Wide” has been touched on in previous leaks, though recent One UI 9 screenshots add some...",
+      "url": "http://9to5google.com/2026/04/06/galaxy-z-fold-wide-one-ui-9-leaks/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T14:35:36Z",
+      "source": "IGN",
+      "category": "headline_technology",
+      "title": "After Hundreds of Hours, Some Crimson Desert Players Are Complaining That the World Has Become Too 'Peaceful' Because They've Basically Killed All the Enemies - IGN",
+      "description": "Crimson Desert has a huge map and lengthy story that will take most players over 100 hours to work their way through, but now Pearl Abyss’ action adventure has been out for a few weeks, some are starting to complain that the open world has become too peaceful…",
+      "url": "https://www.ign.com/articles/after-hundreds-of-hours-some-crimson-desert-players-are-complaining-that-the-world-has-become-too-peaceful-because-theyve-basically-killed-all-the-enemies",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T14:30:53Z",
+      "source": "MacRumors",
+      "category": "headline_technology",
+      "title": "Apple's 2026 MacBook Pro Hits All-Time Low Prices on Amazon With Up to $199 Off - MacRumors",
+      "description": "Amazon is offering a few all-time low prices on Apple's M5 Pro/M5 Max MacBook Pro, with up to $199 off select models without the need of a...",
+      "url": "https://www.macrumors.com/2026/04/06/2026-macbook-pro-low-prices/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T14:30:37Z",
+      "source": "FiercePharma",
+      "category": "headline_business",
+      "title": "Neurocrine, eying ‘blockbuster in the making,’ strikes its largest-ever M&A deal with $2.9B Soleno buyout - Fierce Pharma",
+      "description": "Neurocrine Biosciences, forever a possible M&A target in the biopharma industry, is making a major acquisition itself. | Neurocrine Biosciences, forever a possible M&A target in the biopharma industry, is making a major acquisition itself. The purchase adds t…",
+      "url": "https://www.fiercepharma.com/pharma/neurocrine-strikes-29b-soleno-buyout-its-largest-ma-ever-eyeing-blockbuster-rare-disease",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T14:30:14Z",
+      "source": "Gizmodo.com",
+      "category": "headline_technology",
+      "title": "Gaming Handhelds Are Getting Really Funky—and We’re Here for It - Gizmodo",
+      "description": "If RAM prices force us to spend more on handhelds, we should hope they can flip and fold.",
+      "url": "https://gizmodo.com/gaming-handhelds-are-getting-really-funky-and-were-here-for-it-2000742852",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T14:30:00Z",
+      "source": "GlobeNewswire",
+      "category": "신흥국",
+      "title": "Global In Vitro Fertilization Market to Reach USD 1,650 Million by 2029 | MarketsandMarkets™",
+      "description": "Strategic expansion opportunities emerge across Asia-Pacific as demographic shifts and technological innovation reshape reproductive healthcare investment landscape Strategic expansion opportunities emerge across Asia-Pacific as demographic shifts and technol…",
+      "url": "https://www.globenewswire.com/news-release/2026/04/06/3268517/0/en/Global-In-Vitro-Fertilization-Market-to-Reach-USD-1-650-Million-by-2029-MarketsandMarkets.html",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T14:26:00Z",
+      "source": "9to5Mac",
+      "category": "headline_technology",
+      "title": "New iPhone 18, iPhone Air 2 leaks on design, release date arrive - 9to5Mac",
+      "description": "New leaks from over the weekend detail what to expect from iPhone 18 and iPhone Air 2’s design and release timing.",
+      "url": "https://9to5mac.com/2026/04/06/new-iphone-18-iphone-air-2-leaks-on-design-release-date-arrive/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T14:01:51Z",
+      "source": "Warhammer-community.com",
+      "category": "headline_technology",
+      "title": "#New40k – Vanguard Veteran Revealed - Warhammer Community",
+      "description": "An aerial elite swoops in to turn the tide of battle.",
+      "url": "https://www.warhammer-community.com/articles/6du3q10d/new40k-vanguard-veteran-revealed",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T13:36:14Z",
+      "source": "Seeking Alpha",
+      "category": "headline_business",
+      "title": "Trump’s Speech Gave Wall Street A Fresh Reason To Worry (SP500) - Seeking Alpha",
+      "description": "President Trump’s April 1 remarks add little; Hormuz risks linger. Click for this updated look at the current geopolitical situation and how it affects the markets.",
+      "url": "https://seekingalpha.com/article/4888616-trump-speech-gave-wall-street-a-fresh-reason-to-worry",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T13:28:09Z",
+      "source": "Nintendo.com",
+      "category": "headline_technology",
+      "title": "New limited-time offer brings together Nintendo Switch 2 and Super Mario Galaxy + Super Mario Galaxy 2 - Nintendo",
+      "description": "Purchase the Nintendo Switch 2 System with Super Mario Galaxy + Super Mario Galaxy 2 at Select Retailers and Save $20 From April 12 to May 9 April is shaping up to be a cosmic-sized month for Mario! After seeing The Super Mario Galaxy Movie (in thea…",
+      "url": "https://www.nintendo.com/us/whatsnew/new-limited-time-offer-brings-together-nintendo-switch-2-and-super-mario-galaxy-super-mario-galaxy-2/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T13:06:24Z",
+      "source": "Forbes",
+      "category": "headline_technology",
+      "title": "‘Crimson Desert’ Has A Quest You Should Save Rollback To Avoid - Forbes",
+      "description": "Crimson Desert has a lot of quests, but there is one that you should avoid like the plague.",
+      "url": "https://www.forbes.com/sites/paultassi/2026/04/06/crimson-desert-has-a-quest-you-should-save-rollback-to-avoid/",
+      "trusted": true
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T13:02:20Z",
+      "source": "PhoneArena",
+      "category": "headline_technology",
+      "title": "Samsung follows Apple and turns your Galaxy S26 Ultra into a broadcast camera - PhoneArena",
+      "description": "Live sports might never look the same after this.",
+      "url": "https://www.phonearena.com/news/samsung-follows-apple-and-turns-your-galaxy-s26-ultra-into-a-broadcast-camera_id179434",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T13:02:02Z",
+      "source": "Fubo.tv",
+      "category": "headline_business",
+      "title": "Fubo Releases Adjusted EBITDA Outlook and Long-Term Financial Targets - Fubo - Investor Relations",
+      "description": "Co-Founder  CEO David Gandler Issues Shareholder Letter FuboTV Inc. (NYSE: FUBO) today announced Adjusted EBITDA outlook for Fiscal 2026 and 2028 and affirmed its cash forecast. Figure 1 Guidance and Long-Term Financial Targets Fiscal 2026 Pro Forma Adjusted …",
+      "url": "https://ir.fubo.tv/news/news-details/2026/Fubo-Releases-Adjusted-EBITDA-Outlook-and-Long-Term-Financial-Targets/default.aspx",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T13:00:00Z",
+      "source": "The Seattle Times",
+      "category": "headline_business",
+      "title": "Downtown Seattle’s Columbia Tower Club will shutter after 4 decades - The Seattle Times",
+      "description": "The swanky private members club in downtown Seattle is known for its bathrooms, which overlook the city and Puget Sound through massive windows.",
+      "url": "https://www.seattletimes.com/business/local-business/downtown-seattles-columbia-tower-club-will-shutter-after-4-decades/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T13:00:00Z",
+      "source": "PCWorld",
+      "category": "headline_technology",
+      "title": "Inside Project Nova, Firefox’s biggest redesign in years - PCWorld",
+      "description": "We sit down with Ajit Varma, the head of Firefox at Mozilla, to learn more about the Project Nova redesign, how Firefox will integrate AI, and the challenges and opportunities as a smaller browser maker.",
+      "url": "https://www.pcworld.com/article/3104990/inside-project-nova-firefoxs-biggest-redesign-in-years.html",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T12:36:42Z",
+      "source": "The Washington Post",
+      "category": "headline_business",
+      "title": "War-driven energy crisis boosts China’s sales pitch for renewable tech - The Washington Post",
+      "description": "Sales of Chinese electric vehicles and solar panels have surged since the start of the Iran war, companies say.",
+      "url": "https://www.washingtonpost.com/world/2026/04/06/iran-war-china-renewable-energy/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T12:33:00Z",
+      "source": "TheStreet",
+      "category": "headline_business",
+      "title": "United Airlines makes big change to its bags policy - thestreet.com",
+      "description": "The airline giant's decision may not be popular",
+      "url": "https://www.thestreet.com/travel/united-airlines-makes-big-change-to-its-bags-policy",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T12:32:31Z",
+      "source": "Harvard Business Review",
+      "category": "headline_technology",
+      "title": "How AI Helps Scale Qualitative Customer Research - Harvard Business Review",
+      "description": "Companies are now using AI “moderators” to conduct in-depth interviews with real people at a speed and volume that traditional methods can’t achieve.",
+      "url": "https://hbr.org/2026/04/how-ai-helps-scale-qualitative-customer-research",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T12:21:15Z",
+      "source": "The Boston Globe",
+      "category": "headline_technology",
+      "title": "The ‘P.T. Barnum of the miniature world’ moved his dollhouse emporium to Fall River - The Boston Globe",
+      "description": "Flip This Dollhouse founder Nathaniel Ellis built miniatures for Taylor Swift's Eras Tour and Hollywood. Now, he and his collection are settling into a new home of their own.",
+      "url": "https://www.bostonglobe.com/2026/04/06/arts/flip-this-dollhouse/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T12:11:34Z",
+      "source": "PhoneArena",
+      "category": "headline_technology",
+      "title": "Samsung is finally bringing the Galaxy S26's smartest call feature to older phones - PhoneArena",
+      "description": "You no longer need to deal with spam calls.",
+      "url": "https://www.phonearena.com/news/galaxy-s25-series-to-get-call-screening-feature_id179465",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T12:09:29Z",
+      "source": "CNN",
+      "category": "headline_technology",
+      "title": "Priced out by the ‘escalating insanity’ of life in California, she moved to rural France for a tranquil new life - CNN",
+      "description": "Artist MB Boussannault was burned out by rising costs and stress in Los Angeles but found a fresh start — and renewed creative freedom — after relocating to a quiet village in rural France.",
+      "url": "https://www.cnn.com/travel/artist-relocates-california-rural-france",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T12:00:00Z",
+      "source": "Pure Xbox",
+      "category": "headline_technology",
+      "title": "Here's What Crimson Desert's New 4K Performance Mode Looks Like On Xbox Series X - Pure Xbox",
+      "description": "It now supports 4K upscaling",
+      "url": "https://www.purexbox.com/news/2026/04/heres-what-crimson-deserts-new-4k-performance-mode-looks-like-on-xbox-series-x",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T11:55:53Z",
+      "source": "CNBC",
+      "category": "headline_business",
+      "title": "Tesla is down sharply in 2026. JPMorgan sees the stock falling another 60% - CNBC",
+      "description": "\"We ... advise investors approach TSLA shares with a high degree of caution,\" analyst Ryan Brinkman said in a note.",
+      "url": "https://www.cnbc.com/2026/04/06/tesla-is-down-sharply-in-2026-jpmorgan-sees-even-more-declines-ahead.html",
+      "trusted": true
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T11:55:00Z",
+      "source": "SamMobile",
+      "category": "headline_technology",
+      "title": "Galaxy Watch blood pressure monitoring isn't approved by the US FDA - SamMobile",
+      "description": "It's been a few years since Samsung introduced the blood pressure monitoring feature on its Galaxy Watch wearables. This feature has only been available in select markets, and the United States was not one of them. The wait finally ended for users in the coun…",
+      "url": "https://www.sammobile.com/news/galaxy-watch-blood-pressure-monitoring-isnt-approved-by-the-us-fda/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T11:50:45Z",
+      "source": "PlayStation LifeStyle",
+      "category": "headline_technology",
+      "title": "PS5, PS4 Getting Surprise Launch of Long Forgotten Sega RPG - PlayStation LifeStyle",
+      "description": "In news we didn't expect to see today, a 1992 Sega Genesis RPG is being revived for the PS5 and PS4 surprisingly soon.",
+      "url": "https://www.playstationlifestyle.net/2026/04/06/classic-rpg-traysia-ps5-ps4-release-date/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T11:34:36Z",
+      "source": "Immunitybio.com",
+      "category": "headline_business",
+      "title": "ImmunityBio Addresses FDA Correspondence and Reaffirms Commitment to Advertising Compliance - ImmunityBio",
+      "description": "Company initiated a comprehensive review of promotional materials and is implementing enhanced advertising compliance measures, including expanded promotional review protocols, executive training, and external regulatory oversight Company has removed the iden…",
+      "url": "https://ir.immunitybio.com/news-releases/news-release-details/immunitybio-addresses-fda-correspondence-and-reaffirms",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T11:27:50Z",
+      "source": "EventHubs",
+      "category": "headline_technology",
+      "title": "SonicFox releases final tier list for 2XKO before Akali joins - EventHubs",
+      "description": "Akali is to be added to 2XKO as its 13th champion on April 7, 2026. Until then, we're playing on the patch that released in early March.In preparation for the Akali update, FLY|SonicFox released a final tier ...",
+      "url": "https://www.eventhubs.com/news/2026/apr/06/sonicfox-2xko-rankings-pre-akali/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T11:00:55Z",
+      "source": "CNN",
+      "category": "headline_business",
+      "title": "‘Through the roof’: This county has the highest average gas price in America - CNN",
+      "description": "For Connie Lear, driving even her hybrid car is a luxury she can rarely afford.",
+      "url": "https://www.cnn.com/2026/04/06/business/mono-county-gas-california",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T10:10:40Z",
+      "source": "Morningstar.com",
+      "category": "headline_business",
+      "title": "Alternatives in 401(k)s Are a Solution in Search of a Problem - Morningstar",
+      "description": "Meanwhile, serious 401(k) pain points are hiding in plain sight.",
+      "url": "https://www.morningstar.com/retirement/alternatives-401ks-are-solution-search-problem",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T10:06:00Z",
+      "source": "Motley Fool",
+      "category": "headline_business",
+      "title": "The Federal Reserve's March and April Inflation Forecast Is In -- and Things Just Keep Getting Uglier for Wall Street - The Motley Fool",
+      "description": "A historic energy supply disruption has sent crude oil prices soaring -- but there's far more at stake than just higher prices at the pump.",
+      "url": "https://www.fool.com/investing/2026/04/06/fed-march-april-inflation-forecast-ugly-wall-st/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T10:00:39Z",
+      "source": "Gizmodo.com",
+      "category": "headline_technology",
+      "title": "Apple App Store Experiences Surge in New Apps Amid Vibe Coding Boom - gizmodo.com",
+      "description": "After years of gradual declines, the App Store finally saw a huge jump in new apps this past year.",
+      "url": "https://gizmodo.com/apple-app-store-experiences-surge-in-new-apps-amid-vibe-coding-boom-2000742653",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T09:33:50Z",
+      "source": "Axios",
+      "category": "headline_business",
+      "title": "Where to find America's top tippers - Axios",
+      "description": "Not all tables tip the same — and West Coast averages lag.",
+      "url": "https://www.axios.com/2026/04/06/highest-tipping-states",
+      "trusted": true
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T09:33:15Z",
+      "source": "Techpowerup.com",
+      "category": "headline_technology",
+      "title": "14th Gen Core \"Raptor Lake\" Will Continue to be \"Abundantly Available,\" Says Intel - techpowerup.com",
+      "description": "Intel will continue to ensure production of its 14th Gen Core \"Raptor Lake Refresh\" desktop processors, 700-series motherboard chipset, and ensure continued availability of the Socket LGA1700 platform. In an interview with Club386, Intel's VP and GM of client…",
+      "url": "https://www.techpowerup.com/348019/14th-gen-core-raptor-lake-will-continue-to-be-abundantly-available-says-intel",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T09:00:00Z",
+      "source": "Business Insider",
+      "category": "headline_business",
+      "title": "Meta salary data reveals a VP of AI can make $650,000 in base salary - Business Insider",
+      "description": "See how much Meta paid in 2025, with software engineers earning as much as $450,000. Salary data shows pay ranges across over 5,000 roles.",
+      "url": "https://www.businessinsider.com/meta-salaries-revealed-how-much-engineers-researchers-made-in-2025-2026-4",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T09:00:00Z",
+      "source": "ProPublica",
+      "category": "headline_business",
+      "title": "The Federal Government Is Rushing Toward AI. Our Reporting Offers Three Cautionary Tales. - ProPublica",
+      "description": "We’ve been reporting on cybersecurity for years. As President Donald Trump and his Cabinet say artificial intelligence will transform the nation, the messaging isn’t new. It follows a familiar pattern.",
+      "url": "http://www.propublica.org/article/federal-government-ai-cautionary-tales",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T09:00:00Z",
+      "source": "THE CITY",
+      "category": "headline_business",
+      "title": "Waymo’s Robot Car Testing Ends in NYC After Permits Expire - THE CITY - NYC News",
+      "description": "The company’s eight autonomous vehicles had been driving in the city since last summer.",
+      "url": "https://www.thecity.nyc/2026/04/06/waymo-driverless-cars-testing-roads-autonomous-vehicle/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T08:24:03Z",
+      "source": "Android Authority",
+      "category": "headline_technology",
+      "title": "Google Play Store now lets you dig through app reviews for real answers - Android Authority",
+      "description": "Google Play Store's recent update now lets users dig through reviews to find useful information before using the apps.",
+      "url": "https://www.androidauthority.com/google-play-store-search-reviews-3654976/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T08:00:00Z",
+      "source": "Timeextension.com",
+      "category": "headline_technology",
+      "title": "Double Dragon Creator Yoshihisa Kishimoto Has Passed Away - Time Extension",
+      "description": "\"I hope you will continue to enjoy my father's works\"",
+      "url": "https://www.timeextension.com/news/2026/04/double-dragon-creator-yoshihisa-kishimoto-has-passed-away",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T07:10:01Z",
+      "source": "Forbes",
+      "category": "headline_technology",
+      "title": "‘Stop Texting’—Apple Changes iPhone After 15 Years - Forbes",
+      "description": "The FBI warned smartphone users to stop sending texts — here's what happens now.",
+      "url": "https://www.forbes.com/sites/zakdoffman/2026/04/06/stop-texting-apple-changes-iphone-after-15-years/",
+      "trusted": true
+    },
     {
       "date": "2026-04-06",
       "datetime": "2026-04-06T06:05:43",
@@ -12,6 +2703,26 @@
       "description": "How a perilous US rescue mission in Iran nearly went off course  Reuters",
       "url": "https://news.google.com/rss/articles/CBMivgFBVV95cUxNZlB6OWpEQUtjb2V2MkhwVU1KYWRLSWpzT2tzUlVSMzdtUzNHekN4UHlVVmZUZjFGSzMwM0RSZGZfMjgyZkdoaG9kM2VsZzJXSUJuQlAzZjg0Zi1yN2hYTkxIRTFLRnhLaVYyZDhZbnpwTjM1Z25jdmc5U3JpUnk3V3B1OE9BUGlWTFdyYUhsTjJhTk9vMGk5Rk9JYUtPV2NzMVhTSGVFRldXT2Z5SEhCSGQ0LW9IQVVaYjQtekdn?oc=5",
       "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T05:30:23Z",
+      "source": "Financial Times",
+      "category": "headline_business",
+      "title": "US employment: more sludge - Financial Times",
+      "description": "Plus, guns and butter redux",
+      "url": "https://www.ft.com/content/65d2617f-ebee-488f-9407-aacab8f38e5e?syn-25a6b1a6\\\\u003d1",
+      "trusted": true
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T03:30:00Z",
+      "source": "WHIO",
+      "category": "headline_business",
+      "title": "People lining up for grand opening of Ohio’s first Buc-ee’s - WHIO TV",
+      "description": "People lined up on Sunday night before the grand opening of Ohio’s first Bu-ee’s on Monday.",
+      "url": "https://www.whio.com/news/local/people-lining-up-grand-opening-ohios-first-buc-ees/AGPFDD4NHFGGXIL5KJKABSYBYA/",
+      "trusted": false
     },
     {
       "date": "2026-04-06",
@@ -26,6 +2737,26 @@
     },
     {
       "date": "2026-04-06",
+      "datetime": "2026-04-06T03:00:00Z",
+      "source": "The Wall Street Journal",
+      "category": "headline_business",
+      "title": "Oil Crisis Hitting Asia Foreshadows Tough Times for Europe - wsj.com",
+      "description": "The economies of Europe and many African countries have been left dangerously exposed by the war in the Middle East",
+      "url": "https://www.wsj.com/finance/commodities-futures/oil-crisis-asia-europe-africa-iran-war-ea883ba2",
+      "trusted": true
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T02:19:01Z",
+      "source": "Android Authority",
+      "category": "headline_technology",
+      "title": "LG's canceled rollable just embarrassed 2026 phones in a teardown video - Android Authority",
+      "description": "A teardown of the scrapped LG rollable shows an over-engineered marvel of a phone that makes anything we've seen recently look super boring!",
+      "url": "https://www.androidauthority.com/lg-rollable-teardown-3654951/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
       "datetime": "2026-04-06T02:16:39",
       "source": "CNBC",
       "asset_class": "general",
@@ -34,6 +2765,16 @@
       "description": "We have three big headwinds draggins stocks down, and one long-shot solution.",
       "url": "https://www.cnbc.com/2026/04/05/cramer-ipos-of-spacex-anthropic-and-openai-alone-cant-fix-this-market.html",
       "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T02:02:03Z",
+      "source": "TweakTown",
+      "category": "headline_technology",
+      "title": "NVIDIA's DLSS 5 trailer has been taken down due to 'copyright' infringement - TweakTown",
+      "description": "NVIDIA's DLSS 5 announcement trailer is currently offline on YouTube due to a copyright infringement claim from an unlikely source.",
+      "url": "https://www.tweaktown.com/news/110891/nvidias-dlss-5-trailer-has-been-taken-down-due-to-copyright-infringement/index.html",
+      "trusted": false
     },
     {
       "date": "2026-04-06",
@@ -48,6 +2789,16 @@
     },
     {
       "date": "2026-04-06",
+      "datetime": "2026-04-06T01:39:49Z",
+      "source": "MacRumors",
+      "category": "headline_technology",
+      "title": "NASA Shares Photos Shot on iPhone 17 Pro Max During Artemis II Mission to the Moon - MacRumors",
+      "description": "NASA has shared three incredible photos shot on the iPhone 17 Pro Max by astronauts during the Artemis II mission to the Moon.  Shot on iPhone 17 Pro...",
+      "url": "https://www.macrumors.com/2026/04/05/nasa-artemis-ii-photos-shot-on-iphone-17-pro-max/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-06",
       "datetime": "2026-04-06T01:36:03",
       "source": "Reuters",
       "asset_class": "general",
@@ -56,6 +2807,16 @@
       "description": "Russia says US should abandon 'language of ultimatums' on Iran  Reuters",
       "url": "https://news.google.com/rss/articles/CBMirAFBVV95cUxOaWlSY3pVZVJQUTktNExIT0ZuSmU0VkdncE5kVHpPaVh4OTR6TkJRZlI3MjMyR1A4Z215dFJxLUZFSC0yeU1SdHFDWFVGaU50UEFkc3RZbGNHUWdpMl9MVWJBcHRGZkxnRV9JMlFYRmNLblB3U3pzVVBmX1FDN09EVW1vVjJwdFdfNjh3SkU2ZW5ieXNPSGZnT0ozeS1zcFZJVFpSV3FDWDhWZDFR?oc=5",
       "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T01:30:00Z",
+      "source": "Tastingtable.com",
+      "category": "headline_business",
+      "title": "The Hands-Down Best Grocery Store Bakery Donuts Come From This Family-Owned Chain - Tasting Table",
+      "description": "In a ranking of 12 different grocery store bakery donuts, Meijer's white iced cinnamon donut came in first place, blowing away the competition by a long shot.",
+      "url": "https://www.tastingtable.com/2136489/best-grocery-store-chain-bakery-donut-meijer/",
+      "trusted": false
     },
     {
       "date": "2026-04-06",
@@ -78,6 +2839,16 @@
       "description": "Petronas-chartered tanker loaded with Iraqi crude passes through Hormuz  Reuters",
       "url": "https://news.google.com/rss/articles/CBMiwgFBVV95cUxObzM0R3hqdmpGMGtLdjg1bDhJZmtqM2VFRnVEY1h2M2NMNXJCYy1raHY5RDZqMHdDMUZvUVNJbmQ5cGNZTm5zd0NwM2FDZWQ0N2tvMjlMdmc3MFJLSDJOMThJVFVjbU5NcVVXN0ExOGtPbjMzZkZralBIMzRCRERmR0hDWXpPd2NibVVoT3pDQ3UwdEh4eXJaaTFLYmhVLW96eHBLZ3hhdC05S0dFdE9QeXhTNlU0VTZvSU5QUWhVcU8tUQ?oc=5",
       "provider": "finnhub"
+    },
+    {
+      "date": "2026-04-06",
+      "datetime": "2026-04-06T01:00:00Z",
+      "source": "The Wall Street Journal",
+      "category": "headline_business",
+      "title": "An Inside Look at OpenAI and Anthropic’s Finances Ahead of Their IPOs - WSJ",
+      "description": "Silicon Valley’s hottest startups have the same challenge: funding giant computing costs",
+      "url": "https://www.wsj.com/tech/ai/openai-anthropic-ipo-finances-04b3cfb9",
+      "trusted": true
     },
     {
       "date": "2026-04-06",
@@ -210,6 +2981,146 @@
       "description": "",
       "url": "https://finance.naver.com/news/news_read.naver?article_id=0008866740&office_id=421&mode=search&query=USD&page=1",
       "provider": "naver"
+    },
+    {
+      "date": "2026-04-05",
+      "datetime": "2026-04-05T23:24:19Z",
+      "source": "What Hi-Fi? US",
+      "category": "headline_technology",
+      "title": "How Apple’s new AirPods Max 2 finally converted me to Atmos music on headphones - What Hi-Fi?",
+      "description": "I used to say Atmos music was for speakers only. Apple's new headphones are changing my mind.",
+      "url": "https://www.whathifi.com/streaming-entertainment/music-streaming/how-apples-new-airpods-max-2-finally-converted-me-to-atmos-music-on-headphones",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-05",
+      "datetime": "2026-04-05T22:56:09Z",
+      "source": "Parkerkohlfuneralhome.com",
+      "category": "headline_technology",
+      "title": "Kathleen Ozmun Obituary April 5, 2026 - Parker Kohl Funeral Home & Crematory",
+      "description": "Kathleen K. Ozmun, age 80, of Faribault, MN, passed away April 5, 2026, following an extended illness. Memorial services will be held on Tuesday, April 14, 2026, at 11:00 a.m. a...",
+      "url": "https://www.parkerkohlfuneralhome.com/obituaries/kathleen-ozmun",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-05",
+      "datetime": "2026-04-05T21:47:00Z",
+      "source": "Business Insider",
+      "category": "headline_business",
+      "title": "Airlines are starting to cancel flights as they face jet fuel shortages and rising prices brought on by the Iran war - Business Insider",
+      "description": "Jet fuel prices have spiked and supplies have dwindled as the US and Israeli war on Iran drags on, forcing some airlines to cancel flights.",
+      "url": "https://www.businessinsider.com/airlines-cancel-flights-rising-jet-fuel-prices-shortage-iran-2026-4",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-05",
+      "datetime": "2026-04-05T19:05:49Z",
+      "source": "Dexerto",
+      "category": "headline_technology",
+      "title": "Scientists create world’s first ‘T-Rex leather’ handbag with $600k starting price - Dexerto",
+      "description": "A handbag reportedly made out of “T-Rex leather” is set to be auctioned off to the highest bidder, with the starting bid around $660,000.",
+      "url": "https://www.dexerto.com/entertainment/scientists-create-worlds-first-t-rex-leather-handbag-with-600k-starting-price-3346664/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-05",
+      "datetime": "2026-04-05T18:45:17Z",
+      "source": "BleepingComputer",
+      "category": "headline_business",
+      "title": "New FortiClient EMS flaw exploited in attacks, emergency patch released - BleepingComputer",
+      "description": "Fortinet has released an emergency weekend security update for a new critical FortiClient Enterprise Management Server (EMS) vulnerability that is actively exploited in attacks.",
+      "url": "https://www.bleepingcomputer.com/news/security/new-fortinet-forticlient-ems-flaw-cve-2026-35616-exploited-in-attacks/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-05",
+      "datetime": "2026-04-05T18:00:01Z",
+      "source": "Tech Xplore",
+      "category": "headline_technology",
+      "title": "A new way to deliver faster, greener wireless connections indoors - Tech Xplore",
+      "description": "",
+      "url": "https://techxplore.com/news/2026-03-faster-greener-wireless-indoors.html",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-05",
+      "datetime": "2026-04-05T17:15:00Z",
+      "source": "Futurism",
+      "category": "headline_business",
+      "title": "AI Expert Says It’s Time to Stop Freaking Out About AI Taking Our Jobs - futurism.com",
+      "description": "Prominent AI critic Gary Marcus argued that AI isn't about to take our jobs anytime soon, despite what tech CEOs tell you.",
+      "url": "http://futurism.com/artificial-intelligence/ai-jobs-automation-expert",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-05",
+      "datetime": "2026-04-05T17:00:00Z",
+      "source": "The Drive",
+      "category": "headline_business",
+      "title": "It’s Not Just You: Six of 10 Drivers Say Headlight Glare Is a Problem - The Drive",
+      "description": "Nearly three-quarters of those concerned about headlight glare say the problem has worsened over the past decade.",
+      "url": "http://www.thedrive.com/news/its-not-just-you-six-of-10-drivers-say-headlight-glare-is-a-problem",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-05",
+      "datetime": "2026-04-05T16:25:38Z",
+      "source": "Torrentfreak.com",
+      "category": "headline_business",
+      "title": "U.S. Lawmakers Work on Unified Site-Blocking Bill to Counter Online Piracy - torrentfreak.com",
+      "description": "Last week's Supreme Court decision in Cox Communications reshaped the piracy liability landscape, creating new urgency for site-blocking.",
+      "url": "https://torrentfreak.com/u-s-lawmakers-work-on-unified-site-blocking-bill-to-counter-online-piracy/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-05",
+      "datetime": "2026-04-05T14:49:06Z",
+      "source": "XDA Developers",
+      "category": "headline_technology",
+      "title": "Google wants you to turn your old laptop into a ChromeOS Flex machine with a simple USB kit - XDA",
+      "description": "The cheap installation kit cost $3.",
+      "url": "https://www.xda-developers.com/google-wants-you-turn-old-laptop-into-chromeos-flex-simple-usb-kit/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-05",
+      "datetime": "2026-04-05T12:00:00Z",
+      "source": "CNET",
+      "category": "headline_technology",
+      "title": "Samsung Galaxy S26 vs. Google Pixel 10: The Big Differences Between Each Flagship - CNET",
+      "description": "The most affordable Samsung and Google flagship models are closer than ever, but the $100 price difference does make for a few key differences. Here's how they stack up.",
+      "url": "https://www.cnet.com/tech/mobile/samsung-galaxy-s26-vs-google-pixel-10-the-big-differences-between-each-flagship/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-05",
+      "datetime": "2026-04-05T11:45:18Z",
+      "source": "The Next Web",
+      "category": "headline_technology",
+      "title": "LinkedIn secretly scans 6,000+ browser extensions and fingerprints your device - The Next Web",
+      "description": "In short: Every time you visit LinkedIn in a Chrome-based browser, a hidden JavaScript routine silently probes your browser for more than 6,000 installed extensions, collects 48 hardware and software characteristics about your device, encrypts the resulting f…",
+      "url": "https://thenextweb.com/news/linkedin-browsergate-extension-scanning-privacy-fingerprint/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-05",
+      "datetime": "2026-04-05T09:00:19Z",
+      "source": "CBS News",
+      "category": "headline_business",
+      "title": "What's open and closed on Easter 2026? Sunday hours for major stores and food chains. - CBS News",
+      "description": "Some major retailers and other stores will close their doors on Easter, so it's best to plan ahead. Here's what to know.",
+      "url": "https://www.cbsnews.com/news/whats-open-easter-2026/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-05",
+      "datetime": "2026-04-05T09:00:00Z",
+      "source": "Mashable",
+      "category": "headline_technology",
+      "title": "Regularly $999, get a MacBook Air for just $200 with this limited-time deal - Mashable",
+      "description": "High-end laptop, low-end price tag.",
+      "url": "https://mashable.com/article/april-5-macbook-air-13-3-inch-8gbram-128gb",
+      "trusted": false
     },
     {
       "date": "2026-04-04",
@@ -1233,6 +4144,16 @@
     },
     {
       "date": "2026-04-04",
+      "datetime": "2026-04-04T17:14:16Z",
+      "source": "24/7 Wall St.",
+      "category": "headline_business",
+      "title": "Social Security Issues Major Warning to Retirees - AOL.com",
+      "description": "The Social Security Administration recently provided an important warning to retirees. Seniors need to take heed of the alert because if they don’t, their fi...",
+      "url": "https://247wallst.com/investing/2026/04/04/social-security-issues-major-warning-to-retirees/",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-04",
       "datetime": "2026-04-04T17:11:57Z",
       "source": "Techpowerup.com",
       "category": "headline_technology",
@@ -1499,6 +4420,16 @@
       "title": "Index Outlook: Make or break point",
       "description": "Upcoming weeks are pivotal for Indian equity indices, determining potential trends amid recent selling pressure from foreign investors.",
       "url": "https://www.thehindubusinessline.com/portfolio/technical-analysis/index-outlook-make-or-break-point/article70820192.ece",
+      "trusted": false
+    },
+    {
+      "date": "2026-04-04",
+      "datetime": "2026-04-04T13:18:00Z",
+      "source": "Looper",
+      "category": "headline_technology",
+      "title": "How God Of War Voice Actor Christopher Judge Feels About Ryan Hurst's Kratos Casting - yahoo.com",
+      "description": "Christopher Judge voiced Kratos in 2018's \"God of War\" and 2022's \"God of War Ragnarök.\" Here's how he feels about Kratos being recast for the Amazon series.",
+      "url": "https://www.looper.com/2138479/god-of-war-voice-actor-christopher-judge-ryan-hurst-kratos-feelings/",
       "trusted": false
     },
     {

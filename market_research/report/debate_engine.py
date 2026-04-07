@@ -30,7 +30,7 @@ from pathlib import Path
 if sys.stdout.encoding != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent  # market_research/
 REGIME_FILE = BASE_DIR / 'data' / 'regime_memory.json'
 DEBATE_LOG_DIR = BASE_DIR / 'data' / 'debate_logs'
 DEBATE_LOG_DIR.mkdir(parents=True, exist_ok=True)

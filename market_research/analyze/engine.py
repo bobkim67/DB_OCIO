@@ -17,7 +17,7 @@ if sys.stdout.encoding != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 # ── 경로 ──
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent  # market_research/
 POSTS_FILE = BASE_DIR / "data" / "monygeek" / "posts.json"
 INDICATORS_CSV = BASE_DIR / "data" / "macro" / "indicators.csv"
 WORLDVIEW_FILE = BASE_DIR / "data" / "monygeek" / "analysis_worldview.json"

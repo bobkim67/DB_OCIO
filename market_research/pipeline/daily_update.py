@@ -31,7 +31,7 @@ from pathlib import Path
 if sys.stdout.encoding != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent  # market_research/
 DATA_DIR = BASE_DIR / 'data'
 NEWS_DIR = DATA_DIR / 'news'
 CACHE_DIR = DATA_DIR / 'report_cache'

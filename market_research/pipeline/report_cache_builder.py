@@ -13,7 +13,7 @@ from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent  # market_research/
 CACHE_DIR = BASE_DIR / "data" / "report_cache"
 
 if sys.stdout and sys.stdout.encoding != "utf-8":
