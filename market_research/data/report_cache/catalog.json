@@ -1,0 +1,63 @@
+{
+  "version": 2,
+  "generated_at": "2026-04-06T08:02:20",
+  "funds": {
+    "08P22": {
+      "format": "A",
+      "target_return": 5.0,
+      "philosophy": "분산투자에 초점을 두는 한편, 기대수익률이 높은 미국 성장주와 금의 비중을 상대적으로 높게 가져가고 있습니다.",
+      "name": "08P22"
+    },
+    "08N81": {
+      "format": "A",
+      "target_return": 8.0,
+      "philosophy": "분산투자에 초점을 두는 한편, 기대수익률이 높은 미국 성장주와 금의 비중을 상대적으로 높게 가져가고 있습니다.",
+      "name": "08N81"
+    },
+    "08N33": {
+      "format": "A",
+      "target_return": 6.0,
+      "philosophy": "분산투자에 초점을 두는 한편, 기대수익률이 높은 미국 성장주와 금의 비중을 상대적으로 높게 가져가고 있습니다.",
+      "name": "08N33"
+    },
+    "07G04": {
+      "format": "C",
+      "target_return": null,
+      "philosophy": null,
+      "name": "07G04",
+      "sub_portfolios": {
+        "인컴추구": "07G02",
+        "수익추구": "07G03"
+      },
+      "sub_ratio": "1:1"
+    },
+    "2JM23": {
+      "format": "D",
+      "target_return": null,
+      "philosophy": null,
+      "name": "2JM23"
+    },
+    "07G02": {
+      "format": "A",
+      "target_return": 5.0,
+      "philosophy": "인컴 수익을 추구하며, 국내외 채권과 배당주를 중심으로 안정적인 현금흐름 확보에 초점을 두고 있습니다.",
+      "name": "07G02"
+    },
+    "07G03": {
+      "format": "A",
+      "target_return": 7.0,
+      "philosophy": "성장 자산에 대한 적극적 배분을 통해 중장기 자본이득 극대화를 추구하고 있습니다.",
+      "name": "07G03"
+    },
+    "4JM12": {
+      "format": "D",
+      "target_return": null,
+      "philosophy": null,
+      "name": "4JM12"
+    }
+  },
+  "months": [
+    "2026-03",
+    "2026-04"
+  ]
+}

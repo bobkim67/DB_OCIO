@@ -1264,24 +1264,23 @@ def _load_bm_daily_returns_by_class(bm_info: dict, start_date: str, end_date: st
         # 자산군 내 비중 비례
         bm_daily[ac] += cr['daily_ret'].reindex(all_dates).fillna(0) * (w / total_w)
 
-    # 날짜 필터
-    sd = pd.Timestamp(start_date) if len(start_date) == 8 else pd.Timestamp(start_date)
-    ed = pd.Timestamp(end_date) if len(end_date) == 8 else pd.Timestamp(end_date)
-    if len(start_date) == 8:
-        sd = pd.Timestamp(f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:8]}")
-    if len(end_date) == 8:
-        ed = pd.Timestamp(f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:8]}")
+    # 날짜 필터 (int 방어)
+    start_date = str(start_date)
+    end_date = str(end_date)
+    sd = pd.Timestamp(f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:8]}") if len(start_date) == 8 else pd.Timestamp(start_date)
+    ed = pd.Timestamp(f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:8]}") if len(end_date) == 8 else pd.Timestamp(end_date)
     bm_daily = bm_daily[(bm_daily.index >= sd) & (bm_daily.index <= ed)]
 
     bm_daily = bm_daily.reset_index().rename(columns={'index': '기준일자'})
     return bm_weights, bm_daily
 
 
-def compute_brinson_attribution(fund_code: str, bm_code: str,
+def compute_brinson_attribution(fund_code: str,
                                 start_date: str, end_date: str,
                                 asset_classes_8: list = None) -> dict:
     """
     Brinson 3-Factor Attribution 계산 (Phase 4: 일별 정밀 로직).
+    BM은 config.funds.FUND_BM에서 fund_code 기준으로 자동 매핑.
 
     R 동일 로직:
     - 일별 x 종목별 기여수익률
@@ -1301,6 +1300,10 @@ def compute_brinson_attribution(fund_code: str, bm_code: str,
     """
     if asset_classes_8 is None:
         asset_classes_8 = ['국내주식', '해외주식', '국내채권', '해외채권', '대체투자', 'FX', '모펀드', '유동성']
+
+    # int 날짜 방어 (예: 20260101 → '20260101')
+    start_date = str(start_date)
+    end_date = str(end_date)
 
     # ── 1) PA 원천 데이터 로드 (확장 컬럼) ──
     pa_df = load_pa_source(fund_code, start_date, end_date)

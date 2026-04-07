@@ -1,6 +1,89 @@
-# CLAUDE.md
+﻿# CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Streamlit 자동 리셋 규칙
+
+**아래 파일을 수정한 후에는 반드시 Streamlit 프로세스를 kill + 재시작하세요:**
+- `prototype.py`, `tabs/*.py`, `modules/*.py`, `config/*.py`
+
+```bash
+# 리셋 명령 (포트 8505 기준)
+netstat -ano | grep ":8505 .*LISTENING"  # PID 확인
+taskkill //F //PID <PID>
+sleep 3
+find . -name "__pycache__" -exec rm -rf {} +
+python -m streamlit run prototype.py --server.port 8505 &
+```
+
+Streamlit은 `session_state`에 이전 위젯 값을 유지하므로 **코드만 수정하고 브라우저 새로고침하면 반영 안 됨**. 반드시 프로세스 kill 후 새 브라우저 탭으로 접속.
+
+## 2026-04-01 Status Update
+
+### Current Priorities
+
+- Comment engine v2: PA 기여도 중심 + 매크로 오버뷰 2종 코멘트 지원.
+- 종목별 비중/Normalized수익률 계산 로직을 R(`General_Backtest/04_사후분석/`) 기준으로 정밀화.
+- Keep `modules/data_loader.py` as a shared-infra file with single-owner edits.
+
+### Important Current State
+
+- **펀드 8개 운용**: 08P22, 08N81, 08N33, 07G04, 2JM23, 07G02, 07G03, 4JM12.
+- Tab modules: `tabs/overview.py`, `tabs/holdings.py`, `tabs/brinson.py`, `tabs/macro.py`, `tabs/report.py`, `tabs/admin.py`.
+- `tabs/report.py`는 `render_pa()`(운용보고 탭)와 `render_macro()`(운용보고(전체) 탭) 두 함수 제공.
+- `prototype.py` 탭 구조: Overview / 편입종목 / 성과분석 / 매크로 / **운용보고** / **운용보고(전체)** / Admin.
+
+### Comment Engine v2 파이프라인
+
+```
+[배치 — 월 1회]
+블로그 digest → enriched_digest_builder → 뉴스 벡터DB 교차검증
+뉴스 3,100건 → news_content_pool_builder → KMeans 클러스터링 → Haiku 한국어 요약
+               report_cache_builder → 펀드별 cache v2 (PA + 매크로 factor_data)
+                 --force 없으면 enriched_digest/news_pool skip (임베딩 재실행 방지)
+
+[UI — 온디맨드]
+운용보고 탭:      PA 기여도 중심 팩터 선택 → Opus 코멘트 생성
+운용보고(전체) 탭: 매크로 시장현황 Opus 자동 생성 (팩터 선택 없이)
+```
+
+### 신규 파일 (comment engine v2)
+
+- `market_research/enriched_digest_builder.py` — 블로그 토픽별 뉴스 교차검증
+- `market_research/news_content_pool_builder.py` — 뉴스 클러스터링 + Haiku 요약
+- `market_research/report_service.py` — factor_data 생성 (PA용 + 매크로용)
+
+### PA 종목 분류 로직
+
+- **1순위**: `solution.universe_non_derivative` (classification_method='방법3') — R 동일
+- **2순위**: `asset_gb` + 종목명 키워드 fallback
+- 분류 함수: `comment_engine._classify_pa_item()` (v1, 합산용), `_classify_pa_item_v2()` (종목상세용)
+- holdings 분류: `load_fund_holdings_summary()` 내 키워드 매칭
+  - `'금'` 키워드 오매칭 수정 (증권금융/미지급금/미수금 → 유동성)
+
+### market_research Notes
+
+- `market_research/scrapers/macro_data.py` — 일일 뉴스/지표 수집
+- `market_research/scrapers/naver_blog.py` — monygeek 블로그 증분 스크래핑
+- `market_research/digest_builder.py` — 월별 블로그 digest (18개 토픽)
+- `market_research/engine.py` — 블로그+지표 매크로 진단
+- `market_research/news_vectordb.py` — ChromaDB + sentence-transformers 벡터검색
+- `market_research/comment_engine.py` — BM/PA/digest → LLM 프롬프트 + 코멘트 생성
+  - 8개 펀드: A포맷(08P22,08N81,08N33,07G02,07G03), C포맷(07G04), D포맷(2JM23,4JM12)
+  - PA/매크로 2종 프롬프트 템플릿
+- `market_research/report_cache_builder.py` — cache v2 빌드, `--force`로 전체 재생성
+
+### Known Issues
+
+- **종목별 비중 합계 ≠ 100%**: `load_pa_by_item`의 weight_pct 계산이 MA000410 VAL 일별 합산 기반이라 부정확. R 코드(`General_Backtest/04_사후분석/`)의 T-1 비중 로직 벤치마킹 필요.
+- `load_fund_holdings_summary`의 키워드 분류는 `comment_engine._classify_pa_item`과 별도 로직 → 통합 필요.
+- `NewsAPI` same-day 제한 미적용.
+- ~~`market_research` 일부 한국어 mojibake~~ → 수정 완료 (2026-04-06): `naver_blog.py` reconfigure + `collect_news.bat` chcp 65001
+
+### TODO (다음 세션)
+
+1. **R 벤치마킹**: T-1 비중 계산 → 비중 합계 100% 정합성 확보.
+2. **코멘트 품질 반복 테스트**: 여러 펀드/기간으로 Opus 출력 검증 후 프롬프트 미세 조정.
 
 ## Project Purpose
 
@@ -22,6 +105,9 @@ python -c "from modules.data_loader import parse_data_blob, load_fund_holdings_l
 
 # DB 접속 검증
 python -c "from modules.data_loader import get_connection; c=get_connection('dt'); print(c); c.close()"
+
+# 월별 report cache 재생성
+python -m market_research.report_cache_builder 2026 3
 ```
 
 ## Architecture
@@ -30,7 +116,7 @@ python -c "from modules.data_loader import get_connection; c=get_connection('dt'
 
 ```
 DB_OCIO_Webview/
-├── prototype.py           ← 메인 Streamlit 앱 (v6, ~2560줄, 7개 탭)
+├── prototype.py           ← 메인 Streamlit 앱 쉘 (탭 모듈 라우팅 + 공통 ctx/cache)
 ├── config/
 │   ├── funds.py           ← 21개 펀드 메타정보, BM/MP 매핑, 8개 그룹, DB 설정
 │   └── users.yaml         ← 사용자 인증 정보
@@ -42,17 +128,30 @@ DB_OCIO_Webview/
 └── General_Backtest/      ← R Shiny 원본 (참조용, 수정 금지)
 ```
 
+### Report Runtime Boundary
+
+- Batch side:
+  - `market_research/collect_news.bat`
+  - `market_research/report_cache_builder.py`
+  - `market_research/comment_engine.py`
+  - `market_research/news_vectordb.py`
+- Streamlit side:
+  - `tabs/report.py`
+  - reads `market_research/data/report_cache/catalog.json`
+  - reads `market_research/data/report_cache/{YYYY-MM}/{fund_code}.json`
+- Intent:
+  - keep `transformers`, `sentence_transformers`, `chromadb`, and most report-generation work out of the Streamlit runtime
+
 ### prototype.py 탭 구조
 
 | Tab Index | 탭명 | 핵심 기능 | DB 연동 |
 |-----------|------|-----------|---------|
 | tabs[0] | Overview | 기준가, 누적수익률, 기간성과, 편입현황 도넛 | **Done** |
 | tabs[1] | 편입종목 & MP Gap | 자산군/종목 토글, 파이+테이블, 비중추이 | **Done** |
-| tabs[2] | AP vs VP 분석 | AP/VP/MP 비중비교, Gap 추이 | **Done** (Gap추이 DB) |
-| tabs[3] | 성과분석(Brinson) | 3-Factor Attribution, 워터폴, 기여도 | **Done** (MA000410 + FUND_BM) |
-| tabs[4] | 매크로 지표 | TR Decomposition, EPS/PE, FX, 금리, 벤치마크 히트맵 | **Done** (SCIP) |
-| tabs[5] | 운용보고 | 시장환경, 성과요약, Brinson, 리스크 종합 | **Done** (DB 기반 보고서) |
-| tabs[6] | Admin | 전체 펀드 현황 (admin 전용) | **Done** |
+| tabs[2] | 성과분석(Brinson) | 3-Factor Attribution, 워터폴, 기여도 | **Done** (MA000410 + FUND_BM) |
+| tabs[3] | 매크로 지표 | TR Decomposition, EPS/PE, FX, 금리, 벤치마크 히트맵 | **Done** (SCIP) |
+| tabs[4] | 운용보고 | batch-generated cache 기반 요인 선택 + 코멘트 생성 | **Done** |
+| tabs[5] | Admin | 전체 펀드 현황 (admin 전용) | **Done** |
 
 ### 데이터 흐름
 
@@ -211,7 +310,7 @@ _DT_BM_CONFIG = {
 }
 ```
 
-- Tab 0(Overview), Tab 3(Brinson PA), Tab 5(운용보고)에서 동일 우선순위 적용
+- Tab 0(Overview), Tab 2(Brinson PA), Tab 4(운용보고)에서 동일 우선순위 적용
 - `cached_load_dt_bm()` → `load_dt_bm_prices()` (MOD_STPR 시계열)
 - DT 빈 결과 시 자동으로 `cached_load_bm_prices()` (SCIP) fallback
 

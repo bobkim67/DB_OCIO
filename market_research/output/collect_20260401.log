@@ -1,0 +1,103 @@
+[2026-04-01 18:06:10.93] collect start 
+=== 1. Daily news collection === 
+
+==================================================
+  ë‰´ìŠ¤ ìˆ˜ì§‘ (2026-04-01)
+==================================================
+
+â”€â”€ Finnhub ë‰´ìŠ¤ ìˆ˜ì§‘ (2026-04-01 ~ 2026-04-01) â”€â”€
+  SPY (ë¯¸êµ­ì£¼ì‹): 2ê±´
+  QQQ (ë¯¸êµ­ì£¼ì‹): 0ê±´
+  NVDA (ë¯¸êµ­ì£¼ì‹): 2ê±´
+  EWY (êµ­ë‚´ì£¼ì‹): 1ê±´
+  TLT (ë¯¸êµ­ì±„ê¶Œ): 1ê±´
+  HYG (ë¯¸êµ­ì±„ê¶Œ): 0ê±´
+  GLD (ì›ìì¬): 1ê±´
+  USO (ì›ìì¬): 0ê±´
+  UUP (í†µí™”): 0ê±´
+  general (Reuters/CNBC): 36ê±´
+  ì´ 43ê±´ (Yahoo ì œì™¸)
+    2026-04: 43ê±´ (ì‹ ê·œ 43ê±´)
+
+â”€â”€ NewsAPI ìˆ˜ì§‘ (2026-04-01) â”€â”€
+  top-headlines/business: 49ê±´
+  top-headlines/technology: 64ê±´
+  ê¸€ë¡œë²Œì£¼ì‹: 19ê±´
+  ë¯¸êµ­ì£¼ì‹: 20ê±´
+  ì‹ í¥êµ­: 20ê±´
+  ì±„ê¶Œ: 16ê±´
+  ì›ìì¬: 16ê±´
+  í†µí™”: 16ê±´
+  ì§€ì •í•™: 16ê±´
+  ê²½ê¸°: 11ê±´
+  [ì €ì¥] C:\Users\user\Downloads\python\DB_OCIO_Webview\market_research\data\news\2026-04.json â€” ì‹ ê·œ 247ê±´ (ì‹ ë¢° 17ê±´), ì´ 290ê±´
+
+â”€â”€ ë„¤ì´ë²„ ê¸ˆìœµ ë‰´ìŠ¤ (2026-04-01) â”€â”€
+  ìˆ˜ì§‘: 10ê±´
+  [ì €ì¥] C:\Users\user\Downloads\python\DB_OCIO_Webview\market_research\data\news\2026-04.json â€” ì‹ ê·œ 10ê±´, ì´ 300ê±´
+
+  í•©ì‚°: Finnhub 43ê±´ + NewsAPI 247ê±´ + ë„¤ì´ë²„ 10ê±´
+=== 2. Blog incremental update === 
+C:\Users\user\Downloads\python\.venv\Lib\site-packages\urllib3\connectionpool.py:1097: InsecureRequestWarning: Unverified HTTPS request is being made to host 'googlechromelabs.github.io'. Adding certificate verification is strongly advised. See: https://urllib3.readthedocs.io/en/latest/advanced-usage.html#tls-warnings
+  warnings.warn(
+C:\Users\user\Downloads\python\.venv\Lib\site-packages\urllib3\connectionpool.py:1097: InsecureRequestWarning: Unverified HTTPS request is being made to host 'googlechromelabs.github.io'. Adding certificate verification is strongly advised. See: https://urllib3.readthedocs.io/en/latest/advanced-usage.html#tls-warnings
+  warnings.warn(
+C:\Users\user\Downloads\python\.venv\Lib\site-packages\urllib3\connectionpool.py:1097: InsecureRequestWarning: Unverified HTTPS request is being made to host 'googlechromelabs.github.io'. Adding certificate verification is strongly advised. See: https://urllib3.readthedocs.io/en/latest/advanced-usage.html#tls-warnings
+  warnings.warn(
+C:\Users\user\Downloads\python\.venv\Lib\site-packages\urllib3\connectionpool.py:1097: InsecureRequestWarning: Unverified HTTPS request is being made to host 'googlechromelabs.github.io'. Adding certificate verification is strongly advised. See: https://urllib3.readthedocs.io/en/latest/advanced-usage.html#tls-warnings
+  warnings.warn(
+C:\Users\user\Downloads\python\.venv\Lib\site-packages\urllib3\connectionpool.py:1097: InsecureRequestWarning: Unverified HTTPS request is being made to host 'storage.googleapis.com'. Adding certificate verification is strongly advised. See: https://urllib3.readthedocs.io/en/latest/advanced-usage.html#tls-warnings
+  warnings.warn(
+C:\Users\user\Downloads\python\.venv\Lib\site-packages\urllib3\connectionpool.py:1097: InsecureRequestWarning: Unverified HTTPS request is being made to host 'googlechromelabs.github.io'. Adding certificate verification is strongly advised. See: https://urllib3.readthedocs.io/en/latest/advanced-usage.html#tls-warnings
+  warnings.warn(
+[½ÃÀÛ] ±âÁ¸ 528°Ç ·ÎµåµÊ
+¦¡¦¡ 1´Ü°è: °Ô½Ã±Û ¸ñ·Ï ¼öÁı (¸ğ¹ÙÀÏ ½ºÅ©·Ñ) ¦¡¦¡
+  ±âÁ¸ Ä³½Ã 528°Ç ·Îµå
+  scroll 0: 531°Ç ¼öÁı
+  scroll 1: 531°Ç ¼öÁı
+  scroll 2: 531°Ç ¼öÁı
+  scroll 3: 531°Ç ¼öÁı
+  scroll 4: 531°Ç ¼öÁı
+  scroll 5: 531°Ç ¼öÁı
+C:\Users\user\Downloads\python\.venv\Lib\site-packages\urllib3\connectionpool.py:1097: InsecureRequestWarning: Unverified HTTPS request is being made to host 'googlechromelabs.github.io'. Adding certificate verification is strongly advised. See: https://urllib3.readthedocs.io/en/latest/advanced-usage.html#tls-warnings
+  warnings.warn(
+C:\Users\user\Downloads\python\.venv\Lib\site-packages\urllib3\connectionpool.py:1097: InsecureRequestWarning: Unverified HTTPS request is being made to host 'googlechromelabs.github.io'. Adding certificate verification is strongly advised. See: https://urllib3.readthedocs.io/en/latest/advanced-usage.html#tls-warnings
+  warnings.warn(
+  ¡æ 5È¸ ¿¬¼Ó º¯µ¿ ¾øÀ½, ¼öÁı Á¾·á
+[¸ñ·Ï ÀúÀå] 531°Ç ¡æ C:\Users\user\Downloads\python\DB_OCIO_Webview\market_research\data\monygeek\log_nos.json
+
+[¸ñ·Ï ¿Ï·á] ÃÑ 531°Ç °íÀ¯ °Ô½Ã±Û
+[ÇÊÅÍ] ½Å±Ô 3°Ç (±âÁ¸ 528°Ç ½ºÅµ)
+
+¦¡¦¡ 2´Ü°è: °Ô½Ã±Û ³»¿ë ¼öÁı (3°Ç) ¦¡¦¡
+
+  [¹èÄ¡ 1] 1~3°Ç
+  [1/3] [48½Ã°£´º½º] AI ¼ÒÇÁÆ®¿ş¾îÀÇ µğÇÃ·¹ÀÌ¼Ç ½Ã´ë, ÇÏµå¿ş¾î ÀÎÇÁ¶ó¿¡ ½ò | 2026-04-01
+  [¹èÄ¡ 1 ¿À·ù] 'cp949' codec can't encode character '\U0001f6a8' in position 8: illegal multibyte sequence
+[ÀúÀå] 530°Ç ¡æ C:\Users\user\Downloads\python\DB_OCIO_Webview\market_research\data\monygeek\posts.json
+
+[¿Ï·á] ¼º°ø 2°Ç, ½ÇÆĞ 0°Ç, ÃÑ 530°Ç ÀúÀå
+=== 3. Monthly digest rebuild === 
+=== 4. Vector index rebuild === 
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|##########| 103/103 [00:00<00:00, 6903.27it/s]
+  2026-04: 300ê±´ ì„ë² ë”© ì¤‘... ì™„ë£Œ (300ê±´)
+=== 5. Report cache rebuild === 
+[report_cache] building enriched digest 2026-04
+  digest ì—†ìŒ: C:\Users\user\Downloads\python\DB_OCIO_Webview\market_research\data\monygeek\monthly_digests\2026-04.json
+[report_cache] building news content pool 2026-04
+  2026-04: 300ê±´ ì„ë² ë”© ì¤‘...Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|##########| 103/103 [00:00<00:00, 11765.39it/s]
+ ì™„ë£Œ
+  6ê°œ í…Œë§ˆ Haiku ìš”ì•½ ì¤‘...
+  Haiku ì‘ë‹µ: 6ê°œ ìš”ì•½ (ê¸°ëŒ€: 6ê°œ)
+  news content pool: 2026-04 â€” 6 themes, 300 articles
+[report_cache] building 2026-04 08P22
+[report_cache] building 2026-04 08N81
+[report_cache] building 2026-04 08N33
+[report_cache] building 2026-04 07G04
+[report_cache] building 2026-04 2JM23
+[report_cache] building 2026-04 07G02
+[report_cache] building 2026-04 07G03
+[report_cache] building 2026-04 4JM12
+[2026-04-01 18:11:48.53] collect end 

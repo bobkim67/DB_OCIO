@@ -64,7 +64,7 @@ def show_role_selector() -> bool:
                 <p style="color: #888; font-size: 0.9rem;">전체 펀드 조회 및 관리</p>
             </div>
             """, unsafe_allow_html=True)
-            if st.button("Admin 으로 접속", use_container_width=True, type="primary"):
+            if st.button("Admin 으로 접속", width="stretch", type="primary"):
                 st.session_state.authenticated = True
                 st.session_state.user_role = 'admin'
                 st.rerun()
@@ -77,7 +77,7 @@ def show_role_selector() -> bool:
                 <p style="color: #888; font-size: 0.9rem;">할당 펀드 조회</p>
             </div>
             """, unsafe_allow_html=True)
-            if st.button("Client 로 접속", use_container_width=True):
+            if st.button("Client 로 접속", width="stretch"):
                 st.session_state.authenticated = True
                 st.session_state.user_role = 'client'
                 st.rerun()

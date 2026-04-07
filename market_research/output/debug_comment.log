@@ -1,0 +1,12 @@
+[국내주식] news search start month=2026-04, contrib=+0.70
+[국내주식] news result count=5
+[국내주식] counts blog=0 news=4 indicator=1
+[해외주식] news search start month=2026-04, contrib=+0.51
+[해외주식] news result count=5
+[해외주식] counts blog=0 news=4 indicator=0
+[국내채권] news search start month=2026-04, contrib=+0.65
+[국내채권] news result count=5
+[국내채권] counts blog=0 news=4 indicator=1
+[대체투자] news search start month=2026-04, contrib=+0.71
+[대체투자] news result count=5
+[대체투자] counts blog=0 news=4 indicator=2
