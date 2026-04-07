@@ -616,6 +616,7 @@ def build_report(fund_code, period_info, mode='auto', detail=False,
         output = generate_report_from_inputs(
             fund_code, end_dt.year, quarter, data_ctx, inputs,
             past_comments=past_comments, detail=detail, model=model,
+            start_date=start_dt, end_date=end_dt,
         )
         path = _save_report_json(fund_code, label, start_dt, end_dt, quarter,
                                  data_ctx, inputs, output)
@@ -657,6 +658,7 @@ def build_report(fund_code, period_info, mode='auto', detail=False,
     output = generate_report_from_inputs(
         fund_code, end_dt.year, quarter, data_ctx, inputs,
         past_comments=past_comments, detail=detail, model=model,
+        start_date=start_dt, end_date=end_dt,
     )
 
     # ── 저장 ──

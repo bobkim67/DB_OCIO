@@ -2817,7 +2817,8 @@ def run(year=2026, month=2, use_llm=False):
 # ═══════════════════════════════════════════════════════
 
 def build_report_prompt(fund_code, year, quarter, data_ctx, inputs,
-                        past_comments=None, detail=False):
+                        past_comments=None, detail=False,
+                        start_date=None, end_date=None):
     """inputs dict + data_ctx → LLM 프롬프트 빌드.
 
     Parameters
@@ -2828,11 +2829,17 @@ def build_report_prompt(fund_code, year, quarter, data_ctx, inputs,
     inputs : dict    — keys: market_view, position_rationale, outlook, risk, additional
     past_comments : list[dict] | None — [{file, code, text}, ...]
     detail : bool — True면 과거 코멘트 few-shot 상세 양식
+    start_date, end_date : date | None — 분석 기간. None이면 분기 기준 fallback.
     """
     cfg = FUND_CONFIGS.get(fund_code, {})
     fmt = cfg.get('format', 'C')
     _, end_month = _quarter_dates(year, quarter)
-    q_label = f'{quarter}분기'
+
+    # 기간 레이블: start_date/end_date 그대로 사용
+    if start_date and end_date:
+        period_desc = f'{start_date} ~ {end_date}'
+    else:
+        period_desc = f'{year}년 {quarter}분기'
 
     # BM 테이블
     bm = data_ctx.get('bm', {})
@@ -2852,7 +2859,7 @@ def build_report_prompt(fund_code, year, quarter, data_ctx, inputs,
 
     # 펀드 성과
     fund_ret = data_ctx.get('fund_ret')
-    fund_data = f'펀드 {q_label} 수익률: {fund_ret["return"]:+.2f}%' if fund_ret else '데이터 없음'
+    fund_data = f'펀드 수익률 ({period_desc}): {fund_ret["return"]:+.2f}%' if fund_ret else '데이터 없음'
     sub_text = ''
     if fund_ret and fund_ret.get('sub_returns'):
         parts = [f'{k}: {v:+.2f}%' for k, v in fund_ret['sub_returns'].items()]
@@ -2903,7 +2910,7 @@ def build_report_prompt(fund_code, year, quarter, data_ctx, inputs,
     fund_comments = [c for c in past_comments if c['code'] == fund_code]
     if fund_comments:
         latest = fund_comments[-1]
-        past_sample = f'\n\n## 과거 코멘트 문체 참고 ({latest["file"]})\n아래 과거 코멘트의 톤, 구조, 표현 방식을 참고하되 내용은 현 분기 데이터와 운용역 판단만 사용하세요.\n\n{latest["text"][:1500]}'
+        past_sample = f'\n\n## 과거 코멘트 문체 참고 ({latest["file"]})\n아래 과거 코멘트의 톤, 구조, 표현 방식을 참고하되 내용은 현재 분석 기간 데이터와 운용역 판단만 사용하세요.\n\n{latest["text"][:1500]}'
 
     # 포지션 제약
     constraint_text = ''
@@ -2932,7 +2939,7 @@ def build_report_prompt(fund_code, year, quarter, data_ctx, inputs,
     if detail and fund_comments:
         format_sample = fund_comments[-1]['text'][:3000]
         format_instruction = """## 양식 샘플 (이 구조와 톤을 정확히 따르세요)
-아래는 이전 월의 실제 보고서입니다. 동일한 섹션 구조, 번호 체계(1/2, -, ㅇ, ①②③, A.B.C.), 톤을 따르되 내용은 현 분기 데이터만 사용하세요.
+아래는 이전 기간의 실제 보고서입니다. 동일한 섹션 구조, 번호 체계(1/2, -, ㅇ, ①②③, A.B.C.), 톤을 따르되 내용은 현재 분석 기간 데이터만 사용하세요.
 성과요인분해 테이블, SAA대비 운용현황 테이블은 데이터가 제공된 경우에만 작성하세요.
 
 """ + format_sample
@@ -2944,7 +2951,8 @@ def build_report_prompt(fund_code, year, quarter, data_ctx, inputs,
         format_markers = '[운용경과], [운용계획] 같은 섹션 구분자와 들여쓰기만 사용하세요. 순수 텍스트 문단으로 작성하세요.'
 
     prompt = f"""당신은 DB형 퇴직연금 OCIO 운용보고서 코멘트 작성자입니다.
-아래 데이터와 운용역 인터뷰 응답을 바탕으로 {year}년 {q_label} 운용보고 코멘트를 작성하세요.
+아래 데이터와 운용역 인터뷰 응답을 바탕으로 분석 기간 {period_desc}의 운용보고 코멘트를 작성하세요.
+"분기", "월간" 등의 표현은 실제 분석 기간에 맞춰 사용하세요. 기간이 1개월이면 "월간/당월"로, 분기면 "분기 중"으로 서술하세요.
 
 ## 작성 규칙 — 문체
 1. 경어체 사용 ("~하였습니다", "~예상합니다", "~계획입니다")
@@ -2965,7 +2973,7 @@ def build_report_prompt(fund_code, year, quarter, data_ctx, inputs,
 
 {format_instruction}
 
-## 벤치마크 {q_label} 수익률
+## 벤치마크 수익률 ({period_desc})
 {bm_table}
 
 ## 펀드 데이터
@@ -2975,16 +2983,16 @@ def build_report_prompt(fund_code, year, quarter, data_ctx, inputs,
 ## PA 자산군별 기여도
 {pa_table}
 
-## 분기 비중 변화
+## 기간 비중 변화
 {diff_table}
 
-## 펀드 보유 자산 비중 (분기말)
+## 펀드 보유 자산 비중 (기간말)
 {hold_table}
 
 ## 운용역 판단 (반드시 반영)
 {input_text}{constraint_text}{past_sample}{pattern_text}
 
-위 포맷과 동일한 구조, 톤, 분량으로 {fund_code} {q_label} 보고서를 작성하세요.
+위 포맷과 동일한 구조, 톤, 분량으로 {fund_code} ({period_desc}) 보고서를 작성하세요.
 수치는 반드시 제공된 데이터만 사용하세요."""
 
     return prompt
@@ -2992,12 +3000,14 @@ def build_report_prompt(fund_code, year, quarter, data_ctx, inputs,
 
 def generate_report_from_inputs(fund_code, year, quarter, data_ctx, inputs,
                                 past_comments=None, detail=False,
-                                model=None):
+                                model=None,
+                                start_date=None, end_date=None):
     """inputs + data → 프롬프트 빌드 → LLM 호출 → (comment, cost) 반환.
 
     Parameters
     ----------
     model : str | None — 기본값 LLM_MODEL (claude-sonnet-4-6)
+    start_date, end_date : date | None — 분석 기간. None이면 분기 기준 fallback.
     """
     if model is None:
         model = LLM_MODEL
@@ -3005,6 +3015,7 @@ def generate_report_from_inputs(fund_code, year, quarter, data_ctx, inputs,
     prompt = build_report_prompt(
         fund_code, year, quarter, data_ctx, inputs,
         past_comments=past_comments, detail=detail,
+        start_date=start_date, end_date=end_date,
     )
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
