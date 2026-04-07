@@ -18,33 +18,40 @@ python -m streamlit run prototype.py --server.port 8505 &
 
 Streamlit은 `session_state`에 이전 위젯 값을 유지하므로 **코드만 수정하고 브라우저 새로고침하면 반영 안 됨**. 반드시 프로세스 kill 후 새 브라우저 탭으로 접속.
 
-## 2026-04-01 Status Update
+## 2026-04-07 Status Update
 
 ### Current Priorities
 
-- Comment engine v2: PA 기여도 중심 + 매크로 오버뷰 2종 코멘트 지원.
-- 종목별 비중/Normalized수익률 계산 로직을 R(`General_Backtest/04_사후분석/`) 기준으로 정밀화.
+- Comment engine v3: CLI 통합 완료, 교차 분석 레이어 구축 예정.
+- 시계열+뉴스 날짜 매칭으로 "왜 이 가격에 이 시점에" 코멘트 품질 개선.
 - Keep `modules/data_loader.py` as a shared-infra file with single-owner edits.
 
 ### Important Current State
 
 - **펀드 8개 운용**: 08P22, 08N81, 08N33, 07G04, 2JM23, 07G02, 07G03, 4JM12.
 - Tab modules: `tabs/overview.py`, `tabs/holdings.py`, `tabs/brinson.py`, `tabs/macro.py`, `tabs/report.py`, `tabs/admin.py`.
-- `tabs/report.py`는 `render_pa()`(운용보고 탭)와 `render_macro()`(운용보고(전체) 탭) 두 함수 제공.
+- `tabs/report.py`는 순수 JSON 뷰어 (LLM 호출 없음, market_research import 없음).
 - `prototype.py` 탭 구조: Overview / 편입종목 / 성과분석 / 매크로 / **운용보고** / **운용보고(전체)** / Admin.
 
-### Comment Engine v2 파이프라인
+### Comment Engine v3 파이프라인
 
 ```
 [배치 — 월 1회]
 블로그 digest → enriched_digest_builder → 뉴스 벡터DB 교차검증
-뉴스 3,100건 → news_content_pool_builder → KMeans 클러스터링 → Haiku 한국어 요약
-               report_cache_builder → 펀드별 cache v2 (PA + 매크로 factor_data)
-                 --force 없으면 enriched_digest/news_pool skip (임베딩 재실행 방지)
+뉴스 → news_content_pool_builder → KMeans 클러스터링 → Haiku 한국어 요약
+       report_cache_builder → 펀드별 cache v2 (factor_data)
 
-[UI — 온디맨드]
-운용보고 탭:      PA 기여도 중심 팩터 선택 → Opus 코멘트 생성
-운용보고(전체) 탭: 매크로 시장현황 Opus 자동 생성 (팩터 선택 없이)
+[CLI — report_cli.py]
+build (대화형/자동):
+  → debate 4인 에이전트 → inputs 자동 생성
+  → compute_single_port_pa (R동일 PA) → BM 시계열 패턴
+  → LLM 코멘트 생성 → JSON 저장
+
+build --edit:
+  → debate → draft JSON → VS Code 오픈 → 수정 → 재생성
+
+[Streamlit — 순수 뷰어]
+tabs/report.py: JSON 읽기 → 코멘트 표시 → 데이터 테이블
 ```
 
 ### 신규 파일 (comment engine v2)
