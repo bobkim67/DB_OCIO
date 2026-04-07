@@ -19,180 +19,31 @@ import anthropic
 if sys.stdout.encoding != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent  # market_research/
 OUTPUT_DIR = BASE_DIR / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
 DIGEST_DIR = BASE_DIR / "data" / "monygeek" / "monthly_digests"
 
-# ── Claude API ──
-ANTHROPIC_API_KEY = 'REMOVED'
-LLM_MODEL = 'claude-sonnet-4-6'  # 비용 효율적
+# ── core/ 에서 공유 설정 임포트 ──
+from market_research.core.db import DB_CONFIG, get_conn as _get_conn_core, parse_blob as _parse_blob_core
+from market_research.core.benchmarks import BENCHMARK_MAP
+from market_research.core.constants import FUND_CONFIGS, ANTHROPIC_API_KEY, LLM_MODEL, PA_CLASSIFICATION_RULES
 
 
 # ═══════════════════════════════════════════════════════
 # 1. 설정
 # ═══════════════════════════════════════════════════════
 
-DB_CONFIG = dict(
-    host='192.168.195.55', user='solution', password='Solution123!',
-    charset='utf8mb4', cursorclass=pymysql.cursors.DictCursor
-)
-
-# ── 펀드별 설정 ──
-FUND_CONFIGS = {
-    '08P22': {
-        'format': 'A',
-        'target_return': 5.0,
-        'philosophy': '분산투자에 초점을 두는 한편, 기대수익률이 높은 미국 성장주와 금의 비중을 상대적으로 높게 가져가고 있습니다.',
-        'name': '08P22',
-    },
-    '08N81': {
-        'format': 'A',
-        'target_return': 8.0,
-        'philosophy': '분산투자에 초점을 두는 한편, 기대수익률이 높은 미국 성장주와 금의 비중을 상대적으로 높게 가져가고 있습니다.',
-        'name': '08N81',
-    },
-    '08N33': {
-        'format': 'A',
-        'target_return': 6.0,
-        'philosophy': '분산투자에 초점을 두는 한편, 기대수익률이 높은 미국 성장주와 금의 비중을 상대적으로 높게 가져가고 있습니다.',
-        'name': '08N33',
-    },
-    '07G04': {
-        'format': 'C',
-        'target_return': None,
-        'philosophy': (
-            '미국 성장주 + 국내채권(장기) + 금의 3축 구조로 운용하며, '
-            '금은 성장주의 하방 리스크를 헷지하는 상호보완 역할을 수행합니다. '
-            '경기 팽창 국면 판단에 따라 소폭 주식 오버웨이트, 채권 언더웨이트 포지션을 유지합니다. '
-            '주식은 미국 성장주 중심이나, AI Capex ROI 우려와 유가발 인플레이션 부담을 감안해 '
-            '국내주식(반도체 이익모멘텀 유효, KOSPI 선행 PER 저평가)으로 일부 전환을 추진 중입니다. '
-            '채권은 미국·한국 장기채 금리 스프레드 과축소 구간에서 미국 장기채 → 국내 장기채 전환을 진행하며, '
-            '추가 자금 유입 시 국고채 비중을 우선 확대할 계획입니다. '
-            '듀레이션은 지정학적 리스크의 인플레이션 영향을 모니터링하며 탄력적으로 조정합니다.'
-        ),
-        'position_constraints': (
-            '고배당, 가치주 포지션 언급 금지. 펀드 컨셉(성장주+국내채권+금)에 맞지 않는 자산군 추천 금지. '
-            '포지션 변경은 반드시 펀드 운용철학과 일치해야 함.'
-        ),
-        'name': '07G04',
-        'sub_portfolios': {
-            '인컴추구': '07G02',
-            '수익추구': '07G03',
-        },
-        'sub_ratio': '1:1',
-    },
-    '2JM23': {
-        'format': 'D',
-        'target_return': None,
-        'philosophy': (
-            '절대수익을 추구하는 글로벌자산배분펀드로서 기대수익률이 높고, '
-            '분산투자효과가 큰 자산들로 구성되어 있으며, '
-            '잦은 매매보다는 수시리밸런싱을 통한 allocation alpha 창출에 집중합니다. '
-            '미국 성장주와 금의 비중을 상대적으로 높게 가져가고 있습니다.'
-        ),
-        'position_constraints': '고배당, 가치주 포지션 언급 금지. 펀드 컨셉(성장주+금+분산투자)에 맞지 않는 자산군 추천 금지.',
-        'name': '2JM23',
-    },
-    '07G02': {
-        'format': 'A',
-        'target_return': 5.0,
-        'philosophy': '인컴 수익을 추구하며, 국내외 채권과 배당주를 중심으로 안정적인 현금흐름 확보에 초점을 두고 있습니다.',
-        'name': '07G02',
-    },
-    '07G03': {
-        'format': 'A',
-        'target_return': 7.0,
-        'philosophy': '성장 자산에 대한 적극적 배분을 통해 중장기 자본이득 극대화를 추구하고 있습니다.',
-        'name': '07G03',
-    },
-    '4JM12': {
-        'format': 'D',
-        'target_return': None,
-        'philosophy': (
-            '미국 성장주 위주의 주식 비중 확대 포지션과 채권 내 바벨 포지션(중기 회사채 + 장기국고채)을 유지합니다. '
-            '성장주와의 분산투자효과가 높은 금에 대한 노출도를 확보하고 있습니다.'
-        ),
-        'position_constraints': '고배당, 가치주 포지션 언급 금지. 펀드 컨셉(성장주+바벨채권+금)에 맞지 않는 자산군 추천 금지.',
-        'name': '4JM12',
-    },
-}
-
-# ── 벤치마크 매핑 (32개 자산군) ──
-BENCHMARK_MAP = {
-    # 주식
-    '글로벌주식':         {'dataset_id': 35,  'ds_id': 39, 'category': '주식'},
-    'KOSPI':            {'dataset_id': 253, 'ds_id': 9,  'category': '주식'},
-    'KOSPI_PRICE':      {'dataset_id': 253, 'ds_id': 15, 'category': '주식', 'blob_key': 'KRW'},  # Price 지수 (포인트 표시용)
-    'KOSPI200':         {'dataset_id': 225, 'ds_id': 9,  'category': '주식'},
-    'S&P500':           {'dataset_id': 271, 'ds_id': 6,  'category': '주식'},
-    '미국성장주':         {'dataset_id': 237, 'ds_id': 6,  'category': '주식'},
-    '미국가치주':         {'dataset_id': 238, 'ds_id': 6,  'category': '주식'},
-    'Russell2000':      {'dataset_id': 338, 'ds_id': 9,  'category': '주식'},
-    '고배당':            {'dataset_id': 275, 'ds_id': 9,  'category': '주식'},
-    '미국외선진국':       {'dataset_id': 339, 'ds_id': 9,  'category': '주식'},
-    '신흥국주식':         {'dataset_id': 340, 'ds_id': 9,  'category': '주식'},
-    # 채권
-    '글로벌채권UH':      {'dataset_id': 58,  'ds_id': 39, 'category': '채권'},
-    '글로벌채권H':       {'dataset_id': 58,  'ds_id': 44, 'category': '채권'},
-    '글로벌채권HKRW':    {'dataset_id': 256, 'ds_id': 9,  'category': '채권'},
-    '매경채권국채3년':     {'dataset_id': 422, 'ds_id': 9,  'category': '채권'},
-    'KRX10년채권':       {'dataset_id': 421, 'ds_id': 9,  'category': '채권'},
-    'KAP종합채권':       {'dataset_id': 257, 'ds_id': 9,  'category': '채권'},
-    '미국종합채권':       {'dataset_id': 278, 'ds_id': 6,  'category': '채권'},
-    '미국IG':           {'dataset_id': 233, 'ds_id': 6,  'category': '채권'},
-    '미국HY':           {'dataset_id': 234, 'ds_id': 6,  'category': '채권'},
-    '신흥국채권':         {'dataset_id': 244, 'ds_id': 9,  'category': '채권'},
-    # 대체
-    'Gold':             {'dataset_id': 408, 'ds_id': 48, 'category': '대체'},
-    'WTI':              {'dataset_id': 98,  'ds_id': 15, 'category': '대체'},
-    '미국리츠':          {'dataset_id': 317, 'ds_id': 6,  'category': '대체'},
-    '원자재종합':         {'dataset_id': 235, 'ds_id': 9,  'category': '대체'},
-    # 통화
-    'DXY':              {'dataset_id': 105, 'ds_id': 6,  'category': '통화'},
-    'EMCI':             {'dataset_id': 419, 'ds_id': 48, 'category': '통화'},
-    'EURUSD':           {'dataset_id': 359, 'ds_id': 48, 'category': '통화'},
-    'JPYUSD':           {'dataset_id': 365, 'ds_id': 48, 'category': '통화'},
-    'GBPUSD':           {'dataset_id': 360, 'ds_id': 48, 'category': '통화'},
-    'CADUSD':           {'dataset_id': 372, 'ds_id': 48, 'category': '통화'},
-    'AUDUSD':           {'dataset_id': 371, 'ds_id': 48, 'category': '통화'},
-    'USDKRW':           {'dataset_id': 31,  'ds_id': 6,  'category': '통화'},
-}
-
-# ── PA ASSET_GB → 코멘트 자산군 매핑 키워드 ──
-PA_CLASSIFICATION_RULES = {
-    # (ASSET_GB 포함 키워드, ITEM_NM 포함 키워드) → 코멘트 자산군
-    '보수': '보수비용',
-    '비용': '보수비용',
-    '유동': '유동성',
-}
-
-
 # ═══════════════════════════════════════════════════════
-# 2. 데이터 로딩
+# 2. 데이터 로딩 — core/ 래퍼
 # ═══════════════════════════════════════════════════════
 
 def _get_conn(db='SCIP'):
-    return pymysql.connect(db=db, **DB_CONFIG)
+    return _get_conn_core(db)
 
 
 def _parse_blob(blob, blob_key=None):
-    """SCIP data blob 파싱"""
-    if isinstance(blob, (bytes, bytearray)):
-        s = blob.decode('utf-8')
-    else:
-        s = str(blob)
-    s = s.strip()
-    if s.startswith('{'):
-        obj = json.loads(s)
-        if isinstance(obj, dict):
-            if blob_key:
-                return float(obj.get(blob_key, obj.get(list(obj.keys())[0])))
-            return {k: float(v) for k, v in obj.items()}
-    try:
-        return float(s.replace(',', '').replace('"', ''))
-    except:
-        return None
+    return _parse_blob_core(blob, blob_key)
 
 
 def load_business_days(year, month):
@@ -435,20 +286,6 @@ def load_bm_price_patterns(prev_last_int, cur_last_int, targets=None):
         # 저점 이후 반등 (저점이 기간 후반 30% 이전에 있을 때만)
         rebound = end_d['return'] - low_d['return'] if min_idx < len(daily) - 1 else 0
 
-        # 패턴 판별
-        if low_d['return'] < -5 and rebound > 3:
-            pattern = 'V자반등'
-        elif high_d['return'] > 5 and end_d['return'] < high_d['return'] - 3:
-            pattern = '고점후하락'
-        elif abs(end_d['return']) < 2 and abs(mdd) < 3:
-            pattern = '횡보'
-        elif end_d['return'] > 3:
-            pattern = '우상향'
-        elif end_d['return'] < -3:
-            pattern = '하락'
-        else:
-            pattern = '보합'
-
         results[name] = {
             'low_date': low_d['date'],
             'low_return': round(low_d['return'], 2),
@@ -457,7 +294,6 @@ def load_bm_price_patterns(prev_last_int, cur_last_int, targets=None):
             'end_return': round(end_d['return'], 2),
             'mdd': round(mdd, 2),
             'rebound': round(rebound, 2),
-            'pattern': pattern,
         }
 
     return results
@@ -2917,23 +2753,28 @@ def build_report_prompt(fund_code, year, quarter, data_ctx, inputs,
     if cfg.get('position_constraints'):
         constraint_text = f'\n\n## 포지션 제약 (반드시 준수)\n{cfg["position_constraints"]}'
 
-    # 기간 내 가격 패턴 (저점/반등/MDD)
+    # 시계열 내러티브 (교차 분석 레이어)
+    narrative_text = ''
+    narrative = data_ctx.get('timeseries_narrative', '')
+    if narrative:
+        narrative_text = f'\n\n{narrative}\n위 시계열 변동은 기간 내 실제 가격 움직임과 관련 뉴스입니다. 주요 변곡점(급락→반등 등)이 있으면 "~와 맞물려", "~속에서" 등 표현으로 코멘트에 반영하세요. 인과관계를 단정하지 마세요.'
+
+    # 기간 내 가격 패턴 (저점/반등/MDD) — 통계만 제공, 패턴 라벨 제거
     pattern_text = ''
     patterns = data_ctx.get('price_patterns', {})
     notable = {k: v for k, v in patterns.items()
-               if v.get('pattern') in ('V자반등', '고점후하락', '하락') or abs(v.get('mdd', 0)) > 5}
+               if abs(v.get('mdd', 0)) > 5 or abs(v.get('end_return', 0)) > 5}
     if notable:
         p_lines = []
         for name, p in notable.items():
             p_lines.append(
-                f'  {name}: {p["pattern"]} — '
+                f'  {name}: '
                 f'저점 {p["low_date"]}({p["low_return"]:+.1f}%), '
                 f'고점 {p["high_date"]}({p["high_return"]:+.1f}%), '
                 f'MDD {p["mdd"]:.1f}%, 반등 {p["rebound"]:+.1f}%, '
                 f'기간종료 {p["end_return"]:+.1f}%'
             )
-        pattern_text = '\n\n## 기간 내 가격 패턴 (저점/반등 등 주요 변곡점)\n' + '\n'.join(p_lines)
-        pattern_text += '\n위 패턴은 기간 내 실제 가격 변동입니다. 저점 후 반등, 고점 후 하락 등 변곡점이 있으면 코멘트에 반영하세요.'
+        pattern_text = '\n\n## 기간 내 가격 통계 (저점/고점/MDD)\n' + '\n'.join(p_lines)
 
     # 양식 결정
     if detail and fund_comments:
@@ -2990,7 +2831,7 @@ def build_report_prompt(fund_code, year, quarter, data_ctx, inputs,
 {hold_table}
 
 ## 운용역 판단 (반드시 반영)
-{input_text}{constraint_text}{past_sample}{pattern_text}
+{input_text}{constraint_text}{past_sample}{narrative_text}{pattern_text}
 
 위 포맷과 동일한 구조, 톤, 분량으로 {fund_code} ({period_desc}) 보고서를 작성하세요.
 수치는 반드시 제공된 데이터만 사용하세요."""

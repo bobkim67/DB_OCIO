@@ -37,7 +37,8 @@ def render(ctx):
     try:
         import sys as _sys4
         _sys4.path.insert(0, str(Path(__file__).resolve().parent.parent)) if 'market_research' not in str(_sys4.path) else None
-        from market_research.comment_engine import load_benchmark_period_returns, BENCHMARK_MAP as _BM_MAP
+        from market_research.report.comment_engine import load_benchmark_period_returns
+        from market_research.core.benchmarks import BENCHMARK_MAP as _BM_MAP
         _bm_period = load_benchmark_period_returns()
     except Exception:
         _bm_period = {}

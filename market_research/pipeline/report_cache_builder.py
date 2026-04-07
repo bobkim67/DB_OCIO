@@ -20,7 +20,7 @@ if sys.stdout and sys.stdout.encoding != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 try:
-    from market_research.report_service import FUND_CONFIGS, analyze_report_context
+    from market_research.report.report_service import FUND_CONFIGS, analyze_report_context
 except ModuleNotFoundError:
     import importlib.util
 
@@ -73,7 +73,7 @@ def _build_shared_assets(year: int, month: int, month_dir: Path, force: bool = F
     ed_path = month_dir / "enriched_digest.json"
     if force or not ed_path.exists():
         try:
-            from market_research.enriched_digest_builder import build_enriched_digest
+            from market_research.pipeline.enriched_digest_builder import build_enriched_digest
             print(f"[report_cache] building enriched digest {year}-{month:02d}")
             enriched = build_enriched_digest(year, month)
             if enriched:
@@ -87,7 +87,7 @@ def _build_shared_assets(year: int, month: int, month_dir: Path, force: bool = F
     pool_path = month_dir / "news_content_pool.json"
     if force or not pool_path.exists():
         try:
-            from market_research.news_content_pool_builder import build_news_content_pool
+            from market_research.pipeline.news_content_pool_builder import build_news_content_pool
             print(f"[report_cache] building news content pool {year}-{month:02d}")
             pool = build_news_content_pool(year, month)
             if pool:

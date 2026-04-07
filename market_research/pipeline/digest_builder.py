@@ -31,11 +31,11 @@ DIGEST_DIR = BASE_DIR / 'data' / 'monygeek' / 'monthly_digests'
 # engine.py 에서 TOPIC_KEYWORDS 임포트
 # ═══════════════════════════════════════════════════════
 try:
-    from market_research.engine import TOPIC_KEYWORDS
+    from market_research.analyze.engine import TOPIC_KEYWORDS
 except ImportError:
     # 직접 실행 시 fallback
     sys.path.insert(0, str(BASE_DIR.parent))
-    from market_research.engine import TOPIC_KEYWORDS
+    from market_research.analyze.engine import TOPIC_KEYWORDS
 
 # ═══════════════════════════════════════════════════════
 # 토픽 → 자산군 매핑

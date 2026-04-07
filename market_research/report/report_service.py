@@ -49,7 +49,7 @@ def _get_news_vectordb_module():
 
 
 try:
-    from market_research.comment_engine import (  # noqa: E402
+    from market_research.report.comment_engine import (  # noqa: E402
         ANTHROPIC_API_KEY,
         FUND_CONFIGS,
         _build_llm_prompt,

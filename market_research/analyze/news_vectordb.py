@@ -42,8 +42,12 @@ def _get_model():
         _tqdm_std.tqdm.status_printer = _safe_status_printer
 
         os.environ['HF_HUB_DISABLE_PROGRESS_BARS'] = '1'
+        os.environ['HF_HUB_DISABLE_IMPLICIT_TOKEN'] = '1'
         logging.getLogger('transformers').setLevel(logging.ERROR)
         logging.getLogger('sentence_transformers').setLevel(logging.ERROR)
+        logging.getLogger('huggingface_hub').setLevel(logging.ERROR)
+        import warnings
+        warnings.filterwarnings('ignore', message='.*unauthenticated.*HF Hub.*')
 
         _model = SentenceTransformer('all-MiniLM-L6-v2', device='cpu')
     return _model

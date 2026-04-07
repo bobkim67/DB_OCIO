@@ -12,7 +12,6 @@
 """
 
 import argparse
-import importlib.util
 import json
 import sys
 import os
@@ -27,7 +26,7 @@ if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
 from datetime import date
 from dateutil.relativedelta import relativedelta
 
-from market_research.comment_engine import (
+from market_research.report.comment_engine import (
     FUND_CONFIGS,
     ANTHROPIC_API_KEY,
     _quarter_dates,
@@ -49,9 +48,6 @@ CACHE_DIR = BASE_DIR / 'data' / 'report_cache'
 COMMENTS_DIR = BASE_DIR.parent / 'comments'
 OUTPUT_DIR = BASE_DIR / 'output'
 OUTPUT_DIR.mkdir(exist_ok=True)
-
-# insight-engine 워크트리 경로 (debate_engine 임포트용)
-_INSIGHT_DIR = BASE_DIR.parent.parent / 'DB_OCIO_Webview_insight'
 
 # 관련 펀드 코드 매핑 (과거 코멘트 로드용)
 _RELATED_FUNDS = {
@@ -225,18 +221,28 @@ def _load_data(fund_code, start_dt, end_dt, label='', fx_split=False):
     price_patterns = load_bm_price_patterns(prev_bday, end_int)
     print(' 패턴', end='', flush=True)
 
+    # 시계열 내러티브 (교차 분석 레이어)
+    timeseries_narrative = ''
+    try:
+        from market_research.report.timeseries_narrator import build_report_narrative
+        timeseries_narrative = build_report_narrative(start_dt, end_dt, pa_result=pa_result)
+        print(' 내러티브', end='', flush=True)
+    except Exception as e:
+        print(f'\n  [timeseries_narrator] 오류: {e}', end='', flush=True)
+
     print(' 완료\n')
 
     # 콘솔 요약
     _print_data_summary(bm, fund_ret, pa, holdings_diff)
+    _print_sec_summary(pa_result)
 
     # 주요 패턴 출력
     notable = {k: v for k, v in price_patterns.items()
-               if v.get('pattern') in ('V자반등', '고점후하락', '하락') or abs(v.get('mdd', 0)) > 5}
+               if abs(v.get('mdd', 0)) > 5 or abs(v.get('end_return', 0)) > 5}
     if notable:
-        print('\n── 기간 내 주요 패턴 ──')
+        print('\n── 기간 내 주요 변동 ──')
         for name, p in notable.items():
-            print(f'  {name:16s} {p["pattern"]:6s} | 저점 {p["low_date"]} ({p["low_return"]:+.1f}%) '
+            print(f'  {_pad_kr(name, 14)} 저점 {p["low_date"]} ({p["low_return"]:+.1f}%) '
                   f'→ 종료 {p["end_return"]:+.1f}% | MDD {p["mdd"]:.1f}% | 반등 {p["rebound"]:+.1f}%')
 
     return {
@@ -245,7 +251,15 @@ def _load_data(fund_code, start_dt, end_dt, label='', fx_split=False):
         'holdings_diff': holdings_diff,
         'price_patterns': price_patterns,
         'pa_result': pa_result,  # sec_summary 등 상세 데이터 보존
+        'timeseries_narrative': timeseries_narrative,
     }
+
+
+def _pad_kr(text, width):
+    """한글 포함 문자열을 고정폭으로 패딩. 한글=2칸, ASCII=1칸."""
+    import unicodedata
+    w = sum(2 if unicodedata.east_asian_width(c) in ('W', 'F') else 1 for c in text)
+    return text + ' ' * max(0, width - w)
 
 
 def _print_data_summary(bm, fund_ret, pa, holdings_diff):
@@ -257,7 +271,7 @@ def _print_data_summary(bm, fund_ret, pa, holdings_diff):
         ret = info.get('return')
         if ret is not None:
             lv = f'  ({info.get("level", 0):,.1f})' if info.get('level') else ''
-            print(f'  {name:16s} {ret:+7.2f}%{lv}')
+            print(f'  {_pad_kr(name, 14)} {ret:+7.2f}%{lv}')
 
     print('\n── 펀드 성과 ──')
     if fund_ret:
@@ -267,15 +281,38 @@ def _print_data_summary(bm, fund_ret, pa, holdings_diff):
             print(f'  서브: {", ".join(parts)}')
 
     print('\n── PA 기여도 ──')
-    for cls in ['국내주식', '해외주식', '국내채권', '해외채권', '대체투자', '유동성', '보수비용']:
+    for cls in ['국내주식', '해외주식', '국내채권', '해외채권', '대체투자', 'FX', '유동성', '보수비용']:
         if cls in pa and abs(pa[cls]) >= 0.01:
-            print(f'  {cls:8s} {pa[cls]:+6.2f}%')
+            print(f'  {_pad_kr(cls, 8)} {pa[cls]:+6.2f}%')
 
     if holdings_diff:
-        print('\n── 비중 변화 (2%p 이상) ──')
+        print('\n── 비중 변화 (1%p 이상) ──')
         for d in holdings_diff:
             arrow = '▲' if d['change'] > 0 else '▼'
-            print(f'  {d["asset_class"]:8s} {d["prev"]:5.1f}% → {d["cur"]:5.1f}% ({d["change"]:+.1f}%p {arrow})')
+            print(f'  {_pad_kr(d["asset_class"], 8)} {d["prev"]:5.1f}% → {d["cur"]:5.1f}% ({d["change"]:+.1f}%p {arrow})')
+
+
+def _print_sec_summary(pa_result):
+    """종목별 비중 + 기여수익률 + 개별수익률 출력."""
+    sec = pa_result.get('sec_summary')
+    if sec is None or sec.empty:
+        return
+
+    df = sec.copy()
+    df = df[df['순자산비중'].abs() >= 0.001].copy()
+    df.sort_values('기여수익률', ascending=False, key=abs, inplace=True)
+
+    print(f'\n── 종목별 상세 ──')
+    #             36칸              6칸    6칸     7칸     자산군
+    print(f'  {_pad_kr("종목명", 36)}  비중   기여   수익률  자산군')
+    print(f'  {"─" * 68}')
+    for _, row in df.iterrows():
+        name = str(row.get('종목명', row.get('종목코드', '')))[:30]
+        weight = row['순자산비중'] * 100
+        contrib = row['기여수익률'] * 100
+        ret = row['개별수익률'] * 100
+        asset = row.get('자산군', '')
+        print(f'  {_pad_kr(name, 36)}{weight:5.1f}% {contrib:+5.2f}% {ret:+6.2f}%  {asset}')
 
 
 # ═══════════════════════════════════════════════════════
@@ -306,22 +343,9 @@ def _run_debate(year, quarter):
     """debate 엔진 실행 → 분기 마지막 월 기준."""
     _, end_month = _quarter_dates(year, quarter)
     try:
-        debate_path = _INSIGHT_DIR / 'market_research' / 'debate_engine.py'
-        if not debate_path.exists():
-            print(f'  [경고] debate_engine.py 없음: {debate_path}')
-            return None
-        spec = importlib.util.spec_from_file_location('debate_engine', debate_path)
-        mod = importlib.util.module_from_spec(spec)
-        # insight 워크트리의 market_research를 sys.path 최상단에 추가
-        # (main 워크트리의 market_research보다 먼저 검색되도록)
-        insight_mr = str(_INSIGHT_DIR / 'market_research')
-        if insight_mr not in sys.path:
-            sys.path.insert(0, insight_mr)
-        if str(_INSIGHT_DIR) not in sys.path:
-            sys.path.insert(0, str(_INSIGHT_DIR))
-        spec.loader.exec_module(mod)
+        from market_research.report.debate_engine import run_market_debate
         print(f'\n  debate 실행 중 ({year}-{end_month:02d})...', flush=True)
-        result = mod.run_market_debate(year, end_month)
+        result = run_market_debate(year, end_month)
         print(f'  debate 완료')
         return result
     except Exception as e:
@@ -643,7 +667,10 @@ def build_report(fund_code, period_info, mode='auto', detail=False,
         print(f'  (market_view, position_rationale, outlook, risk, additional)')
         print(f'  {"─" * 50}')
         os.system(f'code "{draft_path}"')
-        input('  수정 완료 후 Enter...')
+        confirm = input('  수정 완료 후 Enter (b=중단)... ').strip().lower()
+        if confirm == 'b':
+            print('  중단됨.')
+            return None
 
         # 수정된 JSON 재읽기
         edited = _load_report_json(label, fund_code)
@@ -651,6 +678,12 @@ def build_report(fund_code, period_info, mode='auto', detail=False,
             inputs = edited.get('inputs', inputs)
             inputs['source'] = 'user'
             print(f'  inputs 업데이트 완료 (source=user)')
+
+    # ── LLM 호출 전 최종 확인 ──
+    confirm = input('\n  코멘트 생성 진행? (Enter=진행, b=중단) ').strip().lower()
+    if confirm == 'b':
+        print('  중단됨.')
+        return None
 
     # ── 코멘트 생성 ──
     past_comments = _load_past_comments(fund_code)

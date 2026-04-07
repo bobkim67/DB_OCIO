@@ -7,6 +7,11 @@ Thumbs.db
 .bkit/
 .claude/
 
+# market_research data (뉴스, 벡터DB, 캐시 등)
+market_research/data/
+market_research/output/
+market_research/devlog/
+
 # Large files exceeding GitHub 100MB limit
 General_Backtest/.RData
 MP_monitoring/.RData

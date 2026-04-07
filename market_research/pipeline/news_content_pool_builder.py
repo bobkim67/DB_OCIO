@@ -44,7 +44,7 @@ def _clean_html(text: str) -> str:
 def _get_embedding_model():
     """sentence-transformers 모델 (news_vectordb와 공유)"""
     try:
-        from market_research.news_vectordb import _get_model
+        from market_research.analyze.news_vectordb import _get_model
         return _get_model()
     except ImportError:
         import importlib.util
@@ -95,7 +95,7 @@ def _haiku_summarize_themes(themes: list[dict]) -> list[dict]:
         ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY')
         if not ANTHROPIC_API_KEY:
             try:
-                from market_research.comment_engine import ANTHROPIC_API_KEY
+                from market_research.core.constants import ANTHROPIC_API_KEY
             except ImportError:
                 import importlib.util
                 spec = importlib.util.spec_from_file_location(
