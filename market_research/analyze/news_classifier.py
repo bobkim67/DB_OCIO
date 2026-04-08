@@ -255,22 +255,11 @@ def _build_classification_prompt(articles: list[dict]) -> str:
 ## 기사 목록
 {chr(10).join(article_lines)}
 
-## 자산 영향도 키 (13개)
-- 4대 자산군: 국내주식, 국내채권, 해외주식, 해외채권
-- 해외채권 세부: 해외채권_USHY(미국HY), 해외채권_USIG(미국IG), 해외채권_EM(이머징)
-- 미국주식 세부: 미국주식_성장(성장주/기술주), 미국주식_가치(가치주/배당주)
-- 원자재: 원자재_금(금/귀금속), 원자재_원유(원유/에너지)
-- 환율: 환율_USDKRW(원달러), 환율_DXY(달러인덱스)
-
 ## 응답 형식 (JSON 배열만, 설명 없이)
 [
-  {{"id": 1, "topics": [{{"topic": "금리", "direction": "negative", "intensity": 7}}], "asset_impact": {{"국내주식": -0.5, "국내채권": -0.8, "해외주식": -0.3, "해외채권": -0.7, "해외채권_USHY": -0.5, "해외채권_USIG": -0.8, "해외채권_EM": -0.4, "미국주식_성장": -0.6, "미국주식_가치": -0.2, "원자재_금": 0.3, "원자재_원유": -0.1, "환율_USDKRW": -0.3, "환율_DXY": 0.4}}}},
-  {{"id": 2, "topics": [], "asset_impact": {{}}}}
-]
-
-asset_impact: 각 자산에 대한 영향도 -1.0(매우 부정) ~ +1.0(매우 긍정).
-- 금융 무관 기사는 빈 객체 {{}}.
-- 관련 없는 자산은 생략 가능 (0.0 취급)."""
+  {{"id": 1, "topics": [{{"topic": "금리", "direction": "negative", "intensity": 7}}]}},
+  {{"id": 2, "topics": []}}
+]"""
 
 
 def _build_narrative_candidate_prompt(articles: list[dict]) -> str:
@@ -310,20 +299,19 @@ def classify_batch(articles: list[dict]) -> list[dict]:
                 a = articles[idx]
                 topics = item.get('topics', [])
                 a['_classified_topics'] = topics
-                # asset impact vector (dict 형식 또는 기존 배열 형식 호환)
-                raw_impact = item.get('asset_impact', {})
-                if isinstance(raw_impact, dict):
-                    a['_asset_impact_vector'] = {
-                        k: float(v) for k, v in raw_impact.items()
-                        if isinstance(v, (int, float)) and abs(float(v)) >= 0.3
-                    }
-                elif isinstance(raw_impact, list):
-                    # 기존 배열 형식 하위 호환
-                    a['_asset_impact_vector'] = {
-                        ai['asset']: ai['impact']
-                        for ai in raw_impact if isinstance(ai, dict)
-                        and abs(ai.get('impact', 0)) >= 0.3
-                    }
+                # asset impact vector — TOPIC_ASSET_SENSITIVITY 룩업으로 계산
+                impact = {}
+                for t in topics:
+                    topic_name = t.get('topic', '')
+                    direction_sign = -1 if t.get('direction') == 'negative' else 1
+                    intensity_scale = t.get('intensity', 5) / 10.0
+                    sensitivity = TOPIC_ASSET_SENSITIVITY.get(topic_name, {})
+                    for asset_key, base_val in sensitivity.items():
+                        score = base_val * direction_sign * intensity_scale
+                        impact[asset_key] = impact.get(asset_key, 0) + score
+                a['_asset_impact_vector'] = {
+                    k: round(v, 2) for k, v in impact.items() if abs(v) >= 0.3
+                }
                 # 기존 asset_class 보존 + 새 분류 적용
                 if topics:
                     a['asset_class_original'] = a.get('asset_class', a.get('category', ''))
