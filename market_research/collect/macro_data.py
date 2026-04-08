@@ -340,110 +340,94 @@ def load_fred_indicators(start_date='2024-01-01'):
 
 
 # ═══════════════════════════════════════════════════════
-# 네이버 금융 뉴스 크롤링
+# 네이버 검색 API 뉴스
 # ═══════════════════════════════════════════════════════
 
+NAVER_CLIENT_ID = '1x0YjgIVXVz68s3Eq6Nz'
+NAVER_CLIENT_SECRET = '7H2crvgQgh'
+
 NAVER_NEWS_QUERIES = {
-    '국내주식': ['KOSPI', '코스피', '반도체', '삼성전자', '외국인+매수'],
-    '국내채권': ['국고채', '금통위', '한국은행+금리', '채권시장'],
-    '원자재':   ['금값', '유가', '원자재'],
-    '통화':     ['원달러', '환율', 'USD'],
+    '국내주식': ['KOSPI 증시', '코스피 외국인', '반도체 삼성전자', 'SK하이닉스 AI'],
+    '국내채권': ['국고채 금리', '금통위 한국은행', '채권시장 수익률'],
+    '해외주식': ['S&P500 나스닥', '미국 증시 Fed', 'AI 빅테크'],
+    '해외채권': ['미국 국채 금리', '하이일드 크레딧'],
+    '원자재':   ['금값 금시세', '유가 WTI 브렌트', '원자재 GSCI'],
+    '통화':     ['원달러 환율', 'USD 달러 강세'],
+    '매크로':   ['CPI 물가', '고용 실업률', 'FOMC 금리'],
 }
 
 
 def load_naver_finance_news():
-    """네이버 금융 시장뉴스 크롤링"""
-    import re
+    """네이버 검색 API로 금융 뉴스 수집 (제목 + 요약 description)"""
+    import re, html as html_mod
     NEWS_DIR_ = Path(__file__).resolve().parent.parent / "data" / "news"
     NEWS_DIR_.mkdir(parents=True, exist_ok=True)
     today = date.today().isoformat()
 
-    print(f"\n── 네이버 금융 뉴스 ({today}) ──")
+    print(f"\n── 네이버 검색 API 뉴스 ({today}) ──")
+
+    headers = {
+        'X-Naver-Client-Id': NAVER_CLIENT_ID,
+        'X-Naver-Client-Secret': NAVER_CLIENT_SECRET,
+    }
 
     all_articles = []
     seen_titles = set()
 
-    # 1) 시장 메인뉴스
-    for page in range(1, 4):
+    def _clean(text):
+        """HTML 태그 + 엔티티 정리"""
+        text = re.sub(r'<[^>]+>', '', text)
+        text = html_mod.unescape(text)
+        return text.strip()
+
+    def _parse_pubdate(pd_str):
+        """'Wed, 08 Apr 2026 09:00:00 +0900' → '2026-04-08'"""
         try:
-            url = f'https://finance.naver.com/news/mainnews.naver?page={page}'
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            resp = urllib.request.urlopen(req, timeout=10)
-            html = resp.read().decode('euc-kr', errors='replace')
+            from email.utils import parsedate_to_datetime
+            dt = parsedate_to_datetime(pd_str)
+            return dt.strftime('%Y-%m-%d'), dt.isoformat()
+        except Exception:
+            return today, f'{today}T00:00:00'
 
-            # 제목 + 링크 추출
-            items = re.findall(
-                r'<dd class="articleSubject">\s*<a[^>]*href="([^"]*)"[^>]*title="([^"]*)"',
-                html, re.DOTALL)
-            for href, title in items:
-                title = title.strip()
-                if not title or title in seen_titles:
-                    continue
-                seen_titles.add(title)
-
-                # 자산군 자동 태깅
-                asset_class = '일반'
-                for ac, keywords in NAVER_NEWS_QUERIES.items():
-                    if any(kw.replace('+', '') in title for kw in keywords):
-                        asset_class = ac
-                        break
-
-                all_articles.append({
-                    'date': today,
-                    'datetime': datetime.now().isoformat(),
-                    'source': '네이버금융',
-                    'asset_class': asset_class,
-                    'symbol': '',
-                    'title': title,
-                    'description': '',
-                    'url': f'https://finance.naver.com{href}' if href.startswith('/') else href,
-                    'provider': 'naver',
-                })
-        except Exception as e:
-            print(f"  시장뉴스 p{page}: 실패 — {e}")
-
-    # 2) 키워드별 검색 (네이버 금융 뉴스 검색)
     for ac, keywords in NAVER_NEWS_QUERIES.items():
         for kw in keywords:
             try:
                 encoded_kw = urllib.parse.quote(kw)
-                url = f'https://finance.naver.com/news/news_search.naver?rcdate=&q={encoded_kw}&x=0&y=0&page=1'
-                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                resp = urllib.request.urlopen(req, timeout=10)
-                html = resp.read().decode('euc-kr', errors='replace')
+                url = f'https://openapi.naver.com/v1/search/news.json?query={encoded_kw}&display=20&sort=date'
+                resp = urllib.request.Request(url, headers={**headers, 'User-Agent': 'Mozilla/5.0'})
+                result = urllib.request.urlopen(resp, timeout=10)
+                data = json.loads(result.read().decode('utf-8'))
 
-                items = re.findall(
-                    r'<dd class="articleSubject">\s*<a[^>]*href="([^"]*)"[^>]*>(.*?)</a>',
-                    html, re.DOTALL)
                 count = 0
-                for href, title in items:
-                    title = re.sub(r'<[^>]+>', '', title).strip()
+                for item in data.get('items', []):
+                    title = _clean(item.get('title', ''))
                     if not title or title in seen_titles or len(title) < 10:
                         continue
                     seen_titles.add(title)
 
-                    # 날짜 추출 시도
-                    date_match = re.search(r'(\d{4}\.\d{2}\.\d{2})', html[html.find(title):html.find(title)+200])
-                    art_date = date_match.group(1).replace('.', '-') if date_match else today
+                    description = _clean(item.get('description', ''))
+                    art_date, art_datetime = _parse_pubdate(item.get('pubDate', ''))
 
                     all_articles.append({
                         'date': art_date,
-                        'datetime': f'{art_date}T00:00:00',
-                        'source': '네이버금융',
+                        'datetime': art_datetime,
+                        'source': '네이버검색',
                         'asset_class': ac,
                         'symbol': '',
                         'title': title,
-                        'description': '',
-                        'url': f'https://finance.naver.com{href}' if href.startswith('/') else href,
+                        'description': description,
+                        'url': item.get('originallink', item.get('link', '')),
                         'provider': 'naver',
                     })
                     count += 1
-                    if count >= 5:
+                    if count >= 10:
                         break
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"  {ac}/{kw}: 실패 — {e}")
 
-    print(f"  수집: {len(all_articles)}건")
+        print(f"  {ac}: {sum(1 for a in all_articles if a['asset_class']==ac)}건")
+
+    print(f"  합계: {len(all_articles)}건")
 
     # 월별 파일에 병합
     month = today[:7]
