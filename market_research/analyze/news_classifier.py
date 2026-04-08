@@ -385,11 +385,30 @@ def classify_month(month_str: str, batch_size: int = 20) -> dict:
 
     print(f'\n── 뉴스 분류: {month_str} ({len(articles)}건) ──')
 
-    # 이미 분류된 기사 스킵 옵션
+    # 이미 분류된 기사 스킵
     to_classify = [a for a in articles if '_classified_topics' not in a]
     already_done = len(articles) - len(to_classify)
     if already_done:
         print(f'  이미 분류됨: {already_done}건, 미분류: {len(to_classify)}건')
+
+    # 날짜×자산군 상위 N건만 분류 (같은 날 같은 자산군 수백 건 중복 방지)
+    MAX_PER_DATE_AC = 50
+    from collections import defaultdict
+    date_ac_count = defaultdict(int)
+    filtered = []
+    skipped = 0
+    # description 긴 순으로 우선 (내용 있는 기사 우선)
+    to_classify.sort(key=lambda a: -len(a.get('description', '')))
+    for a in to_classify:
+        key = (a.get('date', '')[:10], a.get('asset_class', '일반'))
+        if date_ac_count[key] < MAX_PER_DATE_AC:
+            filtered.append(a)
+            date_ac_count[key] += 1
+        else:
+            skipped += 1
+    if skipped:
+        print(f'  날짜×자산군 상한({MAX_PER_DATE_AC}) 초과 스킵: {skipped}건')
+    to_classify = filtered
 
     if not to_classify:
         print(f'  전체 분류 완료')
