@@ -559,14 +559,353 @@ def add_incremental_edges(year: int, month: int, new_articles: list[dict]) -> di
         graph['edges'].extend(inferred)
         graph['edges'] = _dedup_edges(graph['edges'])
 
+    # Self-Regulating TKG: decay → merge → recompute → prune
+    from datetime import date as _date
+    _today = _date.today().isoformat()
+    decay_existing(graph, _today)
+    merge_today(graph, inferred if entity_map else [])
+    recompute_scores(graph)
+    prune_graph(graph)
+
     # 저장
     graph_file.write_text(json.dumps(graph, ensure_ascii=False, indent=2), encoding='utf-8')
     return graph
 
 
 # ═══════════════════════════════════════════════════════
-# CLI
+# 6. Self-Regulating TKG — Decay / Merge / Prune / Seed
 # ═══════════════════════════════════════════════════════
+
+import math
+from datetime import date as _d, datetime as _dt
+
+# ── 토픽 → decay class ──
+TOPIC_DECAY_CLASS = {}
+for _cls, _topics in {
+    'flash': ['비트코인_크립토', '지정학'],
+    'news': ['금리', '달러', '물가', '관세', '안전자산', '미국채',
+             '유가_에너지', '한국_원화', '금', 'AI_반도체'],
+    'structural': ['유로달러', '엔화_캐리', '중국_위안화', '유럽_ECB',
+                   '부동산', '저출산_인구', '이민_노동', '유동성_배관', '통화정책'],
+}.items():
+    for _t in _topics:
+        TOPIC_DECAY_CLASS[_t] = _cls
+HALF_LIFE_DAYS = {'flash': 5, 'news': 14, 'structural': 60}
+MAX_MULTIPLIER = {'flash': 1.5, 'news': 2.0, 'structural': 1.25}
+
+# ── 허브 노드 / 보호 버킷 ──
+HUB_NODES = {'금리', '달러', 'SP500', 'USDKRW', '유가', 'KOSPI', '인플레', '미국채', '환율'}
+CLUSTER_BUCKET = {
+    'rate': ['금리', '미국채', '국채', '채권', 'yield'],
+    'fx': ['달러', '환율', 'USDKRW', 'DXY', '엔화', '위안화', '원화'],
+    'equity': ['주식', 'SP500', 'KOSPI', '나스닥', '기술주', '성장주', '가치주'],
+    'inflation': ['인플레', '물가', 'CPI', 'PPI'],
+    'commodity': ['유가', '금', '원자재', 'WTI', 'gold'],
+}
+
+
+def _get_bucket(node_id: str) -> str:
+    """노드 ID → cluster bucket 매핑"""
+    for bucket, keywords in CLUSTER_BUCKET.items():
+        if any(kw in node_id for kw in keywords):
+            return bucket
+    return 'other'
+
+
+def _days_between(d1: str, d2: str) -> int:
+    """ISO date 문자열 간 일수 차이"""
+    try:
+        return abs((_dt.fromisoformat(d1[:10]) - _dt.fromisoformat(d2[:10])).days)
+    except Exception:
+        return 30
+
+
+def _ensure_edge_fields(edge: dict, today: str):
+    """신규 필드 초���화 (기존 엣지 호환)"""
+    edge.setdefault('confidence', edge.get('weight', 0.5))
+    edge.setdefault('support_count', 1)
+    edge.setdefault('last_seen', today)
+    edge.setdefault('created_at', today)
+    edge.setdefault('obs_bitmap', 1)
+    edge.setdefault('effective_score', 0.0)
+    edge.setdefault('decay_class', TOPIC_DECAY_CLASS.get(
+        edge.get('topic', ''), 'news'))
+    edge.setdefault('protected', False)
+
+
+def decay_existing(graph: dict, today: str):
+    """오늘 관측 안 된 모든 엣지에 토픽별 지수감쇠 + obs_bitmap shift."""
+    for edge in graph.get('edges', []):
+        _ensure_edge_fields(edge, today)
+        if edge.get('protected'):
+            # bitmap만 shift, weight 감쇠 안 함
+            edge['obs_bitmap'] = (edge['obs_bitmap'] << 1) & ((1 << 60) - 1)
+            continue
+
+        days = _days_between(edge['last_seen'], today)
+        if days <= 0:
+            continue  # 오늘 관측된 엣지는 skip
+
+        # obs_bitmap shift
+        edge['obs_bitmap'] = (edge['obs_bitmap'] << days) & ((1 << 60) - 1)
+
+        # 토픽별 반감기 + multiplier
+        cls = edge.get('decay_class', 'news')
+        base_hl = HALF_LIFE_DAYS.get(cls, 14)
+        observed_days = bin(edge['obs_bitmap']).count('1')
+        max_mult = MAX_MULTIPLIER.get(cls, 2.0)
+        multiplier = 1.0 + 0.5 * min(observed_days / 5, max_mult - 1.0)
+        effective_hl = base_hl * multiplier
+
+        lam = math.log(2) / effective_hl
+        edge['weight'] = edge['weight'] * math.exp(-lam * days)
+
+
+def merge_today(graph: dict, new_edges: list[dict]):
+    """오늘 관측된 엣지: 기존 있으면 noisy-or 재상향, 없으면 추가."""
+    today = _d.today().isoformat()
+    existing_map = {}
+    for i, e in enumerate(graph.get('edges', [])):
+        key = (e.get('from', ''), e.get('to', ''))
+        existing_map[key] = i
+
+    for ne in new_edges:
+        key = (ne.get('from', ''), ne.get('to', ''))
+        if key in existing_map:
+            edge = graph['edges'][existing_map[key]]
+            # noisy-or merge
+            w_old = edge['weight']
+            w_new = ne.get('weight', 0.5)
+            edge['weight'] = 1.0 - (1.0 - w_old) * (1.0 - w_new)
+            edge['support_count'] = edge.get('support_count', 1) + 1
+            edge['last_seen'] = today
+            edge['obs_bitmap'] = edge.get('obs_bitmap', 0) | 1
+        # 새 엣지는 add_incremental_edges에서 이미 추가됨
+
+
+def recompute_scores(graph: dict):
+    """전체 엣지 effective_score 재계산 (ranking/seed 전용)."""
+    for edge in graph.get('edges', []):
+        w = edge.get('weight', 0)
+        sc = edge.get('support_count', 1)
+        conf = edge.get('confidence', 0.5)
+        edge['effective_score'] = round(w * math.log1p(sc) * conf, 4)
+
+
+def prune_graph(graph: dict, weight_floor: float = 0.12,
+                node_out_cap: int = 8, hub_out_cap: int = 12,
+                diversity_cap: int = 3):
+    """3단 pruning: weight floor → out_cap+diversity → isolate 제거."""
+    edges = graph.get('edges', [])
+    nodes = graph.get('nodes', {})
+
+    # 1단: weight floor (protected 면제)
+    edges = [e for e in edges if e.get('protected') or e.get('weight', 0) >= weight_floor]
+
+    # 2단: node out-cap + diversity
+    from collections import defaultdict
+    out_edges = defaultdict(list)
+    for e in edges:
+        out_edges[e['from']].append(e)
+
+    kept = []
+    for node_id, outs in out_edges.items():
+        cap = hub_out_cap if node_id in HUB_NODES else node_out_cap
+        # diversity: bucket별 카운트
+        outs.sort(key=lambda x: -x.get('effective_score', 0))
+        bucket_counts = defaultdict(int)
+        for e in outs:
+            bucket = _get_bucket(e['to'])
+            if bucket_counts[bucket] < diversity_cap and len(kept_for_node := [x for x in kept if x['from'] == node_id]) < cap:
+                kept.append(e)
+                bucket_counts[bucket] += 1
+
+    # in-only 엣지 (out_edges에 안 잡힌 것) 보존
+    out_from_set = set(e['from'] for e in kept)
+    for e in edges:
+        if e['from'] not in out_edges:
+            kept.append(e)
+
+    graph['edges'] = _dedup_edges(kept)
+
+    # 3단: isolate 노드 제거 (protected 면제)
+    active_nodes = set()
+    for e in graph['edges']:
+        active_nodes.add(e['from'])
+        active_nodes.add(e['to'])
+    # seed/protected 노드는 유지
+    to_remove = [n for n in nodes if n not in active_nodes
+                 and not nodes[n].get('protected')]
+    for n in to_remove:
+        del nodes[n]
+
+
+def extract_seed(graph: dict, k: int = 150, protect_assets: list = None) -> dict:
+    """Hybrid seed_score 기�� core+recent 2층 seed 추출."""
+    today = _d.today().isoformat()
+    edges = graph.get('edges', [])
+
+    for e in edges:
+        _ensure_edge_fields(e, today)
+
+    # seed_score 계산
+    for e in edges:
+        observed_days = bin(e.get('obs_bitmap', 0)).count('1')
+        persistence_bonus = 1.0 + 0.5 * min(observed_days / 10, 1.0)
+        struct_bonus = 1.2 if e.get('decay_class') == 'structural' else 1.0
+        e['_seed_score'] = (e.get('weight', 0) * math.log1p(e.get('support_count', 1))
+                            * e.get('confidence', 0.5) * persistence_bonus * struct_bonus)
+
+    # core: seed_score 상위 + observed_days >= 5
+    core_candidates = [e for e in edges if bin(e.get('obs_bitmap', 0)).count('1') >= 5]
+    core_candidates.sort(key=lambda x: -x['_seed_score'])
+    core_seed = core_candidates[:int(k * 0.65)]
+
+    # recent: 최근 30일 weight × confidence 상위
+    recent_candidates = [e for e in edges
+                         if _days_between(e.get('last_seen', today), today) <= 30
+                         and e not in core_seed]
+    recent_candidates.sort(key=lambda x: -(x.get('weight', 0) * x.get('confidence', 0.5)))
+    recent_seed = recent_candidates[:int(k * 0.35)]
+
+    # 보호 자산 노드 관련 엣지 추가
+    seed_edges = core_seed + recent_seed
+    if protect_assets:
+        for e in edges:
+            if e not in seed_edges:
+                if any(a in e.get('from', '') or a in e.get('to', '') for a in protect_assets):
+                    seed_edges.append(e)
+                    if len(seed_edges) >= k * 1.2:
+                        break
+
+    # seed 그래프 구성
+    seed_nodes = {}
+    for e in seed_edges:
+        for nid in [e['from'], e['to']]:
+            if nid in graph.get('nodes', {}):
+                seed_nodes[nid] = graph['nodes'][nid]
+
+    return {
+        'nodes': seed_nodes,
+        'edges': seed_edges[:int(k * 1.2)],
+        'core_count': len(core_seed),
+        'recent_count': len(recent_seed),
+        'extracted_at': today,
+    }
+
+
+def extract_subgraph(graph: dict, query_nodes: list[str],
+                     max_hops: int = 2, max_edges: int = 80) -> dict:
+    """Query-relevant 서브그래프 추출 (소비용 subgraph_score 기반)."""
+    edges = graph.get('edges', [])
+    nodes = graph.get('nodes', {})
+
+    # 인접 리스트
+    adj_out = defaultdict(list)
+    adj_in = defaultdict(list)
+    for e in edges:
+        adj_out[e['from']].append(e)
+        adj_in[e['to']].append(e)
+
+    # BFS로 hop 이내 엣지 수집
+    visited_nodes = set(query_nodes)
+    candidate_edges = []
+    frontier = set(query_nodes)
+
+    for hop in range(max_hops):
+        next_frontier = set()
+        for node in frontier:
+            for e in adj_out.get(node, []) + adj_in.get(node, []):
+                # query_bonus: 직접 맞닿으면 2.0
+                is_direct = (e['from'] in query_nodes or e['to'] in query_nodes)
+                query_bonus = 2.0 if is_direct else 1.0
+                e['_subgraph_score'] = (e.get('weight', 0) * math.log1p(e.get('support_count', 1))
+                                        * e.get('confidence', 0.5) * query_bonus)
+                candidate_edges.append(e)
+                next_frontier.add(e['from'])
+                next_frontier.add(e['to'])
+        frontier = next_frontier - visited_nodes
+        visited_nodes |= next_frontier
+
+    # 중복 제거 + 상위 max_edges
+    seen = set()
+    unique = []
+    for e in candidate_edges:
+        key = (e['from'], e['to'])
+        if key not in seen:
+            seen.add(key)
+            unique.append(e)
+    unique.sort(key=lambda x: -x.get('_subgraph_score', 0))
+    selected = unique[:max_edges]
+
+    # 서브그래프 노드
+    sub_nodes = {}
+    for e in selected:
+        for nid in [e['from'], e['to']]:
+            if nid in nodes:
+                sub_nodes[nid] = nodes[nid]
+
+    return {
+        'nodes': sub_nodes,
+        'edges': selected,
+        'query_nodes': query_nodes,
+    }
+
+
+def monthly_reset(year: int, month: int, engine_seed: dict = None) -> dict:
+    """월초 그래프 재구성: engine seed + core + recent."""
+    # 이전 달 그래프에서 seed 추출
+    prev_graph = _load_previous_graph(year, month)
+
+    if engine_seed is None:
+        engine_seed = build_seed_graph()
+
+    if prev_graph:
+        seed = extract_seed(prev_graph, k=150)
+        # engine seed + extracted seed 병합
+        nodes = {**engine_seed['nodes'], **seed['nodes']}
+        edges = engine_seed['edges'] + seed['edges']
+        # engine seed 엣��에 protected 표시
+        for e in engine_seed['edges']:
+            e['protected'] = True
+            e['weight'] = max(e.get('weight', 0.3), 0.3)
+    else:
+        nodes = engine_seed['nodes']
+        edges = engine_seed['edges']
+        for e in edges:
+            e['protected'] = True
+
+    graph = {
+        'nodes': nodes,
+        'edges': _dedup_edges(edges),
+        'meta': {
+            'created': _d.today().isoformat(),
+            'type': 'monthly_reset',
+            'engine_edges': len(engine_seed['edges']),
+            'seed_core': seed.get('core_count', 0) if prev_graph else 0,
+            'seed_recent': seed.get('recent_count', 0) if prev_graph else 0,
+        }
+    }
+
+    # KPI 로그
+    out_degrees = defaultdict(int)
+    for e in graph['edges']:
+        out_degrees[e['from']] += 1
+    top_hubs = sorted(out_degrees.items(), key=lambda x: -x[1])[:10]
+    print(f'  [월초 reset] 노드 {len(nodes)}, 엣지 {len(graph["edges"])}')
+    print(f'  평균 out-degree: {sum(out_degrees.values())/max(len(out_degrees),1):.1f}')
+    print(f'  Top hubs: {[(n, d) for n, d in top_hubs[:5]]}')
+
+    # 저장
+    month_str = f'{year}-{month:02d}'
+    out_file = GRAPH_DIR / f'{month_str}.json'
+    out_file.write_text(json.dumps(graph, ensure_ascii=False, indent=2), encoding='utf-8')
+    return graph
+
+
+# ═══════════════════════════════════════════════════════
+# CLI
+# ════════════════════════════════════════════════════���══
 
 if __name__ == '__main__':
     if len(sys.argv) > 1 and sys.argv[1] == '--seed-only':
