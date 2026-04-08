@@ -584,23 +584,65 @@ def load_finnhub_news(from_date=None, to_date=None):
     return all_articles
 
 
+_LAST_COLLECT_FILE = Path(__file__).resolve().parent.parent / 'data' / '.last_collect_date'
+
+
+def _get_last_collect_date() -> str:
+    """마지막 수집일 읽기. 없으면 어제."""
+    try:
+        if _LAST_COLLECT_FILE.exists():
+            d = _LAST_COLLECT_FILE.read_text().strip()
+            if d:
+                return d
+    except Exception:
+        pass
+    return (date.today() - timedelta(days=1)).isoformat()
+
+
+def _save_last_collect_date(d: str):
+    """수집일 저장."""
+    _LAST_COLLECT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _LAST_COLLECT_FILE.write_text(d)
+
+
 def load_news_all():
-    """매일 수집: Finnhub + NewsAPI trusted + 네이버"""
+    """매일 수집: Finnhub + NewsAPI trusted + 네이버.
+
+    마지막 수집일~오늘 범위로 소급 수집. 주말 누락 자동 복구.
+    """
     today = date.today().isoformat()
+    last = _get_last_collect_date()
+
+    # 마지막 수집 다음 날부터 오늘까지
+    from datetime import datetime as _dt
+    last_dt = _dt.strptime(last, '%Y-%m-%d').date()
+    start_dt = last_dt + timedelta(days=1)
+    start = start_dt.isoformat()
+
+    if start > today:
+        start = today  # 오늘 이미 돌렸으면 오늘만
+
+    gap_days = (date.today() - last_dt).days
+    gap_msg = f' (갭 {gap_days}일 소급)' if gap_days > 1 else ''
+
     print(f"\n{'='*50}")
-    print(f"  뉴스 수집 ({today})")
+    print(f"  뉴스 수집 ({start} ~ {today}){gap_msg}")
     print(f"{'='*50}")
 
-    # Finnhub (해외 메인)
-    fh = load_finnhub_news(from_date=today, to_date=today)
+    # Finnhub: from/to 파라미터로 범위 수집
+    fh = load_finnhub_news(from_date=start, to_date=today)
 
-    # NewsAPI trusted (Reuters/Bloomberg 보충)
-    na = load_news_daily()
+    # NewsAPI: from 파라미터 전달
+    na = load_news_daily(from_date=start)
 
-    # 네이버 (국내 시장)
+    # 네이버: sort=date로 최신순이라 갭 2~3일은 자연 커버
     nv = load_naver_finance_news()
 
     print(f"\n  합산: Finnhub {len(fh)}건 + NewsAPI {len(na)}건 + 네이버 {len(nv)}건")
+
+    # 수집일 기록
+    _save_last_collect_date(today)
+
     return fh, na, nv
 
 
@@ -630,10 +672,15 @@ TRUSTED_SOURCES = [
 ]
 
 
-def load_news_daily():
-    """오늘자 뉴스 수집 (매일 실행용) — top-headlines + everything 조합"""
+def load_news_daily(from_date=None):
+    """뉴스 수집 (매일 실행용) — top-headlines + everything 조합.
+
+    from_date가 주어지면 해당 날짜부터 오늘까지 소급 수집.
+    """
     NEWS_DIR.mkdir(parents=True, exist_ok=True)
     today = date.today().isoformat()
+    if not from_date:
+        from_date = today
 
     all_articles = []
     seen_titles = set()
@@ -654,9 +701,10 @@ def load_news_daily():
             'description': (a.get('description') or '')[:300],
             'url': a.get('url', ''),
             'trusted': is_trusted,
+            'provider': 'newsapi',
         })
 
-    print(f"\n── NewsAPI 수집 ({today}) ──")
+    print(f"\n── NewsAPI 수집 ({from_date} ~ {today}) ──")
 
     # 1) top-headlines (Reuters, Bloomberg 등 신뢰 소스 포함)
     for cat in ['business', 'technology']:
@@ -676,12 +724,13 @@ def load_news_daily():
         except Exception as e:
             print(f"  top-headlines/{cat}: 실패 — {e}")
 
-    # 2) everything (키워드별)
+    # 2) everything (키워드별, from 파라미터로 소급)
     for category, query in NEWS_QUERIES.items():
         try:
             params = urllib.parse.urlencode({
                 'q': query,
                 'language': 'en',
+                'from': from_date,
                 'sortBy': 'publishedAt',
                 'pageSize': 20,
                 'apiKey': NEWSAPI_KEY,
