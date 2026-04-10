@@ -1,0 +1,65 @@
+{
+  "current": {
+    "dominant_narrative": "휴전 안도감 vs 구조적 리스크 불확실성",
+    "weeks": 1,
+    "since": "2026-04"
+  },
+  "previous": {
+    "dominant_narrative": "지정학적 안도 vs 구조적 스태그플레이션",
+    "ended": "2026-04"
+  },
+  "shift_detected": true,
+  "shift_description": "지정학적 안도 vs 구조적 스태그플레이션 -> 휴전 안도감 vs 구조적 리스크 불확실성",
+  "history": [
+    {
+      "narrative": "지정학 충격 + 유동성 양극화 + 금리 변동성 확대",
+      "period": "2026-03 ~ 2026-03"
+    },
+    {
+      "narrative": "시스템 오류로 분석 불가능",
+      "period": "2026-03 ~ 2026-03"
+    },
+    {
+      "narrative": "지정학 위기 + 유가 급등 + 달러 강세",
+      "period": "2026-03 ~ 2026-03"
+    },
+    {
+      "narrative": "지정학 리스크 + 금리 상승압력 + 유동성 위기",
+      "period": "2026-03 ~ 2026-03"
+    },
+    {
+      "narrative": "중동 전쟁 장기화 + 스태그플레이션 우려",
+      "period": "2026-03 ~ 2026-03"
+    },
+    {
+      "narrative": "유가급등 인플레이션 vs 금리인상 경기침체",
+      "period": "2026-03 ~ 2026-04"
+    },
+    {
+      "narrative": "휴전 안도감 vs 구조적 불확실성의 이중성",
+      "period": "2026-04 ~ 2026-03"
+    },
+    {
+      "narrative": "지정학 위기 + 유가 급등 + 유동성 경색",
+      "period": "2026-03 ~ 2026-04"
+    },
+    {
+      "narrative": "휴전 안도 vs 구조적 인플레·유동성 위기",
+      "period": "2026-04 ~ 2026-04"
+    },
+    {
+      "narrative": "지정학 안도랠리 vs 구조적 인플레·달러부족 긴장",
+      "period": "2026-04 ~ 2026-04"
+    },
+    {
+      "narrative": "지정학적 안도 vs 구조적 인플레 병존",
+      "period": "2026-04 ~ 2026-04"
+    },
+    {
+      "narrative": "지정학적 안도 vs 구조적 스태그플레이션",
+      "period": "2026-04 ~ 2026-04"
+    }
+  ],
+  "_shift_consecutive_days": 1,
+  "last_daily_update": "2026-04-10"
+}

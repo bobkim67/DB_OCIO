@@ -431,6 +431,64 @@ def _load_previous_graph(year: int, month: int) -> dict | None:
     return None
 
 
+def _stratified_sample(candidates: list[dict]) -> list[dict]:
+    """Topic-stratified dynamic cap: 토픽 다양성 보장 + 비용 관리.
+
+    전략:
+    1. dynamic cap: min(후보수, max(300, 후보수*5%)), 상한 500
+    2. 토픽별 최소 10건 보장 (quota)
+    3. 나머지는 salience 상위로 채움
+    """
+    n = len(candidates)
+    if n == 0:
+        return []
+
+    # dynamic cap
+    cap = min(n, max(300, int(n * 0.05)))
+    cap = min(cap, 500)
+
+    # 토픽별 그룹핑
+    by_topic = defaultdict(list)
+    for a in candidates:
+        topic = a.get('primary_topic', '') or '_none'
+        by_topic[topic].append(a)
+
+    # 각 토픽 내 salience 정렬
+    for topic in by_topic:
+        by_topic[topic].sort(
+            key=lambda x: (-x.get('_event_salience', 0), -x.get('intensity', 0)))
+
+    selected = []
+    selected_ids = set()
+
+    # Phase 1: 토픽별 최소 quota (각 10건, 없으면 있는 만큼)
+    min_per_topic = 10
+    for topic, arts in by_topic.items():
+        if topic == '_none':
+            continue
+        for a in arts[:min_per_topic]:
+            aid = a.get('_article_id', id(a))
+            if aid not in selected_ids:
+                selected.append(a)
+                selected_ids.add(aid)
+
+    # Phase 2: 나머지 cap을 salience 상위로 채움
+    remaining = cap - len(selected)
+    if remaining > 0:
+        all_sorted = sorted(
+            candidates,
+            key=lambda x: (-x.get('_event_salience', 0), -x.get('intensity', 0)))
+        for a in all_sorted:
+            if len(selected) >= cap:
+                break
+            aid = a.get('_article_id', id(a))
+            if aid not in selected_ids:
+                selected.append(a)
+                selected_ids.add(aid)
+
+    return selected
+
+
 def build_insight_graph(year: int, month: int, include_news: bool = True) -> dict:
     """
     월별 인사이트 그래프 빌드 (누적).
@@ -469,30 +527,35 @@ def build_insight_graph(year: int, month: int, include_news: bool = True) -> dic
             data = json.loads(news_file.read_text(encoding='utf-8'))
             articles = data.get('articles', [])
 
-            # significance가 높은 기사만 (이미 분류된 경우)
-            significant = [a for a in articles if a.get('intensity', 0) >= 5]
-            if not significant:
-                significant = articles[:200]  # fallback: 상위 200건
+            # 2-lane: primary + topic-stratified dynamic cap
+            primary_articles = [a for a in articles if a.get('is_primary', True)]
+            candidates = [a for a in primary_articles if a.get('intensity', 0) >= 5]
+            if not candidates:
+                candidates = primary_articles[:200]
+            significant = _stratified_sample(candidates)
 
-            print(f'  뉴스 엔티티 추출: {len(significant)}건...')
+            print(f'  뉴스 엔티티 추출: {len(significant)}건 (stratified, {len(candidates)} 후보)...')
             entity_map = extract_entities_from_news(significant)
             print(f'  엔티티 보유 기사: {len(entity_map)}건')
 
-            # 엔티티 노드 추가
+            # 엔티티 노드 추가 + salience 가중 엣지
             for idx, entities in entity_map.items():
                 for ent in entities:
                     ent_id = _normalize_node_id(ent)
                     _ensure_node(graph['nodes'], ent_id, ent, 'news', 'neutral')
-                    # 기사의 primary_topic과 연결
-                    if idx < len(articles):
-                        art = significant[idx] if idx < len(significant) else None
-                        if art and art.get('primary_topic'):
+                    # 기사의 primary_topic과 연결 (salience 가중)
+                    if idx < len(significant):
+                        art = significant[idx]
+                        if art.get('primary_topic'):
                             topic_id = _normalize_node_id(art['primary_topic'])
+                            salience = art.get('_event_salience', 0.3)
+                            base_weight = 0.3 + salience * 0.4  # 0.3~0.7
                             if topic_id in graph['nodes']:
                                 graph['edges'].append({
                                     'from': ent_id, 'to': topic_id,
                                     'relation': 'mentioned_in',
-                                    'weight': 0.3, 'source': 'news_entity',
+                                    'weight': round(base_weight, 3),
+                                    'source': 'news_entity',
                                 })
 
             # 인과관계 추론
@@ -507,6 +570,15 @@ def build_insight_graph(year: int, month: int, include_news: bool = True) -> dic
 
             # 중복 제거
             graph['edges'] = _dedup_edges(graph['edges'])
+
+    # Step 2.5: TKG decay/prune (이전 달 누적 엣지 정리)
+    from datetime import date as _date
+    _today = _date(year, month, 1).isoformat()
+    print(f'  TKG decay/prune (기준일: {_today})...')
+    decay_existing(graph, _today)
+    recompute_scores(graph)
+    prune_graph(graph)
+    print(f'  prune 후: {len(graph["nodes"])} 노드, {len(graph["edges"])} 엣지')
 
     # Step 3: 전이경로 사전 계산
     graph['transmission_paths'] = precompute_transmission_paths(graph)
@@ -545,14 +617,20 @@ def add_incremental_edges(year: int, month: int, new_articles: list[dict]) -> di
     if not new_articles:
         return graph
 
-    entity_map = extract_entities_from_news(new_articles)
+    # 2-lane 필터: primary만 투입
+    primary_new = [a for a in new_articles if a.get('is_primary', True)]
+    if not primary_new:
+        return graph
+
+    entity_map = extract_entities_from_news(primary_new)
     for idx, entities in entity_map.items():
         for ent in entities:
             ent_id = _normalize_node_id(ent)
             _ensure_node(graph['nodes'], ent_id, ent, 'news_daily', 'neutral')
 
     if entity_map:
-        inferred = infer_causal_edges(entity_map, new_articles)
+        inferred = infer_causal_edges(entity_map, primary_new)
+        # salience 기반 엣지 가중치 부스트
         for edge in inferred:
             _ensure_node(graph['nodes'], edge['from'], edge['from'], 'inferred', 'neutral')
             _ensure_node(graph['nodes'], edge['to'], edge['to'], 'inferred', 'neutral')
@@ -567,6 +645,9 @@ def add_incremental_edges(year: int, month: int, new_articles: list[dict]) -> di
     recompute_scores(graph)
     prune_graph(graph)
 
+    # 전이경로 갱신 (debate가 최신 경로를 참조하도록)
+    graph['transmission_paths'] = precompute_transmission_paths(graph)
+
     # 저장
     graph_file.write_text(json.dumps(graph, ensure_ascii=False, indent=2), encoding='utf-8')
     return graph
@@ -580,13 +661,14 @@ import math
 from datetime import date as _d, datetime as _dt
 
 # ── 토픽 → decay class ──
+# V2 Taxonomy 기준 decay class
 TOPIC_DECAY_CLASS = {}
 for _cls, _topics in {
-    'flash': ['비트코인_크립토', '지정학'],
-    'news': ['금리', '달러', '물가', '관세', '안전자산', '미국채',
-             '유가_에너지', '한국_원화', '금', 'AI_반도체'],
-    'structural': ['유로달러', '엔화_캐리', '중국_위안화', '유럽_ECB',
-                   '부동산', '저출산_인구', '이민_노동', '유동성_배관', '통화정책'],
+    'flash': ['크립토', '지정학'],
+    'news': ['금리_채권', '환율_FX', '물가_인플레이션', '관세_무역',
+             '귀금속_금', '에너지_원자재', '테크_AI_반도체', '경기_소비'],
+    'structural': ['달러_글로벌유동성', '유동성_크레딧',
+                   '부동산', '통화정책'],
 }.items():
     for _t in _topics:
         TOPIC_DECAY_CLASS[_t] = _cls

@@ -1,0 +1,142 @@
+[
+  {
+    "condition": "A_baseline",
+    "pool_size": 12565,
+    "unique_topics": 30,
+    "top_topics": {
+      "지정학": 3255,
+      "유가_에너지": 2583,
+      "AI_반도체": 1338,
+      "금리": 1328,
+      "한국_원화": 1271
+    },
+    "unique_sources": 113,
+    "unique_dates": 31,
+    "avg_intensity": 7.63,
+    "avg_salience": 0.342,
+    "corroborated_pct": 1.4,
+    "fallback_count": 0,
+    "month": "2026-03"
+  },
+  {
+    "condition": "B_dedupe",
+    "pool_size": 6770,
+    "unique_topics": 27,
+    "top_topics": {
+      "지정학": 1718,
+      "유가_에너지": 1339,
+      "금리": 690,
+      "AI_반도체": 680,
+      "한국_원화": 668
+    },
+    "unique_sources": 108,
+    "unique_dates": 31,
+    "avg_intensity": 7.63,
+    "avg_salience": 0.338,
+    "corroborated_pct": 2.4,
+    "fallback_count": 0,
+    "month": "2026-03"
+  },
+  {
+    "condition": "C_salience",
+    "pool_size": 15,
+    "unique_topics": 2,
+    "top_topics": {
+      "유가_에너지": 8,
+      "지정학": 7
+    },
+    "unique_sources": 5,
+    "unique_dates": 6,
+    "avg_intensity": 8.07,
+    "avg_salience": 0.752,
+    "corroborated_pct": 100.0,
+    "fallback_count": 0,
+    "month": "2026-03"
+  },
+  {
+    "condition": "D_full",
+    "pool_size": 20,
+    "unique_topics": 2,
+    "top_topics": {
+      "지정학": 10,
+      "유가_에너지": 10
+    },
+    "unique_sources": 5,
+    "unique_dates": 7,
+    "avg_intensity": 8.05,
+    "avg_salience": 0.751,
+    "corroborated_pct": 100.0,
+    "fallback_count": 0,
+    "month": "2026-03"
+  },
+  {
+    "condition": "A_baseline",
+    "pool_size": 8439,
+    "unique_topics": 23,
+    "top_topics": {
+      "지정학": 2613,
+      "AI_반도체": 1813,
+      "유가_에너지": 1430,
+      "한국_원화": 689,
+      "관세": 631
+    },
+    "unique_sources": 126,
+    "unique_dates": 21,
+    "avg_intensity": 7.64,
+    "avg_salience": 0.335,
+    "corroborated_pct": 1.6,
+    "fallback_count": 0,
+    "month": "2026-04"
+  },
+  {
+    "condition": "B_dedupe",
+    "pool_size": 4681,
+    "unique_topics": 20,
+    "top_topics": {
+      "지정학": 1490,
+      "AI_반도체": 899,
+      "유가_에너지": 776,
+      "한국_원화": 382,
+      "관세": 366
+    },
+    "unique_sources": 99,
+    "unique_dates": 18,
+    "avg_intensity": 7.65,
+    "avg_salience": 0.338,
+    "corroborated_pct": 2.6,
+    "fallback_count": 0,
+    "month": "2026-04"
+  },
+  {
+    "condition": "C_salience",
+    "pool_size": 15,
+    "unique_topics": 2,
+    "top_topics": {
+      "지정학": 14,
+      "유가_에너지": 1
+    },
+    "unique_sources": 3,
+    "unique_dates": 3,
+    "avg_intensity": 7.53,
+    "avg_salience": 0.738,
+    "corroborated_pct": 100.0,
+    "fallback_count": 0,
+    "month": "2026-04"
+  },
+  {
+    "condition": "D_full",
+    "pool_size": 20,
+    "unique_topics": 2,
+    "top_topics": {
+      "지정학": 19,
+      "유가_에너지": 1
+    },
+    "unique_sources": 4,
+    "unique_dates": 3,
+    "avg_intensity": 7.1,
+    "avg_salience": 0.727,
+    "corroborated_pct": 100.0,
+    "fallback_count": 0,
+    "month": "2026-04"
+  }
+]

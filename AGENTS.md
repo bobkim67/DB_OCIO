@@ -74,9 +74,9 @@ This file defines recommended agent ownership for this repository.
 ### `mr-collector-agent`
 
 - Owns:
-  - `market_research/scrapers/macro_data.py`
-  - `market_research/scrapers/naver_blog.py`
-  - `market_research/collect_news.bat`
+  - `market_research/collect/macro_data.py`
+  - `market_research/collect/naver_blog.py`
+  - `market_research/collect/collect_news.bat`
 - Responsibilities:
   - daily news collection
   - blog incremental updates
@@ -85,8 +85,8 @@ This file defines recommended agent ownership for this repository.
 ### `mr-digest-agent`
 
 - Owns:
-  - `market_research/digest_builder.py`
-  - `market_research/engine.py`
+  - `market_research/pipeline/digest_builder.py`
+  - `market_research/analyze/engine.py`
 - Responsibilities:
   - monthly digest generation
   - blog + indicator macro diagnosis
@@ -95,7 +95,7 @@ This file defines recommended agent ownership for this repository.
 ### `mr-rag-agent`
 
 - Owns:
-  - `market_research/news_vectordb.py`
+  - `market_research/analyze/news_vectordb.py`
   - `market_research/data/news/`
   - `market_research/data/news_vectordb/`
 - Responsibilities:
@@ -106,8 +106,8 @@ This file defines recommended agent ownership for this repository.
 ### `mr-comment-agent`
 
 - Owns:
-  - `market_research/comment_engine.py`
-  - `market_research/report_cli.py`
+  - `market_research/report/comment_engine.py`
+  - `market_research/report/cli.py`
   - `modules/comment_ui.py`
 - Responsibilities:
   - report comment generation
@@ -127,6 +127,6 @@ This file defines recommended agent ownership for this repository.
 - `prototype.py`
 - `modules/data_loader.py`
 - `modules/comment_ui.py`
-- `market_research/data/news/2026-03.json`
+- `market_research/data/news/{YYYY-MM}.json`
 - `market_research/data/monygeek/posts.json`
 - `market_research/data/news_vectordb/`

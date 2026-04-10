@@ -50,7 +50,7 @@ def _get_model():
         import warnings
         warnings.filterwarnings('ignore', message='.*unauthenticated.*HF Hub.*')
 
-        _model = SentenceTransformer('all-MiniLM-L6-v2', device='cpu')
+        _model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2', device='cpu')
     return _model
 
 
@@ -97,10 +97,13 @@ def build_index(month):
         if not text or len(text) < 20:
             continue
 
-        doc_id = f"{month}_{i}"
+        doc_id = a.get('_article_id', f"{month}_{i}")
         ids.append(doc_id)
         texts.append(text)
-        metadatas.append({
+
+        # 분류 메타 포함 (dedupe/salience 결과)
+        primary_topic = a.get('primary_topic', '')
+        meta = {
             'month': month,
             'date': a.get('date', ''),
             'source': a.get('source', ''),
@@ -110,7 +113,16 @@ def build_index(month):
             'url': a.get('url', ''),
             'provider': a.get('provider', 'newsapi'),
             'trusted': str(a.get('trusted', False)),
-        })
+            # 신규: 분류/정제 메타
+            'article_id': a.get('_article_id', ''),
+            'primary_topic': primary_topic,
+            'intensity': str(a.get('intensity', 0)),
+            'direction': a.get('direction', ''),
+            'event_salience': str(a.get('_event_salience', 0)),
+            'is_primary': str(a.get('is_primary', True)),
+            'fallback': str(a.get('_fallback_classified', False)),
+        }
+        metadatas.append(meta)
 
     if not texts:
         return 0
@@ -158,21 +170,31 @@ def search(query, month, top_k=10, asset_class=None):
     articles = []
     for i in range(len(results['ids'][0])):
         meta = results['metadatas'][0][i]
+        distance = results['distances'][0][i]
+        salience = float(meta.get('event_salience', 0))
+        # hybrid score: cosine similarity (1-distance) + salience boost
+        hybrid_score = (1.0 - distance) + salience * 0.3
         articles.append({
             'title': meta.get('title', ''),
             'date': meta.get('date', ''),
             'source': meta.get('source', ''),
             'asset_class': meta.get('asset_class', ''),
+            'primary_topic': meta.get('primary_topic', ''),
             'url': meta.get('url', ''),
-            'distance': results['distances'][0][i],
+            'article_id': meta.get('article_id', results['ids'][0][i]),
+            'distance': distance,
+            'event_salience': salience,
+            'hybrid_score': round(hybrid_score, 4),
             'text': results['documents'][0][i][:200],
         })
 
+    # hybrid_score 순 정렬
+    articles.sort(key=lambda x: -x['hybrid_score'])
     return articles
 
 
 def search_for_factors(month, asset_class, contribution, top_k=10):
-    """자산군 기여도 원인 검색용 — 방향성 포함 쿼리 자동 생성"""
+    """자산군 기여도 원인 검색용 — 방향성 포함 쿼리 자동 생성 + salience 가중"""
     direction = "상승" if contribution > 0 else "하락"
 
     # 자산군별 검색 쿼리
@@ -185,12 +207,15 @@ def search_for_factors(month, asset_class, contribution, top_k=10):
     }
     query = queries.get(asset_class, f'{asset_class} market {direction}')
 
-    results = search(query, month, top_k=top_k * 2)  # 넉넉히 검색
+    results = search(query, month, top_k=top_k * 3)  # 넉넉히 검색
 
-    # 중복 제목 제거 (앞 40자 기준)
+    # primary 기사만 + 중복 제목 제거 (앞 40자 기준)
     seen = set()
     deduped = []
     for r in results:
+        # primary 필터 (vectorDB에 메타 있으면)
+        if r.get('is_primary') == 'False':
+            continue
         prefix = r['title'][:40]
         if prefix in seen:
             continue

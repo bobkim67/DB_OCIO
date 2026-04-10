@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-뉴스 기사 중복 제거 + 이벤트 클러스터링
+뉴스 기사 중복 제거 + 이벤트 클러스터링 + 안정 ID 부여
 
-2단계:
-A. dedup_group: 같은 기사의 중복 (wire copy, 재전재)
-B. event_group: 같은 사건의 다른 보도 (primary_topic 일치 필요)
+3단계:
+A. assign_article_ids: 안정적 article_id (title+date+source hash)
+B. dedup_group: 같은 기사의 중복 (wire copy, 재전재)
+C. event_group: 같은 사건의 다른 보도 (primary_topic 일치 필요)
 """
 
 import hashlib
@@ -12,6 +13,24 @@ import re
 from collections import defaultdict
 from difflib import SequenceMatcher
 from urllib.parse import urlparse, urlencode, parse_qs
+
+
+# ═══════════════════════════════════════════════════════
+# A. Article ID — 안정적 식별자
+# ═══════════════════════════════════════════════════════
+
+def _make_article_id(article: dict) -> str:
+    """title + date + source 해시 → 12자 hex ID."""
+    key = f"{article.get('title', '')}|{article.get('date', '')[:10]}|{article.get('source', '')}"
+    return hashlib.md5(key.encode('utf-8')).hexdigest()[:12]
+
+
+def assign_article_ids(articles: list[dict]) -> list[dict]:
+    """모든 기사에 _article_id 부여 (이미 있으면 스킵)."""
+    for a in articles:
+        if '_article_id' not in a:
+            a['_article_id'] = _make_article_id(a)
+    return articles
 
 
 # ═══════════════════════════════════════════════════════
@@ -23,11 +42,27 @@ WIRE_SOURCES = {'Reuters', 'AP', 'AFP', '연합뉴스', 'Yonhap'}
 
 
 def _normalize_url(url: str) -> str:
-    """URL 정규화: query param 제거, trailing slash 통일."""
+    """URL 정규화: tracking param만 제거, 나머지 query param은 보존.
+
+    기사 URL의 query param은 대부분 기사 식별용이므로 기본 보존.
+    utm_*, ref, from, share 등 tracking param만 제거.
+    """
     try:
         parsed = urlparse(url)
-        # 의미 있는 param만 유지 (id, article 등)
-        clean = parsed._replace(query='', fragment='').geturl()
+        if parsed.query:
+            params = parse_qs(parsed.query)
+            TRACKING = {'utm_source', 'utm_medium', 'utm_campaign', 'utm_content',
+                        'utm_term', 'ref', 'from', 'share', 'fbclid', 'gclid',
+                        'mc_cid', 'mc_eid', 'mkt_tok'}
+            kept = {k: v[0] if len(v) == 1 else v
+                    for k, v in params.items() if k.lower() not in TRACKING}
+            if kept:
+                clean_query = urlencode(kept, doseq=True)
+                clean = parsed._replace(query=clean_query, fragment='').geturl()
+            else:
+                clean = parsed._replace(query='', fragment='').geturl()
+        else:
+            clean = parsed._replace(fragment='').geturl()
         return clean.rstrip('/')
     except Exception:
         return url
@@ -87,19 +122,21 @@ def dedupe_articles(articles: list[dict]) -> list[dict]:
             for idx in indices:
                 articles[idx]['is_primary'] = (idx == best)
 
-    # 2차: 제목 prefix 기반 그룹핑 (URL 다르지만 같은 기사)
+    # 2차: 제목 prefix 기반 그룹핑 — 강/약 매칭 분리
+    # 강매칭: prefix 일치 + SequenceMatcher(전체 제목) >= 0.7 → cross-source 허용
+    # 약매칭: prefix 일치만 → 같은 source에서만 허용
     prefix_map = defaultdict(list)
     for i, a in enumerate(articles):
         if i in assigned:
             continue
         prefix = _title_prefix(a.get('title', ''))
-        if len(prefix) >= 15:  # 너무 짧은 제목은 skip
+        if len(prefix) >= 15:
             prefix_map[prefix].append(i)
 
+    MAX_PREFIX_GROUP = 20  # prefix 그룹 상한 — 초과 시 오매칭으로 간주, 스킵
     for prefix, indices in prefix_map.items():
         if len(indices) <= 1:
             continue
-        # 같은 날짜 기사만 그룹핑
         by_date = defaultdict(list)
         for idx in indices:
             by_date[articles[idx].get('date', '')[:10]].append(idx)
@@ -107,21 +144,74 @@ def dedupe_articles(articles: list[dict]) -> list[dict]:
         for date_str, date_indices in by_date.items():
             if len(date_indices) <= 1:
                 continue
-            gid = f'dedup_{group_counter}'
-            group_counter += 1
-            for idx in date_indices:
-                if idx not in assigned:
-                    articles[idx]['_dedup_group_id'] = gid
-                    assigned.add(idx)
+            if len(date_indices) > MAX_PREFIX_GROUP:
+                continue  # prefix 오매칭 — 너무 많은 기사가 같은 prefix
 
-            # primary: wire 원본 우선, 아니면 가장 긴 description
-            wire_indices = [i for i in date_indices if _is_wire_copy(articles[i])]
-            if wire_indices:
-                best = wire_indices[0]
-            else:
-                best = max(date_indices, key=lambda i: len(articles[i].get('description', '')))
-            for idx in date_indices:
-                articles[idx]['is_primary'] = (idx == best)
+            # 강매칭 시도: 제목 전체 유사도 0.7 이상 → cross-source 허용
+            strong_groups = []  # [(idx_a, idx_b), ...]
+            matched_strong = set()
+            for ii in range(len(date_indices)):
+                for jj in range(ii + 1, len(date_indices)):
+                    a_idx, b_idx = date_indices[ii], date_indices[jj]
+                    sim = SequenceMatcher(
+                        None,
+                        articles[a_idx].get('title', '').lower(),
+                        articles[b_idx].get('title', '').lower(),
+                    ).ratio()
+                    if sim >= 0.7:
+                        strong_groups.append((a_idx, b_idx))
+                        matched_strong.add(a_idx)
+                        matched_strong.add(b_idx)
+
+            # 강매칭된 기사들 그룹핑
+            if strong_groups:
+                strong_indices = list(matched_strong)
+                gid = f'dedup_{group_counter}'
+                group_counter += 1
+                for idx in strong_indices:
+                    if idx not in assigned:
+                        articles[idx]['_dedup_group_id'] = gid
+                        assigned.add(idx)
+                wire_indices = [i for i in strong_indices if _is_wire_copy(articles[i])]
+                best = wire_indices[0] if wire_indices else max(
+                    strong_indices, key=lambda i: len(articles[i].get('description', '')))
+                for idx in strong_indices:
+                    articles[idx]['is_primary'] = (idx == best)
+
+            # 약매칭: 강매칭 안 된 기사 → 같은 source + 제목 유사도 0.5+ (대형 그룹 방지)
+            remaining = [idx for idx in date_indices if idx not in assigned]
+            by_source = defaultdict(list)
+            for idx in remaining:
+                by_source[articles[idx].get('source', '')].append(idx)
+
+            for source, source_indices in by_source.items():
+                if len(source_indices) <= 1:
+                    continue
+                # 같은 source여도 제목 유사도 0.5+ 필요 (네이버검색 대형그룹 방지)
+                weak_groups = []
+                weak_assigned = set()
+                for ii in range(len(source_indices)):
+                    for jj in range(ii + 1, len(source_indices)):
+                        a_idx, b_idx = source_indices[ii], source_indices[jj]
+                        sim = SequenceMatcher(
+                            None,
+                            articles[a_idx].get('title', '').lower(),
+                            articles[b_idx].get('title', '').lower(),
+                        ).ratio()
+                        if sim >= 0.5:
+                            weak_groups.append((a_idx, b_idx))
+                            weak_assigned.add(a_idx)
+                            weak_assigned.add(b_idx)
+                if weak_assigned:
+                    gid = f'dedup_{group_counter}'
+                    group_counter += 1
+                    for idx in weak_assigned:
+                        if idx not in assigned:
+                            articles[idx]['_dedup_group_id'] = gid
+                            assigned.add(idx)
+                    best = max(list(weak_assigned), key=lambda i: len(articles[i].get('description', '')))
+                    for idx in weak_assigned:
+                        articles[idx]['is_primary'] = (idx == best)
 
     # 미할당 기사: 단독 그룹, primary=True
     for i, a in enumerate(articles):
@@ -137,11 +227,66 @@ def dedupe_articles(articles: list[dict]) -> list[dict]:
 # B. Event Group — 같은 사건의 다른 보도
 # ═══════════════════════════════════════════════════════
 
-def _title_similarity(t1: str, t2: str) -> float:
-    """제목 유사도 (0~1)."""
-    t1 = t1.lower().strip()
-    t2 = t2.lower().strip()
-    return SequenceMatcher(None, t1, t2).ratio()
+# Union-Find (그룹 병합용)
+class _UnionFind:
+    def __init__(self):
+        self.parent = {}
+
+    def find(self, x):
+        if x not in self.parent:
+            self.parent[x] = x
+        while self.parent[x] != x:
+            self.parent[x] = self.parent[self.parent[x]]  # path compression
+            x = self.parent[x]
+        return x
+
+    def union(self, a, b):
+        ra, rb = self.find(a), self.find(b)
+        if ra != rb:
+            # 작은 값을 root로 (안정적 그룹 ID)
+            if ra > rb:
+                ra, rb = rb, ra
+            self.parent[rb] = ra
+
+
+_STOPWORDS = {
+    'the', 'is', 'at', 'in', 'on', 'of', 'to', 'for', 'and', 'or', 'as',
+    'by', 'an', 'it', 'its', 'be', 'are', 'was', 'has', 'have', 'had',
+    'this', 'that', 'with', 'from', 'not', 'but', 'can', 'all', 'will',
+    'more', 'how', 'what', 'when', 'who', 'why', 'new', 'says', 'could',
+    'after', 'over', 'into', 'than', 'about', 'just', 'out', 'been', 'here',
+}
+
+
+def _title_words(title: str) -> set:
+    """제목 → 정규화된 단어 집합 (Jaccard pre-filter용). 불용어 제거."""
+    t = re.sub(r'[^\w\s가-힣]', '', title.strip().lower())
+    words = set(t.split())
+    return {w for w in words if len(w) > 1 and w not in _STOPWORDS}
+
+
+def _jaccard(s1: set, s2: set) -> float:
+    """Jaccard similarity."""
+    if not s1 or not s2:
+        return 0.0
+    return len(s1 & s2) / len(s1 | s2)
+
+
+# ── 인접 토픽 그룹 (같은 사건이 다른 topic으로 분류될 수 있는 관련 토픽) ──
+# V2 Taxonomy 기준 인접 토픽 그룹
+TOPIC_NEIGHBORS = {}
+for _group in [
+    {'금리_채권', '통화정책'},
+    {'물가_인플레이션', '금리_채권', '경기_소비'},
+    {'환율_FX', '달러_글로벌유동성'},
+    {'에너지_원자재', '지정학'},
+    {'관세_무역', '지정학'},
+    {'테크_AI_반도체', '경기_소비'},
+    {'귀금속_금', '지정학'},
+    {'달러_글로벌유동성', '유동성_크레딧'},
+]:
+    for _t in _group:
+        TOPIC_NEIGHBORS.setdefault(_t, set()).update(_group - {_t})
 
 
 def cluster_events(articles: list[dict]) -> list[dict]:
@@ -149,98 +294,103 @@ def cluster_events(articles: list[dict]) -> list[dict]:
 
     조건 (모두 충족):
     - 날짜 같거나 ±1일
-    - 제목 유사도 ≥ 0.3
-    - primary_topic 일치 (분류된 기사) 또는 둘 다 미분류
+    - 제목 단어 Jaccard ≥ 0.15 (같은 topic) 또는 ≥ 0.20 (인접 topic)
+    - SequenceMatcher ≥ 0.3
+    - primary_topic 일치 또는 TOPIC_NEIGHBORS 내 인접
 
-    미분류 기사(topics=[])끼리: event_group_prelim으로 임시 묶음.
-    분류 후 topic 일치하는 그룹에 병합.
+    최적화:
+    - (date, topic) 버킷으로 비교 범위 축소
+    - Jaccard pre-filter로 SequenceMatcher 호출 최소화
+    - Union-Find로 그룹 병합 O(α(n))
 
     Returns: 동일 리스트에 event_group_id, _event_source_count 추가
     """
+    from datetime import datetime as _dt
+
     # primary 기사만 대상
     primaries = [(i, a) for i, a in enumerate(articles) if a.get('is_primary', True)]
 
-    event_groups = {}  # idx → group_id
-    group_counter = 0
-
-    # 날짜별 그룹핑
-    by_date = defaultdict(list)
+    # 제목 단어 집합 사전 계산
+    title_word_cache = {}
     for i, a in primaries:
-        by_date[a.get('date', '')[:10]].append(i)
+        title_word_cache[i] = _title_words(a.get('title', ''))
 
-    # 날짜 쌍 (같은 날 + 인접일)
-    dates = sorted(by_date.keys())
-    date_pairs = set()
-    for d in dates:
-        date_pairs.add((d, d))
-    for j in range(len(dates) - 1):
-        # 인접일인지 확인 (간단히 날짜 차이)
-        d1, d2 = dates[j], dates[j + 1]
+    uf = _UnionFind()
+    for i, _ in primaries:
+        uf.find(i)  # 초기화
+
+    # (date, topic) → [indices] 버킷
+    # 미분류(topic='')는 event_group 대상 제외 — 오클러스터 방지
+    bucket = defaultdict(list)
+    date_set = set()
+    for i, a in primaries:
+        d = a.get('date', '')[:10]
+        topic = a.get('primary_topic', '')
+        if not topic:
+            continue
+        bucket[(d, topic)].append(i)
+        date_set.add(d)
+
+    # 인접일 매핑
+    dates_sorted = sorted(date_set)
+    adjacent = defaultdict(set)
+    for d in dates_sorted:
+        adjacent[d].add(d)
+    for j in range(len(dates_sorted) - 1):
+        d1, d2 = dates_sorted[j], dates_sorted[j + 1]
         try:
-            from datetime import datetime
-            dt1 = datetime.strptime(d1, '%Y-%m-%d')
-            dt2 = datetime.strptime(d2, '%Y-%m-%d')
-            if (dt2 - dt1).days <= 1:
-                date_pairs.add((d1, d2))
-                date_pairs.add((d2, d1))
+            if (_dt.strptime(d2, '%Y-%m-%d') - _dt.strptime(d1, '%Y-%m-%d')).days <= 1:
+                adjacent[d1].add(d2)
+                adjacent[d2].add(d1)
         except Exception:
             pass
 
-    # 같은 날짜(±1일) 기사들 비교
-    for d1, d2 in date_pairs:
-        if d1 > d2:
-            continue
-        indices_1 = by_date.get(d1, [])
-        indices_2 = by_date.get(d2, []) if d1 != d2 else []
-        all_indices = indices_1 + indices_2
+    compared = set()
+    topics = {topic for (_, topic) in bucket.keys()}
 
-        for i in range(len(all_indices)):
-            for j in range(i + 1, len(all_indices)):
-                idx_a, idx_b = all_indices[i], all_indices[j]
-                a, b = articles[idx_a], articles[idx_b]
+    # 같은 topic 내 비교 + 인접 topic 교차 비교
+    for topic in topics:
+        # 비교 대상 토픽: 자신 + neighbors
+        compare_topics = {topic} | TOPIC_NEIGHBORS.get(topic, set())
 
-                # 같은 source면 skip (dedup에서 이미 처리)
-                if a.get('source') == b.get('source'):
+        for d1 in dates_sorted:
+            indices_1 = bucket.get((d1, topic), [])
+            if not indices_1:
+                continue
+            for d2 in adjacent[d1]:
+                if d2 < d1:
                     continue
+                for t2 in compare_topics:
+                    indices_2 = bucket.get((d2, t2), [])
+                    if not indices_2:
+                        continue
+                    is_cross_topic = (topic != t2)
+                    if d1 == d2 and not is_cross_topic:
+                        pool = indices_1
+                        for ii in range(len(pool)):
+                            for jj in range(ii + 1, len(pool)):
+                                _compare_and_merge(
+                                    pool[ii], pool[jj], articles,
+                                    title_word_cache, uf, compared)
+                    else:
+                        for ii in indices_1:
+                            for jj in indices_2:
+                                _compare_and_merge(
+                                    ii, jj, articles,
+                                    title_word_cache, uf, compared,
+                                    jaccard_threshold=0.20 if is_cross_topic else 0.15)
 
-                # 제목 유사도
-                sim = _title_similarity(a.get('title', ''), b.get('title', ''))
-                if sim < 0.3:
-                    continue
+    # Union-Find → event_group_id
+    group_counter = 0
+    root_to_gid = {}
+    event_groups = {}
 
-                # topic 일치 확인
-                topic_a = a.get('primary_topic', '')
-                topic_b = b.get('primary_topic', '')
-                if topic_a and topic_b and topic_a != topic_b:
-                    continue  # 다른 topic이면 다른 사건
-
-                # 같은 이벤트 → 그룹 병합
-                gid_a = event_groups.get(idx_a)
-                gid_b = event_groups.get(idx_b)
-
-                if gid_a and gid_b:
-                    # 둘 다 이미 그룹 → 작은 ID로 통일
-                    if gid_a != gid_b:
-                        merge_to = min(gid_a, gid_b)
-                        merge_from = max(gid_a, gid_b)
-                        for k, v in event_groups.items():
-                            if v == merge_from:
-                                event_groups[k] = merge_to
-                elif gid_a:
-                    event_groups[idx_b] = gid_a
-                elif gid_b:
-                    event_groups[idx_a] = gid_b
-                else:
-                    gid = f'event_{group_counter}'
-                    group_counter += 1
-                    event_groups[idx_a] = gid
-                    event_groups[idx_b] = gid
-
-    # 미할당: 단독 이벤트
-    for i, a in primaries:
-        if i not in event_groups:
-            event_groups[i] = f'event_{group_counter}'
+    for i, _ in primaries:
+        root = uf.find(i)
+        if root not in root_to_gid:
+            root_to_gid[root] = f'event_{group_counter}'
             group_counter += 1
+        event_groups[i] = root_to_gid[root]
 
     # event_group_id + source_count 부여
     group_sources = defaultdict(set)
@@ -264,7 +414,53 @@ def cluster_events(articles: list[dict]) -> list[dict]:
             if dgid in dedup_to_event:
                 a['_event_group_id'], a['_event_source_count'] = dedup_to_event[dgid]
 
+    # singleton event primary override:
+    # event_group에 primary가 0건이면, 가장 긴 description을 primary로 강제
+    event_members = defaultdict(list)
+    for i, a in enumerate(articles):
+        egid = a.get('_event_group_id', '')
+        if egid:
+            event_members[egid].append(i)
+
+    for egid, indices in event_members.items():
+        has_primary = any(articles[i].get('is_primary') for i in indices)
+        if not has_primary and indices:
+            best = max(indices, key=lambda i: len(articles[i].get('description', '')))
+            articles[best]['is_primary'] = True
+
     return articles
+
+
+def _compare_and_merge(idx_a, idx_b, articles, title_word_cache, uf, compared,
+                       jaccard_threshold=0.15):
+    """두 기사 비교 → 조건 충족 시 Union-Find merge."""
+    pair = (min(idx_a, idx_b), max(idx_a, idx_b))
+    if pair in compared:
+        return
+    compared.add(pair)
+
+    a, b = articles[idx_a], articles[idx_b]
+
+    # 같은 source면 skip (dedup에서 이미 처리)
+    if a.get('source') == b.get('source'):
+        return
+
+    # 1차: Jaccard pre-filter (빠름, 교차 토픽 시 임계치 상향)
+    words_a = title_word_cache.get(idx_a, set())
+    words_b = title_word_cache.get(idx_b, set())
+    if _jaccard(words_a, words_b) < jaccard_threshold:
+        return
+
+    # 2차: SequenceMatcher (정밀)
+    sim = SequenceMatcher(
+        None,
+        a.get('title', '').lower().strip(),
+        b.get('title', '').lower().strip(),
+    ).ratio()
+    if sim < 0.3:
+        return
+
+    uf.union(idx_a, idx_b)
 
 
 # ═══════════════════════════════════════════════════════
@@ -272,7 +468,8 @@ def cluster_events(articles: list[dict]) -> list[dict]:
 # ═══════════════════════════════════════════════════════
 
 def process_dedupe_and_events(articles: list[dict]) -> list[dict]:
-    """수집 직후 호출: dedup → event clustering → 반환."""
+    """수집 직후 호출: article_id → dedup → event clustering → 반환."""
+    articles = assign_article_ids(articles)
     articles = dedupe_articles(articles)
     articles = cluster_events(articles)
     return articles

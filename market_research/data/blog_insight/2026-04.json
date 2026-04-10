@@ -1,0 +1,2214 @@
+{
+  "month": "2026-04",
+  "built_at": "2026-04-10T10:39:02",
+  "framework": {
+    "school": "유로달러 학파 (Eurodollar School, Jeff Snider 계열)",
+    "central_thesis": "유로달러 시스템(미국 밖 달러)이 글로벌 금융의 진정한 심장이며, 2008년 이후 구조적 붕괴 상태. 이것이 '침묵의 공황'의 근본 원인.",
+    "key_axioms": [
+      "돈은 Fed가 아닌 민간 은행 대차대조표에서 창출",
+      "유로달러 시스템은 Fed 통제 밖의 자생적 달러 시스템",
+      "2008년 이후 유로달러 시스템 미회복 → 만성적 달러 기근",
+      "Fed는 전능하지 않다 — QE는 지준만 늘렸을 뿐",
+      "달러 유동성이 모든 자산 가격의 근본 드라이버",
+      "가격이 먼저 움직이고 내러티브가 뒤를 따른다"
+    ],
+    "methodology": {
+      "narrative_deconstruction": "매스컴 설명 → '정말 그런가?' → 배관(plumbing) 데이터로 대안 제시",
+      "price_first": "항상 가격이 먼저 움직이고 내러티브가 뒤를 따른다",
+      "microstructure": "일본 3개월 국채 0.1%p 같은 미세 신호에서 글로벌 스트레스 포착",
+      "nicolas_cage": "상관관계 ≠ 인과관계, 공통 원인(달러 유동성) 추적"
+    }
+  },
+  "post_insights": [
+    {
+      "post_id": 1,
+      "date": "2026-04-01",
+      "core_claim": "AI 소프트웨어의 디플레이션화로 인해 글로벌 유동성이 칩 설계·하드웨어 인프라로 집중되면서 자산시장이 구조적으로 재편되고 있다",
+      "causal_chain": "오픈소스 AI 모델 범용화(메타 Llama 4, 중국 Z.ai) → 지능의 한계 비용 제로 수렴 → 자본 유동성이 NVIDIA·Marvell 등 칩 제조사로 집중 → AI 인프라의 국가 안보화(규제/보호주의) → 테크 기업 M&A 및 자본 구조 재편",
+      "vs_mainstream": "주류: AI 모델 기업(OpenAI, Google)의 경쟁 심화 → 주류: AI 투자 확대로 IT섹터 일괄 상승 | 유로달러학파: 모델 경쟁은 수렴하고 실물 인프라(칩/데이터센터)만 가치 축적 → IT섹터 내 부문별 대분화",
+      "asset_impact": [
+        "해외주식(반도체 강세)",
+        "해외채권(테크 기업 금융비용 상승)"
+      ],
+      "topics": [
+        "AI 소프트웨어 디플레이션",
+        "칩 설계 산업 집중",
+        "유동성 흐름",
+        "규제 리스크"
+      ],
+      "title": "[48시간뉴스] AI 소프트웨어의 디플레이션 시대, 하드웨어 인프라에 쏠리는 막대한 유동성",
+      "url": "https://blog.naver.com/monygeek/224236531468"
+    },
+    {
+      "post_id": 2,
+      "date": "2026-04-01",
+      "core_claim": "미-이란 전쟁이 사이버-물리적 공간으로 확대되며 빅테크 인프라가 직접 군사 목표가 되고, 이는 글로벌 공급망과 유가 급등을 통해 거시경제 위기를 야기한다",
+      "causal_chain": "이란 IRGC의 빅테크 데이터센터 군사목표 선언 → 실제 미사일 타격 위협 → 글로벌 서방 동맹 균열(나토국 미지원) → 중국·파키스탄의 지정학적 입지 강화 → 에너지 공급망 혼란(유조선 드론공격) → 유가 100달러선 위협, 휘발유 갤런당 4달러 돌파 → 글로벌 기업 채용 동결·운항 중단(유니레버, 루프트한자)",
+      "vs_mainstream": "주류: 지정학적 리스크 = 유가 상승만 → 주류: 중앙은행 유동성 정상화 가능 | 유로달러학파: 전쟁이 디지털 기반시설 마비까지 확대 → 유동성 공급 경로 자체 교란 → 글로벌 금융시스템 리스크 대폭 상승",
+      "asset_impact": [
+        "국내주식(에너지 수입 비용 급등→기업수익성 악화)",
+        "국내채권(인플레이션 압력→금리 인상 압력)",
+        "해외채권(유가 연동 신흥국 리스크 프리미엄)",
+        "통화(원화 약세 압력)"
+      ],
+      "topics": [
+        "지정학적 리스크",
+        "에너지 공급망",
+        "유동성 교란",
+        "서방 동맹 균열",
+        "비대칭 테러"
+      ],
+      "title": "🚨 [24시간 미이란] \"구글과 애플이 표적이 되다!\" 빅테크 인질극과 무너지는 서방 동맹 🚨",
+      "url": "https://blog.naver.com/monygeek/224236612966"
+    },
+    {
+      "post_id": 3,
+      "date": "2026-04-02",
+      "core_claim": "트럼프의 이란 전쟁 '승리 선언'과 미군 철수는 아시아 동맹국들에게 호르무즈 해협 방어의 안보 책임을 전가하는 '지정학적 청구서'이며, 이는 원유 수입국의 구조적 취약성을 노출한다",
+      "causal_chain": "트럼프의 조기 전쟁 종료 선언(2~3주) → '임무 완수' 명분으로 미군 철수 → 호르무즈 해협 방어 책임 아시아 국가로 전가 → 한국·일본·중국의 독자적 군사력 투자 부담 증가 → 에너지 자급능력 부족 국가들의 지정학적 취약성 심화 → 장기적 물가 불안정성 상존",
+      "vs_mainstream": "주류: 미군 철수 = 지정학 리스크 감소, 유가 하락 기대 | 유로달러학파: 미군 철수 = 진공 상태 발생, 글로벌 공급망 리스크 분산 불가 → 오히려 취약성 증가 → 원유 수입국의 헤징 비용 상승",
+      "asset_impact": [
+        "국내주식(에너지 안보 비용 증가)",
+        "국내채권(지정학 프리미엄 상승)",
+        "해외채권(미국 국방비 확대→미국 국채 금리 상승)",
+        "통화(안보 불확실성→자산도피)"
+      ],
+      "topics": [
+        "미군 철수 정책",
+        "호르무즈 해협",
+        "에너지 안보",
+        "아시아 동맹국 책임 전가",
+        "원유 수입 의존도"
+      ],
+      "title": "🚨 [트럼프 대국민 담화 관전 포인트] 할리우드급 '승리 선언'과 우리에게 날아올 안보 청구서 🚨",
+      "url": "https://blog.naver.com/monygeek/224237017528"
+    },
+    {
+      "post_id": 1,
+      "date": "2026-04-06",
+      "core_claim": "중동 전면전, 에너지 공급 충격, 글로벌 유동성 위기, AI 자본지출 수요가 동시에 수렴하며 거시경제 패러다임의 구조적 변곡점을 형성 중",
+      "causal_chain": "중동 군사 충돌 → 호르무즈 해협 봉쇄 + 유가 급등(140달러 선) → 구조적 인플레이션(OECD 4.2% CPI 전망) → 중앙은행 금리 인하 기대감 소멸 → 듀레이션 리스크 극대화 + 신흥국 통화 약세 + 고금리 환경에서 AI CapEx 붕괴 압력",
+      "vs_mainstream": "주류는 지정학적 리스크를 일시적 쇼크로 보지만, 유로달러 학파는 글로벌 유동성 환경의 구조적 냉각과 중앙은행 정책 마비(Policy Paralysis)를 강조. 또한 AI 산업의 전력/반도체 공급망 제약을 물리적 한계(Physical Constraint)로 분석하며, 단순 공급망 문제가 아닌 지정학적 재편으로 해석",
+      "asset_impact": [
+        "국내채권",
+        "국내주식",
+        "해외채권",
+        "해외주식",
+        "통화(원/달러)"
+      ],
+      "topics": [
+        "에너지 공급",
+        "인플레이션",
+        "글로벌 유동성",
+        "금리 정책",
+        "AI 자본지출",
+        "통화 약세",
+        "지정학 리스크"
+      ],
+      "title": "[48시간뉴스] 거시경제 수렴 쇼크: 지정학적 화약고, 인플레이션, 그리고 AI 혁명의 물리적 한계",
+      "url": "https://blog.naver.com/monygeek/224242110433"
+    },
+    {
+      "post_id": 2,
+      "date": "2026-04-06",
+      "core_claim": "미-이란 전쟁이 군사 교전을 넘어 호르무즈 해협 톨게이트화와 글로벌 경제 인질극으로 진화하며, 서방 동맹 균열 속에서 유가 및 인플레이션 압력이 극단화",
+      "causal_chain": "이란 혁명수비대 저항 + 미군 보복(에너지 인프라 타격) → 호르무즈 해협 리알화 톨게이트 강제화 → 글로벌 석유 공급 20% 차단 위협 → 유가 141달러 급등(2008년 이후 최고) + 디젤 6달러 돌파 → 스태그플레이션 공포 + UN 무력화(프랑스까지 무력 개방 반대) → 서방 동맹 기능 정지",
+      "vs_mainstream": "주류는 유가 상승을 수급 조정 대상으로 보지만, 유로달러 학파는 호르무즈 해협의 화폐(리알) 강제 징수를 글로벌 달러 기축통화 체제에 대한 도전이자 지경학적(Geo-economic) 인질극으로 분석. 또한 서방 동맹의 균열(프랑스 마크롱의 반대)을 단순한 외교 갈등이 아닌 달러 기반 안보 체제의 근본적 동요 신호로 해석",
+      "asset_impact": [
+        "해외채권",
+        "해외주식",
+        "국내주식",
+        "통화(원/달러, 일본 엔)"
+      ],
+      "topics": [
+        "에너지 위기",
+        "호르무즈 해협",
+        "인플레이션",
+        "유가 급등",
+        "통화 전쟁",
+        "서방 동맹 균열",
+        "지정학 리스크"
+      ],
+      "title": "🚨 [미이란 전쟁] \"시한폭탄의 타이머가 연장되다!\" 경제를 인질로 잡은 주말 전황 🚨",
+      "url": "https://blog.naver.com/monygeek/224242113352"
+    }
+  ],
+  "graph": {
+    "nodes": {
+      "달러_부족_심화": {
+        "label": "달러 부족 심화",
+        "source": "worldview",
+        "variable": "미국채"
+      },
+      "이머징_중앙은행_미국채_매도달러_확보": {
+        "label": "이머징 중앙은행 미국채 매도(달러 확보)",
+        "source": "worldview",
+        "variable": "금리"
+      },
+      "장기금리_상승": {
+        "label": "장기금리 상승",
+        "source": "worldview",
+        "variable": "금리"
+      },
+      "Fed_금리_인하에도_장기금리_오름정상": {
+        "label": "Fed 금리 인하에도 장기금리 오름(정상)",
+        "source": "worldview",
+        "variable": "금리"
+      },
+      "유로달러_시스템_손상": {
+        "label": "유로달러 시스템 손상",
+        "source": "worldview",
+        "variable": "달러"
+      },
+      "역외_달러_공급_감소": {
+        "label": "역외 달러 공급 감소",
+        "source": "worldview",
+        "variable": "달러"
+      },
+      "이머징_통화_약세": {
+        "label": "이머징 통화 약세",
+        "source": "worldview",
+        "variable": "달러"
+      },
+      "달러_강세": {
+        "label": "달러 강세",
+        "source": "worldview",
+        "variable": "달러"
+      },
+      "이민_유입": {
+        "label": "이민 유입",
+        "source": "worldview",
+        "variable": "이민/노동"
+      },
+      "고용_통계_과대계상": {
+        "label": "고용 통계 과대계상",
+        "source": "worldview",
+        "variable": "이민/노동"
+      },
+      "임금_상승_억제": {
+        "label": "임금 상승 억제",
+        "source": "worldview",
+        "variable": "이민/노동"
+      },
+      "실질소득_정체": {
+        "label": "실질소득 정체",
+        "source": "worldview",
+        "variable": "이민/노동"
+      },
+      "실제_노동시장은_표면보다_약함": {
+        "label": "실제 노동시장은 표면보다 약함",
+        "source": "worldview",
+        "variable": "이민/노동"
+      },
+      "관세": {
+        "label": "관세",
+        "source": "worldview"
+      },
+      "글로벌_교역_위축": {
+        "label": "글로벌 교역 위축",
+        "source": "worldview",
+        "variable": "물가/인플레이션"
+      },
+      "경기_둔화": {
+        "label": "경기 둔화",
+        "source": "worldview",
+        "variable": "관세"
+      },
+      "디플레_압력._중국_독일_물가_급락_=_글로벌_경기침체_선행_신호": {
+        "label": "디플레 압력. 중국/독일 물가 급락 = 글로벌 경기침체 선행 신호",
+        "source": "worldview",
+        "variable": "물가/인플레이션"
+      },
+      "관세_부과": {
+        "label": "관세 부과",
+        "source": "worldview",
+        "variable": "관세"
+      },
+      "교역_위축": {
+        "label": "교역 위축",
+        "source": "worldview",
+        "variable": "관세"
+      },
+      "미국_제조업_부활_환상_GDP_기여도_11%_고용_10%_미만": {
+        "label": "미국 제조업 부활 환상 (GDP 기여도 11%, 고용 10% 미만)",
+        "source": "worldview",
+        "variable": "관세"
+      },
+      "유로달러_붕괴": {
+        "label": "유로달러 붕괴",
+        "source": "worldview",
+        "variable": "안전자산"
+      },
+      "글로벌_달러_부족": {
+        "label": "글로벌 달러 부족",
+        "source": "worldview",
+        "variable": "안전자산"
+      },
+      "자본의_유동성+안전성_추구": {
+        "label": "자본의 유동성+안전성 추구",
+        "source": "worldview",
+        "variable": "안전자산"
+      },
+      "미국_자산_집중": {
+        "label": "미국 자산 집중",
+        "source": "worldview",
+        "variable": "안전자산"
+      },
+      "미국_주식_예외적_성과": {
+        "label": "미국 주식 예외적 성과",
+        "source": "worldview",
+        "variable": "안전자산"
+      },
+      "중앙은행_미국채_매도달러_확보": {
+        "label": "중앙은행 미국채 매도(달러 확보)",
+        "source": "worldview",
+        "variable": "미국채"
+      },
+      "금리_상승": {
+        "label": "금리 상승",
+        "source": "worldview",
+        "variable": "미국채"
+      },
+      "금융기관_평가손실_확대": {
+        "label": "금융기관 평가손실 확대",
+        "source": "worldview",
+        "variable": "미국채"
+      },
+      "노린추킨_사례": {
+        "label": "노린추킨 사례",
+        "source": "worldview",
+        "variable": "미국채"
+      },
+      "노린추킨_630억$_미국채_손절": {
+        "label": "노린추킨 630억$ 미국채 손절",
+        "source": "worldview",
+        "variable": "엔화/엔 캐리"
+      },
+      "엔_캐리_청산_도화선": {
+        "label": "엔 캐리 청산 도화선",
+        "source": "worldview",
+        "variable": "엔화/엔 캐리"
+      },
+      "일본_외환_개입": {
+        "label": "일본 외환 개입",
+        "source": "worldview",
+        "variable": "엔화/엔 캐리"
+      },
+      "대규모_청산": {
+        "label": "대규모 청산",
+        "source": "worldview",
+        "variable": "엔화/엔 캐리"
+      },
+      "CFTC_롱_전환": {
+        "label": "CFTC 롱 전환",
+        "source": "worldview",
+        "variable": "엔화/엔 캐리"
+      },
+      "추가_대규모_청산_가능성_낮음": {
+        "label": "추가 대규모 청산 가능성 낮음",
+        "source": "worldview",
+        "variable": "엔화/엔 캐리"
+      },
+      "2014_달러_강세": {
+        "label": "2014 달러 강세",
+        "source": "worldview",
+        "variable": "중국/위안화"
+      },
+      "외환보유고_1조$_소진": {
+        "label": "외환보유고 1조$ 소진",
+        "source": "worldview",
+        "variable": "중국/위안화"
+      },
+      "은행_신용창출_마비": {
+        "label": "은행 신용창출 마비",
+        "source": "worldview",
+        "variable": "중국/위안화"
+      },
+      "PBOC_금리인하_전달_불능": {
+        "label": "PBOC 금리인하 전달 불능",
+        "source": "worldview",
+        "variable": "중국/위안화"
+      },
+      "부동산_수요_소멸": {
+        "label": "부동산 수요 소멸",
+        "source": "worldview",
+        "variable": "중국/위안화"
+      },
+      "독일_부채_브레이크_폐기": {
+        "label": "독일 부채 브레이크 폐기",
+        "source": "worldview",
+        "variable": "유로달러/그림자금융"
+      },
+      "Bunds_대량_발행": {
+        "label": "Bunds 대량 발행",
+        "source": "worldview",
+        "variable": "유럽(독일/ECB)"
+      },
+      "유럽_레포_우량_담보_공급": {
+        "label": "유럽 레포 우량 담보 공급",
+        "source": "worldview",
+        "variable": "유로달러/그림자금융"
+      },
+      "역외_달러_신용_창출": {
+        "label": "역외 달러 신용 창출",
+        "source": "worldview",
+        "variable": "유럽(독일/ECB)"
+      },
+      "유럽_은행_ROE_12.3%미국_추월": {
+        "label": "유럽 은행 ROE 12.3%(미국 추월)",
+        "source": "worldview",
+        "variable": "유로달러/그림자금융"
+      },
+      "역외_달러_펀딩_확장": {
+        "label": "역외 달러 펀딩 확장",
+        "source": "worldview",
+        "variable": "유로달러/그림자금융"
+      },
+      "T-bill_공급_증가": {
+        "label": "T-bill 공급 증가",
+        "source": "worldview",
+        "variable": "레포/역레포"
+      },
+      "T-bill_금리_>_역레포_금리": {
+        "label": "T-bill 금리 > 역레포 금리",
+        "source": "worldview",
+        "variable": "레포/역레포"
+      },
+      "MMF_이동역레포": {
+        "label": "MMF 이동(역레포",
+        "source": "worldview",
+        "variable": "레포/역레포"
+      },
+      "T-bill": {
+        "label": "T-bill)",
+        "source": "worldview",
+        "variable": "레포/역레포"
+      },
+      "역레포_감소증시_무관": {
+        "label": "역레포 감소(증시 무관)",
+        "source": "worldview",
+        "variable": "레포/역레포"
+      },
+      "글로벌_불확실성_누적": {
+        "label": "글로벌 불확실성 누적",
+        "source": "worldview",
+        "variable": "금(Gold)"
+      },
+      "달러_강세에도_금_강세패턴_이탈": {
+        "label": "달러 강세에도 금 강세(패턴 이탈)",
+        "source": "worldview",
+        "variable": "금(Gold)"
+      },
+      "이머징_달러_약세_전환": {
+        "label": "이머징 달러 약세 전환",
+        "source": "worldview",
+        "variable": "금(Gold)"
+      },
+      "불확실성_프리미엄_감소": {
+        "label": "불확실성 프리미엄 감소",
+        "source": "worldview",
+        "variable": "금(Gold)"
+      },
+      "금_피크아웃": {
+        "label": "금 피크아웃",
+        "source": "worldview",
+        "variable": "금(Gold)"
+      },
+      "달러_유동성_부족": {
+        "label": "달러 유동성 부족",
+        "source": "worldview",
+        "variable": "유가/에너지"
+      },
+      "실물_수요_부진": {
+        "label": "실물 수요 부진",
+        "source": "worldview",
+        "variable": "유가/에너지"
+      },
+      "유가_하방_>_지정학_프리미엄._호르무즈_통행_97%_급감": {
+        "label": "유가 하방 > 지정학 프리미엄. 호르무즈 통행 97% 급감",
+        "source": "worldview",
+        "variable": "유가/에너지"
+      },
+      "브렌트_119$": {
+        "label": "브렌트 119$",
+        "source": "worldview",
+        "variable": "유가/에너지"
+      },
+      "스태그플레이션": {
+        "label": "스태그플레이션",
+        "source": "worldview",
+        "variable": "유가/에너지"
+      },
+      "AI_인프라_슈퍼사이클": {
+        "label": "AI 인프라 슈퍼사이클",
+        "source": "worldview",
+        "variable": "AI/반도체"
+      },
+      "HBM_GPU_수요_폭발": {
+        "label": "HBM/GPU 수요 폭발",
+        "source": "worldview",
+        "variable": "AI/반도체"
+      },
+      "SK하이닉스HBM_62%_수혜": {
+        "label": "SK하이닉스(HBM 62%) 수혜",
+        "source": "worldview",
+        "variable": "AI/반도체"
+      },
+      "학습": {
+        "label": "학습",
+        "source": "worldview",
+        "variable": "AI/반도체"
+      },
+      "추론_전환": {
+        "label": "추론 전환",
+        "source": "worldview",
+        "variable": "AI/반도체"
+      },
+      "2차_물결경량화_엣지": {
+        "label": "2차 물결(경량화/엣지)",
+        "source": "worldview",
+        "variable": "AI/반도체"
+      },
+      "경기_하강": {
+        "label": "경기 하강",
+        "source": "worldview",
+        "variable": "한국 원화/증시"
+      },
+      "헤지펀드_숏_한국": {
+        "label": "헤지펀드 숏 한국",
+        "source": "worldview",
+        "variable": "한국 원화/증시"
+      },
+      "외국인_이탈": {
+        "label": "외국인 이탈",
+        "source": "worldview",
+        "variable": "한국 원화/증시"
+      },
+      "구조적_ATM_반복._달러_유동성_개선": {
+        "label": "구조적 ATM 반복. 달러 유동성 개선",
+        "source": "worldview",
+        "variable": "한국 원화/증시"
+      },
+      "원화_강세": {
+        "label": "원화 강세",
+        "source": "worldview",
+        "variable": "부동산"
+      },
+      "자산가격_상승": {
+        "label": "자산가격 상승",
+        "source": "worldview",
+        "variable": "한국 원화/증시"
+      },
+      "부채_브레이크_폐기": {
+        "label": "부채 브레이크 폐기",
+        "source": "worldview",
+        "variable": "유럽(독일/ECB)"
+      },
+      "GDP_60%": {
+        "label": "GDP 60%",
+        "source": "worldview",
+        "variable": "유럽(독일/ECB)"
+      },
+      "90%": {
+        "label": "90%",
+        "source": "worldview",
+        "variable": "유럽(독일/ECB)"
+      },
+      "레포_담보_공급": {
+        "label": "레포 담보 공급",
+        "source": "worldview",
+        "variable": "유럽(독일/ECB)"
+      },
+      "유로달러_르네상스": {
+        "label": "유로달러 르네상스",
+        "source": "worldview",
+        "variable": "유럽(독일/ECB)"
+      },
+      "달러_유동성_완화": {
+        "label": "달러 유동성 완화",
+        "source": "worldview",
+        "variable": "부동산"
+      },
+      "한국_유동성_증가": {
+        "label": "한국 유동성 증가",
+        "source": "worldview",
+        "variable": "부동산"
+      },
+      "주택가격_상승._슈퍼스타_도시:_고소득_인재_집중": {
+        "label": "주택가격 상승. 슈퍼스타 도시: 고소득 인재 집중",
+        "source": "worldview",
+        "variable": "부동산"
+      },
+      "수요_초과": {
+        "label": "수요 초과",
+        "source": "worldview",
+        "variable": "부동산"
+      },
+      "가격_폭등": {
+        "label": "가격 폭등",
+        "source": "worldview",
+        "variable": "부동산"
+      },
+      "산업화_도시화": {
+        "label": "산업화/도시화",
+        "source": "worldview",
+        "variable": "저출산/인구"
+      },
+      "개인주의": {
+        "label": "개인주의",
+        "source": "worldview",
+        "variable": "저출산/인구"
+      },
+      "출산_가치_하락_+_주거비_교육비": {
+        "label": "출산 가치 하락 + 주거비/교육비",
+        "source": "worldview",
+        "variable": "저출산/인구"
+      },
+      "합리적_비출산_선택": {
+        "label": "합리적 비출산 선택",
+        "source": "worldview",
+        "variable": "저출산/인구"
+      },
+      "인구_감소": {
+        "label": "인구 감소",
+        "source": "worldview",
+        "variable": "저출산/인구"
+      },
+      "내수_위축": {
+        "label": "내수 위축",
+        "source": "worldview",
+        "variable": "저출산/인구"
+      },
+      "양극화": {
+        "label": "양극화",
+        "source": "worldview",
+        "variable": "저출산/인구"
+      },
+      "ETF_승인": {
+        "label": "ETF 승인",
+        "source": "worldview",
+        "variable": "비트코인/크립토"
+      },
+      "제도권_편입": {
+        "label": "제도권 편입",
+        "source": "worldview",
+        "variable": "비트코인/크립토"
+      },
+      "전통자산_상관관계_급등": {
+        "label": "전통자산 상관관계 급등",
+        "source": "worldview",
+        "variable": "비트코인/크립토"
+      },
+      "달러_유동성_종속_노출._AI_슈퍼사이클": {
+        "label": "달러 유동성 종속 노출. AI 슈퍼사이클",
+        "source": "worldview",
+        "variable": "비트코인/크립토"
+      },
+      "투기_자금_이동": {
+        "label": "투기 자금 이동",
+        "source": "worldview",
+        "variable": "비트코인/크립토"
+      },
+      "크립토_밀려남": {
+        "label": "크립토 밀려남",
+        "source": "worldview",
+        "variable": "비트코인/크립토"
+      },
+      "금리": {
+        "label": "금리",
+        "source": "worldview"
+      },
+      "달러": {
+        "label": "달러",
+        "source": "worldview"
+      },
+      "미국채": {
+        "label": "미국채",
+        "source": "worldview"
+      },
+      "유로달러": {
+        "label": "유로달러",
+        "source": "worldview"
+      },
+      "엔화": {
+        "label": "엔화",
+        "source": "worldview"
+      },
+      "중국_위안화": {
+        "label": "중국/위안화",
+        "source": "worldview"
+      },
+      "한국_원화": {
+        "label": "한국 원화",
+        "source": "worldview"
+      },
+      "금": {
+        "label": "금",
+        "source": "worldview"
+      },
+      "이민_노동": {
+        "label": "이민/노동",
+        "source": "worldview"
+      },
+      "물가": {
+        "label": "물가",
+        "source": "worldview"
+      },
+      "저출산": {
+        "label": "저출산",
+        "source": "worldview"
+      },
+      "물가_인플레이션": {
+        "label": "물가/인플레이션",
+        "source": "worldview"
+      },
+      "유가": {
+        "label": "유가",
+        "source": "worldview"
+      },
+      "안전자산": {
+        "label": "안전자산",
+        "source": "worldview"
+      },
+      "부동산": {
+        "label": "부동산",
+        "source": "worldview"
+      },
+      "엔화_엔_캐리": {
+        "label": "엔화/엔 캐리",
+        "source": "worldview"
+      },
+      "유로달러_그림자금융": {
+        "label": "유로달러/그림자금융",
+        "source": "worldview"
+      },
+      "레포": {
+        "label": "레포",
+        "source": "worldview"
+      },
+      "유럽": {
+        "label": "유럽",
+        "source": "worldview"
+      },
+      "비트코인": {
+        "label": "비트코인",
+        "source": "worldview"
+      },
+      "레포_역레포": {
+        "label": "레포/역레포",
+        "source": "worldview"
+      },
+      "금Gold": {
+        "label": "금(Gold)",
+        "source": "worldview"
+      },
+      "유가_에너지": {
+        "label": "유가/에너지",
+        "source": "worldview"
+      },
+      "AI_반도체": {
+        "label": "AI/반도체",
+        "source": "worldview"
+      },
+      "한국_증시": {
+        "label": "한국 증시",
+        "source": "worldview"
+      },
+      "한국_원화_증시": {
+        "label": "한국 원화/증시",
+        "source": "worldview"
+      },
+      "유럽독일_ECB": {
+        "label": "유럽(독일/ECB)",
+        "source": "worldview"
+      },
+      "저출산_인구": {
+        "label": "저출산/인구",
+        "source": "worldview"
+      },
+      "비트코인_크립토": {
+        "label": "비트코인/크립토",
+        "source": "worldview"
+      },
+      "오픈소스_AI_모델_범용화메타_Llama_4_중국_Z.ai": {
+        "label": "오픈소스 AI 모델 범용화(메타 Llama 4, 중국 Z.ai)",
+        "source": "post",
+        "date": "2026-04-01"
+      },
+      "지능의_한계_비용_제로_수렴": {
+        "label": "지능의 한계 비용 제로 수렴",
+        "source": "post",
+        "date": "2026-04-01"
+      },
+      "자본_유동성이_NVIDIA·Marvell_등_칩_제조사로_집중": {
+        "label": "자본 유동성이 NVIDIA·Marvell 등 칩 제조사로 집중",
+        "source": "post",
+        "date": "2026-04-01"
+      },
+      "AI_인프라의_국가_안보화규제_보호주의": {
+        "label": "AI 인프라의 국가 안보화(규제/보호주의)",
+        "source": "post",
+        "date": "2026-04-01"
+      },
+      "테크_기업_M&A_및_자본_구조_재편": {
+        "label": "테크 기업 M&A 및 자본 구조 재편",
+        "source": "post",
+        "date": "2026-04-01"
+      },
+      "이란_IRGC의_빅테크_데이터센터_군사목표_선언": {
+        "label": "이란 IRGC의 빅테크 데이터센터 군사목표 선언",
+        "source": "post",
+        "date": "2026-04-01"
+      },
+      "실제_미사일_타격_위협": {
+        "label": "실제 미사일 타격 위협",
+        "source": "post",
+        "date": "2026-04-01"
+      },
+      "글로벌_서방_동맹_균열나토국_미지원": {
+        "label": "글로벌 서방 동맹 균열(나토국 미지원)",
+        "source": "post",
+        "date": "2026-04-01"
+      },
+      "중국·파키스탄의_지정학적_입지_강화": {
+        "label": "중국·파키스탄의 지정학적 입지 강화",
+        "source": "post",
+        "date": "2026-04-01"
+      },
+      "에너지_공급망_혼란유조선_드론공격": {
+        "label": "에너지 공급망 혼란(유조선 드론공격)",
+        "source": "post",
+        "date": "2026-04-01"
+      },
+      "유가_100달러선_위협_휘발유_갤런당_4달러_돌파": {
+        "label": "유가 100달러선 위협, 휘발유 갤런당 4달러 돌파",
+        "source": "post",
+        "date": "2026-04-01"
+      },
+      "글로벌_기업_채용_동결·운항_중단유니레버_루프트한자": {
+        "label": "글로벌 기업 채용 동결·운항 중단(유니레버, 루프트한자)",
+        "source": "post",
+        "date": "2026-04-01"
+      },
+      "트럼프의_조기_전쟁_종료_선언2~3주": {
+        "label": "트럼프의 조기 전쟁 종료 선언(2~3주)",
+        "source": "post",
+        "date": "2026-04-02"
+      },
+      "임무_완수_명분으로_미군_철수": {
+        "label": "'임무 완수' 명분으로 미군 철수",
+        "source": "post",
+        "date": "2026-04-02"
+      },
+      "호르무즈_해협_방어_책임_아시아_국가로_전가": {
+        "label": "호르무즈 해협 방어 책임 아시아 국가로 전가",
+        "source": "post",
+        "date": "2026-04-02"
+      },
+      "한국·일본·중국의_독자적_군사력_투자_부담_증가": {
+        "label": "한국·일본·중국의 독자적 군사력 투자 부담 증가",
+        "source": "post",
+        "date": "2026-04-02"
+      },
+      "에너지_자급능력_부족_국가들의_지정학적_취약성_심화": {
+        "label": "에너지 자급능력 부족 국가들의 지정학적 취약성 심화",
+        "source": "post",
+        "date": "2026-04-02"
+      },
+      "장기적_물가_불안정성_상존": {
+        "label": "장기적 물가 불안정성 상존",
+        "source": "post",
+        "date": "2026-04-02"
+      },
+      "중동_군사_충돌": {
+        "label": "중동 군사 충돌",
+        "source": "post",
+        "date": "2026-04-06"
+      },
+      "호르무즈_해협_봉쇄_+_유가_급등140달러_선": {
+        "label": "호르무즈 해협 봉쇄 + 유가 급등(140달러 선)",
+        "source": "post",
+        "date": "2026-04-06"
+      },
+      "구조적_인플레이션OECD_4.2%_CPI_전망": {
+        "label": "구조적 인플레이션(OECD 4.2% CPI 전망)",
+        "source": "post",
+        "date": "2026-04-06"
+      },
+      "중앙은행_금리_인하_기대감_소멸": {
+        "label": "중앙은행 금리 인하 기대감 소멸",
+        "source": "post",
+        "date": "2026-04-06"
+      },
+      "듀레이션_리스크_극대화_+_신흥국_통화_약세_+_고금리_환경에서_AI_CapEx_붕괴_압력": {
+        "label": "듀레이션 리스크 극대화 + 신흥국 통화 약세 + 고금리 환경에서 AI CapEx 붕괴 압력",
+        "source": "post",
+        "date": "2026-04-06"
+      },
+      "이란_혁명수비대_저항_+_미군_보복에너지_인프라_타격": {
+        "label": "이란 혁명수비대 저항 + 미군 보복(에너지 인프라 타격)",
+        "source": "post",
+        "date": "2026-04-06"
+      },
+      "호르무즈_해협_리알화_톨게이트_강제화": {
+        "label": "호르무즈 해협 리알화 톨게이트 강제화",
+        "source": "post",
+        "date": "2026-04-06"
+      },
+      "글로벌_석유_공급_20%_차단_위협": {
+        "label": "글로벌 석유 공급 20% 차단 위협",
+        "source": "post",
+        "date": "2026-04-06"
+      },
+      "유가_141달러_급등2008년_이후_최고_+_디젤_6달러_돌파": {
+        "label": "유가 141달러 급등(2008년 이후 최고) + 디젤 6달러 돌파",
+        "source": "post",
+        "date": "2026-04-06"
+      },
+      "스태그플레이션_공포_+_UN_무력화프랑스까지_무력_개방_반대": {
+        "label": "스태그플레이션 공포 + UN 무력화(프랑스까지 무력 개방 반대)",
+        "source": "post",
+        "date": "2026-04-06"
+      },
+      "서방_동맹_기능_정지": {
+        "label": "서방 동맹 기능 정지",
+        "source": "post",
+        "date": "2026-04-06"
+      }
+    },
+    "edges": [
+      {
+        "from": "달러_부족_심화",
+        "to": "이머징_중앙은행_미국채_매도달러_확보",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "금리"
+      },
+      {
+        "from": "이머징_중앙은행_미국채_매도달러_확보",
+        "to": "장기금리_상승",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "금리"
+      },
+      {
+        "from": "장기금리_상승",
+        "to": "Fed_금리_인하에도_장기금리_오름정상",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "금리"
+      },
+      {
+        "from": "유로달러_시스템_손상",
+        "to": "역외_달러_공급_감소",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "달러"
+      },
+      {
+        "from": "역외_달러_공급_감소",
+        "to": "이머징_통화_약세",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "달러"
+      },
+      {
+        "from": "이머징_통화_약세",
+        "to": "달러_강세",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "달러"
+      },
+      {
+        "from": "이민_유입",
+        "to": "고용_통계_과대계상",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "이민/노동"
+      },
+      {
+        "from": "고용_통계_과대계상",
+        "to": "임금_상승_억제",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "이민/노동"
+      },
+      {
+        "from": "임금_상승_억제",
+        "to": "실질소득_정체",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "이민/노동"
+      },
+      {
+        "from": "실질소득_정체",
+        "to": "실제_노동시장은_표면보다_약함",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "이민/노동"
+      },
+      {
+        "from": "관세",
+        "to": "글로벌_교역_위축",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "물가/인플레이션"
+      },
+      {
+        "from": "글로벌_교역_위축",
+        "to": "경기_둔화",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "물가/인플레이션"
+      },
+      {
+        "from": "경기_둔화",
+        "to": "디플레_압력._중국_독일_물가_급락_=_글로벌_경기침체_선행_신호",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "물가/인플레이션"
+      },
+      {
+        "from": "관세_부과",
+        "to": "교역_위축",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "관세"
+      },
+      {
+        "from": "교역_위축",
+        "to": "경기_둔화",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "관세"
+      },
+      {
+        "from": "경기_둔화",
+        "to": "미국_제조업_부활_환상_GDP_기여도_11%_고용_10%_미만",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "관세"
+      },
+      {
+        "from": "유로달러_붕괴",
+        "to": "글로벌_달러_부족",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "안전자산"
+      },
+      {
+        "from": "글로벌_달러_부족",
+        "to": "자본의_유동성+안전성_추구",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "안전자산"
+      },
+      {
+        "from": "자본의_유동성+안전성_추구",
+        "to": "미국_자산_집중",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "안전자산"
+      },
+      {
+        "from": "미국_자산_집중",
+        "to": "미국_주식_예외적_성과",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "안전자산"
+      },
+      {
+        "from": "달러_부족_심화",
+        "to": "중앙은행_미국채_매도달러_확보",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "미국채"
+      },
+      {
+        "from": "중앙은행_미국채_매도달러_확보",
+        "to": "금리_상승",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "미국채"
+      },
+      {
+        "from": "금리_상승",
+        "to": "금융기관_평가손실_확대",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "미국채"
+      },
+      {
+        "from": "금융기관_평가손실_확대",
+        "to": "노린추킨_사례",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "미국채"
+      },
+      {
+        "from": "노린추킨_630억$_미국채_손절",
+        "to": "엔_캐리_청산_도화선",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "엔화/엔 캐리"
+      },
+      {
+        "from": "엔_캐리_청산_도화선",
+        "to": "일본_외환_개입",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "엔화/엔 캐리"
+      },
+      {
+        "from": "일본_외환_개입",
+        "to": "대규모_청산",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "엔화/엔 캐리"
+      },
+      {
+        "from": "대규모_청산",
+        "to": "CFTC_롱_전환",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "엔화/엔 캐리"
+      },
+      {
+        "from": "CFTC_롱_전환",
+        "to": "추가_대규모_청산_가능성_낮음",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "엔화/엔 캐리"
+      },
+      {
+        "from": "2014_달러_강세",
+        "to": "외환보유고_1조$_소진",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "중국/위안화"
+      },
+      {
+        "from": "외환보유고_1조$_소진",
+        "to": "은행_신용창출_마비",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "중국/위안화"
+      },
+      {
+        "from": "은행_신용창출_마비",
+        "to": "PBOC_금리인하_전달_불능",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "중국/위안화"
+      },
+      {
+        "from": "PBOC_금리인하_전달_불능",
+        "to": "부동산_수요_소멸",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "중국/위안화"
+      },
+      {
+        "from": "독일_부채_브레이크_폐기",
+        "to": "Bunds_대량_발행",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "유로달러/그림자금융"
+      },
+      {
+        "from": "Bunds_대량_발행",
+        "to": "유럽_레포_우량_담보_공급",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "유로달러/그림자금융"
+      },
+      {
+        "from": "유럽_레포_우량_담보_공급",
+        "to": "역외_달러_신용_창출",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "유로달러/그림자금융"
+      },
+      {
+        "from": "역외_달러_신용_창출",
+        "to": "유럽_은행_ROE_12.3%미국_추월",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "유로달러/그림자금융"
+      },
+      {
+        "from": "유럽_은행_ROE_12.3%미국_추월",
+        "to": "역외_달러_펀딩_확장",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "유로달러/그림자금융"
+      },
+      {
+        "from": "T-bill_공급_증가",
+        "to": "T-bill_금리_>_역레포_금리",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "레포/역레포"
+      },
+      {
+        "from": "T-bill_금리_>_역레포_금리",
+        "to": "MMF_이동역레포",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "레포/역레포"
+      },
+      {
+        "from": "MMF_이동역레포",
+        "to": "T-bill",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "레포/역레포"
+      },
+      {
+        "from": "T-bill",
+        "to": "역레포_감소증시_무관",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "레포/역레포"
+      },
+      {
+        "from": "글로벌_불확실성_누적",
+        "to": "달러_강세에도_금_강세패턴_이탈",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "금(Gold)"
+      },
+      {
+        "from": "달러_강세에도_금_강세패턴_이탈",
+        "to": "이머징_달러_약세_전환",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "금(Gold)"
+      },
+      {
+        "from": "이머징_달러_약세_전환",
+        "to": "불확실성_프리미엄_감소",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "금(Gold)"
+      },
+      {
+        "from": "불확실성_프리미엄_감소",
+        "to": "금_피크아웃",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "금(Gold)"
+      },
+      {
+        "from": "달러_유동성_부족",
+        "to": "실물_수요_부진",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "유가/에너지"
+      },
+      {
+        "from": "실물_수요_부진",
+        "to": "유가_하방_>_지정학_프리미엄._호르무즈_통행_97%_급감",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "유가/에너지"
+      },
+      {
+        "from": "유가_하방_>_지정학_프리미엄._호르무즈_통행_97%_급감",
+        "to": "브렌트_119$",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "유가/에너지"
+      },
+      {
+        "from": "브렌트_119$",
+        "to": "스태그플레이션",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "유가/에너지"
+      },
+      {
+        "from": "AI_인프라_슈퍼사이클",
+        "to": "HBM_GPU_수요_폭발",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "AI/반도체"
+      },
+      {
+        "from": "HBM_GPU_수요_폭발",
+        "to": "SK하이닉스HBM_62%_수혜",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "AI/반도체"
+      },
+      {
+        "from": "SK하이닉스HBM_62%_수혜",
+        "to": "학습",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "AI/반도체"
+      },
+      {
+        "from": "학습",
+        "to": "추론_전환",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "AI/반도체"
+      },
+      {
+        "from": "추론_전환",
+        "to": "2차_물결경량화_엣지",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "AI/반도체"
+      },
+      {
+        "from": "경기_하강",
+        "to": "헤지펀드_숏_한국",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "한국 원화/증시"
+      },
+      {
+        "from": "헤지펀드_숏_한국",
+        "to": "외국인_이탈",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "한국 원화/증시"
+      },
+      {
+        "from": "외국인_이탈",
+        "to": "구조적_ATM_반복._달러_유동성_개선",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "한국 원화/증시"
+      },
+      {
+        "from": "구조적_ATM_반복._달러_유동성_개선",
+        "to": "원화_강세",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "한국 원화/증시"
+      },
+      {
+        "from": "원화_강세",
+        "to": "자산가격_상승",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "한국 원화/증시"
+      },
+      {
+        "from": "부채_브레이크_폐기",
+        "to": "GDP_60%",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "유럽(독일/ECB)"
+      },
+      {
+        "from": "GDP_60%",
+        "to": "90%",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "유럽(독일/ECB)"
+      },
+      {
+        "from": "90%",
+        "to": "Bunds_대량_발행",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "유럽(독일/ECB)"
+      },
+      {
+        "from": "Bunds_대량_발행",
+        "to": "레포_담보_공급",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "유럽(독일/ECB)"
+      },
+      {
+        "from": "레포_담보_공급",
+        "to": "역외_달러_신용_창출",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "유럽(독일/ECB)"
+      },
+      {
+        "from": "역외_달러_신용_창출",
+        "to": "유로달러_르네상스",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "유럽(독일/ECB)"
+      },
+      {
+        "from": "달러_유동성_완화",
+        "to": "원화_강세",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "부동산"
+      },
+      {
+        "from": "원화_강세",
+        "to": "한국_유동성_증가",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "부동산"
+      },
+      {
+        "from": "한국_유동성_증가",
+        "to": "주택가격_상승._슈퍼스타_도시:_고소득_인재_집중",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "부동산"
+      },
+      {
+        "from": "주택가격_상승._슈퍼스타_도시:_고소득_인재_집중",
+        "to": "수요_초과",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "부동산"
+      },
+      {
+        "from": "수요_초과",
+        "to": "가격_폭등",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "부동산"
+      },
+      {
+        "from": "산업화_도시화",
+        "to": "개인주의",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "저출산/인구"
+      },
+      {
+        "from": "개인주의",
+        "to": "출산_가치_하락_+_주거비_교육비",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "저출산/인구"
+      },
+      {
+        "from": "출산_가치_하락_+_주거비_교육비",
+        "to": "합리적_비출산_선택",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "저출산/인구"
+      },
+      {
+        "from": "합리적_비출산_선택",
+        "to": "인구_감소",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "저출산/인구"
+      },
+      {
+        "from": "인구_감소",
+        "to": "내수_위축",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "저출산/인구"
+      },
+      {
+        "from": "내수_위축",
+        "to": "양극화",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "저출산/인구"
+      },
+      {
+        "from": "ETF_승인",
+        "to": "제도권_편입",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "비트코인/크립토"
+      },
+      {
+        "from": "제도권_편입",
+        "to": "전통자산_상관관계_급등",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "비트코인/크립토"
+      },
+      {
+        "from": "전통자산_상관관계_급등",
+        "to": "달러_유동성_종속_노출._AI_슈퍼사이클",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "비트코인/크립토"
+      },
+      {
+        "from": "달러_유동성_종속_노출._AI_슈퍼사이클",
+        "to": "투기_자금_이동",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "비트코인/크립토"
+      },
+      {
+        "from": "투기_자금_이동",
+        "to": "크립토_밀려남",
+        "relation": "causes",
+        "weight": 0.7,
+        "source": "worldview",
+        "variable": "비트코인/크립토"
+      },
+      {
+        "from": "금리",
+        "to": "달러",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "금리",
+        "to": "미국채",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "금리",
+        "to": "유로달러",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "달러",
+        "to": "유로달러",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "달러",
+        "to": "엔화",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "달러",
+        "to": "중국_위안화",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "달러",
+        "to": "한국_원화",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "달러",
+        "to": "금",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "이민_노동",
+        "to": "물가",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "이민_노동",
+        "to": "저출산",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "물가_인플레이션",
+        "to": "관세",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "물가_인플레이션",
+        "to": "유가",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "물가_인플레이션",
+        "to": "금리",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "관세",
+        "to": "물가",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "관세",
+        "to": "달러",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "관세",
+        "to": "중국_위안화",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "안전자산",
+        "to": "달러",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "안전자산",
+        "to": "유로달러",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "안전자산",
+        "to": "부동산",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "미국채",
+        "to": "금리",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "미국채",
+        "to": "달러",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "미국채",
+        "to": "엔화",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "엔화_엔_캐리",
+        "to": "달러",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "엔화_엔_캐리",
+        "to": "미국채",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "엔화_엔_캐리",
+        "to": "유로달러",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "엔화_엔_캐리",
+        "to": "한국_원화",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "중국_위안화",
+        "to": "유로달러",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "중국_위안화",
+        "to": "달러",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "중국_위안화",
+        "to": "한국_원화",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "중국_위안화",
+        "to": "금",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "유로달러_그림자금융",
+        "to": "달러",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "유로달러_그림자금융",
+        "to": "레포",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "유로달러_그림자금융",
+        "to": "중국_위안화",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "유로달러_그림자금융",
+        "to": "한국_원화",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "유로달러_그림자금융",
+        "to": "유럽",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "유로달러_그림자금융",
+        "to": "비트코인",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "레포_역레포",
+        "to": "유로달러",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "레포_역레포",
+        "to": "달러",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "레포_역레포",
+        "to": "비트코인",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "금Gold",
+        "to": "달러",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "금Gold",
+        "to": "유로달러",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "금Gold",
+        "to": "중국_위안화",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "금Gold",
+        "to": "유가",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "유가_에너지",
+        "to": "달러",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "유가_에너지",
+        "to": "엔화",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "유가_에너지",
+        "to": "유럽",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "유가_에너지",
+        "to": "AI_반도체",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "유가_에너지",
+        "to": "물가",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "AI_반도체",
+        "to": "유가",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "AI_반도체",
+        "to": "한국_증시",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "AI_반도체",
+        "to": "비트코인",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "한국_원화_증시",
+        "to": "유로달러",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "한국_원화_증시",
+        "to": "중국_위안화",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "한국_원화_증시",
+        "to": "AI_반도체",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "한국_원화_증시",
+        "to": "부동산",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "유럽독일_ECB",
+        "to": "유로달러",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "유럽독일_ECB",
+        "to": "달러",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "유럽독일_ECB",
+        "to": "중국_위안화",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "유럽독일_ECB",
+        "to": "한국_원화",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "부동산",
+        "to": "유로달러",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "부동산",
+        "to": "한국_원화",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "부동산",
+        "to": "저출산",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "저출산_인구",
+        "to": "부동산",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "저출산_인구",
+        "to": "한국_증시",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "비트코인_크립토",
+        "to": "유로달러",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "비트코인_크립토",
+        "to": "레포",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "비트코인_크립토",
+        "to": "AI_반도체",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "비트코인_크립토",
+        "to": "금",
+        "relation": "linked",
+        "weight": 0.4,
+        "source": "worldview"
+      },
+      {
+        "from": "오픈소스_AI_모델_범용화메타_Llama_4_중국_Z.ai",
+        "to": "지능의_한계_비용_제로_수렴",
+        "relation": "causes",
+        "weight": 0.8,
+        "source": "post",
+        "date": "2026-04-01"
+      },
+      {
+        "from": "지능의_한계_비용_제로_수렴",
+        "to": "자본_유동성이_NVIDIA·Marvell_등_칩_제조사로_집중",
+        "relation": "causes",
+        "weight": 0.8,
+        "source": "post",
+        "date": "2026-04-01"
+      },
+      {
+        "from": "자본_유동성이_NVIDIA·Marvell_등_칩_제조사로_집중",
+        "to": "AI_인프라의_국가_안보화규제_보호주의",
+        "relation": "causes",
+        "weight": 0.8,
+        "source": "post",
+        "date": "2026-04-01"
+      },
+      {
+        "from": "AI_인프라의_국가_안보화규제_보호주의",
+        "to": "테크_기업_M&A_및_자본_구조_재편",
+        "relation": "causes",
+        "weight": 0.8,
+        "source": "post",
+        "date": "2026-04-01"
+      },
+      {
+        "from": "이란_IRGC의_빅테크_데이터센터_군사목표_선언",
+        "to": "실제_미사일_타격_위협",
+        "relation": "causes",
+        "weight": 0.8,
+        "source": "post",
+        "date": "2026-04-01"
+      },
+      {
+        "from": "실제_미사일_타격_위협",
+        "to": "글로벌_서방_동맹_균열나토국_미지원",
+        "relation": "causes",
+        "weight": 0.8,
+        "source": "post",
+        "date": "2026-04-01"
+      },
+      {
+        "from": "글로벌_서방_동맹_균열나토국_미지원",
+        "to": "중국·파키스탄의_지정학적_입지_강화",
+        "relation": "causes",
+        "weight": 0.8,
+        "source": "post",
+        "date": "2026-04-01"
+      },
+      {
+        "from": "중국·파키스탄의_지정학적_입지_강화",
+        "to": "에너지_공급망_혼란유조선_드론공격",
+        "relation": "causes",
+        "weight": 0.8,
+        "source": "post",
+        "date": "2026-04-01"
+      },
+      {
+        "from": "에너지_공급망_혼란유조선_드론공격",
+        "to": "유가_100달러선_위협_휘발유_갤런당_4달러_돌파",
+        "relation": "causes",
+        "weight": 0.8,
+        "source": "post",
+        "date": "2026-04-01"
+      },
+      {
+        "from": "유가_100달러선_위협_휘발유_갤런당_4달러_돌파",
+        "to": "글로벌_기업_채용_동결·운항_중단유니레버_루프트한자",
+        "relation": "causes",
+        "weight": 0.8,
+        "source": "post",
+        "date": "2026-04-01"
+      },
+      {
+        "from": "트럼프의_조기_전쟁_종료_선언2~3주",
+        "to": "임무_완수_명분으로_미군_철수",
+        "relation": "causes",
+        "weight": 0.8,
+        "source": "post",
+        "date": "2026-04-02"
+      },
+      {
+        "from": "임무_완수_명분으로_미군_철수",
+        "to": "호르무즈_해협_방어_책임_아시아_국가로_전가",
+        "relation": "causes",
+        "weight": 0.8,
+        "source": "post",
+        "date": "2026-04-02"
+      },
+      {
+        "from": "호르무즈_해협_방어_책임_아시아_국가로_전가",
+        "to": "한국·일본·중국의_독자적_군사력_투자_부담_증가",
+        "relation": "causes",
+        "weight": 0.8,
+        "source": "post",
+        "date": "2026-04-02"
+      },
+      {
+        "from": "한국·일본·중국의_독자적_군사력_투자_부담_증가",
+        "to": "에너지_자급능력_부족_국가들의_지정학적_취약성_심화",
+        "relation": "causes",
+        "weight": 0.8,
+        "source": "post",
+        "date": "2026-04-02"
+      },
+      {
+        "from": "에너지_자급능력_부족_국가들의_지정학적_취약성_심화",
+        "to": "장기적_물가_불안정성_상존",
+        "relation": "causes",
+        "weight": 0.8,
+        "source": "post",
+        "date": "2026-04-02"
+      },
+      {
+        "from": "중동_군사_충돌",
+        "to": "호르무즈_해협_봉쇄_+_유가_급등140달러_선",
+        "relation": "causes",
+        "weight": 0.8,
+        "source": "post",
+        "date": "2026-04-06"
+      },
+      {
+        "from": "호르무즈_해협_봉쇄_+_유가_급등140달러_선",
+        "to": "구조적_인플레이션OECD_4.2%_CPI_전망",
+        "relation": "causes",
+        "weight": 0.8,
+        "source": "post",
+        "date": "2026-04-06"
+      },
+      {
+        "from": "구조적_인플레이션OECD_4.2%_CPI_전망",
+        "to": "중앙은행_금리_인하_기대감_소멸",
+        "relation": "causes",
+        "weight": 0.8,
+        "source": "post",
+        "date": "2026-04-06"
+      },
+      {
+        "from": "중앙은행_금리_인하_기대감_소멸",
+        "to": "듀레이션_리스크_극대화_+_신흥국_통화_약세_+_고금리_환경에서_AI_CapEx_붕괴_압력",
+        "relation": "causes",
+        "weight": 0.8,
+        "source": "post",
+        "date": "2026-04-06"
+      },
+      {
+        "from": "이란_혁명수비대_저항_+_미군_보복에너지_인프라_타격",
+        "to": "호르무즈_해협_리알화_톨게이트_강제화",
+        "relation": "causes",
+        "weight": 0.8,
+        "source": "post",
+        "date": "2026-04-06"
+      },
+      {
+        "from": "호르무즈_해협_리알화_톨게이트_강제화",
+        "to": "글로벌_석유_공급_20%_차단_위협",
+        "relation": "causes",
+        "weight": 0.8,
+        "source": "post",
+        "date": "2026-04-06"
+      },
+      {
+        "from": "글로벌_석유_공급_20%_차단_위협",
+        "to": "유가_141달러_급등2008년_이후_최고_+_디젤_6달러_돌파",
+        "relation": "causes",
+        "weight": 0.8,
+        "source": "post",
+        "date": "2026-04-06"
+      },
+      {
+        "from": "유가_141달러_급등2008년_이후_최고_+_디젤_6달러_돌파",
+        "to": "스태그플레이션_공포_+_UN_무력화프랑스까지_무력_개방_반대",
+        "relation": "causes",
+        "weight": 0.8,
+        "source": "post",
+        "date": "2026-04-06"
+      },
+      {
+        "from": "스태그플레이션_공포_+_UN_무력화프랑스까지_무력_개방_반대",
+        "to": "서방_동맹_기능_정지",
+        "relation": "causes",
+        "weight": 0.8,
+        "source": "post",
+        "date": "2026-04-06"
+      }
+    ],
+    "node_count": 154,
+    "edge_count": 174
+  },
+  "summary": {
+    "post_count": 7,
+    "insight_count": 5,
+    "worldview_chains": 19,
+    "total_edges": 174
+  }
+}

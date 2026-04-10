@@ -1534,25 +1534,22 @@ def load_fund_holdings_summary(fund_code, year, month):
 # ── Digest 로딩 및 활용 ──
 
 # 주제 → 코멘트 자산 섹션 매핑
+# V2 Taxonomy (14개) 기준
 _TOPIC_TO_SECTION = {
-    '금리':          'equity_context',   # 금리 환경 → 주식/채권 모두 영향
-    '달러':          'fx',
-    '이민_노동':     'macro_bg',
-    '물가':          'macro_bg',
-    '관세':          'equity_context',
-    '안전자산':       'bond',
-    '미국채':         'bond',
-    '엔화_캐리':     'fx',
-    '중국_위안화':   'fx',
-    '유로달러':       'macro_bg',
-    '유가_에너지':   'commodity',
-    'AI_반도체':     'equity_detail',
-    '한국_원화':     'kr_equity',
-    '유럽_ECB':      'equity_context',
-    '부동산':         'alternative',
-    '저출산_인구':   None,               # 코멘트 미반영
-    '비트코인_크립토': None,
-    '금':             'commodity',
+    '통화정책':         'equity_context',
+    '금리_채권':        'bond',
+    '물가_인플레이션':   'macro_bg',
+    '경기_소비':        'macro_bg',
+    '유동성_크레딧':     'bond',
+    '환율_FX':          'fx',
+    '달러_글로벌유동성': 'macro_bg',
+    '에너지_원자재':     'commodity',
+    '귀금속_금':        'commodity',
+    '지정학':           'equity_context',
+    '부동산':           'alternative',
+    '관세_무역':        'equity_context',
+    '크립토':           None,
+    '테크_AI_반도체':   'equity_detail',
 }
 
 
@@ -1629,15 +1626,15 @@ def _build_outlook_from_digest(next_digest, holdings):
 
     relevant_topics = []
     if has_kr_equity:
-        relevant_topics.extend(['한국_원화', 'AI_반도체'])
+        relevant_topics.extend(['환율_FX', '테크_AI_반도체'])
     if has_overseas_equity:
-        relevant_topics.extend(['달러', '관세', 'AI_반도체', '유럽_ECB'])
+        relevant_topics.extend(['환율_FX', '관세_무역', '테크_AI_반도체', '통화정책'])
     if has_bond:
-        relevant_topics.extend(['금리', '미국채'])
+        relevant_topics.extend(['금리_채권', '통화정책'])
     if has_commodity:
-        relevant_topics.extend(['유가_에너지', '금'])
+        relevant_topics.extend(['에너지_원자재', '귀금속_금'])
     # 항상 포함
-    relevant_topics.extend(['물가', '이민_노동'])
+    relevant_topics.extend(['물가_인플레이션', '경기_소비'])
     relevant_topics = list(set(relevant_topics))
 
     pieces = []

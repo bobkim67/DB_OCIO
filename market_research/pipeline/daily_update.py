@@ -6,12 +6,15 @@ Daily Incremental Update — MTD/YTD 일일 시황 업데이트
 Phase 1.5: 월초 Full Build 기저 대비 일일 변화 추적.
 
 파이프라인:
-  1. 당일 뉴스 수집 (네이버 금융)
-  2. 당일 뉴스 분류 (Haiku, 21개 주제)
+  0. 매크로 지표 수집 (SCIP/FRED/NYFed/ECOS)
+  1. 뉴스 수집 (네이버 + Finnhub + NewsAPI)
+  1.5. 블로그 수집 (monygeek, Selenium 증분)
+  1.6. 블로그 인사이트 빌드 (Haiku 인과분석, 매 실행 시 재빌드)
+  2. 뉴스 분류 (Haiku, 14개 토픽)
+  2.5. 정제 (dedupe + salience + fallback)
   3. GraphRAG 증분 엣지 추가
-  4. 기저 대비 델타 요약 (MTD topic shift)
+  4. MTD 델타 요약 (토픽 카운트)
   5. regime_memory 업데이트
-  6. daily/{MM-DD}.json 저장
 
 사용법:
     python -m market_research.daily_update                # 오늘
@@ -70,17 +73,40 @@ def daily_update(date_str: str = None, dry_run: bool = False) -> dict:
         'steps': {},
     }
 
+    # ── Step 0: 매크로 지표 수집 ──
+    print(f'\n[Step 0] 매크로 지표 수집...')
+    macro_result = _step_collect_macro()
+    result['steps']['macro'] = macro_result
+
     # ── Step 1: 뉴스 수집 ──
     print(f'\n[Step 1] 뉴스 수집...')
     news_result = _step_collect_news(date_str)
     result['steps']['collect'] = news_result
     print(f'  → {news_result.get("new_count", 0)}건 신규')
 
+    # ── Step 1.5: 블로그 수집 ──
+    print(f'\n[Step 1.5] 블로그 수집...')
+    blog_result = _step_collect_blog()
+    result['steps']['blog'] = blog_result
+
+    # ── Step 1.6: 블로그 인사이트 빌드 ──
+    print(f'\n[Step 1.6] 블로그 인사이트 빌드...')
+    blog_insight_result = _step_blog_insight(year, month)
+    result['steps']['blog_insight'] = blog_insight_result
+
     # ── Step 2: 뉴스 분류 ──
     print(f'\n[Step 2] 뉴스 분류...')
     classify_result = _step_classify(date_str)
     result['steps']['classify'] = classify_result
     print(f'  → {classify_result.get("classified", 0)}/{classify_result.get("total", 0)}건')
+
+    # ── Step 2.5: Dedupe + Salience + Uncategorized Fallback ──
+    print(f'\n[Step 2.5] Dedupe + Salience + Fallback...')
+    refine_result = _step_refine(month_str)
+    result['steps']['refine'] = refine_result
+    print(f'  → dedup그룹 {refine_result.get("dedup_groups", 0)}, '
+          f'이벤트그룹 {refine_result.get("event_groups", 0)}, '
+          f'fallback {refine_result.get("fallback_count", 0)}건')
 
     if dry_run:
         print(f'\n  [dry-run] GraphRAG/델타 생략')
@@ -121,31 +147,55 @@ def daily_update(date_str: str = None, dry_run: bool = False) -> dict:
 # Step 구현
 # ═══════════════════════════════════════════════════════
 
+def _step_collect_macro() -> dict:
+    """Step 0: SCIP/FRED/NYFed/ECOS 매크로 지표 수집"""
+    try:
+        from market_research.collect.macro_data import run as macro_run
+        macro_run()
+        return {'status': 'ok'}
+    except Exception as exc:
+        print(f'  매크로 지표 수집 실패: {exc}')
+        return {'status': 'error', 'error': str(exc)}
+
+
+def _step_collect_blog() -> dict:
+    """Step 1.5: monygeek 블로그 증분 수집 (Selenium)"""
+    try:
+        from market_research.collect.naver_blog import run as blog_run, load_existing_posts
+        before = len(load_existing_posts())
+        blog_run(incremental=True)
+        after = len(load_existing_posts())
+        new_count = after - before
+        print(f'  블로그: {before} → {after}건 (신규 {new_count}건)')
+        return {'status': 'ok', 'before': before, 'after': after, 'new_count': new_count}
+    except Exception as exc:
+        print(f'  블로그 수집 실패: {exc}')
+        return {'status': 'error', 'error': str(exc)}
+
+
+def _step_blog_insight(year: int, month: int) -> dict:
+    """Step 1.6: 블로그 인사이트 빌드 (수집할 때마다 재빌드)"""
+    try:
+        from market_research.analyze.blog_analyst import build_blog_insight
+        result = build_blog_insight(year, month)
+        post_count = result.get('summary', {}).get('post_count', 0)
+        edge_count = result.get('summary', {}).get('total_edges', 0)
+        print(f'  → 포스트 {post_count}건, 엣지 {edge_count}개')
+        return {'status': 'ok', 'post_count': post_count, 'edge_count': edge_count}
+    except Exception as exc:
+        print(f'  블로그 인사이트 빌드 실패: {exc}')
+        return {'status': 'error', 'error': str(exc)}
+
+
 def _step_collect_news(date_str: str) -> dict:
-    """Step 1: 네이버 금융 + Finnhub 뉴스 수집"""
-    total_new = 0
-
-    # 1a. 네이버 금융
+    """Step 1: 네이버 + Finnhub + NewsAPI 뉴스 수집 (load_news_all 통합 호출)"""
     try:
-        from market_research.collect.macro_data import load_naver_finance_news
-        naver = load_naver_finance_news()
-        naver_today = sum(1 for a in naver if a.get('date', '') == date_str)
-        total_new += naver_today
-        print(f'  네이버: {naver_today}건')
+        from market_research.collect.macro_data import load_news_all
+        load_news_all()
+        return {'status': 'ok'}
     except Exception as exc:
-        print(f'  네이버 수집 실패: {exc}')
-
-    # 1b. Finnhub (영문 — 해외 시황 보강)
-    try:
-        from market_research.collect.macro_data import load_finnhub_news
-        finnhub = load_finnhub_news(from_date=date_str, to_date=date_str)
-        finnhub_today = sum(1 for a in finnhub if a.get('date', '') == date_str)
-        total_new += finnhub_today
-        print(f'  Finnhub: {finnhub_today}건')
-    except Exception as exc:
-        print(f'  Finnhub 수집 실패: {exc}')
-
-    return {'status': 'ok', 'new_count': total_new}
+        print(f'  뉴스 수집 실패: {exc}')
+        return {'status': 'error', 'error': str(exc)}
 
 
 def _step_classify(date_str: str) -> dict:
@@ -156,6 +206,66 @@ def _step_classify(date_str: str) -> dict:
     except Exception as exc:
         print(f'  분류 실패: {exc}')
         return {'status': 'error', 'error': str(exc), 'total': 0, 'classified': 0}
+
+
+def _step_refine(month_str: str) -> dict:
+    """Step 2.5: 월별 뉴스 전체에 dedupe + salience + uncategorized fallback 적용."""
+    try:
+        from market_research.core.dedupe import process_dedupe_and_events
+        from market_research.core.salience import (
+            compute_salience_batch, fallback_classify_uncategorized, load_bm_anomaly_dates)
+        from market_research.core.json_utils import safe_read_news_json, safe_write_news_json
+
+        news_file = NEWS_DIR / f'{month_str}.json'
+        if not news_file.exists():
+            return {'status': 'skip', 'reason': 'no news file'}
+
+        # 전체 데이터 로드 (메타 보존)
+        raw_data = json.loads(news_file.read_text(encoding='utf-8'))
+        articles = raw_data.get('articles', [])
+        if not articles:
+            return {'status': 'skip', 'reason': 'no articles'}
+
+        # BM anomaly dates 로드 (z>1.5)
+        y, m = int(month_str[:4]), int(month_str[5:7])
+        try:
+            bm_anomaly = load_bm_anomaly_dates(y, m)
+            print(f'  BM anomaly dates: {len(bm_anomaly)}일')
+        except Exception as exc:
+            print(f'  BM anomaly 로드 실패: {exc}')
+            bm_anomaly = set()
+
+        # A. article_id + dedupe + event clustering
+        articles = process_dedupe_and_events(articles)
+
+        # B. salience 점수 (bm_anomaly_dates 연동)
+        articles = compute_salience_batch(articles, bm_anomaly)
+
+        # C. uncategorized fallback
+        fallback_count = fallback_classify_uncategorized(articles, bm_anomaly)
+
+        # 통계 집계
+        dedup_groups = len({a.get('_dedup_group_id') for a in articles if '_dedup_group_id' in a})
+        primary_count = sum(1 for a in articles if a.get('is_primary', False))
+        event_groups = len({a.get('_event_group_id') for a in articles if '_event_group_id' in a})
+
+        # 저장
+        raw_data['articles'] = articles
+        safe_write_news_json(news_file, raw_data)
+
+        return {
+            'status': 'ok',
+            'total': len(articles),
+            'primary_count': primary_count,
+            'dedup_groups': dedup_groups,
+            'event_groups': event_groups,
+            'fallback_count': fallback_count,
+        }
+    except Exception as exc:
+        print(f'  Refine 실패: {exc}')
+        import traceback; traceback.print_exc()
+        return {'status': 'error', 'error': str(exc),
+                'dedup_groups': 0, 'event_groups': 0, 'fallback_count': 0}
 
 
 def _step_graph_incremental(year: int, month: int, date_str: str) -> dict:

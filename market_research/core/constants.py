@@ -2,7 +2,8 @@
 """펀드 설정, API 키, PA 분류 규칙"""
 
 # ── Claude API ──
-ANTHROPIC_API_KEY = 'REMOVED'
+import os as _os
+ANTHROPIC_API_KEY = _os.environ.get('ANTHROPIC_API_KEY', '')
 LLM_MODEL = 'claude-sonnet-4-6'
 
 # ── 공통 position_constraints ──

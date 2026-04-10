@@ -7,8 +7,11 @@ Thumbs.db
 .bkit/
 .claude/
 
-# market_research data (뉴스, 벡터DB, 캐시 등)
-market_research/data/
+# market_research — 재생성 가능 대용량 데이터
+market_research/data/news_vectordb/
+market_research/data/news_content_pool/
+market_research/data/enriched_digests/
+market_research/data/timeseries_narratives/
 market_research/output/
 market_research/devlog/
 

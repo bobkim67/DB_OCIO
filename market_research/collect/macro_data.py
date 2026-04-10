@@ -8,6 +8,7 @@ import json
 import ssl
 import sys
 import urllib.request
+import urllib.error
 import urllib.parse
 from datetime import datetime, date, timedelta
 from pathlib import Path
@@ -15,6 +16,8 @@ from io import StringIO
 
 import pandas as pd
 import pymysql
+
+from market_research.core.json_utils import safe_read_news_json, safe_write_news_json
 
 # ── 인코딩 설정 ──
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -170,12 +173,11 @@ def load_ecos_indicators(start_date='2024-01-01'):
                 ym = r.get('TIME', '')
                 val = r.get('DATA_VALUE', '')
                 if ym and val:
-                    # YYYYMM → YYYY-MM-01 (월초)
                     dt_str = f"{ym[:4]}-{ym[4:6]}-01"
                     try:
                         series[dt_str] = float(val)
                     except ValueError:
-                        pass
+                        print(f"    {name}: 값 변환 실패 ({ym}={val!r})")
             results[name] = series
             print(f"  {name}: {len(series)}건 ({cfg['desc']})")
         except Exception as e:
@@ -291,7 +293,7 @@ def load_nyfed_indicators(start_date='2024-01-01'):
                     try:
                         series[dt_str] = float(val)
                     except ValueError:
-                        pass
+                        print(f"    {name}: 값 변환 실패 ({dt_str}={val!r})")
             results[name] = series
             print(f"  {name}: {len(series)}건 ({cfg['desc']})")
         except Exception as e:
@@ -321,7 +323,14 @@ def _fetch_fred_csv(series_id, start_date='2024-01-01', end_date=None):
         df['value'] = pd.to_numeric(df['value'], errors='coerce')
         df = df.dropna()
         return dict(zip(df['date'].astype(str), df['value'].astype(float)))
+    except urllib.error.HTTPError as e:
+        print(f"    FRED {series_id}: HTTP {e.code}")
+        return {}
+    except urllib.error.URLError as e:
+        print(f"    FRED {series_id}: 네트워크 오류 — {e.reason}")
+        return {}
     except Exception as e:
+        print(f"    FRED {series_id}: 파싱 실패 — {e}")
         return {}
 
 
@@ -354,6 +363,43 @@ NAVER_NEWS_QUERIES = {
     '원자재':   ['금값 금시세', '유가 WTI 브렌트', '원자재 GSCI'],
     '통화':     ['원달러 환율', 'USD 달러 강세'],
     '매크로':   ['CPI 물가', '고용 실업률', 'FOMC 금리'],
+}
+
+# originallink 도메인 → 언론사명 (주요 경제/종합 매체)
+_NAVER_DOMAIN_MAP = {
+    # 경제지
+    'mk.co.kr': '매일경제', 'news.mk.co.kr': '매일경제',
+    'hankyung.com': '한국경제', 'www.hankyung.com': '한국경제',
+    'sedaily.com': '서울경제', 'www.sedaily.com': '서울경제',
+    'mt.co.kr': '머니투데이', 'news.mt.co.kr': '머니투데이',
+    'edaily.co.kr': '이데일리', 'www.edaily.co.kr': '이데일리',
+    'fnnews.com': '파이낸셜뉴스', 'www.fnnews.com': '파이낸셜뉴스',
+    'asiae.co.kr': '아시아경제', 'www.asiae.co.kr': '아시아경제',
+    'heraldcorp.com': '헤럴드경제', 'biz.heraldcorp.com': '헤럴드경제',
+    'businesspost.co.kr': '비즈니스포스트',
+    'thebell.co.kr': '더벨', 'www.thebell.co.kr': '더벨',
+    'infostock.co.kr': '인포스탁', 'www.infostock.co.kr': '인포스탁',
+    # 종합 통신
+    'yna.co.kr': '연합뉴스', 'www.yna.co.kr': '연합뉴스',
+    'yonhapnewstv.co.kr': '연합뉴스TV',
+    'newsis.com': '뉴시스', 'www.newsis.com': '뉴시스',
+    'news1.kr': '뉴스1', 'www.news1.kr': '뉴스1',
+    # 종합일간지
+    'chosun.com': '조선일보', 'biz.chosun.com': '조선비즈',
+    'donga.com': '동아일보', 'www.donga.com': '동아일보',
+    'joins.com': '중앙일보', 'news.joins.com': '중앙일보',
+    'hani.co.kr': '한겨레', 'www.hani.co.kr': '한겨레',
+    'khan.co.kr': '경향신문', 'www.khan.co.kr': '경향신문',
+    'kmib.co.kr': '국민일보', 'www.kmib.co.kr': '국민일보',
+    # 방송
+    'sbs.co.kr': 'SBS', 'biz.sbs.co.kr': 'SBS비즈',
+    'kbs.co.kr': 'KBS', 'news.kbs.co.kr': 'KBS',
+    'mbc.co.kr': 'MBC', 'imnews.imbc.com': 'MBC',
+    'jtbc.co.kr': 'JTBC', 'news.jtbc.co.kr': 'JTBC',
+    # 기타
+    'bloter.net': '블로터',
+    'zdnet.co.kr': 'ZDNet Korea',
+    'etnews.com': '전자신문', 'www.etnews.com': '전자신문',
 }
 
 
@@ -389,6 +435,20 @@ def load_naver_finance_news():
         except Exception:
             return today, f'{today}T00:00:00'
 
+    def _extract_source(originallink):
+        """originallink 도메인 → 한국 언론사명"""
+        if not originallink:
+            return '네이버검색'
+        try:
+            from urllib.parse import urlparse
+            domain = urlparse(originallink).netloc.lower()
+            # www. 제거
+            if domain.startswith('www.'):
+                domain = domain[4:]
+            return _NAVER_DOMAIN_MAP.get(domain, domain)
+        except Exception:
+            return '네이버검색'
+
     for ac, keywords in NAVER_NEWS_QUERIES.items():
         for kw in keywords:
             try:
@@ -408,15 +468,16 @@ def load_naver_finance_news():
                     description = _clean(item.get('description', ''))
                     art_date, art_datetime = _parse_pubdate(item.get('pubDate', ''))
 
+                    originallink = item.get('originallink', '')
                     all_articles.append({
                         'date': art_date,
                         'datetime': art_datetime,
-                        'source': '네이버검색',
+                        'source': _extract_source(originallink),
                         'asset_class': ac,
                         'symbol': '',
                         'title': title,
                         'description': description,
-                        'url': item.get('originallink', item.get('link', '')),
+                        'url': originallink or item.get('link', ''),
                         'provider': 'naver',
                     })
                     count += 1
@@ -432,19 +493,12 @@ def load_naver_finance_news():
     # 월별 파일에 병합
     month = today[:7]
     mfile = NEWS_DIR_ / f'{month}.json'
-    existing = []
-    if mfile.exists():
-        try:
-            existing = json.loads(mfile.read_text(encoding='utf-8')).get('articles', [])
-        except Exception:
-            pass
+    existing = safe_read_news_json(mfile)
     existing_titles = set(a['title'] for a in existing)
     new_articles = [a for a in all_articles if a['title'] not in existing_titles]
     merged = existing + new_articles
     merged.sort(key=lambda x: x.get('datetime', ''), reverse=True)
-    with open(mfile, 'w', encoding='utf-8') as f:
-        json.dump({'month': month, 'total': len(merged), 'articles': merged},
-                  f, ensure_ascii=False, indent=2)
+    safe_write_news_json(mfile, {'month': month, 'total': len(merged), 'articles': merged})
     print(f"  [저장] {mfile} — 신규 {len(new_articles)}건, 총 {len(merged)}건")
 
     return all_articles
@@ -566,19 +620,12 @@ def load_finnhub_news(from_date=None, to_date=None):
 
     for m, articles in sorted(monthly.items()):
         mfile = NEWS_DIR / f'{m}.json'
-        existing = []
-        if mfile.exists():
-            try:
-                existing = json.loads(mfile.read_text(encoding='utf-8')).get('articles', [])
-            except Exception:
-                pass
+        existing = safe_read_news_json(mfile)
         existing_titles = set(a['title'] for a in existing)
         new_articles = [a for a in articles if a['title'] not in existing_titles]
         merged = existing + new_articles
         merged.sort(key=lambda x: x.get('datetime', ''), reverse=True)
-        with open(mfile, 'w', encoding='utf-8') as f:
-            json.dump({'month': m, 'total': len(merged), 'articles': merged},
-                      f, ensure_ascii=False, indent=2)
+        safe_write_news_json(mfile, {'month': m, 'total': len(merged), 'articles': merged})
         print(f"    {m}: {len(merged)}건 (신규 {len(new_articles)}건)")
 
     return all_articles
@@ -748,20 +795,13 @@ def load_news_daily(from_date=None):
     # 저장 — 월별 파일에 병합
     month = today[:7]
     mfile = NEWS_DIR / f'{month}.json'
-    existing = []
-    if mfile.exists():
-        try:
-            existing = json.loads(mfile.read_text(encoding='utf-8')).get('articles', [])
-        except Exception:
-            pass
+    existing = safe_read_news_json(mfile)
     existing_titles = set(a['title'] for a in existing)
     new_articles = [a for a in all_articles if a['title'] not in existing_titles]
     merged = existing + new_articles
     merged.sort(key=lambda x: x.get('datetime', ''), reverse=True)
 
-    with open(mfile, 'w', encoding='utf-8') as f:
-        json.dump({'month': month, 'total': len(merged), 'articles': merged},
-                  f, ensure_ascii=False, indent=2)
+    safe_write_news_json(mfile, {'month': month, 'total': len(merged), 'articles': merged})
 
     trusted = sum(1 for a in all_articles if a['trusted'])
     print(f"  [저장] {mfile} — 신규 {len(new_articles)}건 (신뢰 {trusted}건), 총 {len(merged)}건")
@@ -861,19 +901,12 @@ def load_news_backfill(pages=5):
             monthly.setdefault(m, []).append(a)
     for m, articles in sorted(monthly.items()):
         mfile = NEWS_DIR / f'{m}.json'
-        existing = []
-        if mfile.exists():
-            try:
-                existing = json.loads(mfile.read_text(encoding='utf-8')).get('articles', [])
-            except Exception:
-                pass
+        existing = safe_read_news_json(mfile)
         existing_titles = set(a['title'] for a in existing)
         new_articles = [a for a in articles if a['title'] not in existing_titles]
         merged = existing + new_articles
         merged.sort(key=lambda x: x.get('datetime', ''), reverse=True)
-        with open(mfile, 'w', encoding='utf-8') as f:
-            json.dump({'month': m, 'total': len(merged), 'articles': merged},
-                      f, ensure_ascii=False, indent=2)
+        safe_write_news_json(mfile, {'month': m, 'total': len(merged), 'articles': merged})
         print(f"    {m}: {len(merged)}건 (신규 {len(new_articles)}건)")
 
     return all_articles

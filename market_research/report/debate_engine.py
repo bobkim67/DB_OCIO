@@ -160,8 +160,9 @@ def _parse_json_response(text: str):
 # 컨텍스트 빌더
 # ===================================================================
 
-def _build_shared_context(year: int, month: int, fund_code: str = None) -> dict:
-    """4인 에이전트 공유 컨텍스트 빌드"""
+def _build_shared_context(year: int, month: int, fund_code: str = None,
+                          start_idx: int = 1) -> dict:
+    """4인 에이전트 공유 컨텍스트 빌드. start_idx: evidence 번호 시작값 (분기 통번호용)"""
     context = {
         'year': year,
         'month': month,
@@ -174,31 +175,115 @@ def _build_shared_context(year: int, month: int, fund_code: str = None) -> dict:
         'blog_context_text': '',
     }
 
-    # 뉴스 분류 요약
+    # 뉴스 분류 요약 (dedupe + salience 활용)
+    evidence_ids = []  # 프롬프트에 포함된 기사 ID 추적
     news_file = BASE_DIR / 'data' / 'news' / f'{year}-{month:02d}.json'
     if news_file.exists():
         data = json.loads(news_file.read_text(encoding='utf-8'))
         articles = data.get('articles', [])
         classified = [a for a in articles if a.get('_classified_topics')]
+
+        # primary 기사만 사용 (dedup 중복 제거)
+        primary_classified = [a for a in classified if a.get('is_primary', True)]
+
         from collections import Counter
         topic_counts = Counter()
-        for a in classified:
+        for a in primary_classified:
             for t in a.get('_classified_topics', []):
                 if isinstance(t, dict):
                     topic_counts[t.get('topic', '')] += 1
 
-        lines = [f'뉴스 분류 요약 ({len(classified)}건):']
+        lines = [f'뉴스 분류 요약 ({len(primary_classified)}건, 중복제거 후):']
         for topic, count in topic_counts.most_common(10):
             lines.append(f'  {topic}: {count}건')
 
-        # 주요 뉴스 (intensity >= 7)
-        high_impact = [a for a in classified if a.get('intensity', 0) >= 7]
+        # 주요 뉴스: diversity guardrail (토픽별 상한 5건, event_group 상한 2건)
+        # + 당일 기사 슬롯 (TIER1 매체 최대 2건 보장)
+        from datetime import date as _date
+        today_str = _date.today().isoformat()
+
+        candidates = sorted(
+            [a for a in primary_classified if a.get('intensity', 0) >= 6],
+            key=lambda x: (-x.get('_event_salience', 0), -x.get('intensity', 0)),
+        )
+        high_impact = []
+        topic_count = {}   # topic → 선발 수
+        event_count = {}   # event_group_id → 선발 수
+        MAX_PER_TOPIC = 5
+        MAX_PER_EVENT = 2
+        TARGET = 15
+        LATEST_SLOT = 2    # 당일 기사 전용 슬롯
+
+        # Phase 1: 당일 TIER1/TIER2 기사 우선 배정
+        _tier1_sources = {'Reuters', 'Bloomberg', 'AP', 'Financial Times', 'WSJ',
+                          'CNBC', 'MarketWatch', '연합뉴스', '연합뉴스TV', '뉴시스', '뉴스1'}
+        _tier2_partial = {'헤럴드경제', '매일경제', '한경', '서울경제', '머니투데이', '이데일리', 'SBS'}
+        latest_candidates = sorted(
+            [a for a in candidates if a.get('date', '') == today_str],
+            key=lambda x: (-x.get('_event_salience', 0)),
+        )
+        latest_added_ids = set()
+        for a in latest_candidates:
+            if len(high_impact) >= LATEST_SLOT:
+                break
+            src = a.get('source', '')
+            is_authoritative = src in _tier1_sources or any(t2 in src for t2 in _tier2_partial)
+            if not is_authoritative:
+                continue
+            high_impact.append(a)
+            latest_added_ids.add(a.get('_article_id', ''))
+            topic = a.get('primary_topic', '')
+            topic_count[topic] = topic_count.get(topic, 0) + 1
+            egid = a.get('_event_group_id', '')
+            if egid:
+                event_count[egid] = event_count.get(egid, 0) + 1
+
+        # Phase 2: 나머지 salience 순 (기존 로직)
+        for a in candidates:
+            if len(high_impact) >= TARGET:
+                break
+            if a.get('_article_id', '') in latest_added_ids:
+                continue
+            topic = a.get('primary_topic', '')
+            egid = a.get('_event_group_id', '')
+            if topic_count.get(topic, 0) >= MAX_PER_TOPIC:
+                continue
+            if egid and event_count.get(egid, 0) >= MAX_PER_EVENT:
+                continue
+            high_impact.append(a)
+            topic_count[topic] = topic_count.get(topic, 0) + 1
+            if egid:
+                event_count[egid] = event_count.get(egid, 0) + 1
+
         if high_impact:
-            lines.append(f'\n주요 뉴스 (intensity >= 7): {len(high_impact)}건')
-            for a in sorted(high_impact, key=lambda x: -x.get('intensity', 0))[:10]:
-                lines.append(f'  [{a.get("primary_topic","")}] {a.get("title","")[:80]} '
-                             f'({a.get("source","")}, {a.get("date","")})')
+            n_topics = len(set(a.get('primary_topic', '') for a in high_impact))
+            lines.append(f'\n주요 뉴스 ({len(high_impact)}건, {n_topics}개 토픽, diversity 적용):')
+            for idx, a in enumerate(high_impact, start_idx):
+                sal = a.get('_event_salience', 0)
+                aid = a.get('_article_id', '')
+                src_cnt = a.get('_event_source_count', 1)
+                corr = f', 교차보도:{src_cnt}건' if src_cnt >= 2 else ''
+                lines.append(
+                    f'  [ref:{idx}] [{a.get("primary_topic","")}] {a.get("title","")[:80]} '
+                    f'({a.get("source","")}, {a.get("date","")}) [sal:{sal}{corr}]')
+                if aid:
+                    evidence_ids.append(aid)
+            context['_next_idx'] = start_idx + len(high_impact)
+
+        # 자산군별 영향 집계 (asset_impact_vector 합산)
+        from collections import defaultdict as _dd
+        asset_agg = _dd(float)
+        for a in primary_classified:
+            for k, v in a.get('_asset_impact_vector', {}).items():
+                asset_agg[k] += v
+        if asset_agg:
+            lines.append(f'\n자산군별 뉴스 영향 집계 (MTD):')
+            for k, v in sorted(asset_agg.items(), key=lambda x: -abs(x[1]))[:10]:
+                sign = '+' if v > 0 else ''
+                lines.append(f'  {k}: {sign}{v:.2f}')
+
         context['news_summary_text'] = '\n'.join(lines)
+    context['_evidence_ids'] = evidence_ids
 
     # GraphRAG 전이경로
     graph_file = BASE_DIR / 'data' / 'insight_graph' / f'{year}-{month:02d}.json'
@@ -243,6 +328,27 @@ def _build_shared_context(year: int, month: int, fund_code: str = None) -> dict:
     except Exception as e:
         context['timeseries_narrative_text'] = ''
         print(f"[timeseries_narrator] 오류: {e}")
+
+    # 수치 가드레일용 data_ctx 구축 (indicators.csv 최신 행에서 추출)
+    guard_ctx = {}
+    if context.get('indicators_text'):
+        try:
+            bm_returns = {}
+            for line in context['indicators_text'].split('\n'):
+                line = line.strip()
+                if ':' in line:
+                    key, val = line.split(':', 1)
+                    key = key.strip()
+                    val = val.strip()
+                    try:
+                        bm_returns[key] = float(val)
+                    except ValueError:
+                        pass
+            if bm_returns:
+                guard_ctx['bm_returns'] = bm_returns
+        except Exception:
+            pass
+    context['_guard_data_ctx'] = guard_ctx
 
     return context
 
@@ -345,19 +451,60 @@ def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> 
         )
 
     debate_text = '\n\n'.join(debate_summary)
-    system_msg = '당신은 DB형 퇴직연금 OCIO 운용보고서 최종 편집자입니다.'
+    system_msg = '당신은 기관 투자자를 위한 글로벌 매크로 시장 분석 전문가입니다.'
 
-    # ── Step 1: 고객용 코멘트 (Opus) ──
+    # ── Step 1: 고객용 매크로 코멘트 (Opus) ──
+    target_month = f'{context["year"]}년 {context["month"]}월'
     comment_prompt = (
         '4명의 분석가가 각각 다른 시각에서 시장을 분석했습니다.\n\n'
         f'## 분석가별 의견\n{debate_text}\n\n'
+        '## 문서 성격\n'
+        f'이 문서는 "{target_month} 매크로 시장 브리핑"입니다.\n'
+        f'반드시 "{target_month}" 기준으로 작성하세요. 다른 월을 언급하지 마세요.\n'
+        '특정 펀드의 운용보고가 아닌, 글로벌/국내 거시환경 분석문입니다.\n\n'
+        '## 문단 구조 (반드시 이 순서로 3~4문단 작성)\n'
+        '1문단: 월중 핵심 변화 — 시장을 움직인 가장 큰 변수 1~2개, 주요 자산 반응\n'
+        '2문단: 안도와 리스크의 공존 — 단기 완화 요인과 중기 구조적 불확실성 균형 서술\n'
+        '3문단: 금리/환율/유동성 해석 — 통화정책 딜레마, 금리 구조, 환율 방향성\n'
+        '4문단: 향후 체크포인트 — 확인해야 할 변수 나열로 마무리 (투자 액션 금지)\n\n'
         '## 작성 규칙\n'
-        '1. Quant(데이터 분석가)의 수치가 다른 분석가와 충돌 시, Quant의 수치를 우선합니다.\n'
-        '2. 제공된 수치를 절대 수정/반올림하지 마세요.\n'
-        '3. 펀드 매니저의 전문적이고 절제된 톤, 경어체 사용.\n'
-        '4. 크로스 자산 인과관계로 연결 (자산별 개별 나열 금지).\n'
-        '5. 시장환경 + 자산군별 동향 + 전망, 3-5문단.\n\n'
-        '코멘트만 작성하세요. JSON이나 코드블록 없이, 순수 텍스트만 출력:'
+        '1. 기관 고객용 전문적이고 절제된 톤, 경어체.\n'
+        '2. 크로스 자산 인과관계로 연결 (자산별 개별 나열 금지).\n'
+        '3. 숫자 사용 시 반드시 단위와 의미를 명확히 (%, 달러, 원, bp 등).\n'
+        '4. 분석가 의견이 상충하면 한쪽을 채택하지 말고 조건부 문장으로 서술.\n'
+        '   예: "단기 안도와 중기 불확실성이 병존하는 구도"\n'
+        '5. 마지막 문단은 반드시 "향후 관찰 변수"로 끝낼 것. 투자 액션으로 끝내지 말 것.\n\n'
+        '## 절대 금지: 내부 지표\n'
+        '아래는 분석 파이프라인 내부 지표이므로 절대 언급 금지:\n'
+        '- 살리언스(salience), 중요도 점수, confidence, 신뢰도 수치\n'
+        '- 교차보도 N건, 뉴스 건수, 전이경로 신뢰도\n'
+        '- MTD 누적 인덱스 포인트 (+2043, -1341 등 raw number)\n'
+        '- 내부 코드명 (F_USDKRW, DXY 코드 등은 "달러인덱스", "달러/원 선물환"으로 풀어쓸 것)\n\n'
+        '## 절대 금지: 개별 펀드 운용 문장\n'
+        '이 문서는 시장 해설이므로, 특정 펀드/당사의 실행 판단을 서술하면 안 됩니다.\n'
+        '금지 예시:\n'
+        '- "당사는 비중을 확대한다"\n'
+        '- "본 펀드는 듀레이션을 축소한다"\n'
+        '- "헤지 수단을 병행할 방침이다"\n'
+        '- "유동성 버퍼를 확보해 나간다"\n'
+        '- "BM 대비 초과수익을 추구한다"\n'
+        '- "포트폴리오 운용 전략으로는 ~"\n'
+        '- "편입 비중을 조정한다"\n\n'
+        '허용 예시 (시장 현상 설명):\n'
+        '- "듀레이션 부담이 커지고 있다"\n'
+        '- "환 헤지 수요가 증가하는 추세"\n'
+        '- "에너지 비중 확대에 대한 시장 기대"\n'
+        '- "유동성 버퍼가 약화되고 있다"\n'
+        '- "포트폴리오 리밸런싱 수요가 관측된다"\n\n'
+        '## 필수: 출처 태그\n'
+        '뉴스에서 가져온 사실을 언급할 때 해당 문장 끝에 [ref:N] 태그를 붙이세요.\n'
+        '위 "주요 뉴스" 목록에 [ref:1], [ref:2], ... 식별자가 이미 붙어 있습니다.\n'
+        '해당 식별자를 그대로 복사하세요. 번호를 재해석하거나 임의 부여하지 마세요.\n'
+        '목록에 없는 ref 번호를 만들지 마세요.\n'
+        '문장 내용과 직접 관련된 기사에만 ref를 붙이세요. 확신이 없으면 ref를 생략하세요.\n'
+        '최소 3개 이상의 [ref:N] 태그를 포함하세요.\n\n'
+        '순수 텍스트만 출력하세요.\n'
+        '문단 사이에 반드시 빈 줄(\\n\\n)을 넣어 구분하세요.'
     )
 
     customer_comment = ''
@@ -371,6 +518,18 @@ def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> 
         )
     except Exception as exc:
         customer_comment = f'코멘트 생성 실패: {exc}'
+
+    # ── 수치 가드레일 ──
+    guard_issues = []
+    guard_data_ctx = context.get('_guard_data_ctx', {})
+    if guard_data_ctx and customer_comment and not customer_comment.startswith('코멘트 생성 실패'):
+        try:
+            from market_research.report.numeric_guard import check_comment_numbers, format_guard_report
+            guard_issues = check_comment_numbers(customer_comment, guard_data_ctx)
+            if guard_issues:
+                print(f'  [가드레일] {format_guard_report(guard_issues)}')
+        except Exception as exc:
+            print(f'  [가드레일] 검증 실패: {exc}')
 
     # ── Step 2: 합의/쟁점/Tail Risk 분석 (Opus) ──
     analysis_prompt = (
@@ -410,6 +569,7 @@ def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> 
         'disagreements': analysis.get('disagreements', []),
         'tail_risks': analysis.get('tail_risks', []),
         'admin_summary': analysis.get('admin_summary', ''),
+        '_guard_issues': guard_issues,
     }
 
 
@@ -547,6 +707,7 @@ def run_market_debate(year: int, month: int) -> dict:
         'agents': agent_responses,
         'synthesis': synthesis,
         'regime': regime,
+        '_evidence_ids': context.get('_evidence_ids', []),
     }
 
     # ── 디버그 로그 저장 ──
@@ -574,6 +735,106 @@ def run_debate(fund_code: str, year: int, month: int) -> dict:
     """하위 호환 — run_market_debate 래퍼"""
     result = run_market_debate(year, month)
     result['fund_code'] = fund_code
+    return result
+
+
+def run_quarterly_debate(year: int, quarter: int) -> dict:
+    """
+    분기 통합 debate.
+    해당 분기 3개월의 뉴스/지표를 종합하여 debate 실행.
+    """
+    months = [(quarter - 1) * 3 + i for i in range(1, 4)]
+    print(f'\n-- Quarterly Debate: {year}Q{quarter} ({months[0]}~{months[2]}월) --')
+
+    # 3개월 컨텍스트 병합
+    merged_context = {
+        'year': year,
+        'month': months[-1],  # 마지막 달 기준
+        'fund_code': None,
+        'indicators_text': '',
+        'news_summary_text': '',
+        'graph_paths_text': '',
+        'blog_context_text': '',
+        '_evidence_ids': [],
+    }
+
+    all_news_lines = []
+    all_graph_lines = []
+    all_blog_lines = []
+    all_evidence_ids = []
+    next_idx = 1  # 분기 통번호
+
+    for m in months:
+        ctx = _build_shared_context(year, m, start_idx=next_idx)
+        next_idx = ctx.get('_next_idx', next_idx)
+        if ctx.get('indicators_text') and not merged_context['indicators_text']:
+            merged_context['indicators_text'] = ctx['indicators_text']
+        if ctx.get('news_summary_text'):
+            all_news_lines.append(f'--- {year}-{m:02d} ---')
+            all_news_lines.append(ctx['news_summary_text'])
+        if ctx.get('graph_paths_text'):
+            all_graph_lines.append(ctx['graph_paths_text'])
+        if ctx.get('blog_context_text'):
+            all_blog_lines.append(ctx['blog_context_text'])
+        all_evidence_ids.extend(ctx.get('_evidence_ids', []))
+
+    merged_context['indicators_text'] = merged_context['indicators_text']
+    merged_context['news_summary_text'] = '\n'.join(all_news_lines)
+    merged_context['graph_paths_text'] = '\n'.join(all_graph_lines)
+    merged_context['blog_context_text'] = '\n'.join(all_blog_lines)
+    merged_context['_evidence_ids'] = all_evidence_ids
+
+    print(f'  컨텍스트 빌드 완료 (3개월 병합)')
+
+    # 4인 에이전트
+    print(f'  4인 에이전트 실행 중...')
+    agent_responses = {}
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = {
+            agent: pool.submit(_run_agent, agent, merged_context)
+            for agent in AGENT_PERSONAS
+        }
+        for agent, future in futures.items():
+            try:
+                agent_responses[agent] = future.result(timeout=60)
+                stance = agent_responses[agent].get('stance', '?')
+                print(f'    {AGENT_PERSONAS[agent]["name"]}: {stance}')
+            except Exception as exc:
+                agent_responses[agent] = {
+                    'agent': agent, 'stance': 'error',
+                    'key_points': [str(exc)],
+                }
+                print(f'    {AGENT_PERSONAS[agent]["name"]}: 실패 - {exc}')
+
+    regime = _update_regime_memory(agent_responses, year, months[-1])
+    if regime.get('shift_detected'):
+        print(f'  레짐 전환 감지: {regime["shift_description"]}')
+
+    print(f'  Opus 종합 중...')
+    synthesis = _synthesize_debate(agent_responses, None, merged_context)
+    print(f'  종합 완료')
+
+    result = {
+        'year': year,
+        'quarter': quarter,
+        'months': months,
+        'debated_at': time.strftime('%Y-%m-%dT%H:%M:%S'),
+        'agents': agent_responses,
+        'synthesis': synthesis,
+        'regime': regime,
+        '_evidence_ids': all_evidence_ids,
+    }
+
+    log_file = DEBATE_LOG_DIR / f'{year}-Q{quarter}.json'
+    try:
+        log_file.write_text(
+            json.dumps(result, ensure_ascii=False, indent=2, default=str),
+            encoding='utf-8',
+        )
+        print(f'  로그 저장: {log_file}')
+    except Exception as exc:
+        print(f'  [경고] 로그 저장 실패: {exc}')
+
     return result
 
 

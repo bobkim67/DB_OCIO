@@ -1,0 +1,2497 @@
+{
+  "nodes": {
+    "달러": {
+      "label": "달러",
+      "topic": "달러",
+      "severity": "neutral"
+    },
+    "물가": {
+      "label": "물가",
+      "topic": "물가",
+      "severity": "neutral"
+    },
+    "WTI": {
+      "label": "WTI",
+      "topic": "유가_에너지",
+      "severity": "neutral"
+    },
+    "환율": {
+      "label": "환율",
+      "topic": "news",
+      "severity": "neutral"
+    },
+    "Fed": {
+      "label": "Fed",
+      "topic": "news",
+      "severity": "neutral"
+    },
+    "통화정책": {
+      "label": "통화정책",
+      "topic": "news",
+      "severity": "neutral"
+    },
+    "유가": {
+      "label": "유가",
+      "topic": "news",
+      "severity": "neutral"
+    },
+    "반도체": {
+      "label": "반도체",
+      "topic": "news",
+      "severity": "neutral"
+    },
+    "코스피": {
+      "label": "코스피",
+      "topic": "news",
+      "severity": "neutral"
+    },
+    "기준금리": {
+      "label": "기준금리",
+      "topic": "news",
+      "severity": "neutral"
+    },
+    "부동산": {
+      "label": "부동산",
+      "topic": "news",
+      "severity": "neutral"
+    },
+    "동결": {
+      "label": "동결",
+      "topic": "news",
+      "severity": "neutral"
+    },
+    "원달러_환율_변동": {
+      "label": "원달러_환율_변동",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "원유_공급_차질_우려": {
+      "label": "원유_공급_차질_우려",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "인플레이션": {
+      "label": "인플레이션",
+      "topic": "news",
+      "severity": "neutral"
+    },
+    "금리인상": {
+      "label": "금리인상",
+      "topic": "news",
+      "severity": "neutral"
+    },
+    "전쟁": {
+      "label": "전쟁",
+      "topic": "news",
+      "severity": "neutral"
+    },
+    "삼성전자": {
+      "label": "삼성전자",
+      "topic": "news",
+      "severity": "neutral"
+    },
+    "원화": {
+      "label": "원화",
+      "topic": "news",
+      "severity": "neutral"
+    },
+    "휴전": {
+      "label": "휴전",
+      "topic": "news",
+      "severity": "neutral"
+    },
+    "금리동결": {
+      "label": "금리동결",
+      "topic": "news",
+      "severity": "neutral"
+    },
+    "ECB": {
+      "label": "ECB",
+      "topic": "news",
+      "severity": "neutral"
+    },
+    "아파트_분양전망지수": {
+      "label": "아파트 분양전망지수",
+      "topic": "news",
+      "severity": "neutral"
+    },
+    "분양전망지수": {
+      "label": "분양전망지수",
+      "topic": "news",
+      "severity": "neutral"
+    },
+    "아파트_분양지수": {
+      "label": "아파트 분양지수",
+      "topic": "news",
+      "severity": "neutral"
+    },
+    "고금리": {
+      "label": "고금리",
+      "topic": "news",
+      "severity": "neutral"
+    },
+    "CPI": {
+      "label": "CPI",
+      "topic": "news",
+      "severity": "neutral"
+    },
+    "국제유가": {
+      "label": "국제유가",
+      "topic": "news",
+      "severity": "neutral"
+    },
+    "브렌트유": {
+      "label": "브렌트유",
+      "topic": "news",
+      "severity": "neutral"
+    },
+    "자산": {
+      "label": "자산",
+      "topic": "news",
+      "severity": "neutral"
+    },
+    "이벤트": {
+      "label": "이벤트",
+      "topic": "news",
+      "severity": "neutral"
+    },
+    "호르무즈_개방": {
+      "label": "호르무즈 개방",
+      "topic": "news",
+      "severity": "neutral"
+    },
+    "IEA": {
+      "label": "IEA",
+      "topic": "news",
+      "severity": "neutral"
+    },
+    "오일쇼크": {
+      "label": "오일쇼크",
+      "topic": "news",
+      "severity": "neutral"
+    },
+    "지정학적_리스크_완화": {
+      "label": "지정학적_리스크_완화",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "공급_차질_우려_감소": {
+      "label": "공급_차질_우려_감소",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "국제유가_하락_압력": {
+      "label": "국제유가_하락_압력",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "지정학적_변화_발생": {
+      "label": "지정학적_변화_발생",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "시장_반응_촉발": {
+      "label": "시장_반응_촉발",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "시장_불확실성_변화": {
+      "label": "시장_불확실성_변화",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "투자심리_영향": {
+      "label": "투자심리_영향",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "자산가격_변동": {
+      "label": "자산가격_변동",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "지정학적_리스크_감소": {
+      "label": "지정학적_리스크_감소",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "안전자산_선호_완화": {
+      "label": "안전자산_선호_완화",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "위험자산_가격_변동": {
+      "label": "위험자산_가격_변동",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "분쟁지역_원유_공급_안정화": {
+      "label": "분쟁지역_원유_공급_안정화",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "시장_공급_우려_해소": {
+      "label": "시장_공급_우려_해소",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "유가_하락": {
+      "label": "유가_하락",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "WTI는_유가_벤치마크_지표": {
+      "label": "WTI는_유가_벤치마크_지표",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "지정학적·경제적_이벤트_발생": {
+      "label": "지정학적·경제적_이벤트_발생",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "원유_공급·수요_전망_변화": {
+      "label": "원유_공급·수요_전망_변화",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "유가_변동": {
+      "label": "유가_변동",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "인플레이션_기대_변화": {
+      "label": "인플레이션_기대_변화",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "금융자산_가격_재평가": {
+      "label": "금융자산_가격_재평가",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "분쟁지역_원유_공급_우려_감소": {
+      "label": "분쟁지역_원유_공급_우려_감소",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "WTI_선물_가격_하락": {
+      "label": "WTI_선물_가격_하락",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "분쟁으로_인한_원유_공급_차질": {
+      "label": "분쟁으로_인한_원유_공급_차질",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "지정학적_리스크_프리미엄_상승": {
+      "label": "지정학적_리스크_프리미엄_상승",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "유가_상승": {
+      "label": "유가_상승",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "달러_강세_약세": {
+      "label": "달러_강세_약세",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "원화_가치_변화": {
+      "label": "원화_가치_변화",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "WTI는_국제유가_대표_벤치마크": {
+      "label": "WTI는_국제유가_대표_벤치마크",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "브렌트유_가격_변동": {
+      "label": "브렌트유_가격_변동",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "인플레이션·경기_전망_변화": {
+      "label": "인플레이션·경기_전망_변화",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "금융자산_가격_영향": {
+      "label": "금융자산_가격_영향",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "원유_공급_위기_발생": {
+      "label": "원유_공급_위기_발생",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "IEA_비축유_방출_결정_및_대응_발표": {
+      "label": "IEA_비축유_방출_결정_및_대응_발표",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "전쟁으로_에너지·곡물_공급_차질": {
+      "label": "전쟁으로_에너지·곡물_공급_차질",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "원자재_가격_급등": {
+      "label": "원자재_가격_급등",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "인플레이션_압력_상승": {
+      "label": "인플레이션_압력_상승",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "브렌트유는_국제_유가_벤치마크_지표": {
+      "label": "브렌트유는_국제_유가_벤치마크_지표",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "WTI_가격_변동": {
+      "label": "WTI_가격_변동",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "에너지_비용·인플레이션_기대_변화": {
+      "label": "에너지_비용·인플레이션_기대_변화",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "자산시장_영향": {
+      "label": "자산시장_영향",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "호르무즈_해협_통항_상황_변화": {
+      "label": "호르무즈_해협_통항_상황_변화",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "원유_공급_경로_안정화": {
+      "label": "원유_공급_경로_안정화",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "시장_반응_이벤트_촉발": {
+      "label": "시장_반응_이벤트_촉발",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "전쟁으로_인한_에너지_공급_위기": {
+      "label": "전쟁으로_인한_에너지_공급_위기",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "IEA_긴급_대응_및_성명_발표": {
+      "label": "IEA_긴급_대응_및_성명_발표",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "한국은행": {
+      "label": "한국은행",
+      "topic": "news_daily",
+      "severity": "neutral"
+    },
+    "한은": {
+      "label": "한은",
+      "topic": "news_daily",
+      "severity": "neutral"
+    },
+    "SK하이닉스": {
+      "label": "SK하이닉스",
+      "topic": "news_daily",
+      "severity": "neutral"
+    },
+    "뉴욕증시": {
+      "label": "뉴욕증시",
+      "topic": "news_daily",
+      "severity": "neutral"
+    },
+    "중동_리스크": {
+      "label": "중동 리스크",
+      "topic": "news_daily",
+      "severity": "neutral"
+    },
+    "한국은행_금융통화위원회_의결": {
+      "label": "한국은행_금융통화위원회_의결",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "기준금리_결정_발표": {
+      "label": "기준금리_결정_발표",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "한은_금통위_회의": {
+      "label": "한은_금통위_회의",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "금리동결_결정_→_기준금리_현행_유지": {
+      "label": "금리동결_결정_→_기준금리_현행_유지",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "전쟁_발발": {
+      "label": "전쟁_발발",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "글로벌_불확실성_확대": {
+      "label": "글로벌_불확실성_확대",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "기준금리_조정_검토": {
+      "label": "기준금리_조정_검토",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "휴전_협상_타결": {
+      "label": "휴전_협상_타결",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "투자심리_개선": {
+      "label": "투자심리_개선",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "코스피_상승": {
+      "label": "코스피_상승",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "한은_금통위_개최": {
+      "label": "한은_금통위_개최",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "경제_지표_검토": {
+      "label": "경제_지표_검토",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "금리동결_결정": {
+      "label": "금리동결_결정",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "중동_지정학적_긴장_고조": {
+      "label": "중동_지정학적_긴장_고조",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "국제_유가_상승": {
+      "label": "국제_유가_상승",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "전쟁으로_인한_글로벌_경제_불안": {
+      "label": "전쟁으로_인한_글로벌_경제_불안",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "국내_금융시장_변동성_확대": {
+      "label": "국내_금융시장_변동성_확대",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "한국은행_통화정책_대응_압력": {
+      "label": "한국은행_통화정책_대응_압력",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "한국은행_기준금리_결정": {
+      "label": "한국은행_기준금리_결정",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "내외금리차_변화": {
+      "label": "내외금리차_변화",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "외국인_자금_흐름_변동": {
+      "label": "외국인_자금_흐름_변동",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "원_달러_환율_변동": {
+      "label": "원_달러_환율_변동",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "기준금리_인상_인하": {
+      "label": "기준금리_인상_인하",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "한미_금리차_변화": {
+      "label": "한미_금리차_변화",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "달러_대비_원화_가치_변동": {
+      "label": "달러_대비_원화_가치_변동",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "환율_상승_하락": {
+      "label": "환율_상승_하락",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "반도체_업황_변화": {
+      "label": "반도체_업황_변화",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "SK하이닉스_실적_및_주가_연동": {
+      "label": "SK하이닉스_실적_및_주가_연동",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "휴전_합의_발표": {
+      "label": "휴전_합의_발표",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "글로벌_투자심리_회복": {
+      "label": "글로벌_투자심리_회복",
+      "topic": "inferred",
+      "severity": "neutral"
+    },
+    "뉴욕증시_상승": {
+      "label": "뉴욕증시_상승",
+      "topic": "inferred",
+      "severity": "neutral"
+    }
+  },
+  "edges": [
+    {
+      "from": "WTI",
+      "to": "WTI는_국제유가_대표_벤치마크",
+      "relation": "correlates",
+      "weight": 0.6135658880876074,
+      "source": "llm_inferred",
+      "confidence": 0.92,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.3913,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "WTI",
+      "to": "WTI는_유가_벤치마크_지표",
+      "relation": "correlates",
+      "weight": 0.6002274992161376,
+      "source": "llm_inferred",
+      "confidence": 0.9,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.3744,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "WTI",
+      "to": "WTI_가격_변동",
+      "relation": "causes",
+      "weight": 0.45350522162997065,
+      "source": "llm_inferred",
+      "confidence": 0.68,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.2138,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "Fed",
+      "to": "통화정책",
+      "relation": "mentioned_in",
+      "weight": 0.34413043288391887,
+      "source": "news_entity",
+      "confidence": 0.516,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.1231,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "물가",
+      "to": "통화정책",
+      "relation": "mentioned_in",
+      "weight": 0.33746123844818404,
+      "source": "news_entity",
+      "confidence": 0.506,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.1184,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "전쟁",
+      "to": "전쟁_발발",
+      "relation": "causes",
+      "weight": 0.8775000000000001,
+      "source": "llm_inferred",
+      "confidence": 0.65,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.6266,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "전쟁",
+      "to": "전쟁으로_인한_글로벌_경제_불안",
+      "relation": "causes",
+      "weight": 0.84,
+      "source": "llm_inferred",
+      "confidence": 0.6,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.5537,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "전쟁",
+      "to": "분쟁으로_인한_원유_공급_차질",
+      "relation": "causes",
+      "weight": 0.5868891103446678,
+      "source": "llm_inferred",
+      "confidence": 0.88,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.358,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "금리인상",
+      "to": "통화정책",
+      "relation": "mentioned_in",
+      "weight": 0.3908147939340629,
+      "source": "news_entity",
+      "confidence": 0.586,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.1587,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "유가",
+      "to": "유가_변동",
+      "relation": "causes",
+      "weight": 0.5068587771158495,
+      "source": "llm_inferred",
+      "confidence": 0.76,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.267,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "아파트_분양전망지수",
+      "to": "부동산",
+      "relation": "mentioned_in",
+      "weight": 0.34413043288391887,
+      "source": "news_entity",
+      "confidence": 0.516,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.1231,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "분양전망지수",
+      "to": "부동산",
+      "relation": "mentioned_in",
+      "weight": 0.34413043288391887,
+      "source": "news_entity",
+      "confidence": 0.516,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.1231,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "아파트_분양지수",
+      "to": "부동산",
+      "relation": "mentioned_in",
+      "weight": 0.34413043288391887,
+      "source": "news_entity",
+      "confidence": 0.516,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.1231,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "고금리",
+      "to": "부동산",
+      "relation": "mentioned_in",
+      "weight": 0.34413043288391887,
+      "source": "news_entity",
+      "confidence": 0.516,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.1231,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "기준금리",
+      "to": "기준금리_인상_인하",
+      "relation": "causes",
+      "weight": 0.96,
+      "source": "llm_inferred",
+      "confidence": 0.8,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.8437,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "기준금리",
+      "to": "통화정책",
+      "relation": "mentioned_in",
+      "weight": 0.3908147939340629,
+      "source": "news_entity",
+      "confidence": 0.586,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.1587,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "동결",
+      "to": "통화정책",
+      "relation": "mentioned_in",
+      "weight": 0.38414559949832805,
+      "source": "news_entity",
+      "confidence": 0.576,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.1534,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "금리동결",
+      "to": "금리동결_결정_→_기준금리_현행_유지",
+      "relation": "correlates",
+      "weight": 0.84,
+      "source": "llm_inferred",
+      "confidence": 0.6,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.5537,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "금리동결",
+      "to": "통화정책",
+      "relation": "mentioned_in",
+      "weight": 0.33746123844818404,
+      "source": "news_entity",
+      "confidence": 0.506,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.1184,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "ECB",
+      "to": "통화정책",
+      "relation": "mentioned_in",
+      "weight": 0.33746123844818404,
+      "source": "news_entity",
+      "confidence": 0.506,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.1184,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "CPI",
+      "to": "통화정책",
+      "relation": "mentioned_in",
+      "weight": 0.33079204401244916,
+      "source": "news_entity",
+      "confidence": 0.496,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.1137,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "휴전",
+      "to": "휴전_협상_타결",
+      "relation": "causes",
+      "weight": 0.9375,
+      "source": "llm_inferred",
+      "confidence": 0.75,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.7725,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "휴전",
+      "to": "휴전_합의_발표",
+      "relation": "causes",
+      "weight": 0.9375,
+      "source": "llm_inferred",
+      "confidence": 0.75,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.7725,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "휴전",
+      "to": "분쟁지역_원유_공급_안정화",
+      "relation": "causes",
+      "weight": 0.5535431381659935,
+      "source": "llm_inferred",
+      "confidence": 0.83,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.3185,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "지정학적_리스크_완화",
+      "to": "투자심리_개선",
+      "relation": "causes",
+      "weight": 0.9375,
+      "source": "llm_inferred",
+      "confidence": 0.75,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.7725,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "지정학적_리스크_완화",
+      "to": "공급_차질_우려_감소",
+      "relation": "causes",
+      "weight": 0.5468739437302587,
+      "source": "llm_inferred",
+      "confidence": 0.82,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.3108,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "공급_차질_우려_감소",
+      "to": "국제유가_하락_압력",
+      "relation": "causes",
+      "weight": 0.5468739437302587,
+      "source": "llm_inferred",
+      "confidence": 0.82,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.3108,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "국제유가_하락_압력",
+      "to": "국제유가",
+      "relation": "causes",
+      "weight": 0.5468739437302587,
+      "source": "llm_inferred",
+      "confidence": 0.82,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.3108,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "지정학적_변화_발생",
+      "to": "시장_반응_촉발",
+      "relation": "causes",
+      "weight": 0.43349763832276605,
+      "source": "llm_inferred",
+      "confidence": 0.65,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.1953,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "시장_반응_촉발",
+      "to": "이벤트",
+      "relation": "causes",
+      "weight": 0.43349763832276605,
+      "source": "llm_inferred",
+      "confidence": 0.65,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.1953,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "이벤트",
+      "to": "시장_불확실성_변화",
+      "relation": "causes",
+      "weight": 0.5001895826801146,
+      "source": "llm_inferred",
+      "confidence": 0.75,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.26,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "이벤트",
+      "to": "지정학적·경제적_이벤트_발생",
+      "relation": "causes",
+      "weight": 0.48018199937291006,
+      "source": "llm_inferred",
+      "confidence": 0.72,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.2396,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "시장_불확실성_변화",
+      "to": "투자심리_영향",
+      "relation": "causes",
+      "weight": 0.5001895826801146,
+      "source": "llm_inferred",
+      "confidence": 0.75,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.26,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "투자심리_영향",
+      "to": "자산가격_변동",
+      "relation": "causes",
+      "weight": 0.5001895826801146,
+      "source": "llm_inferred",
+      "confidence": 0.75,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.26,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "자산가격_변동",
+      "to": "자산",
+      "relation": "causes",
+      "weight": 0.5001895826801146,
+      "source": "llm_inferred",
+      "confidence": 0.75,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.26,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "지정학적_리스크_감소",
+      "to": "글로벌_투자심리_회복",
+      "relation": "causes",
+      "weight": 0.9375,
+      "source": "llm_inferred",
+      "confidence": 0.75,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.7725,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "지정학적_리스크_감소",
+      "to": "안전자산_선호_완화",
+      "relation": "causes",
+      "weight": 0.5201971659873192,
+      "source": "llm_inferred",
+      "confidence": 0.78,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.2812,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "안전자산_선호_완화",
+      "to": "위험자산_가격_변동",
+      "relation": "causes",
+      "weight": 0.5201971659873192,
+      "source": "llm_inferred",
+      "confidence": 0.78,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.2812,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "위험자산_가격_변동",
+      "to": "자산",
+      "relation": "causes",
+      "weight": 0.5201971659873192,
+      "source": "llm_inferred",
+      "confidence": 0.78,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.2812,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "분쟁지역_원유_공급_안정화",
+      "to": "시장_공급_우려_해소",
+      "relation": "causes",
+      "weight": 0.5535431381659935,
+      "source": "llm_inferred",
+      "confidence": 0.83,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.3185,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "시장_공급_우려_해소",
+      "to": "유가_하락",
+      "relation": "causes",
+      "weight": 0.5535431381659935,
+      "source": "llm_inferred",
+      "confidence": 0.83,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.3185,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "유가_하락",
+      "to": "유가",
+      "relation": "causes",
+      "weight": 0.5535431381659935,
+      "source": "llm_inferred",
+      "confidence": 0.83,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.3185,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "WTI는_유가_벤치마크_지표",
+      "to": "유가",
+      "relation": "correlates",
+      "weight": 0.6002274992161376,
+      "source": "llm_inferred",
+      "confidence": 0.9,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.3744,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "지정학적·경제적_이벤트_발생",
+      "to": "원유_공급·수요_전망_변화",
+      "relation": "causes",
+      "weight": 0.48018199937291006,
+      "source": "llm_inferred",
+      "confidence": 0.72,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.2396,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "원유_공급·수요_전망_변화",
+      "to": "유가_변동",
+      "relation": "causes",
+      "weight": 0.48018199937291006,
+      "source": "llm_inferred",
+      "confidence": 0.72,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.2396,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "유가_변동",
+      "to": "인플레이션_기대_변화",
+      "relation": "causes",
+      "weight": 0.5068587771158495,
+      "source": "llm_inferred",
+      "confidence": 0.76,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.267,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "유가_변동",
+      "to": "유가",
+      "relation": "causes",
+      "weight": 0.48018199937291006,
+      "source": "llm_inferred",
+      "confidence": 0.72,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.2396,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "인플레이션_기대_변화",
+      "to": "금융자산_가격_재평가",
+      "relation": "causes",
+      "weight": 0.5068587771158495,
+      "source": "llm_inferred",
+      "confidence": 0.76,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.267,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "금융자산_가격_재평가",
+      "to": "자산",
+      "relation": "causes",
+      "weight": 0.5068587771158495,
+      "source": "llm_inferred",
+      "confidence": 0.76,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.267,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "분쟁지역_원유_공급_우려_감소",
+      "to": "WTI_선물_가격_하락",
+      "relation": "causes",
+      "weight": 0.533535554858789,
+      "source": "llm_inferred",
+      "confidence": 0.8,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.2959,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "WTI_선물_가격_하락",
+      "to": "WTI",
+      "relation": "causes",
+      "weight": 0.533535554858789,
+      "source": "llm_inferred",
+      "confidence": 0.8,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.2959,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "분쟁으로_인한_원유_공급_차질",
+      "to": "지정학적_리스크_프리미엄_상승",
+      "relation": "causes",
+      "weight": 0.5868891103446678,
+      "source": "llm_inferred",
+      "confidence": 0.88,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.358,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "지정학적_리스크_프리미엄_상승",
+      "to": "유가_상승",
+      "relation": "causes",
+      "weight": 0.5868891103446678,
+      "source": "llm_inferred",
+      "confidence": 0.88,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.358,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "유가_상승",
+      "to": "유가",
+      "relation": "causes",
+      "weight": 0.5868891103446678,
+      "source": "llm_inferred",
+      "confidence": 0.88,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.358,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "삼성전자",
+      "to": "반도체",
+      "relation": "correlates",
+      "weight": 0.4668436105014403,
+      "source": "llm_inferred",
+      "confidence": 0.7,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.2265,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "달러",
+      "to": "달러_강세_약세",
+      "relation": "causes",
+      "weight": 0.5668815270374633,
+      "source": "llm_inferred",
+      "confidence": 0.85,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.334,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "달러_강세_약세",
+      "to": "원달러_환율_변동",
+      "relation": "causes",
+      "weight": 0.5668815270374633,
+      "source": "llm_inferred",
+      "confidence": 0.85,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.334,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "원달러_환율_변동",
+      "to": "원화_가치_변화",
+      "relation": "causes",
+      "weight": 0.5668815270374633,
+      "source": "llm_inferred",
+      "confidence": 0.85,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.334,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "원화_가치_변화",
+      "to": "원화",
+      "relation": "causes",
+      "weight": 0.5668815270374633,
+      "source": "llm_inferred",
+      "confidence": 0.85,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.334,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "WTI는_국제유가_대표_벤치마크",
+      "to": "국제유가",
+      "relation": "correlates",
+      "weight": 0.6135658880876074,
+      "source": "llm_inferred",
+      "confidence": 0.92,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.3913,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "브렌트유",
+      "to": "브렌트유는_국제_유가_벤치마크_지표",
+      "relation": "correlates",
+      "weight": 0.6068966936518725,
+      "source": "llm_inferred",
+      "confidence": 0.91,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.3828,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "브렌트유",
+      "to": "브렌트유_가격_변동",
+      "relation": "causes",
+      "weight": 0.4668436105014403,
+      "source": "llm_inferred",
+      "confidence": 0.7,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.2265,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "브렌트유_가격_변동",
+      "to": "인플레이션·경기_전망_변화",
+      "relation": "causes",
+      "weight": 0.4668436105014403,
+      "source": "llm_inferred",
+      "confidence": 0.7,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.2265,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "인플레이션·경기_전망_변화",
+      "to": "금융자산_가격_영향",
+      "relation": "causes",
+      "weight": 0.4668436105014403,
+      "source": "llm_inferred",
+      "confidence": 0.7,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.2265,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "금융자산_가격_영향",
+      "to": "자산",
+      "relation": "causes",
+      "weight": 0.4668436105014403,
+      "source": "llm_inferred",
+      "confidence": 0.7,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.2265,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "오일쇼크",
+      "to": "원유_공급_위기_발생",
+      "relation": "causes",
+      "weight": 0.533535554858789,
+      "source": "llm_inferred",
+      "confidence": 0.8,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.2959,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "원유_공급_위기_발생",
+      "to": "IEA_비축유_방출_결정_및_대응_발표",
+      "relation": "causes",
+      "weight": 0.533535554858789,
+      "source": "llm_inferred",
+      "confidence": 0.8,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.2959,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "IEA_비축유_방출_결정_및_대응_발표",
+      "to": "IEA",
+      "relation": "causes",
+      "weight": 0.533535554858789,
+      "source": "llm_inferred",
+      "confidence": 0.8,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.2959,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "전쟁으로_에너지·곡물_공급_차질",
+      "to": "원자재_가격_급등",
+      "relation": "causes",
+      "weight": 0.5602123326017284,
+      "source": "llm_inferred",
+      "confidence": 0.84,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.3262,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "원자재_가격_급등",
+      "to": "인플레이션_압력_상승",
+      "relation": "causes",
+      "weight": 0.5602123326017284,
+      "source": "llm_inferred",
+      "confidence": 0.84,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.3262,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "인플레이션_압력_상승",
+      "to": "기준금리_조정_검토",
+      "relation": "causes",
+      "weight": 0.8775000000000001,
+      "source": "llm_inferred",
+      "confidence": 0.65,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.6266,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "인플레이션_압력_상승",
+      "to": "인플레이션",
+      "relation": "causes",
+      "weight": 0.5602123326017284,
+      "source": "llm_inferred",
+      "confidence": 0.84,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.3262,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "브렌트유는_국제_유가_벤치마크_지표",
+      "to": "유가",
+      "relation": "correlates",
+      "weight": 0.6068966936518725,
+      "source": "llm_inferred",
+      "confidence": 0.91,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.3828,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "WTI_가격_변동",
+      "to": "에너지_비용·인플레이션_기대_변화",
+      "relation": "causes",
+      "weight": 0.45350522162997065,
+      "source": "llm_inferred",
+      "confidence": 0.68,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.2138,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "에너지_비용·인플레이션_기대_변화",
+      "to": "자산시장_영향",
+      "relation": "causes",
+      "weight": 0.45350522162997065,
+      "source": "llm_inferred",
+      "confidence": 0.68,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.2138,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "자산시장_영향",
+      "to": "자산",
+      "relation": "causes",
+      "weight": 0.45350522162997065,
+      "source": "llm_inferred",
+      "confidence": 0.68,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.2138,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "호르무즈_개방",
+      "to": "호르무즈_해협_통항_상황_변화",
+      "relation": "causes",
+      "weight": 0.48685119380864494,
+      "source": "llm_inferred",
+      "confidence": 0.73,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.2463,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "호르무즈_해협_통항_상황_변화",
+      "to": "원유_공급_경로_안정화",
+      "relation": "causes",
+      "weight": 0.48685119380864494,
+      "source": "llm_inferred",
+      "confidence": 0.73,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.2463,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "원유_공급_경로_안정화",
+      "to": "시장_반응_이벤트_촉발",
+      "relation": "causes",
+      "weight": 0.48685119380864494,
+      "source": "llm_inferred",
+      "confidence": 0.73,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.2463,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "시장_반응_이벤트_촉발",
+      "to": "이벤트",
+      "relation": "causes",
+      "weight": 0.48685119380864494,
+      "source": "llm_inferred",
+      "confidence": 0.73,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.2463,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "전쟁으로_인한_에너지_공급_위기",
+      "to": "IEA_긴급_대응_및_성명_발표",
+      "relation": "causes",
+      "weight": 0.5068587771158495,
+      "source": "llm_inferred",
+      "confidence": 0.76,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.267,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "IEA_긴급_대응_및_성명_발표",
+      "to": "IEA",
+      "relation": "causes",
+      "weight": 0.5068587771158495,
+      "source": "llm_inferred",
+      "confidence": 0.76,
+      "support_count": 1,
+      "last_seen": "2026-04-01",
+      "created_at": "2026-04-01",
+      "obs_bitmap": 512,
+      "effective_score": 0.267,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "한국은행",
+      "to": "한국은행_금융통화위원회_의결",
+      "relation": "causes",
+      "weight": 0.9974999999999999,
+      "source": "llm_inferred",
+      "confidence": 0.95,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 1.0411,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "한국은행",
+      "to": "한국은행_기준금리_결정",
+      "relation": "causes",
+      "weight": 0.9375,
+      "source": "llm_inferred",
+      "confidence": 0.75,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.7725,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "한국은행_금융통화위원회_의결",
+      "to": "기준금리_결정_발표",
+      "relation": "causes",
+      "weight": 0.9974999999999999,
+      "source": "llm_inferred",
+      "confidence": 0.95,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 1.0411,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "기준금리_결정_발표",
+      "to": "기준금리",
+      "relation": "causes",
+      "weight": 0.999875,
+      "source": "llm_inferred",
+      "confidence": 0.95,
+      "support_count": 3,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 1.3168,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "한은",
+      "to": "한은_금통위_회의",
+      "relation": "causes",
+      "weight": 0.9974999999999999,
+      "source": "llm_inferred",
+      "confidence": 0.95,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 1.0411,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "한은",
+      "to": "한은_금통위_개최",
+      "relation": "causes",
+      "weight": 0.99,
+      "source": "llm_inferred",
+      "confidence": 0.9,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.9789,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "한은_금통위_회의",
+      "to": "기준금리_결정_발표",
+      "relation": "causes",
+      "weight": 0.9974999999999999,
+      "source": "llm_inferred",
+      "confidence": 0.95,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 1.0411,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "금리동결_결정_→_기준금리_현행_유지",
+      "to": "기준금리",
+      "relation": "correlates",
+      "weight": 0.84,
+      "source": "llm_inferred",
+      "confidence": 0.6,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.5537,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "전쟁_발발",
+      "to": "글로벌_불확실성_확대",
+      "relation": "causes",
+      "weight": 0.8775000000000001,
+      "source": "llm_inferred",
+      "confidence": 0.65,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.6266,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "글로벌_불확실성_확대",
+      "to": "인플레이션_압력_상승",
+      "relation": "causes",
+      "weight": 0.8775000000000001,
+      "source": "llm_inferred",
+      "confidence": 0.65,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.6266,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "기준금리_조정_검토",
+      "to": "기준금리",
+      "relation": "causes",
+      "weight": 0.8775000000000001,
+      "source": "llm_inferred",
+      "confidence": 0.65,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.6266,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "휴전_협상_타결",
+      "to": "지정학적_리스크_완화",
+      "relation": "causes",
+      "weight": 0.9375,
+      "source": "llm_inferred",
+      "confidence": 0.75,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.7725,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "투자심리_개선",
+      "to": "코스피_상승",
+      "relation": "causes",
+      "weight": 0.9375,
+      "source": "llm_inferred",
+      "confidence": 0.75,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.7725,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "코스피_상승",
+      "to": "코스피",
+      "relation": "causes",
+      "weight": 0.9375,
+      "source": "llm_inferred",
+      "confidence": 0.75,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.7725,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "한은_금통위_개최",
+      "to": "경제_지표_검토",
+      "relation": "causes",
+      "weight": 0.99,
+      "source": "llm_inferred",
+      "confidence": 0.9,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.9789,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "경제_지표_검토",
+      "to": "금리동결_결정",
+      "relation": "causes",
+      "weight": 0.99,
+      "source": "llm_inferred",
+      "confidence": 0.9,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.9789,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "금리동결_결정",
+      "to": "금리동결",
+      "relation": "causes",
+      "weight": 0.99,
+      "source": "llm_inferred",
+      "confidence": 0.9,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.9789,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "중동_리스크",
+      "to": "중동_지정학적_긴장_고조",
+      "relation": "causes",
+      "weight": 0.9775,
+      "source": "llm_inferred",
+      "confidence": 0.85,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.9128,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "중동_지정학적_긴장_고조",
+      "to": "원유_공급_차질_우려",
+      "relation": "causes",
+      "weight": 0.9775,
+      "source": "llm_inferred",
+      "confidence": 0.85,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.9128,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "원유_공급_차질_우려",
+      "to": "국제_유가_상승",
+      "relation": "causes",
+      "weight": 0.9775,
+      "source": "llm_inferred",
+      "confidence": 0.85,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.9128,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "국제_유가_상승",
+      "to": "유가",
+      "relation": "causes",
+      "weight": 0.9775,
+      "source": "llm_inferred",
+      "confidence": 0.85,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.9128,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "전쟁으로_인한_글로벌_경제_불안",
+      "to": "국내_금융시장_변동성_확대",
+      "relation": "causes",
+      "weight": 0.84,
+      "source": "llm_inferred",
+      "confidence": 0.6,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.5537,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "국내_금융시장_변동성_확대",
+      "to": "한국은행_통화정책_대응_압력",
+      "relation": "causes",
+      "weight": 0.84,
+      "source": "llm_inferred",
+      "confidence": 0.6,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.5537,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "한국은행_통화정책_대응_압력",
+      "to": "한국은행",
+      "relation": "causes",
+      "weight": 0.84,
+      "source": "llm_inferred",
+      "confidence": 0.6,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.5537,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "한국은행_기준금리_결정",
+      "to": "내외금리차_변화",
+      "relation": "causes",
+      "weight": 0.9375,
+      "source": "llm_inferred",
+      "confidence": 0.75,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.7725,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "내외금리차_변화",
+      "to": "외국인_자금_흐름_변동",
+      "relation": "causes",
+      "weight": 0.9375,
+      "source": "llm_inferred",
+      "confidence": 0.75,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.7725,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "외국인_자금_흐름_변동",
+      "to": "원_달러_환율_변동",
+      "relation": "causes",
+      "weight": 0.9375,
+      "source": "llm_inferred",
+      "confidence": 0.75,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.7725,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "원_달러_환율_변동",
+      "to": "환율",
+      "relation": "causes",
+      "weight": 0.9375,
+      "source": "llm_inferred",
+      "confidence": 0.75,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.7725,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "기준금리_인상_인하",
+      "to": "한미_금리차_변화",
+      "relation": "causes",
+      "weight": 0.96,
+      "source": "llm_inferred",
+      "confidence": 0.8,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.8437,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "한미_금리차_변화",
+      "to": "달러_대비_원화_가치_변동",
+      "relation": "causes",
+      "weight": 0.96,
+      "source": "llm_inferred",
+      "confidence": 0.8,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.8437,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "달러_대비_원화_가치_변동",
+      "to": "환율_상승_하락",
+      "relation": "causes",
+      "weight": 0.96,
+      "source": "llm_inferred",
+      "confidence": 0.8,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.8437,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "환율_상승_하락",
+      "to": "환율",
+      "relation": "causes",
+      "weight": 0.96,
+      "source": "llm_inferred",
+      "confidence": 0.8,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.8437,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "반도체",
+      "to": "반도체_업황_변화",
+      "relation": "correlates",
+      "weight": 0.9099999999999999,
+      "source": "llm_inferred",
+      "confidence": 0.7,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.6998,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "반도체_업황_변화",
+      "to": "SK하이닉스_실적_및_주가_연동",
+      "relation": "correlates",
+      "weight": 0.9099999999999999,
+      "source": "llm_inferred",
+      "confidence": 0.7,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.6998,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "SK하이닉스_실적_및_주가_연동",
+      "to": "SK하이닉스",
+      "relation": "correlates",
+      "weight": 0.9099999999999999,
+      "source": "llm_inferred",
+      "confidence": 0.7,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.6998,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "휴전_합의_발표",
+      "to": "지정학적_리스크_감소",
+      "relation": "causes",
+      "weight": 0.9375,
+      "source": "llm_inferred",
+      "confidence": 0.75,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.7725,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "글로벌_투자심리_회복",
+      "to": "뉴욕증시_상승",
+      "relation": "causes",
+      "weight": 0.9375,
+      "source": "llm_inferred",
+      "confidence": 0.75,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.7725,
+      "decay_class": "news",
+      "protected": false
+    },
+    {
+      "from": "뉴욕증시_상승",
+      "to": "뉴욕증시",
+      "relation": "causes",
+      "weight": 0.9375,
+      "source": "llm_inferred",
+      "confidence": 0.75,
+      "support_count": 2,
+      "last_seen": "2026-04-10",
+      "created_at": "2026-04-10",
+      "obs_bitmap": 1,
+      "effective_score": 0.7725,
+      "decay_class": "news",
+      "protected": false
+    }
+  ],
+  "transmission_paths": [
+    {
+      "trigger": "인플레",
+      "target": "통화",
+      "path": [
+        "인플레이션_압력_상승",
+        "기준금리_조정_검토",
+        "기준금리",
+        "통화정책"
+      ],
+      "path_labels": [
+        "인플레이션_압력_상승",
+        "기준금리_조정_검토",
+        "기준금리",
+        "통화정책"
+      ],
+      "confidence": 0.301
+    },
+    {
+      "trigger": "인플레",
+      "target": "금리",
+      "path": [
+        "인플레이션_압력_상승",
+        "기준금리_조정_검토"
+      ],
+      "path_labels": [
+        "인플레이션_압력_상승",
+        "기준금리_조정_검토"
+      ],
+      "confidence": 0.878
+    },
+    {
+      "trigger": "인플레",
+      "target": "금리",
+      "path": [
+        "인플레이션_압력_상승",
+        "기준금리_조정_검토",
+        "기준금리"
+      ],
+      "path_labels": [
+        "인플레이션_압력_상승",
+        "기준금리_조정_검토",
+        "기준금리"
+      ],
+      "confidence": 0.77
+    },
+    {
+      "trigger": "인플레",
+      "target": "금",
+      "path": [
+        "인플레이션_압력_상승",
+        "기준금리_조정_검토"
+      ],
+      "path_labels": [
+        "인플레이션_압력_상승",
+        "기준금리_조정_검토"
+      ],
+      "confidence": 0.878
+    },
+    {
+      "trigger": "인플레",
+      "target": "금",
+      "path": [
+        "인플레이션_압력_상승",
+        "기준금리_조정_검토",
+        "기준금리"
+      ],
+      "path_labels": [
+        "인플레이션_압력_상승",
+        "기준금리_조정_검토",
+        "기준금리"
+      ],
+      "confidence": 0.77
+    },
+    {
+      "trigger": "지정학",
+      "target": "유가",
+      "path": [
+        "중동_지정학적_긴장_고조",
+        "원유_공급_차질_우려",
+        "국제_유가_상승"
+      ],
+      "path_labels": [
+        "중동_지정학적_긴장_고조",
+        "원유_공급_차질_우려",
+        "국제_유가_상승"
+      ],
+      "confidence": 0.956
+    },
+    {
+      "trigger": "지정학",
+      "target": "유가",
+      "path": [
+        "중동_지정학적_긴장_고조",
+        "원유_공급_차질_우려",
+        "국제_유가_상승",
+        "유가"
+      ],
+      "path_labels": [
+        "중동_지정학적_긴장_고조",
+        "원유_공급_차질_우려",
+        "국제_유가_상승",
+        "유가"
+      ],
+      "confidence": 0.934
+    }
+  ],
+  "metadata": {
+    "month": "2026-04",
+    "built_at": "2026-04-09T18:05:20",
+    "node_count": 274,
+    "edge_count": 252,
+    "path_count": 7,
+    "seed_edges": 99,
+    "llm_edges": 131
+  }
+}

@@ -18,12 +18,13 @@ python -m streamlit run prototype.py --server.port 8505 &
 
 Streamlit은 `session_state`에 이전 위젯 값을 유지하므로 **코드만 수정하고 브라우저 새로고침하면 반영 안 됨**. 반드시 프로세스 kill 후 새 브라우저 탭으로 접속.
 
-## 2026-04-07 Status Update
+## 2026-04-09 Status Update
 
 ### Current Priorities
 
-- Comment engine v3: CLI 통합 완료, 교차 분석 레이어 구축 예정.
-- 시계열+뉴스 날짜 매칭으로 "왜 이 가격에 이 시점에" 코멘트 품질 개선.
+- **Upstream 정제 레이어 구현 완료**: dedupe → salience → fallback → GraphRAG/debate 연결.
+- **P0 리뷰 반영 완료**: bm_anomaly(7일캡), 3단계 source, topic-neighbor, debate diversity.
+- 다음: LLM 출력 validation (토픽 whitelist + 수치 대조), regression test, multilingual 임베딩.
 - Keep `modules/data_loader.py` as a shared-infra file with single-owner edits.
 
 ### Important Current State
@@ -33,32 +34,48 @@ Streamlit은 `session_state`에 이전 위젯 값을 유지하므로 **코드만
 - `tabs/report.py`는 순수 JSON 뷰어 (LLM 호출 없음, market_research import 없음).
 - `prototype.py` 탭 구조: Overview / 편입종목 / 성과분석 / 매크로 / **운용보고** / **운용보고(전체)** / Admin.
 
-### Comment Engine v3 파이프라인
+### Comment Engine v3 + Upstream Refinement 파이프라인
 
 ```
-[배치 — 월 1회]
+[일일 배치 — daily_update.py]
+Step 0: 매크로 지표 (SCIP/FRED/NYFed/ECOS)
+Step 1: 뉴스 수집 (네이버 + Finnhub)
+Step 2: 뉴스 분류 (Haiku 21주제)
+Step 2.5: 정제 — dedupe → salience(bm_anomaly) → fallback
+Step 3: GraphRAG 증분 (primary + stratified → TKG decay/merge/prune)
+Step 4: MTD 델타 (토픽 카운트)
+Step 5: regime_memory (shift 감지)
+
+[월별 배치]
 블로그 digest → enriched_digest_builder → 뉴스 벡터DB 교차검증
 뉴스 → news_content_pool_builder → KMeans 클러스터링 → Haiku 한국어 요약
        report_cache_builder → 펀드별 cache v2 (factor_data)
 
 [CLI — report_cli.py]
 build (대화형/자동):
-  → debate 4인 에이전트 → inputs 자동 생성
+  → debate 4인 에이전트 (primary+salience+diversity guardrail)
+  → Opus 종합 → evidence_ids 추적
   → compute_single_port_pa (R동일 PA) → BM 시계열 패턴
   → LLM 코멘트 생성 → JSON 저장
-
-build --edit:
-  → debate → draft JSON → VS Code 오픈 → 수정 → 재생성
 
 [Streamlit — 순수 뷰어]
 tabs/report.py: JSON 읽기 → 코멘트 표시 → 데이터 테이블
 ```
 
-### 신규 파일 (comment engine v2)
+### 정제 레이어 핵심 파일
 
-- `market_research/enriched_digest_builder.py` — 블로그 토픽별 뉴스 교차검증
-- `market_research/news_content_pool_builder.py` — 뉴스 클러스터링 + Haiku 요약
-- `market_research/report_service.py` — factor_data 생성 (PA용 + 매크로용)
+- `market_research/core/dedupe.py` — article_id + 중복제거 + event clustering (TOPIC_NEIGHBORS 8그룹)
+- `market_research/core/salience.py` — bm_anomaly(z>1.5, 7일캡) + 3단계 source + fallback(키워드필수)
+- `market_research/pipeline/daily_update.py` — Step 2.5 `_step_refine()` (정제 오케스트레이션)
+- `market_research/analyze/graph_rag.py` — `_stratified_sample()` (dynamic cap 300~500)
+- `market_research/report/debate_engine.py` — diversity guardrail (토픽5/이벤트2) + evidence_ids
+- `market_research/analyze/news_vectordb.py` — hybrid_score (cosine + salience×0.3)
+
+### 기존 파일 (comment engine)
+
+- `market_research/pipeline/enriched_digest_builder.py` — 블로그 토픽별 뉴스 교차검증
+- `market_research/pipeline/news_content_pool_builder.py` — 뉴스 클러스터링 + Haiku 요약
+- `market_research/report/report_service.py` — factor_data 생성 (PA용 + 매크로용)
 
 ### PA 종목 분류 로직
 
@@ -70,27 +87,46 @@ tabs/report.py: JSON 읽기 → 코멘트 표시 → 데이터 테이블
 
 ### market_research Notes
 
-- `market_research/scrapers/macro_data.py` — 일일 뉴스/지표 수집
-- `market_research/scrapers/naver_blog.py` — monygeek 블로그 증분 스크래핑
-- `market_research/digest_builder.py` — 월별 블로그 digest (18개 토픽)
-- `market_research/engine.py` — 블로그+지표 매크로 진단
-- `market_research/news_vectordb.py` — ChromaDB + sentence-transformers 벡터검색
-- `market_research/comment_engine.py` — BM/PA/digest → LLM 프롬프트 + 코멘트 생성
+- `market_research/collect/macro_data.py` — 뉴스 3소스(네이버/Finnhub/NewsAPI) + 매크로 지표 수집
+- `market_research/collect/naver_blog.py` — monygeek 블로그 증분 스크래핑
+- `market_research/core/dedupe.py` — article_id + dedup + event clustering (TOPIC_NEIGHBORS)
+- `market_research/core/salience.py` — salience(bm_anomaly+3단계source) + fallback(키워드필수)
+- `market_research/analyze/news_classifier.py` — 21주제 + 13키 자산영향도 (Haiku)
+- `market_research/analyze/graph_rag.py` — stratified sample + Self-Regulating TKG
+- `market_research/analyze/news_vectordb.py` — ChromaDB + hybrid_score
+- `market_research/report/debate_engine.py` — 4인 debate + diversity guardrail + evidence
+- `market_research/report/comment_engine.py` — BM/PA/digest → LLM 프롬프트 + 코멘트 생성
   - 8개 펀드: A포맷(08P22,08N81,08N33,07G02,07G03), C포맷(07G04), D포맷(2JM23,4JM12)
-  - PA/매크로 2종 프롬프트 템플릿
-- `market_research/report_cache_builder.py` — cache v2 빌드, `--force`로 전체 재생성
+- `market_research/report/cli.py` — 통합 CLI (build/list, 대화형/auto/edit)
+- `market_research/tests/ablation_test.py` — 정제 효과 비교 프레임워크
 
 ### Known Issues
 
-- **종목별 비중 합계 ≠ 100%**: `load_pa_by_item`의 weight_pct 계산이 MA000410 VAL 일별 합산 기반이라 부정확. R 코드(`General_Backtest/04_사후분석/`)의 T-1 비중 로직 벤치마킹 필요.
-- `load_fund_holdings_summary`의 키워드 분류는 `comment_engine._classify_pa_item`과 별도 로직 → 통합 필요.
-- `NewsAPI` same-day 제한 미적용.
-- ~~`market_research` 일부 한국어 mojibake~~ → 수정 완료 (2026-04-06): `naver_blog.py` reconfigure + `collect_news.bat` chcp 65001
+- **수치 가드레일 미구현**: Opus 코멘트의 수치를 원본과 대조하는 post-processing 없음.
+- **sentence-level evidence trace 미구현**: 코멘트 문장↔기사 1:1 매핑 불가.
+- `NewsAPI` 무료 플랜 약관 위반 가능성 → 대체 소스 미구현.
+- 2025년 12개월 데이터 미분류.
 
-### TODO (다음 세션)
+### 해결 완료
 
-1. **R 벤치마킹**: T-1 비중 계산 → 비중 합계 100% 정합성 확보.
-2. **코멘트 품질 반복 테스트**: 여러 펀드/기간으로 Opus 출력 검증 후 프롬프트 미세 조정.
+- ~~토픽 whitelist~~ → `_sanitize_topic()` + `_TOPIC_ALIAS` (깨진 토픽 0건)
+- ~~영어 전용 임베딩~~ → `paraphrase-multilingual-MiniLM-L12-v2` 전환 완료
+- ~~GraphRAG monthly/daily 불일치~~ → monthly TKG + daily transmission_paths 추가
+- ~~V1/V2 토픽 혼용~~ → 5개 파일 V2 일관성 수정 완료
+
+### 완료 (이번 세션)
+
+- ~~gold set V2 재검토~~ → 15건 재라벨 완료 (topic 70→84%)
+- ~~미분류 복구~~ → 1,831건 LLM 재분류 (recall 82.8→96.6%)
+- ~~수치 가드레일~~ → debate_engine 연동 완료
+- ~~evidence trace~~ → [ref:N] 프롬프트 + 파싱 유틸
+- ~~vectorDB + GraphRAG 리빌드~~ → 4개월 완료
+
+### TODO (P0 — 다음 세션)
+
+1. **evidence [ref:N] 재검증**: 프롬프트 강화 후 Opus가 태그를 실제로 붙이는지 debate 재실행
+2. **review packet v4 외부 리뷰**: docs/review_packet_v4.md 전달
+3. **2025년 데이터 분류**: 19,000건 V2 기준 분류 + 정제
 
 ## Project Purpose
 

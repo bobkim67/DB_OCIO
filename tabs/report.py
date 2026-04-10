@@ -282,68 +282,235 @@ def render_pa(_ctx=None):
 
 
 # ══════════════════════════════════════════
-# 운용보고(전체) 탭 — 매크로 뷰어
+# 운용보고(전체) 탭 — 발행 코멘트 조회
 # ══════════════════════════════════════════
 
-def render_macro(_ctx=None):
-    """매크로 시장현황 뷰어. 캐시된 enriched_digest + news_pool 표시."""
-    st.markdown("#### 운용보고(전체) — 매크로 시장현황")
-    st.caption("블로그+뉴스 기반 매크로 분석을 표시합니다.")
+_PUBLISHED_DIR = Path(__file__).resolve().parent.parent / 'market_research' / 'data' / 'debate_published'
+_MACRO_CSV = Path(__file__).resolve().parent.parent / 'market_research' / 'data' / 'macro' / 'indicators.csv'
 
-    periods = _available_periods()
-    # 월별 기간만 (YYYY-MM 형식)
-    monthly_periods = [p for p in periods if '-' in p]
-    if not monthly_periods:
-        st.warning("월별 캐시 데이터가 없습니다.")
+# 코멘트에서 탐지할 지표 키워드 → indicators.csv 컬럼 매핑
+_CHART_KEYWORD_MAP = {
+    # 달러/환율
+    'DXY': ('DXY', '달러인덱스 (DXY)'),
+    '달러인덱스': ('DXY', '달러인덱스 (DXY)'),
+    'USDKRW': ('USDKRW', '원/달러 환율'),
+    '원/달러': ('USDKRW', '원/달러 환율'),
+    '원·달러': ('USDKRW', '원/달러 환율'),
+    '달러/원': ('USDKRW', '원/달러 환율'),
+    '선물환': ('F_USDKRW', '달러/원 선물환'),
+    'F_USDKRW': ('F_USDKRW', '달러/원 선물환'),
+    # 금리
+    'UST 2Y': ('UST_2Y', '미국채 2년 (%)'),
+    'UST 10Y': ('UST_10Y', '미국채 10년 (%)'),
+    '미국채 2년': ('UST_2Y', '미국채 2년 (%)'),
+    '미국채 10년': ('UST_10Y', '미국채 10년 (%)'),
+    '미 국채': ('UST_10Y', '미국채 10년 (%)'),
+    '미국 국채': ('UST_10Y', '미국채 10년 (%)'),
+    '2년-10년': ('US_2Y10Y', '미국채 2Y-10Y 스프레드'),
+    # 변동성
+    'MOVE': ('MOVE', 'MOVE 지수'),
+    'VIX': ('VIX', 'VIX 지수'),
+    '변동성 지수': ('MOVE', 'MOVE 지수'),
+    # 주식
+    'KOSPI': ('MSCI_KOREA', 'MSCI Korea'),
+    'S&P': ('SP500_TR', 'S&P 500 TR'),
+    'STOXX': ('MSCI_EAFE', 'MSCI EAFE (선진국)'),
+    # 원자재
+    'WTI': ('WTI', 'WTI 원유 ($/배럴)'),
+    '유가': ('WTI', 'WTI 원유 ($/배럴)'),
+    '국제유가': ('WTI', 'WTI 원유 ($/배럴)'),
+    'GOLD': ('GOLD', '금 ($/oz)'),
+    '금': ('GOLD', '금 ($/oz)'),
+    '브렌트': ('BRENT', '브렌트유 ($/배럴)'),
+}
+
+
+def _render_comment_with_sources(comment: str, annotations: list):
+    """코멘트를 문단 분리 + 하단 출처 목록으로 렌더링. inline ref는 제거."""
+    import re
+
+    # client: inline ref 완전 제거 (ref 오매핑 방지)
+    display = re.sub(r'\s*\[ref:\d+\]', '', comment)
+    display = re.sub(r'\s*\d+\)', '', display)  # 첨자 N) 형태도 제거
+
+    # 문단 분리
+    paragraphs = [p.strip() for p in display.split('\n') if p.strip()]
+    if len(paragraphs) <= 1:
+        sentences = re.split(r'(?<=[.다])\s+', display)
+        chunk_size = max(3, len(sentences) // 4)
+        paragraphs = []
+        for i in range(0, len(sentences), chunk_size):
+            paragraphs.append(' '.join(sentences[i:i + chunk_size]))
+
+    for para in paragraphs:
+        st.markdown(f'&emsp;{para}', unsafe_allow_html=True)
+        st.markdown('')
+
+    # 하단 출처 목록 (번호 없이, 기사 정보만)
+    if annotations:
+        st.markdown('---')
+        st.markdown('**참고 뉴스**')
+        for ann in annotations:
+            title = ann.get('title', '')
+            source = ann.get('source', '')
+            date = ann.get('date', '')
+            url = ann.get('url', '')
+            if url:
+                st.caption(f'- [{title}]({url}) — {source}, {date}')
+            else:
+                st.caption(f'- {title} — {source}, {date}')
+
+
+def _render_indicator_charts(comment: str, period: str):
+    """코멘트에 언급된 지표의 최근 3개월 차트를 표시."""
+    if not _MACRO_CSV.exists():
         return
 
-    selected_period = st.selectbox(
-        "월", monthly_periods,
-        index=len(monthly_periods) - 1,
-        key="macro_period_select",
-    )
+    import pandas as pd
 
-    # 공유 자산 로드
-    enriched_path = _CACHE_ROOT / selected_period / "enriched_digest.json"
-    news_path = _CACHE_ROOT / selected_period / "news_content_pool.json"
+    # 언급된 지표 탐지
+    detected = {}
+    for keyword, (col, label) in _CHART_KEYWORD_MAP.items():
+        if keyword in comment and col not in detected:
+            detected[col] = label
 
-    enriched = None
-    if enriched_path.exists():
-        enriched = json.loads(enriched_path.read_text(encoding="utf-8"))
-
-    news_pool = None
-    if news_path.exists():
-        news_pool = json.loads(news_path.read_text(encoding="utf-8"))
-
-    if not enriched and not news_pool:
-        st.warning(f"{selected_period} 블로그/뉴스 데이터가 없습니다.")
-        st.code(f"python -m market_research.report_cache_builder {selected_period.replace('-', ' ')}")
+    if not detected:
         return
 
-    # ── 블로그 토픽 ──
-    if enriched:
-        themes = enriched.get("cross_themes", [])
-        if themes:
-            st.markdown(f"**크로스 테마**: {', '.join(themes[:7])}")
+    df = pd.read_csv(_MACRO_CSV, index_col=0, parse_dates=True)
 
-        st.markdown("**블로그 토픽 요약**")
-        for topic, info in enriched.get("topics", {}).items():
-            direction = info.get("direction", "")
-            news_count = len(info.get("corroborating_news", []))
-            score = info.get("corroboration_score", 0)
-            if info.get("post_count", 0) > 0:
+    # 기간: 해당 월의 1일 ~ 말일 (운용보고와 동일 구간)
+    if '-Q' in period:
+        year = int(period[:4])
+        q = int(period[-1])
+        start_month = (q - 1) * 3 + 1
+        end_month = q * 3
+        start_date = pd.Timestamp(year, start_month, 1)
+        end_date = pd.Timestamp(year, end_month, 28) + pd.DateOffset(days=3)
+        end_date = end_date - pd.DateOffset(days=end_date.day)  # 말일
+    else:
+        start_date = pd.Timestamp(period + '-01')
+        end_date = start_date + pd.DateOffset(months=1) - pd.DateOffset(days=1)
+
+    available = [(col, label) for col, label in detected.items() if col in df.columns]
+    if not available:
+        return
+
+    import plotly.graph_objects as go
+
+    st.markdown('---')
+    st.markdown('**관련 지표 추이**')
+
+    # 3열 레이아웃
+    cols_per_row = 3
+    for i in range(0, len(available), cols_per_row):
+        row_items = available[i:i + cols_per_row]
+        cols = st.columns(cols_per_row)
+        for j, (col, label) in enumerate(row_items):
+            with cols[j]:
+                series = df.loc[start_date:end_date, col].dropna()
+                if series.empty:
+                    st.caption(f'{label}: 데이터 없음')
+                    continue
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(
+                    x=series.index, y=series.values,
+                    mode='lines', name=label,
+                    line=dict(width=2, color='#636EFA'),
+                ))
+                last_val = series.iloc[-1]
+                first_val = series.iloc[0]
+                chg = last_val - first_val
+                chg_pct = (chg / first_val * 100) if first_val != 0 else 0
+                color = '#EF553B' if chg >= 0 else '#636EFA'
+                # y축: 데이터 min/max에 5% 여유
+                y_min, y_max = series.min(), series.max()
+                y_margin = (y_max - y_min) * 0.05 if y_max != y_min else abs(y_min) * 0.01
+                fig.update_layout(
+                    title=dict(text=f'{label}', font=dict(size=12)),
+                    height=200,
+                    margin=dict(t=30, b=20, l=40, r=10),
+                    showlegend=False,
+                    xaxis=dict(showgrid=False),
+                    yaxis=dict(
+                        showgrid=True, gridcolor='#f0f0f0',
+                        range=[y_min - y_margin, y_max + y_margin],
+                    ),
+                )
+                st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
                 st.caption(
-                    f"[{topic}] {direction} — 포스트 {info['post_count']}건, "
-                    f"뉴스 검증 {news_count}건 (검증도 {score:.2f})"
+                    f'최신: {last_val:,.2f} | '
+                    f'변동: <span style="color:{color}">{chg:+,.2f} ({chg_pct:+.1f}%)</span>',
+                    unsafe_allow_html=True,
                 )
 
-    # ── 뉴스 테마 ──
-    if news_pool and news_pool.get("themes"):
-        st.markdown("---")
-        st.markdown("**뉴스 핵심 테마** (빈도순)")
-        for t in news_pool["themes"][:10]:
-            summary = t.get("summary_kr") or t.get("label", "")
-            st.caption(f"- {summary} ({t['article_count']}건)")
+
+def render_macro(_ctx=None):
+    """발행된 시장 코멘트 조회 (읽기 전용)."""
+    st.markdown("#### 시장 코멘트")
+
+    if not _PUBLISHED_DIR.exists():
+        st.warning("발행된 코멘트가 없습니다.")
+        return
+
+    pub_files = sorted(_PUBLISHED_DIR.glob("*.json"), reverse=True)
+    if not pub_files:
+        st.warning("발행된 코멘트가 없습니다.")
+        return
+
+    period_options = [f.stem for f in pub_files]
+    selected = st.selectbox("기간", period_options, index=0, key="macro_pub_select")
+
+    pub_file = _PUBLISHED_DIR / f"{selected}.json"
+    if not pub_file.exists():
+        st.warning(f"{selected} 발행본을 찾을 수 없습니다.")
+        return
+
+    data = json.loads(pub_file.read_text(encoding='utf-8'))
+
+    # 메타 정보
+    debated_at = data.get('debated_at', '')
+    edited_at = data.get('edited_at', '')
+    meta_parts = [f"debate 생성: {debated_at}"]
+    if edited_at:
+        meta_parts.append(f"최종수정: {edited_at}")
+    st.caption(" | ".join(meta_parts))
+
+    # 코멘트 (문단 분리 + 하단 출처 목록, inline ref 제거)
+    customer_comment = data.get('customer_comment', '')
+    annotations = data.get('evidence_annotations', [])
+
+    if customer_comment:
+        _render_comment_with_sources(customer_comment, annotations)
+    else:
+        st.info("코멘트가 비어 있습니다.")
+
+    # 관련 지표 차트
+    _render_indicator_charts(customer_comment, selected)
+
+    # 합의 / 쟁점 / 테일리스크
+    with st.expander("합의 / 쟁점 / 테일리스크", expanded=False):
+        consensus = data.get('consensus_points', [])
+        if consensus:
+            st.markdown("**합의**")
+            for p in consensus:
+                st.markdown(f"- {p}")
+
+        disagreements = data.get('disagreements', [])
+        if disagreements:
+            st.markdown("**쟁점**")
+            for d in disagreements:
+                if isinstance(d, dict):
+                    st.markdown(f"**[{d.get('topic', '')}]**")
+                    for role in ('bull', 'bear', 'quant', 'monygeek'):
+                        if d.get(role):
+                            st.caption(f"  {role}: {d[role]}")
+
+        tail_risks = data.get('tail_risks', [])
+        if tail_risks:
+            st.markdown("**테일 리스크**")
+            for t in tail_risks:
+                st.markdown(f"- {t}")
 
 
 # ══════════════════════════════════════════
