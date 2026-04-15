@@ -37,21 +37,25 @@ def render(ctx):
                 _aum_series = _nav_df['AUM_억'].values
 
                 # BM 로드: DT(DWPM10041) 우선 → SCIP fallback (설정일부터)
-                _bm_df = cache['load_dt_bm'](selected_fund, _inception)
-                if _bm_df.empty or len(_bm_df) < 10:
-                    _bm_cfg = FUND_BM.get(selected_fund)
+                _bm_df = pd.DataFrame()
+                try:
+                    _bm_df = cache['load_dt_bm'](selected_fund, _inception)
+                    if _bm_df.empty or len(_bm_df) < 10:
+                        _bm_cfg = FUND_BM.get(selected_fund)
+                        _bm_df = pd.DataFrame()
+                        _scip_start = f'{_inception[:4]}-{_inception[4:6]}-{_inception[6:8]}'
+                        if _bm_cfg and 'components' in _bm_cfg:
+                            import json as _json
+                            _bm_df = cache['load_composite_bm'](
+                                _json.dumps(_bm_cfg['components']), _scip_start
+                            )
+                        elif _bm_cfg:
+                            _bm_df = cache['load_bm_prices'](
+                                _bm_cfg['dataset_id'], _bm_cfg['dataseries_id'],
+                                _scip_start, _bm_cfg.get('currency')
+                            )
+                except Exception:
                     _bm_df = pd.DataFrame()
-                    _scip_start = f'{_inception[:4]}-{_inception[4:6]}-{_inception[6:8]}'
-                    if _bm_cfg and 'components' in _bm_cfg:
-                        import json as _json
-                        _bm_df = cache['load_composite_bm'](
-                            _json.dumps(_bm_cfg['components']), _scip_start
-                        )
-                    elif _bm_cfg:
-                        _bm_df = cache['load_bm_prices'](
-                            _bm_cfg['dataset_id'], _bm_cfg['dataseries_id'],
-                            _scip_start, _bm_cfg.get('currency')
-                        )
                 if not _bm_df.empty and len(_bm_df) > 10:
                     _bm_df = _bm_df.set_index('기준일자')
                     _nav_idx = pd.DatetimeIndex(_nav_dates)
