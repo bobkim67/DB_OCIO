@@ -269,6 +269,73 @@
 </div>
 </div>
 
+<!-- 실제 케이스 예시 -->
+<div class="section">
+<div class="section-title">실제 인과 추론 케이스 (2026년 4월 데이터)</div>
+
+<div class="split">
+  <div class="split-box" style="border-top: 3px solid #636EFA;">
+    <h3 style="color:#636EFA; border:none; margin-bottom:16px;">케이스 1: 중동 지정학 → 유가 상승</h3>
+    <div style="text-align:center; margin:16px 0;">
+      <div style="display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:center;">
+        <span style="background:#f0f2ff; padding:8px 14px; border-radius:20px; font-size:13px; font-weight:600;">중동_지정학적_긴장_고조</span>
+        <span style="font-size:20px; color:#636EFA;">→</span>
+        <span style="background:#fff0ed; padding:8px 14px; border-radius:20px; font-size:13px; font-weight:600; border:1px dashed #EF553B;">원유_공급_차질_우려</span>
+        <span style="font-size:20px; color:#636EFA;">→</span>
+        <span style="background:#f0f2ff; padding:8px 14px; border-radius:20px; font-size:13px; font-weight:600;">국제_유가_상승</span>
+      </div>
+    </div>
+    <table style="font-size:12px; margin-top:12px;">
+      <tr style="background:#f8f9fa;"><th style="width:80px;">구분</th><th>내용</th><th style="width:80px;">신뢰도</th></tr>
+      <tr><td><strong>노드 1</strong></td><td>중동_지정학적_긴장_고조 <span style="color:#888;">(뉴스에서 추출)</span></td><td>-</td></tr>
+      <tr><td><strong>노드 2</strong></td><td>원유_공급_차질_우려 <span style="color:#EF553B;">(LLM 추론)</span></td><td>-</td></tr>
+      <tr><td><strong>노드 3</strong></td><td>국제_유가_상승 <span style="color:#888;">(뉴스에서 추출)</span></td><td>-</td></tr>
+      <tr><td><strong>엣지 1</strong></td><td>긴장_고조 → 공급_차질_우려 (causes)</td><td>0.82</td></tr>
+      <tr><td><strong>엣지 2</strong></td><td>공급_차질_우려 → 유가_상승 (causes)</td><td>0.88</td></tr>
+      <tr><td><strong>전이경로</strong></td><td>긴장_고조 → 공급_차질 → 유가_상승</td><td><strong>0.355</strong></td></tr>
+    </table>
+    <div style="margin-top:12px; padding:10px; background:#f8f9fa; border-radius:8px; font-size:12px; color:#555;">
+      <strong>해석:</strong> 이란 전쟁 관련 뉴스에서 "중동 긴장"이 추출되고, LLM이 "원유 공급 차질 → 유가 상승"이라는 인과 체인을 추론.
+      debate 시 에이전트에게 "유가 급등의 근본 원인이 중동 지정학"이라는 논리 구조를 제공합니다.
+    </div>
+  </div>
+
+  <div class="split-box" style="border-top: 3px solid #EF553B;">
+    <h3 style="color:#EF553B; border:none; margin-bottom:16px;">케이스 2: 지정학 → 투자심리 → 자금 이탈</h3>
+    <div style="text-align:center; margin:16px 0;">
+      <div style="display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:center;">
+        <span style="background:#f0f2ff; padding:8px 14px; border-radius:20px; font-size:13px; font-weight:600;">지정학적_리스크_확대</span>
+        <span style="font-size:20px; color:#EF553B;">→</span>
+        <span style="background:#fff0ed; padding:8px 14px; border-radius:20px; font-size:13px; font-weight:600; border:1px dashed #EF553B;">글로벌_투자심리_위축</span>
+        <span style="font-size:20px; color:#EF553B;">→</span>
+        <span style="background:#f0f2ff; padding:8px 14px; border-radius:20px; font-size:13px; font-weight:600;">외국인_자금_이탈</span>
+      </div>
+    </div>
+    <table style="font-size:12px; margin-top:12px;">
+      <tr style="background:#f8f9fa;"><th style="width:80px;">구분</th><th>내용</th><th style="width:80px;">신뢰도</th></tr>
+      <tr><td><strong>노드 1</strong></td><td>지정학적_리스크_확대 <span style="color:#888;">(뉴스에서 추출)</span></td><td>-</td></tr>
+      <tr><td><strong>노드 2</strong></td><td>글로벌_투자심리_위축 <span style="color:#EF553B;">(LLM 추론)</span></td><td>-</td></tr>
+      <tr><td><strong>노드 3</strong></td><td>외국인_자금_이탈 <span style="color:#888;">(뉴스에서 추출)</span></td><td>-</td></tr>
+      <tr><td><strong>엣지 1</strong></td><td>리스크_확대 → 투자심리_위축 (causes)</td><td>0.88</td></tr>
+      <tr><td><strong>엣지 2</strong></td><td>투자심리_위축 → 자금_이탈 (causes)</td><td>0.82</td></tr>
+      <tr><td><strong>전이경로</strong></td><td>리스크_확대 → 심리_위축 → 자금_이탈</td><td><strong>0.828</strong></td></tr>
+    </table>
+    <div style="margin-top:12px; padding:10px; background:#f8f9fa; border-radius:8px; font-size:12px; color:#555;">
+      <strong>해석:</strong> 지정학 뉴스 증가 → 투자심리 위축(LLM 추론) → 실제 외국인 매도 뉴스와 연결.
+      이 경로가 debate에서 Bear 에이전트의 "신흥국 자금 이탈 리스크" 논거로 활용됩니다.
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <strong>범례:</strong>
+  <span style="background:#f0f2ff; padding:2px 8px; border-radius:10px; font-size:11px;">실선 노드</span> = 뉴스에서 직접 추출된 사실 &nbsp;
+  <span style="background:#fff0ed; padding:2px 8px; border-radius:10px; font-size:11px; border:1px dashed #EF553B;">점선 노드</span> = LLM이 추론한 중간 개념 &nbsp;
+  <strong>→</strong> = 인과관계(causes) &nbsp;
+  전이경로 신뢰도 = 경로 내 엣지 신뢰도의 곱
+</div>
+</div>
+
 <!-- Phase 3: Debate -->
 <div class="section">
 <div class="section-title">Phase 3 — 시장 Debate → 매크로 코멘트</div>
