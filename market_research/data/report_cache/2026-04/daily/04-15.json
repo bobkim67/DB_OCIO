@@ -1,0 +1,150 @@
+{
+  "date": "2026-04-15",
+  "started_at": "2026-04-15T12:31:28.936991",
+  "steps": {
+    "macro": {
+      "status": "ok"
+    },
+    "collect": {
+      "status": "ok"
+    },
+    "blog": {
+      "status": "ok",
+      "before": 556,
+      "after": 559,
+      "new_count": 3
+    },
+    "blog_insight": {
+      "status": "ok",
+      "post_count": 31,
+      "edge_count": 304
+    },
+    "classify": {
+      "total": 178,
+      "classified": 92
+    },
+    "refine": {
+      "status": "ok",
+      "total": 22385,
+      "primary_count": 22246,
+      "dedup_groups": 22217,
+      "event_groups": 16868,
+      "fallback_count": 113
+    },
+    "graph": {
+      "status": "ok",
+      "articles_used": 178,
+      "node_count": 85,
+      "edge_count": 92
+    },
+    "delta": {
+      "status": "ok",
+      "mtd_articles": 21573,
+      "topic_counts": {
+        "지정학": 4044,
+        "환율_FX": 3396,
+        "에너지_원자재": 3079,
+        "금리_채권": 1727,
+        "테크_AI_반도체": 1381
+      },
+      "topic_direction": {
+        "환율_FX": {
+          "positive": 1339,
+          "negative": 1999,
+          "neutral": 58
+        },
+        "경기_소비": {
+          "positive": 177,
+          "negative": 140,
+          "neutral": 92
+        },
+        "물가_인플레이션": {
+          "positive": 55,
+          "negative": 858,
+          "neutral": 60
+        },
+        "지정학": {
+          "positive": 1308,
+          "negative": 2679,
+          "neutral": 57
+        },
+        "에너지_원자재": {
+          "positive": 885,
+          "negative": 2117,
+          "neutral": 77
+        },
+        "금리_채권": {
+          "positive": 760,
+          "negative": 876,
+          "neutral": 91
+        },
+        "크립토": {
+          "positive": 480,
+          "negative": 485,
+          "neutral": 19
+        },
+        "유동성_크레딧": {
+          "positive": 206,
+          "negative": 233,
+          "neutral": 4
+        },
+        "통화정책": {
+          "positive": 44,
+          "negative": 102,
+          "neutral": 69
+        },
+        "귀금속_금": {
+          "positive": 368,
+          "negative": 168,
+          "neutral": 37
+        },
+        "관세_무역": {
+          "positive": 228,
+          "negative": 833,
+          "neutral": 9
+        },
+        "테크_AI_반도체": {
+          "positive": 1178,
+          "negative": 195,
+          "neutral": 8
+        },
+        "부동산": {
+          "positive": 92,
+          "negative": 144,
+          "neutral": 9
+        },
+        "달러_글로벌유동성": {
+          "positive": 31,
+          "negative": 44,
+          "neutral": 1
+        }
+      },
+      "asset_impact": {
+        "국내주식": 2327.980000000011,
+        "해외주식": 3361.7100000000532,
+        "해외채권_EM": 1738.2600000000032,
+        "미국주식_성장": 3808.9999999999327,
+        "원자재_원유": -1872.7100000000187,
+        "환율_USDKRW": 1184.1600000000044,
+        "환율_DXY": -644.439999999996,
+        "국내채권": 363.280000000002,
+        "해외채권": 517.270000000004,
+        "해외채권_USIG": 528.4600000000011,
+        "해외채권_USHY": 1643.9200000000267,
+        "미국주식_가치": 484.4599999999991,
+        "원자재_금": -1413.4800000000064
+      },
+      "sentiment": "negative",
+      "positive_count": 7151,
+      "negative_count": 10873
+    },
+    "regime": {
+      "status": "ok",
+      "current_narrative": "지정학 리스크 + 유가 급등 + 유동성 경색",
+      "weeks": 1,
+      "shift_consecutive_days": 1,
+      "shift_reason": "토픽 불일치 80% (상위: 지정학, 환율_FX, 에너지_원자재)"
+    }
+  },
+  "completed_at": "2026-04-15T12:36:53.412225"
+}

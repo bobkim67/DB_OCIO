@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>운용보고 코멘트 파이프라인 구조</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', -apple-system, sans-serif; background: #f8f9fa; color: #333; padding: 40px 20px; }
+  .container { max-width: 1100px; margin: 0 auto; }
+  h1 { text-align: center; font-size: 28px; margin-bottom: 8px; color: #1a1a2e; }
+  .subtitle { text-align: center; color: #888; font-size: 14px; margin-bottom: 40px; }
+
+  /* Section */
+  .section { margin-bottom: 48px; }
+  .section-title { font-size: 20px; font-weight: 700; color: #1a1a2e; margin-bottom: 16px; padding-left: 12px; border-left: 4px solid #636EFA; }
+
+  /* Pipeline flow */
+  .pipeline { display: flex; flex-direction: column; gap: 0; }
+  .step { display: flex; align-items: stretch; min-height: 80px; }
+  .step-num { width: 60px; min-width: 60px; display: flex; flex-direction: column; align-items: center; padding-top: 16px; }
+  .step-circle { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; color: #fff; }
+  .step-line { flex: 1; width: 3px; margin-top: 4px; }
+  .step-content { flex: 1; background: #fff; border-radius: 12px; padding: 16px 20px; margin: 4px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border-left: 4px solid; }
+  .step-content h3 { font-size: 15px; margin-bottom: 6px; }
+  .step-content p { font-size: 13px; color: #555; line-height: 1.6; }
+  .step-content .tag { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-right: 4px; margin-top: 4px; }
+  .step-content .file { font-family: 'Consolas', monospace; font-size: 12px; color: #636EFA; background: #f0f2ff; padding: 2px 6px; border-radius: 4px; }
+
+  /* Colors by phase */
+  .phase-collect .step-circle { background: #00CC96; }
+  .phase-collect .step-line { background: #00CC96; }
+  .phase-collect .step-content { border-color: #00CC96; }
+  .phase-collect .tag { background: #e0fff5; color: #00865e; }
+
+  .phase-analyze .step-circle { background: #636EFA; }
+  .phase-analyze .step-line { background: #636EFA; }
+  .phase-analyze .step-content { border-color: #636EFA; }
+  .phase-analyze .tag { background: #f0f2ff; color: #4a4eda; }
+
+  .phase-debate .step-circle { background: #EF553B; }
+  .phase-debate .step-line { background: #EF553B; }
+  .phase-debate .step-content { border-color: #EF553B; }
+  .phase-debate .tag { background: #fff0ed; color: #c42d1a; }
+
+  .phase-fund .step-circle { background: #AB63FA; }
+  .phase-fund .step-line { background: #AB63FA; }
+  .phase-fund .step-content { border-color: #AB63FA; }
+  .phase-fund .tag { background: #f5edff; color: #7b3ec4; }
+
+  .phase-admin .step-circle { background: #FFA15A; }
+  .phase-admin .step-line { background: #FFA15A; }
+  .phase-admin .step-content { border-color: #FFA15A; }
+  .phase-admin .tag { background: #fff5eb; color: #c47a2d; }
+
+  /* Split diagram */
+  .split { display: flex; gap: 24px; margin-top: 32px; }
+  .split-box { flex: 1; background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .split-box h3 { font-size: 16px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid; }
+  .split-box.macro h3 { border-color: #EF553B; color: #EF553B; }
+  .split-box.fund h3 { border-color: #AB63FA; color: #AB63FA; }
+  .split-box ul { list-style: none; padding: 0; }
+  .split-box li { padding: 6px 0; font-size: 13px; border-bottom: 1px solid #f0f0f0; }
+  .split-box li:last-child { border: none; }
+  .arrow { font-size: 18px; color: #888; }
+
+  /* Overview diagram */
+  .overview-flow { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 24px 0; flex-wrap: wrap; }
+  .flow-box { padding: 12px 18px; border-radius: 10px; font-size: 13px; font-weight: 600; text-align: center; min-width: 120px; }
+  .flow-arrow { font-size: 24px; color: #aaa; }
+  .bg-collect { background: #e0fff5; color: #00865e; }
+  .bg-analyze { background: #f0f2ff; color: #4a4eda; }
+  .bg-debate { background: #fff0ed; color: #c42d1a; }
+  .bg-fund { background: #f5edff; color: #7b3ec4; }
+  .bg-admin { background: #fff5eb; color: #c47a2d; }
+
+  /* Legend */
+  .legend { display: flex; gap: 20px; justify-content: center; margin: 20px 0; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 50%; }
+
+  /* Note */
+  .note { background: #fffde7; border: 1px solid #fff9c4; border-radius: 8px; padding: 12px 16px; font-size: 13px; color: #666; margin-top: 16px; }
+  .note strong { color: #333; }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+  th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #eee; }
+  th { background: #f8f9fa; font-weight: 600; color: #555; }
+  tr:hover { background: #fafafa; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>운용보고 코멘트 생성 파이프라인</h1>
+<p class="subtitle">뉴스 수집부터 펀드별 코멘트 승인까지의 전체 흐름 | DB OCIO Webview</p>
+
+<!-- Overview Flow -->
+<div class="overview-flow">
+  <div class="flow-box bg-collect">뉴스 수집<br><small>네이버 + Finnhub + NewsAPI</small></div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-box bg-analyze">분류 · 정제<br><small>Haiku LLM</small></div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-box bg-analyze">GraphRAG<br><small>인과 추론</small></div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-box bg-debate">시장 Debate<br><small>4인 + Opus</small></div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-box bg-fund">펀드 코멘트<br><small>PA + 거래 + Opus</small></div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-box bg-admin">Admin 검수<br><small>수정 · 승인</small></div>
+</div>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#00CC96"></div> 수집/전처리 (외부 배치)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#636EFA"></div> 분석/분류 (외부 배치)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#EF553B"></div> 시장 Debate (Admin 실행)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#AB63FA"></div> 펀드 코멘트 (Admin 실행)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#FFA15A"></div> 검수/승인 (Admin UI)</div>
+</div>
+
+<!-- Phase 1: 수집 -->
+<div class="section">
+<div class="section-title">Phase 1 — 데이터 수집 (외부 배치)</div>
+<div class="pipeline phase-collect">
+  <div class="step">
+    <div class="step-num"><div class="step-circle">1</div><div class="step-line"></div></div>
+    <div class="step-content">
+      <h3>뉴스 수집 (3개 소스)</h3>
+      <p><strong>네이버 금융</strong>: 국내 금융 뉴스 검색. URL에서 원본 매체명 자동 복원 (연합뉴스, 매경, 한경 등 34개 매체 매핑).<br>
+         <strong>Finnhub</strong>: 해외 뉴스 API. Reuters, CNBC, Bloomberg 등 글로벌 주요 매체 기사 수집.<br>
+         <strong>NewsAPI</strong>: 해외 top-headlines. Financial Times, WSJ 등 신뢰 매체(trusted domains) 한정 수집.</p>
+      <span class="tag">네이버 ~20,000건/월</span>
+      <span class="tag">Finnhub ~2,000건/월</span>
+      <span class="tag">NewsAPI ~1,000건/월</span>
+      <br><span class="file">collect/macro_data.py</span> <span class="file">core/source_mapping.py</span>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num"><div class="step-circle">2</div><div class="step-line"></div></div>
+    <div class="step-content">
+      <h3>매크로 지표 수집</h3>
+      <p>SCIP DB(FactSet), FRED, NY Fed, ECOS에서 금리/환율/주가/원자재 등 60+ 지표 일별 수집.</p>
+      <span class="tag">KOSPI, S&P500, VWO, USHY, VUG, VTV, VWOB 등</span>
+      <br><span class="file">collect/macro_data.py</span> → <span class="file">data/macro/indicators.csv</span>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num"><div class="step-circle">3</div><div class="step-line"></div></div>
+    <div class="step-content">
+      <h3>블로그 수집</h3>
+      <p>monygeek 블로그 증분 스크래핑 (유로달러 학파 관점).</p>
+      <span class="file">collect/naver_blog.py</span> → <span class="file">data/monygeek/posts.json</span>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- Phase 2: 분류/정제 -->
+<div class="section">
+<div class="section-title">Phase 2 — 분류 · 정제 · 인과 분석 (외부 배치)</div>
+<div class="pipeline phase-analyze">
+  <div class="step">
+    <div class="step-num"><div class="step-circle">4</div><div class="step-line"></div></div>
+    <div class="step-content">
+      <h3>뉴스 분류 (Haiku LLM)</h3>
+      <p>14개 V2 토픽으로 분류 + 13키 자산영향도 벡터 산출. Financial Filter로 비금융 기사 제거.</p>
+      <span class="tag">~$100/월</span>
+      <span class="tag">14개 토픽</span>
+      <br><span class="file">analyze/news_classifier.py</span>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num"><div class="step-circle">5a</div><div class="step-line"></div></div>
+    <div class="step-content">
+      <h3>중복 제거 (Dedupe)</h3>
+      <p>같은 사건을 여러 매체가 보도하면 수십 건의 유사 기사가 생깁니다. 이를 정리하는 과정입니다.</p>
+      <p><strong>① URL 정규화:</strong> 쿼리 파라미터(?ref=naver 등)를 제거하여 같은 기사의 다른 URL을 통일합니다.<br>
+         <strong>② 강한 중복:</strong> 제목이 90% 이상 일치하면 하나만 남기고 제거합니다.<br>
+         <strong>③ 약한 중복 (대표 기사 선정):</strong> 같은 사건을 다루는 기사들을 그룹으로 묶고, 그 중 가장 신뢰도 높은 매체의 기사를 "대표 기사(primary)"로 선정합니다. 나머지는 중복으로 처리합니다.</p>
+      <span class="tag">예: "한은 금리 동결" 기사 30건 → 대표 1건 + 교차보도 기록</span>
+      <br><span class="file">core/dedupe.py</span>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num"><div class="step-circle">5b</div><div class="step-line"></div></div>
+    <div class="step-content">
+      <h3>이벤트 클러스터링 (Event Clustering)</h3>
+      <p>서로 관련된 토픽의 기사들을 하나의 "이벤트 그룹"으로 묶는 과정입니다.</p>
+      <p><strong>예시:</strong> "연준 금리 동결" 기사(통화정책)와 "미국채 금리 하락" 기사(금리/채권)는 별도 토픽이지만 같은 이벤트(연준 결정)에서 비롯됩니다. 이런 기사들을 하나의 이벤트 그룹으로 묶어 중복 분석을 방지합니다.</p>
+      <p><strong>토픽 이웃 관계:</strong> 금리↔통화정책, 환율↔달러유동성, 에너지↔지정학 등 8개 그룹으로 교차 매핑됩니다.</p>
+      <span class="tag">같은 이벤트의 다른 시각 → 1그룹</span>
+      <br><span class="file">core/dedupe.py</span> → <span class="file">TOPIC_NEIGHBORS</span>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num"><div class="step-circle">5c</div><div class="step-line"></div></div>
+    <div class="step-content">
+      <h3>중요도 점수 산출 (Salience Scoring)</h3>
+      <p>각 기사가 "시장에 얼마나 중요한 뉴스인지"를 0~1 점수로 평가합니다.</p>
+      <p><strong>산출 공식:</strong></p>
+      <table style="margin:8px 0; font-size:12px; width:auto;">
+        <tr><td style="padding:4px 12px;">매체 등급 (30%)</td><td style="padding:4px 12px;">TIER1(Reuters,연합뉴스)=1.0 / TIER2(매경,한경)=0.7 / TIER3(기타)=0.3</td></tr>
+        <tr><td style="padding:4px 12px;">기사 강도 (25%)</td><td style="padding:4px 12px;">LLM이 판단한 시장 영향 강도 (1~10) 정규화</td></tr>
+        <tr><td style="padding:4px 12px;">교차 보도 (25%)</td><td style="padding:4px 12px;">같은 이벤트를 몇 개 매체가 보도했는지 (많을수록 높음)</td></tr>
+        <tr><td style="padding:4px 12px;">BM 이상치 (20%)</td><td style="padding:4px 12px;">해당 날짜에 벤치마크 수익률이 급변(z>1.5)했으면 1.0</td></tr>
+      </table>
+      <p><strong>결과:</strong> 점수가 높은 기사가 debate 입력에 우선 선택됩니다.</p>
+      <span class="tag">예: Reuters "이란 전쟁" (salience 0.95) > 블로그 "환율 전망" (salience 0.30)</span>
+      <br><span class="file">core/salience.py</span>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num"><div class="step-circle">6a</div><div class="step-line"></div></div>
+    <div class="step-content">
+      <h3>뉴스 샘플링 (Stratified Sampling)</h3>
+      <p>전체 뉴스(수천~수만 건)를 모두 분석하면 비용이 과다하므로, 토픽별로 균등하게 샘플링합니다.</p>
+      <p><strong>방법:</strong> 각 토픽에서 최소 10건을 먼저 확보한 뒤, 나머지는 salience 높은 순으로 채웁니다. 총 300~500건.</p>
+      <span class="tag">14개 토픽 × 최소 10건 + salience 상위</span>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num"><div class="step-circle">6b</div><div class="step-line"></div></div>
+    <div class="step-content">
+      <h3>엔티티 추출 (Entity Extraction)</h3>
+      <p>"엔티티"란 뉴스에 등장하는 <strong>핵심 개념/사건/지표</strong>를 말합니다. LLM(Haiku)이 각 기사에서 주요 엔티티를 뽑아냅니다.</p>
+      <p><strong>예시:</strong></p>
+      <table style="margin:8px 0; font-size:12px; width:auto;">
+        <tr><td style="padding:4px 12px;">"이란이 호르무즈 해협 봉쇄를 예고했다"</td><td style="padding:4px 12px;">→ <strong>이란</strong>, <strong>호르무즈_봉쇄</strong>, <strong>유가_급등</strong></td></tr>
+        <tr><td style="padding:4px 12px;">"연준이 금리를 동결했다"</td><td style="padding:4px 12px;">→ <strong>연준</strong>, <strong>금리_동결</strong>, <strong>달러_약세</strong></td></tr>
+        <tr><td style="padding:4px 12px;">"엔비디아 실적이 예상치를 상회했다"</td><td style="padding:4px 12px;">→ <strong>엔비디아</strong>, <strong>AI_반도체</strong>, <strong>기술주_강세</strong></td></tr>
+      </table>
+      <span class="tag">Haiku LLM</span>
+      <span class="tag">기사 1건 → 엔티티 2~5개</span>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num"><div class="step-circle">6c</div><div class="step-line"></div></div>
+    <div class="step-content">
+      <h3>인과관계 추론 (Causal Inference)</h3>
+      <p>추출된 엔티티들 사이에 <strong>"A가 B를 야기했다"</strong>는 인과 관계를 LLM(Sonnet)이 추론합니다.</p>
+      <p><strong>예시 인과 경로:</strong></p>
+      <table style="margin:8px 0; font-size:12px; width:auto;">
+        <tr><td style="padding:4px 12px;">호르무즈_봉쇄 → 유가_급등 → 인플레_재점화 → 금리_인상_우려</td><td style="padding:4px 12px;">신뢰도 0.92</td></tr>
+        <tr><td style="padding:4px 12px;">연준_금리동결 → 달러_약세 → 원화_강세 → 수출주_부담</td><td style="padding:4px 12px;">신뢰도 0.85</td></tr>
+        <tr><td style="padding:4px 12px;">엔비디아_호실적 → AI_투자확대 → 반도체_수출호조 → KOSPI_상승</td><td style="padding:4px 12px;">신뢰도 0.78</td></tr>
+      </table>
+      <p>이 인과 경로들이 debate 시 에이전트와 Opus에게 "시장이 왜 이렇게 움직였는지"의 논리 구조를 제공합니다.</p>
+      <span class="tag">Sonnet LLM</span>
+      <span class="tag">엣지 = 인과관계 1개</span>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num"><div class="step-circle">6d</div><div class="step-line"></div></div>
+    <div class="step-content">
+      <h3>시간 지식 그래프 (Temporal Knowledge Graph)</h3>
+      <p>매월 추출된 엔티티와 인과관계를 <strong>시간축이 있는 그래프</strong>로 누적 관리합니다.</p>
+      <p><strong>자동 관리 규칙:</strong></p>
+      <table style="margin:8px 0; font-size:12px; width:auto;">
+        <tr><td style="padding:4px 12px;">Decay (감쇠)</td><td style="padding:4px 12px;">오래된 인과관계의 신뢰도를 시간이 지나면 자동 감소</td></tr>
+        <tr><td style="padding:4px 12px;">Merge (병합)</td><td style="padding:4px 12px;">같은 인과관계가 반복 확인되면 신뢰도 상승</td></tr>
+        <tr><td style="padding:4px 12px;">Prune (가지치기)</td><td style="padding:4px 12px;">신뢰도가 너무 낮아진 관계는 그래프에서 제거</td></tr>
+      </table>
+      <p><strong>결과물:</strong> 노드(엔티티) + 엣지(인과관계) + 전이경로(A→B→C 체인) 형태의 JSON 파일.</p>
+      <span class="tag">예: 131노드, 140엣지, 9개 전이경로</span>
+      <br><span class="file">analyze/graph_rag.py</span> → <span class="file">data/insight_graph/*.json</span>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- Phase 3: Debate -->
+<div class="section">
+<div class="section-title">Phase 3 — 시장 Debate → 매크로 코멘트</div>
+<div class="pipeline phase-debate">
+  <div class="step">
+    <div class="step-num"><div class="step-circle">7</div><div class="step-line"></div></div>
+    <div class="step-content">
+      <h3>Evidence 선별 + 카드 구조화</h3>
+      <p>salience 상위 뉴스를 선별 (토픽별 상한 5건, event_group 상한 2건). 분기 debate는 월별 최소 5건 quota. 제목+핵심사실+토픽+매체 카드형으로 구조화.</p>
+      <span class="tag">~15건/월</span>
+      <span class="tag">월별 quota</span>
+      <br><span class="file">report/debate_engine.py</span> → <span class="file">_build_shared_context()</span>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num"><div class="step-circle">8</div><div class="step-line"></div></div>
+    <div class="step-content">
+      <h3>4인 에이전트 병렬 실행 (Haiku)</h3>
+      <p>Bull(낙관) / Bear(비관) / Quant(데이터) / monygeek(유로달러 학파) — 각자 stance + key_points + tail_risks 생성.</p>
+      <span class="tag">병렬 실행 ~15초</span>
+      <span class="tag">Haiku × 4</span>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num"><div class="step-circle">9</div><div class="step-line"></div></div>
+    <div class="step-content">
+      <h3>Opus 종합 → 매크로 코멘트</h3>
+      <p>4인 의견 + evidence 카드 + 지표 + GraphRAG 경로를 종합. 분기는 1월→2월→3월 시간순 구조 강제. [ref:N] 태그로 출처 추적. 등장순 재부여 + 미사용→관련뉴스 분리.</p>
+      <span class="tag">Opus ~$0.34</span>
+      <span class="tag">월별 2,000토큰 / 분기 4,000토큰</span>
+      <br><span class="file">report/debate_engine.py</span> → <span class="file">report/debate_service.py</span>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num"><div class="step-circle">10</div></div>
+    <div class="step-content">
+      <h3>후처리 + Coverage 검증</h3>
+      <p>내부 지표 제거, 펀드 액션 경고, 시제 불일치 검증, ref 범위 검증. Coverage metrics: 가용/인용 토픽, 수치 무출처 카운트.</p>
+      <span class="tag">sanitize</span>
+      <span class="tag">coverage metrics</span>
+      <br><span class="file">report/debate_service.py</span> → <span class="file">_market.draft.json</span>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- Phase 4: Fund Comment -->
+<div class="section">
+<div class="section-title">Phase 4 — 펀드 코멘트 생성</div>
+<div class="pipeline phase-fund">
+  <div class="step">
+    <div class="step-num"><div class="step-circle">11</div><div class="step-line"></div></div>
+    <div class="step-content">
+      <h3>시장 Debate 결과 로딩</h3>
+      <p>approved final 우선, edited draft fallback. 미검토 raw debate는 사용 안 함. 펀드 미편입 자산군 자동 감지 → 제외 지시 삽입.</p>
+      <span class="tag">final 우선</span>
+      <span class="tag">미편입 자산군 제외</span>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num"><div class="step-circle">12</div><div class="step-line"></div></div>
+    <div class="step-content">
+      <h3>펀드 데이터 로딩</h3>
+      <p>BM 수익률 (32개 지수) + PA 기여도 (자산군/종목) + 보유비중 + 거래내역 (자산군별 순매수/매도). 35건 종목 분류 override 적용.</p>
+      <span class="tag">dt.DWPM10510/10530</span>
+      <span class="tag">dt.MA000410</span>
+      <span class="tag">dt.DWPM10520</span>
+      <br><span class="file">modules/data_loader.py</span>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num"><div class="step-circle">13</div><div class="step-line"></div></div>
+    <div class="step-content">
+      <h3>데이터 요약 + 프롬프트 조립</h3>
+      <p>PA 상위/하위 3개, 거래 순매수/매도 상위 3개로 축약. 펀드 철학 + 포지션 제약 + BM 테이블 + 시장 debate context 결합.</p>
+      <span class="file">report/fund_comment_service.py</span> → <span class="file">report/comment_engine.py</span>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num"><div class="step-circle">14</div></div>
+    <div class="step-content">
+      <h3>Opus 생성 → 펀드 Draft 저장</h3>
+      <p>comment_engine.build_report_prompt() → Opus 호출 → draft.json 저장. 펀드별 개별 생성.</p>
+      <span class="tag">Opus ~$0.50/펀드</span>
+      <br><span class="file">report/fund_comment_service.py</span> → <span class="file">{fund}.draft.json</span>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- Phase 5: Admin -->
+<div class="section">
+<div class="section-title">Phase 5 — Admin 검수 · 승인 (Streamlit UI)</div>
+<div class="pipeline phase-admin">
+  <div class="step">
+    <div class="step-num"><div class="step-circle">15</div><div class="step-line"></div></div>
+    <div class="step-content">
+      <h3>Draft 검토 · 수정</h3>
+      <p>Admin 탭에서 코멘트 확인. textarea에서 직접 수정 가능. 경고(tense/ref/fund action) 및 evidence quality 표시.</p>
+      <span class="tag">Admin(운용보고_매크로)</span>
+      <span class="tag">Admin(운용보고_펀드)</span>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num"><div class="step-circle">16</div><div class="step-line"></div></div>
+    <div class="step-content">
+      <h3>최종 승인 → Client 노출</h3>
+      <p>"최종 승인" 버튼 → final.json 생성. Client 탭에서는 approved final만 표시. 승인 해제로 재수정 가능.</p>
+      <span class="tag">draft → edited → approved</span>
+      <br><span class="file">report/report_store.py</span>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num"><div class="step-circle">17</div></div>
+    <div class="step-content">
+      <h3>Client 조회</h3>
+      <p>운용보고(매크로): 시장 코멘트 + 출처 + 관련 지표 차트. 운용보고(펀드): 펀드 코멘트. draft/warning/evidence raw는 미노출.</p>
+      <span class="tag">운용보고(매크로)</span>
+      <span class="tag">운용보고(펀드)</span>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- Split: Macro vs Fund -->
+<div class="section">
+<div class="section-title">매크로 코멘트 vs 펀드 코멘트 비교</div>
+<div class="split">
+  <div class="split-box macro">
+    <h3>매크로 코멘트</h3>
+    <ul>
+      <li><strong>입력:</strong> 뉴스 + GraphRAG + 지표 + 블로그</li>
+      <li><strong>생성:</strong> 4인 debate → Opus 종합</li>
+      <li><strong>내용:</strong> 글로벌/국내 거시환경 분석</li>
+      <li><strong>저장:</strong> <code>_market.draft.json</code></li>
+      <li><strong>서비스:</strong> debate_service.py</li>
+      <li><strong>비용:</strong> ~$0.34/회</li>
+      <li><strong>빈도:</strong> 월 1회 또는 분기 1회</li>
+      <li><strong>펀드 무관:</strong> 시장 전체 관점</li>
+    </ul>
+  </div>
+  <div class="split-box fund">
+    <h3>펀드 코멘트</h3>
+    <ul>
+      <li><strong>입력:</strong> 시장 debate 결과 + PA + 보유 + 거래</li>
+      <li><strong>생성:</strong> comment_engine → Opus</li>
+      <li><strong>내용:</strong> 펀드별 운용경과/전망/매니저코멘트</li>
+      <li><strong>저장:</strong> <code>{fund_code}.draft.json</code></li>
+      <li><strong>서비스:</strong> fund_comment_service.py</li>
+      <li><strong>비용:</strong> ~$0.50/펀드</li>
+      <li><strong>빈도:</strong> 펀드별 개별 생성</li>
+      <li><strong>미편입 자산군 자동 제외</strong></li>
+    </ul>
+  </div>
+</div>
+</div>
+
+<!-- Storage -->
+<div class="section">
+<div class="section-title">저장 구조</div>
+<div style="background:#fff; border-radius:12px; padding:20px; box-shadow:0 2px 8px rgba(0,0,0,0.06); font-family:'Consolas',monospace; font-size:13px; line-height:1.8;">
+market_research/data/report_output/<br>
+├── 2026-Q1/<br>
+│&nbsp;&nbsp;&nbsp;├── <span style="color:#EF553B">_market.draft.json</span> &nbsp;← 시장 debate 결과<br>
+│&nbsp;&nbsp;&nbsp;├── <span style="color:#EF553B">_market.final.json</span> &nbsp;← 시장 debate 승인본<br>
+│&nbsp;&nbsp;&nbsp;├── <span style="color:#AB63FA">08K88.draft.json</span> &nbsp;&nbsp;← 펀드 코멘트 draft<br>
+│&nbsp;&nbsp;&nbsp;└── <span style="color:#AB63FA">08K88.final.json</span> &nbsp;&nbsp;← 펀드 코멘트 승인본 (Client 조회)<br>
+├── 2026-04/<br>
+│&nbsp;&nbsp;&nbsp;├── _market.draft.json<br>
+│&nbsp;&nbsp;&nbsp;└── 07G04.draft.json<br>
+└── <span style="color:#FFA15A">_evidence_quality.jsonl</span> &nbsp;← evidence 누적 추적
+</div>
+</div>
+
+<!-- Key Files -->
+<div class="section">
+<div class="section-title">핵심 파일 목록</div>
+<table>
+  <tr><th>파일</th><th>역할</th><th>Phase</th></tr>
+  <tr><td><code>collect/macro_data.py</code></td><td>뉴스 + 매크로 지표 수집</td><td>1</td></tr>
+  <tr><td><code>core/source_mapping.py</code></td><td>네이버 기사 매체명 복원</td><td>1</td></tr>
+  <tr><td><code>analyze/news_classifier.py</code></td><td>14개 토픽 분류 (Haiku)</td><td>2</td></tr>
+  <tr><td><code>core/dedupe.py</code></td><td>중복 제거 + event clustering</td><td>2</td></tr>
+  <tr><td><code>core/salience.py</code></td><td>salience 점수 산출</td><td>2</td></tr>
+  <tr><td><code>analyze/graph_rag.py</code></td><td>GraphRAG 인과 추론</td><td>2</td></tr>
+  <tr><td><code>report/debate_engine.py</code></td><td>4인 debate + Opus 종합</td><td>3</td></tr>
+  <tr><td><code>report/debate_service.py</code></td><td>시장 debate 오케스트레이션 + 후처리</td><td>3</td></tr>
+  <tr><td><code>report/fund_comment_service.py</code></td><td>펀드 코멘트 생성 (시장+PA+거래)</td><td>4</td></tr>
+  <tr><td><code>report/comment_engine.py</code></td><td>프롬프트 빌드 + LLM 호출</td><td>4</td></tr>
+  <tr><td><code>report/report_store.py</code></td><td>draft/final 저장·로딩·상태 관리</td><td>5</td></tr>
+  <tr><td><code>modules/data_loader.py</code></td><td>DB 로딩 + PA + 거래내역 + 분류</td><td>4</td></tr>
+  <tr><td><code>tabs/admin_macro.py</code></td><td>시장 debate Admin UI</td><td>5</td></tr>
+  <tr><td><code>tabs/admin_fund.py</code></td><td>펀드 코멘트 Admin UI + 거래내역</td><td>5</td></tr>
+</table>
+</div>
+
+<!-- Cost -->
+<div class="section">
+<div class="section-title">LLM 비용 요약</div>
+<table>
+  <tr><th>단계</th><th>모델</th><th>비용</th><th>빈도</th></tr>
+  <tr><td>뉴스 분류</td><td>Haiku</td><td>~$100/월</td><td>일별 배치</td></tr>
+  <tr><td>GraphRAG 엔티티 추출</td><td>Haiku</td><td>~$3~5/월</td><td>일별 배치</td></tr>
+  <tr><td>GraphRAG 인과 추론</td><td>Sonnet</td><td>~$1~3/월</td><td>일별 배치</td></tr>
+  <tr><td>시장 Debate (4인+종합)</td><td>Haiku×4 + Opus</td><td>~$0.34/회</td><td>월/분기</td></tr>
+  <tr><td>펀드 코멘트</td><td>Opus</td><td>~$0.50/펀드</td><td>펀드별</td></tr>
+  <tr><td style="font-weight:600;">월간 합계</td><td></td><td style="font-weight:600;">~$105~120</td><td></td></tr>
+</table>
+</div>
+
+<div class="note">
+  <strong>참고:</strong> Phase 1~2는 외부 배치(<code>python -m market_research.pipeline.daily_update</code>)로 자동 실행. Phase 3~5는 Streamlit Admin UI에서 수동 트리거. Client는 승인된 final만 조회.
+</div>
+
+</div>
+</body>
+</html>
