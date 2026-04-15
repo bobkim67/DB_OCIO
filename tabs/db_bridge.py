@@ -51,34 +51,34 @@ def render(ctx):
     with c1:
         st.metric("기말 DBO", f"{k['기말_DBO']:,.0f}억",
                   delta=f"전년대비 {dbo_chg:+,.0f}억 ({dbo_growth_pct:+.1f}%)", delta_color="inverse")
-        st.plotly_chart(_mini_bar(hist_dbo, '#EF553B'), key="mini_dbo", use_container_width=True)
 
     with c2:
         st.metric("기말 사외적립자산", f"{k['기말_자산']:,.0f}억",
                   delta=f"전년대비 {asset_chg:+,.0f}억 ({asset_growth_pct:+.1f}%)")
-        st.plotly_chart(_mini_bar(hist_asset, '#636EFA'), key="mini_asset", use_container_width=True)
 
     with c3:
+        prev_fr = h['적립률'][-2] if len(h['적립률']) >= 2 else funding_ratio
+        fr_delta = funding_ratio - prev_fr
         st.metric("적립비율", f"{funding_ratio:.1f}%",
+                  delta=f"전년대비 {fr_delta:+.1f}%p",
                   help="사외적립자산 / 기말 DBO")
-        st.plotly_chart(_mini_bar(hist_fr, '#00CC96'), key="mini_fr", use_container_width=True)
 
     with c4:
+        prev_dbo_gr = h['DBO_증가율'][-2] if len(h['DBO_증가율']) >= 2 else dbo_growth_pct
+        dbo_gr_delta = dbo_growth_pct - prev_dbo_gr
         st.metric("DBO 증가율", f"{dbo_growth_pct:.1f}%",
-                  delta=f"전년대비", delta_color="off")
-        st.plotly_chart(_mini_bar(hist_dbo_gr, '#EF553B'), key="mini_dbogr", use_container_width=True)
+                  delta=f"전년대비 {dbo_gr_delta:+.1f}%p", delta_color="inverse")
 
     with c5:
+        prev_ret = h['운용수익률'][-2] if len(h['운용수익률']) >= 2 else k['당기_운용수익률']
+        ret_delta = k['당기_운용수익률'] - prev_ret
         st.metric("운용수익률", f"{k['당기_운용수익률']:.1f}%",
-                  delta=f"전년대비", delta_color="off")
-        st.plotly_chart(_mini_bar(hist_ret, '#00CC96'), key="mini_ret", use_container_width=True)
+                  delta=f"전년대비 {ret_delta:+.1f}%p")
 
     with c6:
         gap = k['당기_운용수익률'] - dbo_growth_pct
         st.metric("수익률 - DBO증가율", f"{gap:+.1f}%p",
                   help="운용수익률이 DBO 증가율을 상회해야 기여금 없이 적립률 유지 가능")
-        gap_hist = [r - d for r, d in zip(hist_ret, hist_dbo_gr)]
-        st.plotly_chart(_mini_bar(gap_hist, '#AB63FA'), key="mini_gap", use_container_width=True)
 
     # ── 워터폴 차트 2개 ──
     st.markdown("---")
