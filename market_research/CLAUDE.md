@@ -3,7 +3,21 @@
 ## Project Purpose
 
 DB형 퇴직연금 OCIO 운용보고서 자동생성 파이프라인.
-블로그/뉴스 수집 → 분류 → 정제(dedupe/salience) → 인과분석(GraphRAG) → 4인 LLM debate → 시계열+뉴스 교차 분석 → 펀드별 코멘트 생성.
+외부 배치로 debate 이전 단계까지 수행 (수집→분류→정제→GraphRAG→input package).
+Debate 실행과 검수/승인은 Streamlit Admin에서 수행. Client는 approved final만 조회.
+
+### Runtime Boundary
+
+```
+[이 패키지가 담당]                        [Streamlit이 담당]
+ 뉴스 수집/분류/정제/GraphRAG               debate 실행 트리거
+ timeseries narrative                       결과 검토/수정/승인
+ debate input package 생성                  evidence/warning 표시
+ report_cache 빌드                          approved final 조회
+```
+
+- `report/report_store.py` → draft/final 저장·로딩·상태 관리
+- `docs/io_contract.md` → input/draft/final 스키마 정의
 
 ## Architecture
 
@@ -41,14 +55,19 @@ market_research/
 │   ├── cli.py                     ← 통합 CLI (build/list, 대화형/auto/edit/from-json)
 │   ├── debate_engine.py           ← 4인 debate + diversity guardrail + evidence 추적
 │   ├── timeseries_narrator.py     ← 시계열 내러티브 (z-score 세그먼트 + 뉴스 매칭)
-│   └── report_service.py          ← 팩터 추출 + UI 오케스트레이션
+│   ├── report_service.py          ← 팩터 추출 + UI 오케스트레이션
+│   ├── report_store.py            ← draft/final 저장·로딩·상태 관리 (IO contract 구현)
+│   ├── numeric_guard.py           ← 수치 대조 (키워드 1순위 + abs>50 fallback)
+│   └── evidence_trace.py          ← [ref:N] 파싱 + article_id 매핑
 │
 ├── tests/                         ← 테스트
 │   └── ablation_test.py           ← 정제 효과 비교 (4조건 × 메트릭)
 │
 ├── docs/                          ← 설계 문서
+│   ├── io_contract.md                 ← input/draft/final 스키마 정의
+│   ├── review_packet_v6.md            ← 파일럿 준비 보고서
+│   ├── pilot_checklist.md             ← 파일럿 체크리스트 13항목
 │   ├── upstream_refinement_review.md  ← 전체 정제 레이어 설계 리뷰
-│   ├── changeset_review.md            ← 파일별 변경사항 (리뷰용)
 │   └── cold_assessment.md             ← 냉정한 파이프라인 평가
 │
 ├── data/                          ← .gitignore (뉴스, 벡터DB, 캐시 등)

@@ -18,49 +18,94 @@ python -m streamlit run prototype.py --server.port 8505 &
 
 Streamlit은 `session_state`에 이전 위젯 값을 유지하므로 **코드만 수정하고 브라우저 새로고침하면 반영 안 됨**. 반드시 프로세스 kill 후 새 브라우저 탭으로 접속.
 
-## 2026-04-09 Status Update
+## 2026-04-14 Status Update
+
+### 탭 구조
+
+```
+[공통] Overview | 편입종목 | 성과분석 | 운용보고(펀드) | 운용보고(매크로)
+[Admin] Admin(운용보고_매크로) | Admin(운용보고_펀드)
+```
+
+상단 펀드 선택: 7개 (07G04, 08K88, 08N33, 08N81, 08P22, 2JM23, 4JM12), 기본값 08K88.
+삭제된 탭: Admin(펀드현황), 매크로지표.
+
+### Architecture: 3-Tier Runtime Boundary
+
+```
+[외부 배치 — market_research]     [Streamlit Admin]              [Client]
+ 뉴스 수집/분류/정제/GraphRAG      시장 debate 실행/검수/승인        approved final만 조회
+ timeseries narrative             펀드 코멘트 생성/검수/승인
+ debate input package             거래내역/비중 변화 테이블
+```
+
+- **시장 debate**: `debate_service.py` → `_market.draft.json`
+- **펀드 코멘트**: `fund_comment_service.py` → `{fund}.draft.json` (시장 debate + PA/보유/거래)
+- legacy `debate_published` fallback 제거
 
 ### Current Priorities
 
-- **Upstream 정제 레이어 구현 완료**: dedupe → salience → fallback → GraphRAG/debate 연결.
-- **P0 리뷰 반영 완료**: bm_anomaly(7일캡), 3단계 source, topic-neighbor, debate diversity.
-- 다음: LLM 출력 validation (토픽 whitelist + 수치 대조), regression test, multilingual 임베딩.
-- Keep `modules/data_loader.py` as a shared-infra file with single-owner edits.
+- **debate 품질 개선 완료**: evidence card, 분기 월별 quota, coverage rule, 네이버 매체명 복원.
+- **펀드 코멘트 자동생성 완료**: 시장 debate + PA + 보유비중 + 거래내역 결합 → Opus.
+- **UI 대폭 개편 완료**: 탭 구조, Overview MDD, 편입종목 자산군/종목 동시표시, 성과분석 레이아웃.
+- 다음: R과 Brinson residual 비교, 비중추이 override 확인, pilot checklist.
 
 ### Important Current State
 
-- **펀드 8개 운용**: 08P22, 08N81, 08N33, 07G04, 2JM23, 07G02, 07G03, 4JM12.
-- Tab modules: `tabs/overview.py`, `tabs/holdings.py`, `tabs/brinson.py`, `tabs/macro.py`, `tabs/report.py`, `tabs/admin.py`.
-- `tabs/report.py`는 순수 JSON 뷰어 (LLM 호출 없음, market_research import 없음).
+- **펀드 7개 표시** (상단): 07G04, 08K88, 08N33, 08N81, 08P22, 2JM23, 4JM12.
+- Tab modules: `tabs/overview.py`, `tabs/holdings.py`, `tabs/brinson.py`, `tabs/report.py`, `tabs/admin_macro.py`, `tabs/admin_fund.py`.
+- `tabs/report.py` — 운용보고(매크로): `_market` 고정, 운용보고(펀드): 상단 펀드 연동. client=final만.
+- `tabs/admin_fund.py` — 거래내역/비중변화 테이블 (자산군 소계+종목 상세).
+- `tabs/admin_macro.py` — 시장 debate + evidence + coverage metrics.
+- `tabs/admin.py`는 펀드 현황 + **debate workflow** (생성→검토→수정→승인). 전처리 로직 없음.
 - `prototype.py` 탭 구조: Overview / 편입종목 / 성과분석 / 매크로 / **운용보고** / **운용보고(전체)** / Admin.
 
-### Comment Engine v3 + Upstream Refinement 파이프라인
+### Comment Engine v3 + 3-Tier 파이프라인
 
 ```
-[일일 배치 — daily_update.py]
-Step 0: 매크로 지표 (SCIP/FRED/NYFed/ECOS)
-Step 1: 뉴스 수집 (네이버 + Finnhub)
-Step 2: 뉴스 분류 (Haiku 21주제)
-Step 2.5: 정제 — dedupe → salience(bm_anomaly) → fallback
-Step 3: GraphRAG 증분 (primary + stratified → TKG decay/merge/prune)
-Step 4: MTD 델타 (토픽 카운트)
-Step 5: regime_memory (shift 감지)
+[외부 배치 — market_research]
+  [일일 — daily_update.py]
+  Step 0: 매크로 지표 (SCIP/FRED/NYFed/ECOS)
+  Step 1: 뉴스 수집 (네이버 + Finnhub)
+  Step 2: 뉴스 분류 (Haiku 21주제)
+  Step 2.5: 정제 — dedupe → salience(bm_anomaly) → fallback
+  Step 3: GraphRAG 증분 (primary + stratified → TKG decay/merge/prune)
+  Step 4: MTD 델타 (토픽 카운트)
+  Step 5: regime_memory (shift 감지)
 
-[월별 배치]
-블로그 digest → enriched_digest_builder → 뉴스 벡터DB 교차검증
-뉴스 → news_content_pool_builder → KMeans 클러스터링 → Haiku 한국어 요약
-       report_cache_builder → 펀드별 cache v2 (factor_data)
+  [월별]
+  블로그 digest → enriched_digest_builder → 뉴스 벡터DB 교차검증
+  뉴스 → news_content_pool_builder → KMeans 클러스터링 → Haiku 한국어 요약
+         report_cache_builder → 펀드별 PA cache
 
-[CLI — report_cli.py]
-build (대화형/자동):
-  → debate 4인 에이전트 (primary+salience+diversity guardrail)
-  → Opus 종합 → evidence_ids 추적
-  → compute_single_port_pa (R동일 PA) → BM 시계열 패턴
-  → LLM 코멘트 생성 → JSON 저장
+  [CLI — report_cli.py]
+  build --prepare: debate input package 생성 → report_output/{period}/{fund}.input.json
+  build: 대화형/자동 모드 — debate + 코멘트 생성 (CLI 직접 실행도 가능)
 
-[Streamlit — 순수 뷰어]
-tabs/report.py: JSON 읽기 → 코멘트 표시 → 데이터 테이블
+[Streamlit Admin — tabs/admin.py]
+  debate 실행 버튼 → _run_debate_and_save() → report_store.save_draft()
+  → 후처리(sanitize) + evidence annotations + warning severity
+  → admin 검토 textarea → draft 저장 / 최종 승인
+  → report_store.approve_and_save_final() → .final.json
+
+[Streamlit Client — tabs/report.py]
+  report_store.load_final() → approved 코멘트 표시
+  report_cache → PA 기여도 표시
+  (draft/warning/evidence raw 미노출)
 ```
+
+### 저장 구조 (report_output)
+
+```
+market_research/data/report_output/
+├── {period}/
+│   ├── {fund}.input.json      ← 외부 배치 생성
+│   ├── {fund}.draft.json      ← admin debate 결과
+│   └── {fund}.final.json      ← admin 승인 최종본 (client 조회 대상)
+└── _evidence_quality.jsonl    ← 누적 evidence 추적
+```
+
+상태: `not_generated` → `draft_generated` → `edited` → `approved`
 
 ### 정제 레이어 핵심 파일
 
@@ -70,6 +115,11 @@ tabs/report.py: JSON 읽기 → 코멘트 표시 → 데이터 테이블
 - `market_research/analyze/graph_rag.py` — `_stratified_sample()` (dynamic cap 300~500)
 - `market_research/report/debate_engine.py` — diversity guardrail (토픽5/이벤트2) + evidence_ids
 - `market_research/analyze/news_vectordb.py` — hybrid_score (cosine + salience×0.3)
+
+### 저장/로딩 (report_store)
+
+- `market_research/report/report_store.py` — draft/final JSON 저장·로딩·상태 관리 (IO contract 구현)
+- `market_research/docs/io_contract.md` — 외부 배치 ↔ Streamlit 데이터 인터페이스 정의
 
 ### 기존 파일 (comment engine)
 
@@ -102,10 +152,8 @@ tabs/report.py: JSON 읽기 → 코멘트 표시 → 데이터 테이블
 
 ### Known Issues
 
-- **수치 가드레일 미구현**: Opus 코멘트의 수치를 원본과 대조하는 post-processing 없음.
-- **sentence-level evidence trace 미구현**: 코멘트 문장↔기사 1:1 매핑 불가.
 - `NewsAPI` 무료 플랜 약관 위반 가능성 → 대체 소스 미구현.
-- 2025년 12개월 데이터 미분류.
+- evidence ref 오매핑률 누적 데이터 부족 (debate 2회+ 필요).
 
 ### 해결 완료
 
@@ -113,20 +161,15 @@ tabs/report.py: JSON 읽기 → 코멘트 표시 → 데이터 테이블
 - ~~영어 전용 임베딩~~ → `paraphrase-multilingual-MiniLM-L12-v2` 전환 완료
 - ~~GraphRAG monthly/daily 불일치~~ → monthly TKG + daily transmission_paths 추가
 - ~~V1/V2 토픽 혼용~~ → 5개 파일 V2 일관성 수정 완료
-
-### 완료 (이번 세션)
-
-- ~~gold set V2 재검토~~ → 15건 재라벨 완료 (topic 70→84%)
-- ~~미분류 복구~~ → 1,831건 LLM 재분류 (recall 82.8→96.6%)
-- ~~수치 가드레일~~ → debate_engine 연동 완료
-- ~~evidence trace~~ → [ref:N] 프롬프트 + 파싱 유틸
+- ~~수치 가드레일~~ → debate_engine 연동 + 금리 오판 수정 (키워드 1순위)
+- ~~evidence trace~~ → [ref:N] 프롬프트 + 파싱 유틸 + 누적 추적 체계
 - ~~vectorDB + GraphRAG 리빌드~~ → 4개월 완료
+- ~~아키텍처 정리~~ → 3-Tier (외부 배치/admin/client) + report_store + IO contract
 
 ### TODO (P0 — 다음 세션)
 
-1. **evidence [ref:N] 재검증**: 프롬프트 강화 후 Opus가 태그를 실제로 붙이는지 debate 재실행
-2. **review packet v4 외부 리뷰**: docs/review_packet_v4.md 전달
-3. **2025년 데이터 분류**: 19,000건 V2 기준 분류 + 정제
+1. **debate 재실행 2회+** → `_evidence_quality.jsonl` 누적 기록 확보
+2. **pilot_checklist 13항목 전수 확인** → 전부 PASS 후 파일럿 시작
 
 ## Project Purpose
 
@@ -171,30 +214,36 @@ DB_OCIO_Webview/
 └── General_Backtest/      ← R Shiny 원본 (참조용, 수정 금지)
 ```
 
-### Report Runtime Boundary
+### Report Runtime Boundary (3-Tier)
 
-- Batch side:
-  - `market_research/collect_news.bat`
-  - `market_research/report_cache_builder.py`
-  - `market_research/comment_engine.py`
-  - `market_research/news_vectordb.py`
-- Streamlit side:
-  - `tabs/report.py`
-  - reads `market_research/data/report_cache/catalog.json`
-  - reads `market_research/data/report_cache/{YYYY-MM}/{fund_code}.json`
-- Intent:
-  - keep `transformers`, `sentence_transformers`, `chromadb`, and most report-generation work out of the Streamlit runtime
+- **External batch** (`market_research`):
+  - 뉴스 수집/분류/정제/GraphRAG/timeseries narrative
+  - debate input package 생성 → `report_output/{period}/{fund}.input.json`
+  - `transformers`, `sentence_transformers`, `chromadb` 등 무거운 라이브러리는 여기서만 사용
+- **Streamlit admin** (`tabs/admin.py`):
+  - debate 실행 트리거 (service wrapper `_run_debate_and_save()` 경유)
+  - 결과 검토/수정/승인 → `report_output/{period}/{fund}.draft.json` / `.final.json`
+  - evidence quality / warning severity 표시 (계산 아닌 읽기)
+- **Streamlit client** (`tabs/report.py`):
+  - approved final만 조회 → `report_output/{period}/{fund}.final.json`
+  - PA 캐시 뷰어 → `report_cache/{YYYY-MM}/{fund}.json`
+- **저장 관리**: `market_research/report/report_store.py` (draft/final 저장/로딩/상태)
+- **IO Contract**: `market_research/docs/io_contract.md` (input/draft/final 스키마)
 
 ### prototype.py 탭 구조
 
-| Tab Index | 탭명 | 핵심 기능 | DB 연동 |
-|-----------|------|-----------|---------|
-| tabs[0] | Overview | 기준가, 누적수익률, 기간성과, 편입현황 도넛 | **Done** |
-| tabs[1] | 편입종목 & MP Gap | 자산군/종목 토글, 파이+테이블, 비중추이 | **Done** |
-| tabs[2] | 성과분석(Brinson) | 3-Factor Attribution, 워터폴, 기여도 | **Done** (MA000410 + FUND_BM) |
-| tabs[3] | 매크로 지표 | TR Decomposition, EPS/PE, FX, 금리, 벤치마크 히트맵 | **Done** (SCIP) |
-| tabs[4] | 운용보고 | batch-generated cache 기반 요인 선택 + 코멘트 생성 | **Done** |
-| tabs[5] | Admin | 전체 펀드 현황 (admin 전용) | **Done** |
+| Tab Index | 탭명 | 핵심 기능 |
+|-----------|------|-----------|
+| tabs[0] | Overview | 설정일, YTD, 기준가, AUM 카드 + 누적수익률 + MDD 차트 |
+| tabs[1] | 편입종목 | 좌=자산군별 도넛+테이블 / 우=종목별 도넛+테이블 + 비중추이(8class) |
+| tabs[2] | 성과분석 | Brinson 3-Factor + 수익률비교 + 개별포트(자산군/지표 필터+약어) |
+| tabs[3] | 운용보고(펀드) | report_output draft/final JSON 뷰어 (상단 펀드 연동) |
+| tabs[4] | 운용보고(매크로) | 시장 debate 코멘트 + 출처 + 관련 지표 차트 (_market 고정) |
+| tabs[5] | DB ALM 적합성 | 적립률/듀레이션/필요수익률 gauge/금리충격/CF bucket (mockup) |
+| tabs[6] | 퇴직연금 DB 현황 | DBO/자산 워터폴 + 5개년 DBO증가분vs운용수익 + 미니바차트 (mockup) |
+| tabs[7] | Peer 비교 | boxplot/scatter/stacked bar/ranking + 필터 (mockup) |
+| tabs[8] | Admin(운용보고_매크로) | 시장 debate 실행/검수/승인 + coverage metrics (admin) |
+| tabs[9] | Admin(운용보고_펀드) | 펀드 코멘트 생성/검수/승인 + 거래내역/비중 테이블 (admin) |
 
 ### 데이터 흐름
 

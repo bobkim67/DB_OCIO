@@ -1,0 +1,150 @@
+{
+  "date": "2026-04-13",
+  "started_at": "2026-04-13T10:06:25.920422",
+  "steps": {
+    "macro": {
+      "status": "ok"
+    },
+    "collect": {
+      "status": "ok"
+    },
+    "blog": {
+      "status": "ok",
+      "before": 556,
+      "after": 556,
+      "new_count": 0
+    },
+    "blog_insight": {
+      "status": "ok",
+      "post_count": 28,
+      "edge_count": 270
+    },
+    "classify": {
+      "total": 153,
+      "classified": 111
+    },
+    "refine": {
+      "status": "ok",
+      "total": 21809,
+      "primary_count": 21645,
+      "dedup_groups": 21645,
+      "event_groups": 21249,
+      "fallback_count": 1
+    },
+    "graph": {
+      "status": "ok",
+      "articles_used": 191,
+      "node_count": 131,
+      "edge_count": 140
+    },
+    "delta": {
+      "status": "ok",
+      "mtd_articles": 21300,
+      "topic_counts": {
+        "지정학": 3986,
+        "환율_FX": 3378,
+        "에너지_원자재": 3017,
+        "금리_채권": 1699,
+        "테크_AI_반도체": 1380
+      },
+      "topic_direction": {
+        "지정학": {
+          "positive": 1288,
+          "negative": 2666,
+          "neutral": 32
+        },
+        "환율_FX": {
+          "positive": 1338,
+          "negative": 1990,
+          "neutral": 50
+        },
+        "에너지_원자재": {
+          "positive": 881,
+          "negative": 2092,
+          "neutral": 44
+        },
+        "경기_소비": {
+          "positive": 171,
+          "negative": 135,
+          "neutral": 64
+        },
+        "크립토": {
+          "positive": 478,
+          "negative": 485,
+          "neutral": 16
+        },
+        "물가_인플레이션": {
+          "positive": 51,
+          "negative": 846,
+          "neutral": 45
+        },
+        "귀금속_금": {
+          "positive": 363,
+          "negative": 167,
+          "neutral": 28
+        },
+        "금리_채권": {
+          "positive": 751,
+          "negative": 869,
+          "neutral": 79
+        },
+        "통화정책": {
+          "positive": 40,
+          "negative": 102,
+          "neutral": 50
+        },
+        "부동산": {
+          "positive": 92,
+          "negative": 144,
+          "neutral": 9
+        },
+        "유동성_크레딧": {
+          "positive": 206,
+          "negative": 231,
+          "neutral": 4
+        },
+        "관세_무역": {
+          "positive": 228,
+          "negative": 829,
+          "neutral": 6
+        },
+        "테크_AI_반도체": {
+          "positive": 1178,
+          "negative": 195,
+          "neutral": 7
+        },
+        "달러_글로벌유동성": {
+          "positive": 31,
+          "negative": 44,
+          "neutral": 1
+        }
+      },
+      "asset_impact": {
+        "국내주식": 2322.75000000001,
+        "해외주식": 3358.2300000000523,
+        "해외채권_USHY": 1638.460000000026,
+        "해외채권_EM": 1732.8900000000028,
+        "미국주식_성장": 3806.1899999999328,
+        "미국주식_가치": 484.89999999999907,
+        "원자재_금": -1420.1300000000058,
+        "환율_USDKRW": 1175.9300000000057,
+        "환율_DXY": -637.8999999999957,
+        "원자재_원유": -1872.1800000000187,
+        "해외채권": 511.76000000000374,
+        "해외채권_USIG": 521.300000000001,
+        "국내채권": 358.71000000000214
+      },
+      "sentiment": "negative",
+      "positive_count": 7096,
+      "negative_count": 10795
+    },
+    "regime": {
+      "status": "ok",
+      "current_narrative": "지정학 + 환율_FX + 에너지_원자재",
+      "weeks": 0,
+      "shift_consecutive_days": 3,
+      "shift_reason": "3일 연속 토픽 변화 → regime 전환: 지정학 + 환율_FX + 에너지_원자재"
+    }
+  },
+  "completed_at": "2026-04-13T10:11:06.671764"
+}

@@ -1,8 +1,28 @@
 # -*- coding: utf-8 -*-
 """펀드 설정, API 키, PA 분류 규칙"""
 
-# ── Claude API ──
+# ── .env 로드 ──
 import os as _os
+from pathlib import Path as _Path
+
+# 프로젝트 루트 또는 상위에서 .env 탐색
+for _env_candidate in [
+    _Path(__file__).resolve().parents[2] / '.env',           # DB_OCIO_Webview/.env
+    _Path(__file__).resolve().parents[3] / '.claude' / '.env',  # python/.claude/.env
+    _Path(__file__).resolve().parents[3] / '.env',           # python/.env
+]:
+    if _env_candidate.exists():
+        for _line in _env_candidate.read_text(encoding='utf-8').splitlines():
+            _line = _line.strip()
+            if _line and not _line.startswith('#') and '=' in _line:
+                _k, _, _v = _line.partition('=')
+                _k = _k.strip()
+                _v = _v.strip().strip("'\"")
+                if _k and _k not in _os.environ:
+                    _os.environ[_k] = _v
+        break
+
+# ── Claude API ──
 ANTHROPIC_API_KEY = _os.environ.get('ANTHROPIC_API_KEY', '')
 LLM_MODEL = 'claude-sonnet-4-6'
 

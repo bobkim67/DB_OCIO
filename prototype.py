@@ -129,6 +129,7 @@ FUND_META = {
     '07G03': {'name': '수익추구 모펀드', 'short': '수익추구모', 'aum': 888.2, 'group': '모펀드', 'has_mp': True},
     '07G02': {'name': '인컴추구 모펀드', 'short': '인컴추구모', 'aum': 883.4, 'group': '모펀드', 'has_mp': True},
     '08P22': {'name': 'OCIO알아서 프라임', 'short': 'OCIO프라임', 'aum': 815.9, 'group': 'OCIO', 'has_mp': True},
+    '08K88': {'name': 'OCIO알아서 성장형', 'short': 'OCIO성장형', 'aum': 542.3, 'group': 'OCIO', 'has_mp': True},
     '08N33': {'name': 'OCIO알아서 베이직', 'short': 'OCIO베이직', 'aum': 241.1, 'group': 'OCIO', 'has_mp': True},
     '4JM12': {'name': '동부글로벌 Active', 'short': '동부Active', 'aum': 234.6, 'group': '외부위탁', 'has_mp': True},
     '2JM23': {'name': '오렌지라이프 자산배분B', 'short': '오렌지B', 'aum': 194.7, 'group': '외부위탁', 'has_mp': True},
@@ -254,19 +255,21 @@ if not st.session_state.logged_in:
 role_label = "Admin" if st.session_state.user_role == "admin" else "Client"
 accessible = st.session_state.get('fund_access', list(FUND_META.keys()))
 
-top1, top2, top3, top4, top5 = st.columns([1.2, 1.3, 1.5, 3.5, 1])
+top1, top2, top3, top4, top5 = st.columns([2.5, 0.01, 1.5, 3.5, 1])
 
 with top1:
-    group_options = [g for g in FUND_GROUPS if any(f in accessible for f in FUND_GROUPS[g])]
-    default_group_idx = group_options.index('OCIO') if 'OCIO' in group_options else 0
-    selected_group = st.selectbox("펀드 그룹", group_options, index=default_group_idx, label_visibility="collapsed")
-
-with top2:
-    group_funds = sorted([f for f in FUND_GROUPS[selected_group] if f in accessible])
-    fund_options = {k: f"{k}  {FUND_META[k]['short']}" for k in group_funds}
+    _DISPLAY_FUNDS = ['07G04', '08K88', '08N33', '08N81', '08P22', '2JM23', '4JM12']
+    all_funds = [f for f in _DISPLAY_FUNDS if f in FUND_META]
+    fund_labels = {k: f"{k}  {FUND_META[k].get('short', FUND_META[k].get('name','')[:20])}" for k in all_funds}
+    # session_state에 이전 값이 남아있으면 새 옵션과 충돌하므로 제거
+    _fund_key = "top_fund_sel"
+    if _fund_key in st.session_state and st.session_state[_fund_key] not in all_funds:
+        del st.session_state[_fund_key]
+    default_fund_idx = all_funds.index('08K88') if '08K88' in all_funds else 0
     selected_fund = st.selectbox(
-        "펀드 선택", options=list(fund_options.keys()),
-        format_func=lambda x: fund_options[x], label_visibility="collapsed"
+        "펀드 선택", options=all_funds, index=default_fund_idx,
+        format_func=lambda x: fund_labels[x], label_visibility="collapsed",
+        key=_fund_key
     )
 
 # 모펀드 존재 여부 사전 확인 + look-through 토글
@@ -313,9 +316,10 @@ st.markdown("---")
 # 탭 구성 + 공통 컨텍스트
 # ============================================================
 
-tab_names = ["Overview", "편입종목 & MP Gap", "성과분석(Brinson)", "매크로 지표", "운용보고", "운용보고(전체)"]
+tab_names = ["Overview", "편입종목", "성과분석", "운용보고(펀드)", "운용보고(매크로)",
+             "DB ALM 적합성", "퇴직연금 DB 현황", "Peer 비교"]
 if st.session_state.user_role == "admin":
-    tab_names.append("Admin")
+    tab_names += ["Admin(운용보고_매크로)", "Admin(운용보고_펀드)"]
 tabs = st.tabs(tab_names)
 
 # 캐시 함수 dict (탭 모듈에 전달)
@@ -374,18 +378,29 @@ with tabs[2]:
     render_brinson(ctx)
 
 with tabs[3]:
-    from tabs.macro import render as render_macro
-    render_macro(ctx)
-
-with tabs[4]:
     from tabs.report import render_pa as render_report_pa
     render_report_pa(ctx)
 
-with tabs[5]:
+with tabs[4]:
     from tabs.report import render_macro as render_report_macro
     render_report_macro(ctx)
 
-if st.session_state.user_role == "admin" and len(tabs) > 6:
-    with tabs[6]:
-        from tabs.admin import render as render_admin
-        render_admin(ctx)
+with tabs[5]:
+    from tabs.db_alm import render as render_db_alm
+    render_db_alm(ctx)
+
+with tabs[6]:
+    from tabs.db_bridge import render as render_db_bridge
+    render_db_bridge(ctx)
+
+with tabs[7]:
+    from tabs.db_peer import render as render_db_peer
+    render_db_peer(ctx)
+
+if st.session_state.user_role == "admin" and len(tabs) > 8:
+    with tabs[8]:
+        from tabs.admin_macro import render as render_admin_macro
+        render_admin_macro(ctx)
+    with tabs[9]:
+        from tabs.admin_fund import render as render_admin_fund
+        render_admin_fund(ctx)

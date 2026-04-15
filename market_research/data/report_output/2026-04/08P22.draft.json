@@ -1,0 +1,250 @@
+{
+  "fund_code": "08P22",
+  "period": "2026-04",
+  "status": "draft_generated",
+  "draft_comment": "2026년 4월 글로벌 매크로 시장 브리핑 4월 글로벌 시장을 지배한 핵심 변수는 중동 지정학 리스크의 급격한 진폭이었습니다. 월초 이란의 호르무즈 해협 역봉쇄 예고로 국제유가가 8% 급등하며 배럴당 100달러를 돌파하였고, 에너지 공급차질 우려가 글로벌 위험자산 전반에 매도 압력을 가했습니다. 그러나 이후 미국-이란 간 휴전 협상이 진전을 보이면서 4월 9~10일을 기점으로 안도 랠리가 전개되었고, KOSPI는 월간 +14.4%, KOSPI200은 +16.3% 상승하며 강한 반등세를 기록했습니다. 미국 성장주를 포함한 선진국 증시 역시 일제히 회복하며, 지정학 프리미엄의 해제가 월중 가장 강력한 가격 동인으로 작용했습니다. 다만 이러한 안도 랠리가 구조적 리스크의 해소를 의미하는 것으로 보기에는 신중한 해석이 필요합니다. 휴전 합의는 조건부이며 협상 결렬 시 유가가 배럴당 110~120달러 이상으로 재차 급등할 가능성이 상존합니다. IMF 역시 에너지 가격 상승과 성장률 하방 압력이 동시에 진행되는 '높은 가격-낮은 성장' 패러다임에 대해 경고한 바 있으며, 항공유 등 실물 에너지 비용의 상승이 기업 마진과 소비자 물가에 전이될 경로 또한 열려 있습니다. 단기 지정학 완화와 중기 공급망·인플레이션 구조적 불확실성이 병존하는 구도로, 안도 랠리의 지속 가능성은 휴전의 내구성에 크게 의존하고 있습니다. 통화정책 측면에서는 연준이 '양방향 금리 경로'를 공식적으로 논의에 올린 점이 주목됩니다. 이는 인플레이션 압력이 재차 부각될 경우 긴축 재개를, 경기 둔화가 심화될 경우 완화 전환을 모두 열어둔 것으로 해석되며, 정책 유연성의 신호인 동시에 방향성 불확실성의 확대이기도 합니다. 한국은행은 7회 연속 기준금리를 동결하며 안정 기조를 유지했으나, 연준과의 정책 기조 괴리가 확대될 경우 달러/원 환율에 상승 압력이 가중될 수 있습니다. 실제로 원화는 월중 뚜렷한 약세 흐름을 보였으며, 원유 수입 의존도가 높은 한국 경제 특성상 유가 상승과 원화 약세가 결합된 수입 인플레이션 경로에 대한 경계가 필요합니다. 글로벌 위험자산 회피 심리가 재점화될 경우 외국인 자금 이탈이 환율·채권 시장에 동시 압력으로 작용할 수 있는 구조입니다. 향후 확인해야 할 핵심 변수는 다음과 같습니다. 첫째, 미-이란 휴전 합의의 이행 여부 및 호르무즈 해협 통행 정상화 진척도입니다. 둘째, 국제유가가 배럴당 100달러 이상에서 고착화되는지 여부와 이에 따른 글로벌 인플레이션 기저 변화입니다. 셋째, 연준의 다음 FOMC에서 양방향 금리 논의가 구체적 정책 시그널로 전환되는지 확인이 필요합니다. 넷째, 한은과 연준 간 금리 격차 변동에 따른 달러/원 환율 경로 및 외국인 자금 흐름 방향성입니다. 다섯째, 유가 상승의 기업 실적 전이 속도, 특히 에너지 비용 비중이 높은 제조업·운송업 부문의 마진 변화를 면밀히 추적할 필요가 있습니다.",
+  "admin_comment_raw": "2026년 4월 글로벌 매크로 시장 브리핑\n\n4월 글로벌 시장을 지배한 핵심 변수는 중동 지정학 리스크의 급격한 진폭이었습니다. 월초 이란의 호르무즈 해협 역봉쇄 예고로 국제유가가 8% 급등하며 배럴당 100달러를 돌파하였고[ref:1], 에너지 공급차질 우려가 글로벌 위험자산 전반에 매도 압력을 가했습니다. 그러나 이후 미국-이란 간 휴전 협상이 진전을 보이면서 4월 9~10일을 기점으로 안도 랠리가 전개되었고, KOSPI는 월간 +14.4%, KOSPI200은 +16.3% 상승하며 강한 반등세를 기록했습니다[ref:4][ref:5]. 미국 성장주를 포함한 선진국 증시 역시 일제히 회복하며, 지정학 프리미엄의 해제가 월중 가장 강력한 가격 동인으로 작용했습니다.\n\n다만 이러한 안도 랠리가 구조적 리스크의 해소를 의미하는 것으로 보기에는 신중한 해석이 필요합니다. 휴전 합의는 조건부이며 협상 결렬 시 유가가 배럴당 110~120달러 이상으로 재차 급등할 가능성이 상존합니다[ref:2]. IMF 역시 에너지 가격 상승과 성장률 하방 압력이 동시에 진행되는 '높은 가격-낮은 성장' 패러다임에 대해 경고한 바 있으며[ref:10], 항공유 등 실물 에너지 비용의 상승이 기업 마진과 소비자 물가에 전이될 경로 또한 열려 있습니다[ref:11]. 단기 지정학 완화와 중기 공급망·인플레이션 구조적 불확실성이 병존하는 구도로, 안도 랠리의 지속 가능성은 휴전의 내구성에 크게 의존하고 있습니다.\n\n통화정책 측면에서는 연준이 '양방향 금리 경로'를 공식적으로 논의에 올린 점이 주목됩니다[ref:3][ref:6]. 이는 인플레이션 압력이 재차 부각될 경우 긴축 재개를, 경기 둔화가 심화될 경우 완화 전환을 모두 열어둔 것으로 해석되며, 정책 유연성의 신호인 동시에 방향성 불확실성의 확대이기도 합니다. 한국은행은 7회 연속 기준금리를 동결하며 안정 기조를 유지했으나[ref:9][ref:15], 연준과의 정책 기조 괴리가 확대될 경우 달러/원 환율에 상승 압력이 가중될 수 있습니다. 실제로 원화는 월중 뚜렷한 약세 흐름을 보였으며, 원유 수입 의존도가 높은 한국 경제 특성상 유가 상승과 원화 약세가 결합된 수입 인플레이션 경로에 대한 경계가 필요합니다. 글로벌 위험자산 회피 심리가 재점화될 경우 외국인 자금 이탈이 환율·채권 시장에 동시 압력으로 작용할 수 있는 구조입니다.\n\n향후 확인해야 할 핵심 변수는 다음과 같습니다. 첫째, 미-이란 휴전 합의의 이행 여부 및 호르무즈 해협 통행 정상화 진척도입니다. 둘째, 국제유가가 배럴당 100달러 이상에서 고착화되는지 여부와 이에 따른 글로벌 인플레이션 기저 변화입니다. 셋째, 연준의 다음 FOMC에서 양방향 금리 논의가 구체적 정책 시그널로 전환되는지 확인이 필요합니다. 넷째, 한은과 연준 간 금리 격차 변동에 따른 달러/원 환율 경로 및 외국인 자금 흐름 방향성입니다. 다섯째, 유가 상승의 기업 실적 전이 속도, 특히 에너지 비용 비중이 높은 제조업·운송업 부문의 마진 변화를 면밀히 추적할 필요가 있습니다.",
+  "admin_summary": "4인 분석가 모두 호르무즈 해협 봉쇄 리스크, 유가 급등, 연준 양방향 금리경로 불확실성, 한국의 원유수입·원화약세 이중 취약성을 핵심 변수로 공유하나, 휴전 지속 가능성과 자산배분 방향에서 극명하게 대립한다. 낙관론은 지정학 프리미엄 해제와 정책 대응력을 근거로 위험자산 확대를 주장하는 반면, 비관론과 유로달러 학파는 유가-인플레-금리 악순환 구조화와 달러 유동성 위기를 근거로 전면 방어를 주장하며, 데이터 분석가는 유가 $100 지속 여부를 포지션 전환의 핵심 트리거로 제시한다.",
+  "consensus_points": [
+    "호르무즈 해협 봉쇄 리스크와 유가 8% 급등(배럴당 100달러 돌파)은 4인 모두 핵심 변수로 인식하며, 추가 상승 시 글로벌 경제에 심대한 충격을 줄 수 있다는 점에 동의",
+    "연준의 '양방향 금리경로' 논의는 인플레이션 불확실성 증대의 신호이며, 통화정책 경로의 예측 가능성이 현저히 낮아졌다는 점에 4인 합의",
+    "유가 급등→인플레이션 압력→금리 상승→위험자산 회피로 이어지는 전이 경로(transmission mechanism)가 작동 중이며, 한국은 원유 수입 의존도와 원화 약세(USDKRW +663.07)로 이중 취약성에 노출되어 있다는 점에 공감"
+  ],
+  "disagreements": [
+    {
+      "topic": "미-이란 휴전협상의 지속 가능성과 지정학적 리스크 해소 정도",
+      "bull": "휴전 진전으로 지정학 프리미엄 해제 진행 중이며, 공급망 재정상화로 유가 상승폭 제한될 가능성 70% 이상",
+      "bear": "휴전은 일시적 완화 신호일 뿐 구조적 공급차질 리스크 상존, 유가-인플레-금리 악순환 고리 형성 중",
+      "quant": "휴전으로 유가 모멘텀 일시 둔화되나 역봉쇄 예고로 재상승 압력 지속, 유가 $100 이상 유지 시 리스크자산 축소 트리거 필요",
+      "monygeek": "휴전은 분석 함정이며 호르무즈 봉쇄 지속 가능성 50% 이상, 미국 정부 신뢰도 붕괴로 협상 자체의 유효성 상실"
+    },
+    {
+      "topic": "자산배분 방향성: 위험자산 확대 vs 방어적 포지셔닝",
+      "bull": "지정학 리스크 감소와 과매도 반등 확인으로 국내외 주식·채권 모두 비중확대 적기",
+      "bear": "유가·인플레·금리 악순환과 외국인 자금 이탈 리스크로 국내외 주식·국내채권 축소, 해외채권만 유지",
+      "quant": "국내주식 유지, 해외주식 비중확대하되 국내채권 축소, 유가 $100 유지 여부를 리스크 전환 기준으로 설정",
+      "monygeek": "유로달러 유동성 위기와 기축통화 신뢰 붕괴 우려로 전 자산군 축소, 현금 및 안전자산 최대화"
+    },
+    {
+      "topic": "연준 양방향 금리경로의 해석",
+      "bull": "정책 유연성 신호로서 경기 둔화 시 인하 가능성을 열어둔 것이며, 시장 충격 흡수 능력 입증",
+      "bear": "인플레 압력 상승 우려의 명확한 신호이며, 정책 불확실성 최고조로 장기금리 상승압력과 신용스프레드 확대 예상",
+      "quant": "인플레이션 기저 상승 신호로 해석하되 금리전이 신뢰도 0.449로 낮아 즉각적 경기부진 전이는 약함",
+      "monygeek": "Fed 인하 기대감 완전 소멸 신호이며, 글로벌 민간 달러 차입 비용 급증으로 유로달러 유동성 위기 심화 촉매"
+    }
+  ],
+  "tail_risks": [
+    "호르무즈 해협 완전 봉쇄 시 유가 $150+ 급등, 글로벌 공급망 정지, 채권-주식 동시 낙(상관계수 1.0 수렴)으로 2008년 리만 사태급 금융 시스템 전염 위험",
+    "유로달러 유동성 위기 급성화와 미국 행정부 신뢰도 붕괴가 결합될 경우 오프쇼어 달러 시장 동결(TED Spread 200bps+), 이머징마켓 대규모 자본유출, USDKRW 1400대 진입 및 수입인플레이션 악순환 시나리오"
+  ],
+  "generated_at": "2026-04-13T12:53:20",
+  "model": "claude-opus-4-6",
+  "cost_usd": 0.34,
+  "validation_summary": {
+    "sanitize_warnings": [
+      {
+        "type": "ref_mismatch",
+        "message": "ref 오매핑: 문장 토픽={'IMF'} ← ref:11 토픽={'휴전'} \"Jet fuel supply concerns grow as war with Iran dra\"",
+        "severity": "critical",
+        "ref_no": 11
+      },
+      {
+        "type": "auto_remove",
+        "message": "내부 지표 제거: \\[ref:\\d+\\]",
+        "severity": "info"
+      },
+      {
+        "type": "fund_action",
+        "message": "펀드 액션: \"기조를 유지\"",
+        "severity": "warning"
+      }
+    ],
+    "warning_counts": {
+      "critical": 1,
+      "warning": 1,
+      "info": 1
+    }
+  },
+  "evidence_quality": {
+    "total_refs": 10,
+    "ref_mismatches": 1,
+    "tense_mismatches": 0,
+    "mismatch_rate": 0.1,
+    "evidence_count": 15
+  },
+  "evidence_annotations": [
+    {
+      "ref": 1,
+      "article_id": "0cbd0bd86d18",
+      "title": "미 호르무즈 '역봉쇄' 예고에…국제유가 8% 급등",
+      "url": "http://www.yonhapnewstv.co.kr/AKR20260413095758y5D",
+      "source": "연합뉴스TV",
+      "date": "2026-04-13",
+      "topic": "에너지_원자재",
+      "salience": 0.775,
+      "salience_explanation": "TIER1 매체(연합뉴스TV), 높은 강도(9/10), 교차보도 41건"
+    },
+    {
+      "ref": 2,
+      "article_id": "7fc4aeeed1f9",
+      "title": "美 호르무즈 역봉쇄 예고에…국제유가, 다시 100달러 넘어(종합)",
+      "url": "https://www.newsis.com/view/NISX20260413_0003588001",
+      "source": "뉴시스",
+      "date": "2026-04-13",
+      "topic": "에너지_원자재",
+      "salience": 0.75,
+      "salience_explanation": "TIER1 매체(뉴시스), 높은 강도(8/10), 교차보도 41건"
+    },
+    {
+      "ref": 3,
+      "article_id": "e4dffb4bb066",
+      "title": "연준, 금리경로 '양방향' 가능성 논의…전쟁발 인플레 경계",
+      "url": "http://www.yonhapnewstv.co.kr/AKR20260409062027wGB",
+      "source": "연합뉴스TV",
+      "date": "2026-04-09",
+      "topic": "금리_채권",
+      "salience": 0.95,
+      "salience_explanation": "TIER1 매체(연합뉴스TV), 높은 강도(8/10), 교차보도 10건"
+    },
+    {
+      "ref": 4,
+      "article_id": "5151c488b196",
+      "title": "[글로벌증시] 美·이란 휴전에 반색…뉴욕증시 급등 마감",
+      "url": "http://www.yonhapnewstv.co.kr/MYH20260409065201hIf",
+      "source": "연합뉴스TV",
+      "date": "2026-04-09",
+      "topic": "지정학",
+      "salience": 0.925,
+      "salience_explanation": "TIER1 매체(연합뉴스TV), 높은 강도(7/10), 교차보도 23건"
+    },
+    {
+      "ref": 5,
+      "article_id": "669240c6146d",
+      "title": "美-이란 휴전에 유가·환율 '안도 랠리'…\"경제불확실성은 여전\"",
+      "url": "https://www.newsis.com/view/NISX20260408_0003583531",
+      "source": "뉴시스",
+      "date": "2026-04-09",
+      "topic": "에너지_원자재",
+      "salience": 0.925,
+      "salience_explanation": "TIER1 매체(뉴시스), 높은 강도(7/10), 교차보도 23건"
+    },
+    {
+      "ref": 6,
+      "article_id": "a04b6f3b949f",
+      "title": "美연준, 전쟁발 인플레 위험 경계…금리경로 ‘양방향’ 가능성 논의",
+      "url": "https://biz.heraldcorp.com/article/10713079?ref=naver",
+      "source": "헤럴드경제",
+      "date": "2026-04-09",
+      "topic": "금리_채권",
+      "salience": 0.86,
+      "salience_explanation": "TIER2 매체(헤럴드경제), 높은 강도(8/10), 교차보도 10건"
+    },
+    {
+      "ref": 7,
+      "article_id": "0ec426372a8c",
+      "title": "코스피, '휴전 지속 기대감'에 장초반 1.6% 올라 5,860대(종합)",
+      "url": "https://www.yna.co.kr/view/AKR20260410033751008?input=1195m",
+      "source": "연합뉴스",
+      "date": "2026-04-10",
+      "topic": "지정학",
+      "salience": 0.85,
+      "salience_explanation": "TIER1 매체(연합뉴스), 교차보도 4건"
+    },
+    {
+      "ref": 8,
+      "article_id": "7025f73da7e0",
+      "title": "美-이란 휴전협상 안도감…코스피 1%대 강세 출발[개장시황]",
+      "url": "https://www.news1.kr/finance/general-stock/6131906",
+      "source": "뉴스1",
+      "date": "2026-04-10",
+      "topic": "지정학",
+      "salience": 0.85,
+      "salience_explanation": "TIER1 매체(뉴스1), 교차보도 4건"
+    },
+    {
+      "ref": 9,
+      "article_id": "b96610bc747f",
+      "title": "‘이창용 마지막’ 금통위, 기준금리 2.5% 동결…이란전쟁여파 물가·환...",
+      "url": "https://biz.heraldcorp.com/article/10714230?ref=naver",
+      "source": "헤럴드경제",
+      "date": "2026-04-10",
+      "topic": "통화정책",
+      "salience": 0.835,
+      "salience_explanation": "TIER2 매체(헤럴드경제), 높은 강도(7/10), 교차보도 19건"
+    },
+    {
+      "ref": 10,
+      "article_id": "aa1b0f8767b9",
+      "title": "‘All roads lead to higher prices and slower growth,' warns IMF chief as Iran war hits global economy",
+      "url": "https://www.cnbc.com/2026/04/07/higher-prices-slower-growth-warns-imf-.html",
+      "source": "CNBC",
+      "date": "2026-04-07",
+      "topic": "지정학",
+      "salience": 0.825,
+      "salience_explanation": "TIER1 매체(CNBC), 높은 강도(9/10), 교차보도 2건"
+    },
+    {
+      "ref": 11,
+      "article_id": "8e0619951e23",
+      "title": "Jet fuel supply concerns grow as war with Iran drags on, airlines cut flights - CNBC",
+      "url": "https://www.cnbc.com/2026/04/07/iran-war-jet-fuel-airlines.html",
+      "source": "CNBC",
+      "date": "2026-04-07",
+      "topic": "에너지_원자재",
+      "salience": 0.8,
+      "salience_explanation": "TIER1 매체(CNBC), 높은 강도(8/10), 교차보도 2건"
+    },
+    {
+      "ref": 12,
+      "article_id": "77af38524986",
+      "title": "The Iran war shock is about half the size of Covid-19 - Financial Times",
+      "url": "https://www.ft.com/content/b5f95d26-338e-4779-a0a4-28aa99796f45?syn-25a6b1a6\\\\u003d1",
+      "source": "Financial Times",
+      "date": "2026-04-07",
+      "topic": "지정학",
+      "salience": 0.8,
+      "salience_explanation": "TIER1 매체(Financial Times), 높은 강도(8/10), 교차보도 2건"
+    },
+    {
+      "ref": 13,
+      "article_id": "eb05a060a1d9",
+      "title": "Saudi Arabia says attacks cut oil output and East-West Pipeline flow - Reuters",
+      "url": "https://news.google.com/rss/articles/CBMiywFBVV95cUxOUG43N0U2MXF3b3RKdnkwaTRPeDZhWm1QZjJBYUhyMHB1N0pRdFgxaXZMWGFwT2dSSHFiRHFhdFZEQm14UVc5RlRaclNSR0dHS2I3ei1IeVE1b2NRUjE5NDNqd01SQ1lyTUZZam5WbmI0NlEzNmdTWUxFaWhSdmxzQndlYk1aOTFITHdISHB4RWZQTVlnZnMwLVhTV1RWUFFvSkdlUlNaeUYxMl9qRG9TdThRWGFieDJISndiei1UTGczUkxYYTBOTW1RNA?oc=5",
+      "source": "Reuters",
+      "date": "2026-04-10",
+      "topic": "에너지_원자재",
+      "salience": 0.75,
+      "salience_explanation": "TIER1 매체(Reuters), 높은 강도(8/10)"
+    },
+    {
+      "ref": 14,
+      "article_id": "88a552d5c835",
+      "title": "US labor market holds steady; inflation firmer before Iran war - Reuters",
+      "url": "https://news.google.com/rss/articles/CBMilwFBVV95cUxNcUtyZllvWGFQOGoxQW1WTmZBb0J6U1ktUjVSSGNTNUdzTjdBdDVLb0xMUk9kV2p5enFrU1BtZFQxU0pmQWpfWUZLNXRzRnBXZDNnU3FfLUlSN0llU3MyRkd2Z3RSd0czdktlLURJSDgyTlNPS1R3cFVHOTBtWk9uWHowQTZUMHF1RkotenQzWnFUcGZ5WEg4?oc=5",
+      "source": "Reuters",
+      "date": "2026-04-10",
+      "topic": "물가_인플레이션",
+      "salience": 0.75,
+      "salience_explanation": "TIER1 매체(Reuters), 교차보도 2건"
+    },
+    {
+      "ref": 15,
+      "article_id": "151625a48ae2",
+      "title": "이창용 마지막 금통위, 7연속 동결 유력…'연내 인상' 관측도",
+      "url": "https://www.nocutnews.co.kr/news/6499014?utm_source=naver&utm_medium=article&utm_campaign=20260409062706",
+      "source": "nocutnews.co.kr",
+      "date": "2026-04-09",
+      "topic": "금리_채권",
+      "salience": 0.74,
+      "salience_explanation": "TIER3 매체(nocutnews.co.kr), 높은 강도(8/10), 교차보도 19건"
+    }
+  ],
+  "internal_metrics_guide": {
+    "중요도(salience)": "기사 중요도 점수 (0~1). 매체등급 30% + 강도 25% + 교차보도 25% + BM이상치 20%로 산출",
+    "전이경로 신뢰도": "GraphRAG 인과추론 엣지의 신뢰도. 0.9 이상은 다수 기사에서 반복 확인된 인과 경로",
+    "교차보도 N건": "동일 이벤트를 서로 다른 매체가 보도한 횟수. 많을수록 사실 신뢰도 높음",
+    "BM 이상치": "해당 날짜에 벤치마크 수익률이 z-score 1.5 이상 급변한 경우 해당",
+    "매체등급": "TIER1(Reuters/Bloomberg/연합 등)=1.0, TIER2(SeekingAlpha/매경 등)=0.7, TIER3(기타)=0.3"
+  },
+  "edit_history": []
+}

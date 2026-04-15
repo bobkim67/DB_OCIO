@@ -609,6 +609,213 @@ def load_usdkrw_from_scip(start_date: str = None) -> pd.DataFrame:
 
 
 # ============================================================
+# 거래내역 순매수/매도 (DWPM10520)
+# ============================================================
+
+# HOLD_AST_DS_CD → AST_CLSF_CD_NM 대리 매핑 (거래내역에 AST_CLSF_CD_NM 없음)
+# 거래종목 분류 override (ETF 자동분류 오류 방지, 2026-04-13 수동 확인)
+_TRADE_ITEM_CLASSIFY = {
+    # 국내채권
+    'KR103502GE97': '국내채권', 'KR103502GE30': '국내채권',
+    'KR103502GC65': '국내채권', 'KR103502GD98': '국내채권',
+    'KR6169379E88': '국내채권',  # 메리츠캐피탈
+    'KR7365780006': '국내채권',  # ACE 국고채10년
+    'KR7487340002': '국내채권',  # ACE 머니마켓액티브
+    'KR7356540005': '국내채권',  # ACE 종합채권(AA-이상)액티브
+    'KR7439870007': '국내채권',  # KODEX 국고채30년액티브
+    'KR7385560008': '국내채권',  # RISE KIS국고채30년Enhanced
+    'KR7451530000': '국내채권',  # TIGER 국고채30년스트립액티브
+    'KRZ502659020': '국내채권',  # 월넛은행채플러스
+    # 해외채권
+    'KR7453850000': '해외채권',  # ACE 미국30년국채액티브(H)
+    'KR7468380001': '해외채권',  # KODEX iShares미국하이일드액티브
+    'KR7484790001': '해외채권',  # KODEX 미국30년국채액티브(H)
+    'KR7458250008': '해외채권',  # TIGER 미국30년국채스트립액티브(합성 H)
+    'US46435U8532': '해외채권',  # iShares Broad USD HY
+    'US9219468850': '해외채권',  # VANGUARD EMERG MKTS GOV BND
+    # 해외주식
+    'KR7367380003': '해외주식',  # ACE 미국나스닥100
+    'KR70127M0006': '해외주식',  # ACE 미국대형가치주액티브
+    'KR70127P0003': '해외주식',  # ACE 미국대형성장주액티브
+    'US78464A4094': '해외주식',  # SPDR S&P 500 Growth
+    'US9219438580': '해외주식',  # VANGUARD FTSE DEVELOPED
+    'US9220428588': '해외주식',  # VANGUARD FTSE EM
+    'US9229087443': '해외주식',  # VANGUARD VALUE
+    # 국내주식
+    'KR7105190003': '국내주식',  # ACE 200
+    'KR7332500008': '국내주식',  # ACE 200TR
+    # 대체투자
+    'KR7411060007': '대체투자',  # ACE KRX금현물
+    'US46436F1030': '대체투자',  # ISHARES GOLD TRUST MICRO
+    'US92189F1066': '대체투자',  # VANECK GOLD MINERS
+    # FX
+    'KR4A75610001': 'FX', 'KR4A75620000': 'FX',
+    'KR4A75630009': 'FX', 'KR4A75640008': 'FX',
+    # 유동성
+    'USMUSD022001': '유동성',  # USD DEPOSIT
+    # 국내채권 (TMF 펀드)
+    'KRZ502659020': '국내채권',  # 월넛은행채플러스 (이미 위에 있지만 중복 안전)
+}
+
+# 국내채권으로 분류할 종목명 패턴 (ISIN이 고정되지 않는 경우)
+_TRADE_ITEM_NAME_CLASSIFY = {
+    '한국투자TMF': '국내채권',
+}
+
+
+def load_fund_net_trades(fund_code: str, start_date: int, end_date: int) -> dict:
+    """DWPM10520에서 기간 중 자산군별 순매수/매도 요약.
+
+    Returns:
+        dict: {자산군: {'buy': 억원, 'sell': 억원, 'net': 억원}}
+        빈 dict이면 거래 없음.
+    """
+    conn = get_pandas_connection('dt')
+    try:
+        df = pd.read_sql(f"""
+            SELECT item_cd, item_nm, hold_ast_ds_cd, curr_ds_cd,
+                   buy_sell_ds_cd, trd_amt
+            FROM DWPM10520
+            WHERE fund_cd = %s AND std_dt BETWEEN %s AND %s
+              AND imc_cd = '003228'
+        """, conn, params=[fund_code, start_date, end_date])
+    finally:
+        conn.close()
+
+    if df.empty:
+        return {}
+
+    # 분류: override 우선 → _classify_6class fallback
+    def _classify_trade(row):
+        icd = str(row.get('item_cd', '')).strip()
+        override = _TRADE_ITEM_CLASSIFY.get(icd)
+        if override:
+            return override
+        inm = str(row.get('item_nm', ''))
+        # 종목명 패턴 매칭
+        for pattern, cls in _TRADE_ITEM_NAME_CLASSIFY.items():
+            if pattern in inm:
+                return cls
+        # 콜론/REPO/모펀드는 유동성/모펀드
+        if any(kw in inm for kw in ['콜론', 'REPO', '예금', 'DEPOSIT']):
+            return '유동성'
+        if icd.startswith('0322800'):
+            return '모펀드'
+        # fallback
+        row2 = dict(row)
+        row2['AST_CLSF_CD_NM'] = ''
+        row2['ITEM_CD'] = icd
+        row2['ITEM_NM'] = inm
+        row2['CURR_DS_CD'] = row.get('curr_ds_cd', '')
+        return _classify_6class(row2)
+
+    df['자산군'] = df.apply(_classify_trade, axis=1)
+
+    # 매수(M)/매도(D)별 금액 합산
+    df['trd_amt'] = pd.to_numeric(df['trd_amt'], errors='coerce').fillna(0)
+    result = {}
+    for asset_class in df['자산군'].unique():
+        sub = df[df['자산군'] == asset_class]
+        buy = sub.loc[sub['buy_sell_ds_cd'] == 'M', 'trd_amt'].sum()
+        sell = sub.loc[sub['buy_sell_ds_cd'] == 'D', 'trd_amt'].sum()
+        result[asset_class] = {
+            'buy': round(buy / 1e8, 1),
+            'sell': round(sell / 1e8, 1),
+            'net': round((buy - sell) / 1e8, 1),
+        }
+    return result
+
+
+def load_fund_trade_detail(fund_code: str, start_date: int, end_date: int) -> pd.DataFrame:
+    """DWPM10520에서 날짜별 거래내역 상세. 자산군 분류 포함.
+
+    Returns: DataFrame [날짜, 종목명, 자산군, 매수매도, 금액(억)]
+    """
+    conn = get_pandas_connection('dt')
+    try:
+        df = pd.read_sql("""
+            SELECT std_dt, item_cd, item_nm, hold_ast_ds_cd, curr_ds_cd,
+                   buy_sell_ds_cd, trd_amt
+            FROM DWPM10520
+            WHERE fund_cd = %s AND std_dt BETWEEN %s AND %s
+              AND imc_cd = '003228'
+            ORDER BY std_dt, item_nm
+        """, conn, params=[fund_code, start_date, end_date])
+    finally:
+        conn.close()
+
+    if df.empty:
+        return pd.DataFrame()
+
+    def _classify(row):
+        icd = str(row.get('item_cd', '')).strip()
+        override = _TRADE_ITEM_CLASSIFY.get(icd)
+        if override:
+            return override
+        inm = str(row.get('item_nm', ''))
+        if any(kw in inm for kw in ['콜론', 'REPO', '예금', 'DEPOSIT']):
+            return '유동성'
+        if icd.startswith('0322800'):
+            return '모펀드'
+        row2 = {'AST_CLSF_CD_NM': '', 'ITEM_CD': icd, 'ITEM_NM': inm,
+                'CURR_DS_CD': row.get('curr_ds_cd', '')}
+        return _classify_6class(row2)
+
+    df['자산군'] = df.apply(_classify, axis=1)
+    df['매수매도'] = df['buy_sell_ds_cd'].map({'M': '매수', 'D': '매도'}).fillna(df['buy_sell_ds_cd'])
+    df['금액(억)'] = pd.to_numeric(df['trd_amt'], errors='coerce').fillna(0) / 1e8
+    df['날짜'] = df['std_dt'].astype(str)
+    df['종목명'] = df['item_nm']
+
+    return df[['날짜', '종목명', '자산군', '매수매도', '금액(억)']].round(2)
+
+
+def load_fund_holdings_weight(fund_code: str, date: int) -> pd.DataFrame:
+    """특정일 보유종목 비중. 자산군 분류 포함.
+
+    Returns: DataFrame [종목명, 자산군, 비중(%), 평가금액(억)]
+    """
+    conn = get_pandas_connection('dt')
+    try:
+        df = pd.read_sql("""
+            SELECT item_cd, item_nm, nast_tamt_agnst_wgh as wgh, evl_amt,
+                   hold_ast_ds_cd, curr_ds_cd
+            FROM DWPM10530
+            WHERE fund_cd = %s AND std_dt = %s AND imc_cd = '003228' AND evl_amt > 0
+            ORDER BY evl_amt DESC
+        """, conn, params=[fund_code, date])
+    finally:
+        conn.close()
+
+    if df.empty:
+        return pd.DataFrame()
+
+    def _classify(row):
+        icd = str(row.get('item_cd', '')).strip()
+        override = _TRADE_ITEM_CLASSIFY.get(icd)
+        if override:
+            return override
+        inm = str(row.get('item_nm', ''))
+        for pattern, cls in _TRADE_ITEM_NAME_CLASSIFY.items():
+            if pattern in inm:
+                return cls
+        if any(kw in inm for kw in ['콜론', 'REPO', '예금', 'DEPOSIT', '증거금', '미수']):
+            return '유동성'
+        if icd.startswith('0322800'):
+            return '모펀드'
+        row2 = {'AST_CLSF_CD_NM': '', 'ITEM_CD': icd, 'ITEM_NM': inm,
+                'CURR_DS_CD': row.get('curr_ds_cd', '')}
+        return _classify_6class(row2)
+
+    df['자산군'] = df.apply(_classify, axis=1)
+    df['비중(%)'] = pd.to_numeric(df['wgh'], errors='coerce').fillna(0).round(2)
+    df['평가금액(억)'] = pd.to_numeric(df['evl_amt'], errors='coerce').fillna(0) / 1e8
+    df['종목명'] = df['item_nm']
+
+    return df[['종목명', '자산군', '비중(%)', '평가금액(억)']].round(2)
+
+
+# ============================================================
 # 보유종목 + 6분류 매핑
 # Monitoring/auto_classify.py 패턴 + AST_CLSF_CD_NM 결합
 # ============================================================
@@ -618,9 +825,19 @@ def _classify_6class(row) -> str:
     AST_CLSF_CD_NM + ITEM_CD + ITEM_NM 조합으로 6분류 매핑.
     국내주식 / 해외주식 / 국내채권 / 해외채권 / 대체투자 / 유동성
     """
+    item_cd = str(row.get('ITEM_CD', '')).strip()
+    # 수동 확인 override (거래내역 + 보유종목 공통)
+    override = _TRADE_ITEM_CLASSIFY.get(item_cd)
+    if override:
+        return override
+    item_nm_raw = str(row.get('ITEM_NM', ''))
+    for pattern, cls in _TRADE_ITEM_NAME_CLASSIFY.items():
+        if pattern in item_nm_raw:
+            return cls
+
     ast = str(row.get('AST_CLSF_CD_NM', '')).upper()
-    item_cd = str(row.get('ITEM_CD', '')).upper()
-    item_nm = str(row.get('ITEM_NM', '')).upper()
+    item_cd = item_cd.upper()
+    item_nm = item_nm_raw.upper()
     curr = str(row.get('CURR_DS_CD', '')).upper()
 
     # 특수 종목 처리 (auto_classify 패턴)

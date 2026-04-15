@@ -161,8 +161,12 @@ def _parse_json_response(text: str):
 # ===================================================================
 
 def _build_shared_context(year: int, month: int, fund_code: str = None,
-                          start_idx: int = 1) -> dict:
-    """4인 에이전트 공유 컨텍스트 빌드. start_idx: evidence 번호 시작값 (분기 통번호용)"""
+                          start_idx: int = 1, target_count: int = 15) -> dict:
+    """4인 에이전트 공유 컨텍스트 빌드.
+
+    start_idx: evidence 번호 시작값 (분기 통번호용)
+    target_count: 이 달에서 뽑을 뉴스 목표 건수 (분기 debate 시 월별 quota 적용)
+    """
     context = {
         'year': year,
         'month': month,
@@ -211,7 +215,7 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
         event_count = {}   # event_group_id → 선발 수
         MAX_PER_TOPIC = 5
         MAX_PER_EVENT = 2
-        TARGET = 15
+        TARGET = target_count
         LATEST_SLOT = 2    # 당일 기사 전용 슬롯
 
         # Phase 1: 당일 TIER1/TIER2 기사 우선 배정
@@ -259,13 +263,17 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
             n_topics = len(set(a.get('primary_topic', '') for a in high_impact))
             lines.append(f'\n주요 뉴스 ({len(high_impact)}건, {n_topics}개 토픽, diversity 적용):')
             for idx, a in enumerate(high_impact, start_idx):
-                sal = a.get('_event_salience', 0)
                 aid = a.get('_article_id', '')
-                src_cnt = a.get('_event_source_count', 1)
-                corr = f', 교차보도:{src_cnt}건' if src_cnt >= 2 else ''
-                lines.append(
-                    f'  [ref:{idx}] [{a.get("primary_topic","")}] {a.get("title","")[:80]} '
-                    f'({a.get("source","")}, {a.get("date","")}) [sal:{sal}{corr}]')
+                topic = a.get('primary_topic', '')
+                src = a.get('source', '')
+                dt = a.get('date', '')
+                title = a.get('title', '')[:80]
+                desc = a.get('description', '')[:120]
+                # evidence card: ref | 토픽 | 월 | 매체 | 제목 | 핵심 사실
+                card = f'  [ref:{idx}] {topic} | {dt[:7]} | {src} | {title}'
+                if desc:
+                    card += f'\n    핵심: {desc}'
+                lines.append(card)
                 if aid:
                     evidence_ids.append(aid)
             context['_next_idx'] = start_idx + len(high_impact)
@@ -454,19 +462,44 @@ def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> 
     system_msg = '당신은 기관 투자자를 위한 글로벌 매크로 시장 분석 전문가입니다.'
 
     # ── Step 1: 고객용 매크로 코멘트 (Opus) ──
-    target_month = f'{context["year"]}년 {context["month"]}월'
+    # 분기 vs 월별 판단
+    is_quarterly = bool(context.get('_quarterly'))
+    if is_quarterly:
+        months_in_q = context.get('_quarterly_months', [])
+        target_period = f'{context["year"]}년 {context.get("_quarter", "")}분기'
+        period_instruction = (
+            f'이 문서는 "{target_period} 매크로 시장 브리핑"입니다.\n'
+            f'반드시 {months_in_q[0]}월부터 {months_in_q[-1]}월까지 시간 순서로 서술하세요.\n'
+            '특정 펀드의 운용보고가 아닌, 글로벌/국내 거시환경 분석문입니다.\n'
+        )
+        structure_instruction = (
+            '## 문단 구조 (반드시 시간 순서로 작성)\n'
+            f'1문단: {months_in_q[0]}월 — 분기 초 시장 환경, 핵심 이벤트와 자산 반응\n'
+            f'2문단: {months_in_q[1]}월 — 전개 심화 또는 전환, 새로운 변수 등장\n'
+            f'3문단: {months_in_q[2]}월 — 마감 국면, 분기 말 포지션과 현재 함의\n'
+            '4문단: 분기 종합 평가 + 향후 체크포인트 (투자 액션 금지)\n\n'
+        )
+    else:
+        target_period = f'{context["year"]}년 {context["month"]}월'
+        period_instruction = (
+            f'이 문서는 "{target_period} 매크로 시장 브리핑"입니다.\n'
+            f'반드시 "{target_period}" 기준으로 작성하세요. 다른 월을 언급하지 마세요.\n'
+            '특정 펀드의 운용보고가 아닌, 글로벌/국내 거시환경 분석문입니다.\n'
+        )
+        structure_instruction = (
+            '## 문단 구조 (반드시 이 순서로 3~4문단 작성)\n'
+            '1문단: 월중 핵심 변화 — 시장을 움직인 가장 큰 변수 1~2개, 주요 자산 반응\n'
+            '2문단: 안도와 리스크의 공존 — 단기 완화 요인과 중기 구조적 불확실성 균형 서술\n'
+            '3문단: 금리/환율/유동성 해석 — 통화정책 딜레마, 금리 구조, 환율 방향성\n'
+            '4문단: 향후 체크포인트 — 확인해야 할 변수 나열로 마무리 (투자 액션 금지)\n\n'
+        )
+
     comment_prompt = (
         '4명의 분석가가 각각 다른 시각에서 시장을 분석했습니다.\n\n'
         f'## 분석가별 의견\n{debate_text}\n\n'
-        '## 문서 성격\n'
-        f'이 문서는 "{target_month} 매크로 시장 브리핑"입니다.\n'
-        f'반드시 "{target_month}" 기준으로 작성하세요. 다른 월을 언급하지 마세요.\n'
-        '특정 펀드의 운용보고가 아닌, 글로벌/국내 거시환경 분석문입니다.\n\n'
-        '## 문단 구조 (반드시 이 순서로 3~4문단 작성)\n'
-        '1문단: 월중 핵심 변화 — 시장을 움직인 가장 큰 변수 1~2개, 주요 자산 반응\n'
-        '2문단: 안도와 리스크의 공존 — 단기 완화 요인과 중기 구조적 불확실성 균형 서술\n'
-        '3문단: 금리/환율/유동성 해석 — 통화정책 딜레마, 금리 구조, 환율 방향성\n'
-        '4문단: 향후 체크포인트 — 확인해야 할 변수 나열로 마무리 (투자 액션 금지)\n\n'
+        f'## 뉴스 evidence\n{context.get("news_summary_text", "")}\n\n'
+        f'## 문서 성격\n{period_instruction}\n'
+        f'{structure_instruction}'
         '## 작성 규칙\n'
         '1. 기관 고객용 전문적이고 절제된 톤, 경어체.\n'
         '2. 크로스 자산 인과관계로 연결 (자산별 개별 나열 금지).\n'
@@ -496,24 +529,34 @@ def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> 
         '- "에너지 비중 확대에 대한 시장 기대"\n'
         '- "유동성 버퍼가 약화되고 있다"\n'
         '- "포트폴리오 리밸런싱 수요가 관측된다"\n\n'
+        '## 좋은 코멘트 예시 (구조와 톤만 참고, 내용은 현재 월 데이터로 작성)\n'
+        '> 4월 글로벌 시장은 미국-이란 간 2주 휴전 합의를 계기로 지정학적 리스크 프리미엄이 '
+        '빠르게 완화되는 흐름을 보였습니다. 주요국 증시는 일제히 반등하여 미국 성장주와 해외 '
+        '주식시장이 월중 뚜렷한 회복세를 기록하였고, KOSPI는 +14.4%, KOSPI200은 +16.3% 상승하며 '
+        '국내 시장도 강한 안도 랠리를 보였습니다[ref:2].\n\n'
+        '위 예시의 특징: 내부 지표 없음, 펀드 액션 없음, 수치에 단위와 맥락 포함, ref 태그 정확.\n'
+        '이 구조를 따르되 반드시 현재 월의 실제 데이터와 분석가 의견으로 작성하세요.\n\n'
         '## 필수: 출처 태그\n'
         '뉴스에서 가져온 사실을 언급할 때 해당 문장 끝에 [ref:N] 태그를 붙이세요.\n'
         '위 "주요 뉴스" 목록에 [ref:1], [ref:2], ... 식별자가 이미 붙어 있습니다.\n'
         '해당 식별자를 그대로 복사하세요. 번호를 재해석하거나 임의 부여하지 마세요.\n'
         '목록에 없는 ref 번호를 만들지 마세요.\n'
-        '문장 내용과 직접 관련된 기사에만 ref를 붙이세요. 확신이 없으면 ref를 생략하세요.\n'
-        '최소 3개 이상의 [ref:N] 태그를 포함하세요.\n\n'
+        '기사에서 직접 확인 가능한 사실(수치, 이벤트, 발언)을 서술할 때 반드시 ref를 붙이세요.\n'
+        '수치가 포함된 사실 서술(%, 달러, 원, 포인트 등)에는 가급적 해당 ref를 명시하세요.\n'
+        '특정 1~2개 토픽에만 ref가 몰리지 않도록, 다양한 토픽의 evidence를 활용하세요.\n'
+        '위 뉴스 evidence 목록에서 각 토픽의 핵심 기사를 최소 1건씩 인용하는 것을 목표로 하세요.\n\n'
         '순수 텍스트만 출력하세요.\n'
         '문단 사이에 반드시 빈 줄(\\n\\n)을 넣어 구분하세요.'
     )
 
     customer_comment = ''
+    comment_max_tokens = 4000 if is_quarterly else 2000
     try:
         customer_comment = _call_llm(
             model='claude-opus-4-6',
             system=system_msg,
             prompt=comment_prompt,
-            max_tokens=2000,
+            max_tokens=comment_max_tokens,
             log_label='synthesis_step1_comment',
         )
     except Exception as exc:
@@ -764,8 +807,10 @@ def run_quarterly_debate(year: int, quarter: int) -> dict:
     all_evidence_ids = []
     next_idx = 1  # 분기 통번호
 
+    # 월별 최소 quota: 각 월 최소 5건, 나머지는 자유 배분 (총 ~15~20건)
+    MONTHLY_QUOTA = 5
     for m in months:
-        ctx = _build_shared_context(year, m, start_idx=next_idx)
+        ctx = _build_shared_context(year, m, start_idx=next_idx, target_count=MONTHLY_QUOTA)
         next_idx = ctx.get('_next_idx', next_idx)
         if ctx.get('indicators_text') and not merged_context['indicators_text']:
             merged_context['indicators_text'] = ctx['indicators_text']
@@ -783,6 +828,9 @@ def run_quarterly_debate(year: int, quarter: int) -> dict:
     merged_context['graph_paths_text'] = '\n'.join(all_graph_lines)
     merged_context['blog_context_text'] = '\n'.join(all_blog_lines)
     merged_context['_evidence_ids'] = all_evidence_ids
+    merged_context['_quarterly'] = True
+    merged_context['_quarter'] = quarter
+    merged_context['_quarterly_months'] = months
 
     print(f'  컨텍스트 빌드 완료 (3개월 병합)')
 

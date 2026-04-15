@@ -108,7 +108,13 @@ def render(ctx):
 
     with c1:
         with st.container(border=True):
-            st.metric("설정이후 수익률", f"{si_return:.2f}%")
+            from config.funds import FUND_META as _FM_FULL
+            _inception = fund_info.get('inception', _FM_FULL.get(selected_fund, {}).get('inception', ''))
+            if _inception:
+                _inc_fmt = f"{_inception[:4]}-{_inception[4:6]}-{_inception[6:8]}"
+            else:
+                _inc_fmt = '-'
+            st.metric("설정일", _inc_fmt)
             spark_data = (nav_data[-spark_n:] / nav_data[-spark_n] - 1) * 100
             st.plotly_chart(make_sparkline(spark_data, '#636EFA', spark_dates=spark_dates, suffix='%'),
                             width="stretch", key="spark1")
@@ -212,50 +218,13 @@ def render(ctx):
 
     st.markdown("")
 
-    # --- 편입현황 (좌) + 누적수익률 (우) ---
-    col_hold, col_chart = st.columns([2, 3])
+    # --- 누적수익률 (좌) + MDD (우) ---
+    col_cum, col_mdd = st.columns(2)
 
-    with col_hold:
-        st.markdown("#### 최근 편입현황")
-        _holdings_db = False
-        if DB_CONNECTED:
-            try:
-                _hold_df = cache['load_holdings_lookthrough'](selected_fund) if lookthrough_on else cache['load_holdings'](selected_fund)
-                if not _hold_df.empty:
-                    _hold_date = _hold_df['기준일자'].iloc[0].strftime('%Y-%m-%d') if '기준일자' in _hold_df.columns else '최근'
-                    st.caption(f"{_hold_date} 기준 | {fund_info['short']}")
-                    asset_weights = _hold_df.groupby('자산군')['비중(%)'].sum()
-                    asset_weights = asset_weights.reindex(ASSET_CLASSES).fillna(0)
-                    _holdings_db = True
-                else:
-                    raise ValueError("Holdings empty")
-            except Exception as _e:
-                st.toast(f"보유종목 DB 오류, 목업 사용: {_e}", icon="⚠️")
+    _chart_nav_base = _FUND_INCEPTION_BASE.get(selected_fund, nav_data[0])
+    cum_ret = (nav_data / _chart_nav_base - 1) * 100
 
-        if not _holdings_db:
-            st.caption(f"2026-02-11 기준 | {fund_info['short']}")
-            asset_weights = SAMPLE_HOLDINGS_DETAIL.groupby('자산군')['비중(%)'].sum()
-            asset_weights = asset_weights.reindex(ASSET_CLASSES).fillna(0)
-
-        if _holdings_db:
-            _evl_by_class = _hold_df.groupby('자산군')['평가금액(억)'].sum().reindex(ASSET_CLASSES).fillna(0)
-        else:
-            _evl_by_class = SAMPLE_HOLDINGS_DETAIL.groupby('자산군')['평가금액(억)'].sum().reindex(ASSET_CLASSES).fillna(0)
-        fig_donut = go.Figure(data=[go.Pie(
-            labels=asset_weights.index, values=asset_weights.values,
-            hole=0.50, textinfo='label+percent',
-            marker_colors=[ASSET_COLORS.get(a, '#999') for a in asset_weights.index],
-            textfont_size=11,
-            customdata=_evl_by_class.values,
-            hovertemplate='%{label}<br>비중: %{percent}<br>평가금액: %{customdata:,.1f}(억)<extra></extra>'
-        )])
-        fig_donut.update_layout(height=260, margin=dict(t=10, b=10, l=10, r=10), showlegend=False)
-        st.plotly_chart(fig_donut, width="stretch")
-
-    with col_chart:
-        _chart_nav_base = _FUND_INCEPTION_BASE.get(selected_fund, nav_data[0])
-        cum_ret = (nav_data / _chart_nav_base - 1) * 100
-
+    with col_cum:
         fig = go.Figure()
         if _has_bm:
             cum_bm = (bm_data / bm_data[0] - 1) * 100
@@ -281,10 +250,41 @@ def render(ctx):
             yaxis_title='수익률 (%)',
             yaxis_tickformat='.2f',
             legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
-            height=500, margin=dict(t=50, b=30),
+            height=400, margin=dict(t=50, b=30),
             hovermode='x unified'
         )
         st.plotly_chart(fig, width="stretch")
+
+    with col_mdd:
+        # MDD 계산: 고점 대비 낙폭
+        running_max = np.maximum.accumulate(nav_data)
+        drawdown = (nav_data / running_max - 1) * 100
+
+        fig_mdd = go.Figure()
+        fig_mdd.add_trace(go.Scatter(
+            x=dates_for_tab0, y=drawdown, name='MDD',
+            fill='tozeroy', fillcolor='rgba(239, 85, 59, 0.15)',
+            line=dict(color='#EF553B', width=1.5),
+        ))
+        if _has_bm:
+            bm_max = np.maximum.accumulate(bm_data)
+            bm_dd = (bm_data / bm_max - 1) * 100
+            fig_mdd.add_trace(go.Scatter(
+                x=dates_for_tab0, y=bm_dd, name='BM MDD',
+                line=dict(color='#636EFA', width=1, dash='dot'),
+            ))
+        current_mdd = drawdown[-1]
+        max_mdd = np.min(drawdown)
+        fig_mdd.update_traces(hovertemplate='%{y:.2f}%')
+        fig_mdd.update_layout(
+            title=f'MDD 추이 (현재: {current_mdd:.1f}%, 최대: {max_mdd:.1f}%)',
+            yaxis_title='Drawdown (%)',
+            yaxis_tickformat='.1f',
+            legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+            height=400, margin=dict(t=50, b=30),
+            hovermode='x unified'
+        )
+        st.plotly_chart(fig_mdd, width="stretch")
 
     # ctx에 다른 탭이 필요로 하는 데이터 저장
     ctx['nav_data'] = nav_data
