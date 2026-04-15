@@ -86,8 +86,8 @@ def render(ctx):
             marker=dict(color='#EF553B', size=15, symbol='star'),
             name='당사'
         ))
-        fig_box.update_layout(height=350, margin=dict(t=10, b=20), yaxis_title='적립률 (%)',
-                               showlegend=True, legend=dict(orientation='h', y=1.05))
+        fig_box.update_layout(height=350, margin=dict(t=10, b=40), yaxis_title='적립률 (%)',
+                               showlegend=True, legend=dict(orientation='h', y=-0.15))
         st.plotly_chart(fig_box, use_container_width=True)
         st.caption(f"당사 적립률 **상위 {100-pctile:.0f}%** (Peer {len(peers)}개사 기준)")
 
@@ -108,43 +108,41 @@ def render(ctx):
             marker=dict(color='#EF553B', size=16, symbol='star'),
             name='당사'
         ))
-        fig_sc.update_layout(height=350, margin=dict(t=10, b=20),
+        fig_sc.update_layout(height=350, margin=dict(t=10, b=40),
                               xaxis_title='운용수익률 (%)', yaxis_title='DBO 성장률 (%)',
-                              showlegend=True, legend=dict(orientation='h', y=1.05))
+                              showlegend=True, legend=dict(orientation='h', y=-0.15))
         st.plotly_chart(fig_sc, use_container_width=True)
 
     # ── 자산구성 비교 ──
     st.markdown("---")
     st.markdown("##### 자산구성 비교")
-    asset_cols = ['원리금보장비중', '채권비중', '주식비중', '대체비중']
     asset_labels = ['원리금보장', '채권', '주식', '대체투자']
-    colors = ['#B6E880', '#00CC96', '#636EFA', '#AB63FA']
 
-    # 당사 + peer 평균
-    comp_data = pd.DataFrame({
-        '구분': ['당사', 'Peer 평균'],
-        '원리금보장': [company['원리금보장비중'], peer_avg_gic],
-        '채권': [company['채권비중'], peer_avg_bond],
-        '주식': [company['주식비중'], peers['주식비중'].mean() if not peers.empty else 0],
-        '대체투자': [company['대체비중'], peers['대체비중'].mean() if not peers.empty else 0],
-    })
+    my_vals = [company['원리금보장비중'], company['채권비중'], company['주식비중'], company['대체비중']]
+    peer_vals = [peer_avg_gic, peer_avg_bond,
+                 peers['주식비중'].mean() if not peers.empty else 0,
+                 peers['대체비중'].mean() if not peers.empty else 0]
 
-    fig_stack = go.Figure()
-    for i, label in enumerate(asset_labels):
-        fig_stack.add_trace(go.Bar(
-            name=label, x=comp_data['구분'], y=comp_data[label],
-            marker_color=colors[i],
-            text=[f"{v:.0f}%" for v in comp_data[label]], textposition='inside'
-        ))
-    fig_stack.update_layout(barmode='stack', height=300, margin=dict(t=10, b=20),
-                             yaxis_title='비중 (%)', legend=dict(orientation='h', y=1.05))
-    st.plotly_chart(fig_stack, use_container_width=True)
+    fig_comp = go.Figure()
+    fig_comp.add_trace(go.Bar(name='당사', x=asset_labels, y=my_vals,
+                               marker_color='#636EFA',
+                               text=[f"{v:.1f}%" for v in my_vals], textposition='outside'))
+    fig_comp.add_trace(go.Bar(name='Peer 평균', x=asset_labels, y=peer_vals,
+                               marker_color='#EF553B', opacity=0.65,
+                               text=[f"{v:.1f}%" for v in peer_vals], textposition='outside'))
+    fig_comp.update_layout(barmode='group', height=300, margin=dict(t=10, b=40),
+                            yaxis_title='비중 (%)',
+                            legend=dict(orientation='h', y=-0.15),
+                            xaxis=dict(showgrid=False, ticks=''))
+    st.plotly_chart(fig_comp, use_container_width=True)
 
     # ── Peer Ranking Table ──
     st.markdown("---")
     st.markdown("##### Peer Ranking")
 
     rank_df = filtered[['회사명', '업종', '규모', '적립률', '수익률', 'DBO성장률', '원리금보장비중', '채권비중']].copy()
+    for _nc in ['적립률', '수익률', 'DBO성장률', '원리금보장비중', '채권비중']:
+        rank_df[_nc] = rank_df[_nc].round(1)
     rank_df = rank_df.sort_values('적립률', ascending=False).reset_index(drop=True)
     rank_df.index = rank_df.index + 1
     rank_df.index.name = '순위'

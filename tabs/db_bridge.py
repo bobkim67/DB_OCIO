@@ -182,23 +182,9 @@ def render(ctx):
                         range=[min(min(dbo_gr), min(op_ret)) - 4, max(max(dbo_gr), max(op_ret)) + 4]),
             legend=dict(orientation='h', y=1.08, font=dict(size=10)),
             margin=dict(t=10, b=20),
-            xaxis=dict(showgrid=False),
+            xaxis=dict(showgrid=False, showline=False, ticks=''),
         )
         st.plotly_chart(fig_gap, use_container_width=True)
-
-        # 최근 연도 진단
-        shortfall = dbo_chg - BRIDGE_ASSET['운용수익']
-        if shortfall <= 0:
-            st.success(
-                f"**{years[-1]}년**: 운용수익이 DBO 증가분을 "
-                f"**{abs(shortfall):,.0f}억 초과 충당**. 기여금 없이 자연증가분 상쇄 가능."
-            )
-        else:
-            additional_ret = shortfall / k['기초_자산'] * 100
-            st.warning(
-                f"**{years[-1]}년**: 운용수익이 DBO 증가분 대비 "
-                f"**{shortfall:,.0f}억 부족**. 수익률 +{additional_ret:.1f}%p 추가 필요."
-            )
 
     with col_trend:
         st.markdown("##### 최근 5개년 DBO / 사외적립자산 추이")
@@ -219,31 +205,8 @@ def render(ctx):
             yaxis2=dict(title='적립률 (%)', overlaying='y', side='right', range=[70, 110]),
             legend=dict(orientation='h', y=1.08, font=dict(size=10)),
             margin=dict(t=10, b=20),
-            xaxis=dict(showgrid=False),
+            xaxis=dict(showgrid=False, showline=False, ticks=''),
         )
         st.plotly_chart(fig_trend, use_container_width=True)
 
-    # ── 진단 요약 ──
-    st.markdown("---")
-    st.markdown("##### 진단 요약")
-    delta_fr = funding_ratio - k['기초_적립률']
-
-    if delta_fr >= 0:
-        st.success(
-            f"적립비율이 {k['기초_적립률']:.1f}% → {funding_ratio:.1f}%로 "
-            f"{delta_fr:+.1f}%p 개선되었습니다. "
-            f"운용수익({BRIDGE_ASSET['운용수익']:,.0f}억)이 DBO 증가({dbo_chg:+,.0f}억)를 상쇄하였습니다."
-        )
-    else:
-        st.warning(
-            f"적립비율이 {k['기초_적립률']:.1f}% → {funding_ratio:.1f}%로 "
-            f"{delta_fr:+.1f}%p 하락하였습니다. "
-            f"자산 증가({asset_chg:+,.0f}억)보다 DBO 증가({dbo_chg:+,.0f}억)가 커 적립비율이 하락했습니다."
-        )
-
-    st.markdown(
-        f"- DBO 증가 주요 원인: 근무원가 {BRIDGE_DBO['근무원가']:,.0f}억 + 이자원가 {BRIDGE_DBO['이자원가']:,.0f}억 + "
-        f"보험수리손익 {BRIDGE_DBO['보험수리손익']:,.0f}억\n"
-        f"- 자산 증가 주요 원인: 기여금 {BRIDGE_ASSET['사용자_기여금']:,.0f}억 + 운용수익 {BRIDGE_ASSET['운용수익']:,.0f}억\n"
-        f"- 기여금 없이 DBO 증가분을 충당하려면 연 **{required_ret:.1f}%** 수익률 필요 (현재 {k['당기_운용수익률']:.1f}%)"
-    )
+    # (진단 요약 삭제됨)
