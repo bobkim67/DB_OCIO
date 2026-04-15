@@ -37,7 +37,11 @@ st.set_page_config(
 
 @st.cache_data(ttl=600)
 def cached_load_fund_nav(fund_code, start_date=None):
-    return load_fund_nav_with_aum(fund_code, start_date)
+    try:
+        return load_fund_nav_with_aum(fund_code, start_date)
+    except Exception:
+        from modules.snapshot_fallback import load_nav_fallback
+        return load_nav_fallback(fund_code, start_date)
 
 @st.cache_data(ttl=600)
 def cached_load_bm_prices(dataset_id, dataseries_id, start_date=None, currency=None):
@@ -45,11 +49,19 @@ def cached_load_bm_prices(dataset_id, dataseries_id, start_date=None, currency=N
 
 @st.cache_data(ttl=600)
 def cached_load_holdings(fund_code, date=None):
-    return load_fund_holdings_classified(fund_code, date)
+    try:
+        return load_fund_holdings_classified(fund_code, date)
+    except Exception:
+        from modules.snapshot_fallback import load_holdings_fallback
+        return load_holdings_fallback(fund_code)
 
 @st.cache_data(ttl=600)
 def cached_load_holdings_lookthrough(fund_code, date=None):
-    return load_fund_holdings_lookthrough(fund_code, date)
+    try:
+        return load_fund_holdings_lookthrough(fund_code, date)
+    except Exception:
+        from modules.snapshot_fallback import load_holdings_fallback
+        return load_holdings_fallback(fund_code)
 
 @st.cache_data(ttl=600)
 def cached_load_holdings_history(fund_code, start_date=None):
@@ -57,7 +69,10 @@ def cached_load_holdings_history(fund_code, start_date=None):
 
 @st.cache_data(ttl=600)
 def cached_load_fund_summary(fund_codes):
-    return load_fund_summary(fund_codes)
+    try:
+        return load_fund_summary(fund_codes)
+    except Exception:
+        return pd.DataFrame()
 
 @st.cache_data(ttl=600)
 def cached_load_all_fund_data(fund_codes_tuple, start_date=None):
@@ -95,7 +110,11 @@ def cached_compute_brinson(fund_code, start_date, end_date):
 
 @st.cache_data(ttl=600, show_spinner=False)
 def cached_compute_single_port_pa(fund_code, start_date, end_date, fx_split=True, mapping_method='방법3'):
-    return compute_single_port_pa(fund_code, start_date, end_date, fx_split, mapping_method)
+    try:
+        return compute_single_port_pa(fund_code, start_date, end_date, fx_split, mapping_method)
+    except Exception:
+        from modules.snapshot_fallback import load_pa_fallback
+        return load_pa_fallback(fund_code)
 
 @st.cache_data(ttl=600)
 def cached_load_macro_timeseries(keys_tuple=None, start_date='2017-01-01'):
@@ -119,6 +138,17 @@ try:
     DB_CONNECTED = True
 except Exception:
     DB_CONNECTED = False
+
+# DB 미연결 시 snapshot fallback 활성화
+_SNAPSHOT_MODE = False
+if not DB_CONNECTED:
+    try:
+        from modules.snapshot_fallback import has_snapshot
+        _SNAPSHOT_MODE = has_snapshot('08K88')
+        if _SNAPSHOT_MODE:
+            DB_CONNECTED = True
+    except ImportError:
+        _SNAPSHOT_MODE = False
 
 # ============================================================
 # 펀드 메타 & 공통 설정
