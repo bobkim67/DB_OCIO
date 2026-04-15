@@ -314,9 +314,10 @@ def render(ctx):
         col_pl, col_pr = st.columns(2)
         with col_pl:
             st.markdown("##### 종목별 기여수익률")
-            if _single_pa_db:
+            if _single_pa_db and not _single_pa_result.get('sec_summary', pd.DataFrame()).empty:
                 _sec_sum = _single_pa_result['sec_summary'].copy()
-                _sec_sum = _sec_sum[~_sec_sum['종목코드'].isin(['유동성및기타'])].copy()
+                if '종목코드' in _sec_sum.columns:
+                    _sec_sum = _sec_sum[~_sec_sum['종목코드'].isin(['유동성및기타'])].copy()
                 _sec_sum['개별수익률(%)'] = (_sec_sum['개별수익률'] * 100).round(4)
                 _sec_sum['기여수익률(%)'] = (_sec_sum['기여수익률'] * 100).round(4)
                 _sec_sum['비중(%)'] = (_sec_sum['순자산비중'] * 100).round(2)
@@ -350,9 +351,10 @@ def render(ctx):
                 st.dataframe(sec_contrib, hide_index=True, width="stretch")
 
         with col_pr:
-            if _single_pa_db:
+            if _single_pa_db and not _single_pa_result.get('sec_summary', pd.DataFrame()).empty:
                 _sec_for_chart = _single_pa_result['sec_summary'].copy()
-                _sec_for_chart = _sec_for_chart[~_sec_for_chart['종목코드'].isin(['유동성및기타'])].copy()
+                if '종목코드' in _sec_for_chart.columns:
+                    _sec_for_chart = _sec_for_chart[~_sec_for_chart['종목코드'].isin(['유동성및기타'])].copy()
                 _sec_for_chart['기여수익률(%)'] = (_sec_for_chart['기여수익률'] * 100).round(2)
                 _sec_for_chart['개별수익률(%)'] = (_sec_for_chart['개별수익률'] * 100).round(2)
                 _sec_for_chart['비중(%)'] = (_sec_for_chart['순자산비중'] * 100).round(2)
