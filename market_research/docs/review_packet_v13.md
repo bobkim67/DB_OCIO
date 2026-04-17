@@ -96,7 +96,8 @@ v12.1에서 확보된 것:
    unresolved 누적이 그대로 방치. "구조적 인플레" 같은 반복 phrase를 수동으로
    alias map에 옮기는 주기가 불규칙.
 2. **Regime 판정식이 잘 동작하는지 눈으로만 봄** — `_regime_quality.jsonl`
-   22 rows가 쌓였지만 집계해본 사람은 없음. threshold 조정이 필요한지
+   에 first packet cut 기준 22 rows가 쌓였지만 집계해본 사람은 없음
+   (§5.1 baseline, §7.2 최신은 40 rows). threshold 조정이 필요한지
    판단할 근거가 없음.
 3. **Entity page에 graph 기반 draft 정보가 섞여 들어감** — 기사 수 같은
    "확정 사실"과 GraphRAG 전이경로 같은 "draft evidence"가 같은 bullet 목록에
@@ -478,7 +479,12 @@ updated_at: 2026-04-17T14:39:28
 **실행 환경** (2026-04-17 세션):
 - Branch: `feature/insight-v13` @ commit `e91e410` (v13 #4 시점 기준)
 - Python: 3.14.3 · Platform: win32 (Windows 11)
-- 실행 시각: 2026-04-17 14:54 ~ 14:55 KST
+- 실행 시각:
+  - 초기 테스트 스위트 (alias / monitor / entity / 기존 회귀): **14:54 ~ 14:55 KST**
+  - `regime_monitor` 재실행 (row-level rename 반영 후 최신 샘플 생성): **15:06 KST**
+  - 따라서 §7.2 monitor summary `Generated: 2026-04-17T15:06`은 초기
+    테스트 이후 재집계 시각이며, §5.1 baseline 22-row snapshot 시점과는
+    다르다.
 - pytest 미설치 → 기존 관행인 `python -m market_research.tests.<name>` 방식으로 실행
 
 **실행 증거 (실제 출력 핵심 1~2줄만)**:
@@ -620,3 +626,10 @@ PASS**. GraphRAG P0→P1 metric 회귀 수치 변동 없음.
     반영. 판정식/threshold/writer 경계 전부 불변.
   - `tests/test_regime_monitor.py`: case 1의 필드 튜플을 `_rows` 접미사로
     교체. 5/5 PASS 유지.
+
+- **v13.2 → v13.3 (2026-04-17 polish)**:
+  - §9 실행 환경의 시간 표기를 "초기 테스트 14:54~14:55 KST / regime_monitor
+    재실행 15:06 KST"로 분리 명시. §7.2 `Generated: 15:06`과의 시각 차이를
+    한 줄로 설명.
+  - §3의 "22 rows가 쌓였지만" → "first packet cut 기준 22 rows" + §5.1/§7.2
+    cross-reference로 보강. 코드 변경 없음, 문서 polish만.
