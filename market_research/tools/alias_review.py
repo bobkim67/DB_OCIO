@@ -232,7 +232,11 @@ def cmd_propose() -> int:
 
 
 def cmd_apply(strict: bool = False) -> int:
-    from market_research.wiki.taxonomy import TAXONOMY_SET, PHRASE_ALIAS
+    # Use the BUILTIN snapshot (pre-overlay) so we can correctly identify
+    # conflicts with the hand-curated map, not with prior overlay output.
+    from market_research.wiki.taxonomy import (
+        TAXONOMY_SET, BUILTIN_PHRASE_ALIAS as PHRASE_ALIAS,
+    )
 
     if not APPROVED_FILE.exists():
         print(f'[apply] approved file not found: {APPROVED_FILE}')

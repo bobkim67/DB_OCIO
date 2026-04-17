@@ -191,6 +191,46 @@ def test_case_5_propose_output_matches_trace():
           f'({len(report_unresolved)} phrases)')
 
 
+def test_case_6_builtin_snapshot_vs_overlay():
+    """--apply uses BUILTIN_PHRASE_ALIAS snapshot, not runtime-merged dict.
+
+    Without this, an approved overlay would be mis-classified as 'builtin
+    duplicate' on the second run (self-fulfilling duplicate). The snapshot
+    separates "hand-curated" from "yaml-overlay".
+    """
+    backup = APPROVED_FILE.read_bytes() if APPROVED_FILE.exists() else None
+    try:
+        _write_approved(
+            'approved:\n'
+            '  "v14_case6_new_phrase": 통화정책\n'
+            'keep_unresolved: []\n'
+        )
+        tax_mod = _reload_taxonomy()
+        # Builtin snapshot must not contain the new phrase
+        if 'v14_case6_new_phrase' in tax_mod.BUILTIN_PHRASE_ALIAS:
+            _fail('case6.builtin_snapshot_clean',
+                  'yaml entry leaked into BUILTIN_PHRASE_ALIAS snapshot')
+        # But runtime PHRASE_ALIAS must contain it after overlay
+        if tax_mod.PHRASE_ALIAS.get('v14_case6_new_phrase') != '통화정책':
+            _fail('case6.runtime_overlay',
+                  f'overlay missing at runtime: '
+                  f'{tax_mod.PHRASE_ALIAS.get("v14_case6_new_phrase")}')
+        # --apply should count this as accepted (not duplicate)
+        from market_research.tools.alias_review import cmd_apply
+        rc = cmd_apply(strict=True)
+        if rc != 0:
+            _fail('case6.apply_exit',
+                  f'cmd_apply returned {rc} for valid overlay entry')
+        _pass('case6: BUILTIN snapshot keeps apply classification correct '
+              '(accepted, not mis-labelled duplicate)')
+    finally:
+        if backup is not None:
+            APPROVED_FILE.write_bytes(backup)
+        else:
+            APPROVED_FILE.unlink(missing_ok=True)
+        _reload_taxonomy()
+
+
 def main():
     print('\n=== alias_review tests ===')
     cases = [
@@ -199,6 +239,7 @@ def main():
         test_case_3_valid_alias_merged,
         test_case_4_keep_unresolved_stays_unresolved,
         test_case_5_propose_output_matches_trace,
+        test_case_6_builtin_snapshot_vs_overlay,
     ]
     results = []
     for fn in cases:

@@ -163,6 +163,12 @@ def _load_approved_alias() -> dict[str, str]:
     return out
 
 
+# Snapshot the built-in map BEFORE overlay so `tools.alias_review --apply`
+# can distinguish "already in builtin" vs "already merged from yaml". Without
+# this snapshot, apply mis-classifies overlay entries as builtin duplicates
+# on the second run (self-fulfilling duplicate).
+BUILTIN_PHRASE_ALIAS: dict[str, str] = dict(PHRASE_ALIAS)
+
 # Overlay approved aliases without overriding built-in entries.
 # Built-in PHRASE_ALIAS wins on conflict (setdefault semantics).
 _APPROVED_ALIAS = _load_approved_alias()

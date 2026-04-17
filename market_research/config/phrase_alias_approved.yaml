@@ -31,6 +31,20 @@
 #   keep_unresolved:
 #     - "<phrase>"
 
-approved: {}
+approved:
+  # v14 first-loop approval.
+  # Trace source: _taxonomy_remap_trace.jsonl history[7], unresolved once.
+  # Why approved: short named event/subject form, repeatable, clean taxonomy
+  # convergence (not a descriptive sentence). "이란 위기" == geopolitical
+  # event reference → 지정학.
+  "이란 위기": 지정학
 
-keep_unresolved: []
+keep_unresolved:
+  # Descriptive / interpretation-heavy phrases — explicitly NOT mapped.
+  # Forcing these into taxonomy violates the v11 contract. Each entry is
+  # annotated with the reason so future reviewers don't re-propose them.
+  - "단기 랠리와 장기 리스크의 불일치"   # 문장형 · 해석 의존
+  - "유가 구조적 충격의 줄다리기"         # 문장형 · 해석 의존
+  - "인플레·성장 둔화의 불확실성 충돌"    # 문장형 · 반복 주제성 낮음
+  - "에너지 인플레이션 압박의 긴장."      # 문장형 · taxonomy 강제 매핑 위험
+  - "구조적 인플레 딜레마"                # 서술형 색채 강함 · 보수 제외
