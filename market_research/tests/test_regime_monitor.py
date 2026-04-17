@@ -66,8 +66,8 @@ def test_case_1_empty_window_no_crash():
         if payload['source_rows'] != 0:
             _fail('case1.empty_total', f'{payload["source_rows"]}')
         s = payload['summary']
-        for key in ('shift_candidate_days', 'shift_confirmed_count',
-                    'sentiment_flip_count', 'cooldown_block_count'):
+        for key in ('shift_candidate_rows', 'shift_confirmed_count',
+                    'sentiment_flip_rows', 'cooldown_block_rows'):
             if s[key] != 0:
                 _fail(f'case1.{key}_zero', f'{s[key]}')
         _pass('case1: empty window → zero summary, no crash')

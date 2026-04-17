@@ -47,6 +47,11 @@
   - graphify viewer
   - regime threshold 재조정 → 2주 데이터 누적 후
 
+- 특히 `regime_monitor` 수치는 현재 **row-level operational summary**로 읽어
+  주길 요청한다. 같은 날짜에 여러 row가 append되는 운영/테스트 특성상
+  `unique_dates_in_window`가 1인 상태이고, true day-level churn / false-negative
+  판단은 unique date 누적 후 재평가 예정이다.
+
 ---
 
 ## 2. 변경 파일 목록
@@ -157,18 +162,27 @@ v12.1 리뷰에서 명시된 "다음 배치 P0 중 하나"는 **regime 판정식
 2주**였다. 단, 2주 데이터를 쌓기 전에 threshold를 조정하는 것은 **해결된
 적 없는 문제를 미리 수정**하는 것과 같다.
 
-현재 `_regime_quality.jsonl` 상태 (2026-04-17 기준):
-- 유효 row: 22
-- `shift_confirmed`: 1 (multi-rule로 3일 연속 확정된 1건)
-- `shift_candidate` only: 7 (확정까지 가지 못한 후보)
-- `empty_tag_days`: 8 (태그 없음 → hold, 설계대로)
-- `avg coverage_current`: 0.0833 / `avg coverage_today (core_top3)`: 0.0
-- churn proxy (confirmed/candidate): **0.125**
+### 5.1 초기 baseline 해석 (first packet cut)
 
-churn proxy 0.125는 "후보 8건 중 1건만 확정"이라는 의미 — 3일 연속 guard가
-**설계대로 작동**하고 있음을 보여준다. 이 상태에서 threshold를 완화하면
-false positive가 늘어난다. 보수적 운영이 맞는지는 2주 이상의 실전 데이터로
-false negative 분포를 확인한 뒤 결정할 일이다.
+아래 baseline 수치는 첫 집계 시점(22 rows) 기준의 설명이고, 최신 재실행
+결과는 §7.2 실행 샘플(40 rows)로 갱신되었다. 해석의 **방향성은 동일**하나
+**최종 숫자는 §7.2를 우선**한다. 본 섹션의 수치는 "왜 threshold를 건드리지
+않았는지"라는 논리 전개용 baseline snapshot으로만 읽어주길 바란다.
+
+- 유효 row: 22
+- `shift_confirmed`: 1
+- `shift_candidate` only: 7
+- `empty_tag_days` (baseline 용어; 현재는 `empty_tag_rows`): 8
+- `avg coverage_current`: 0.0833 / `avg coverage_today (core_top3)`: 0.0
+- churn proxy (confirmed/candidate_row): **0.125**
+
+churn proxy 0.125는 row-level 관찰에서 "candidate row 8건 중 confirmed 1건"
+이라는 뜻이다. 이는 candidate가 쉽게 confirmed로 승격되지 않고 있다는
+**운영 신호**에 가깝고, day-level "3일 연속 guard"가 설계대로 작동했음을
+단언하는 근거로는 충분하지 않다 (동일 날짜 multi-append 로그이므로 day-level
+consecutive 평가가 불가). 이 상태에서 threshold를 완화하면 false positive가
+늘어난다. 보수적 운영이 맞는지는 `unique_dates_in_window`가 실질적으로
+누적된 뒤(≥14 unique dates) false negative 분포를 확인하고 판단할 일이다.
 
 따라서 v13은:
 - `_step_regime_check`의 0.5 / core_top3 / sentiment_flip 기준을 건드리지 않음
@@ -272,73 +286,88 @@ entity_id는 `source__{매체명}` 또는 `graphnode__{node_id}` — v12.1의
 - `review_needed`: 3건 — 점수는 있으나 count=1이므로 사람 검토 필요.
 - `keep_unresolved`: 7건 — 힌트가 약하거나 거의 문장 수준. 강제 매핑 금지.
 
-### 7.2 Regime monitor summary (실제 생성물)
+### 7.2 Regime monitor summary (실제 생성물 — source of truth)
 
-경로: `data/report_output/regime_monitor_summary.md` (실행: 2026-04-17T14:55)
+경로: `data/report_output/regime_monitor_summary.md` (실행: 2026-04-17T15:06)
+
+본 섹션 수치가 **최신 재실행 결과**이며, §5.1의 baseline과 수치가 다를 경우
+**여기 수치를 우선**한다.
 
 ```markdown
 # Regime monitor summary
 
-- Generated: `2026-04-17T14:55:54`
+- Generated: `2026-04-17T15:06:16`
 - Source: `data/report_output/_regime_quality.jsonl`
 - Window: `2026-04-04` ~ `2026-04-17` (14 days)
-- Source rows: 34  (window rows: 34, malformed skipped: 0)
+- Source rows: 40  (window rows: 40, malformed skipped: 0)
 
 > `source_rows` = 전체 집계 대상 row 수. `window_rows` = 윈도우 내 row.
 > `unique_dates_in_window` = 실제 관측 일수. 동일 날짜에 여러 row가
 > append될 수 있으므로 row 수와 관측 일수는 다를 수 있다.
+> 지표 이름에 `_rows`가 붙은 것은 모두 **row-level count**이며,
+> day-level 해석은 `unique_dates_in_window`가 충분히 커진 뒤에만
+> 의미를 가진다.
 
-## Aggregate indicators (observation only)
+## Aggregate indicators (row-level operational observation)
 
 | indicator | value |
 |---|---|
-| source_rows | 34 |
-| window_rows | 34 |
+| source_rows | 40 |
+| window_rows | 40 |
 | unique_dates_in_window | 1 |
 | malformed_skipped | 0 |
-| shift_candidate_days | 12 |
+| shift_candidate_rows | 14 |
 | shift_confirmed_count | 1 |
-| sentiment_flip_count | 11 |
-| cooldown_block_count | 12 |
-| sparse_fallback_count | 10 |
-| empty_tag_days | 12 |
+| sentiment_flip_rows | 13 |
+| cooldown_block_rows | 14 |
+| sparse_fallback_rows | 12 |
+| empty_tag_rows | 14 |
 | avg coverage_current | 0.0833 |
 | avg coverage_today (core top3) | 0.0 |
-| churn proxy (confirmed / candidate) | 0.0833 |
+| churn proxy (confirmed / candidate_row) | 0.0714 |
 
-## consecutive_days distribution
+## consecutive_row_streak distribution
 
-| consecutive_days | count |
+| consecutive_row_streak | rows |
 |---|---|
-| 0 | 22 |
-| 1 | 11 |
+| 0 | 26 |
+| 1 | 13 |
 | 3 | 1 |
 
 ## candidate_rule distribution
 
 | rule | count |
 |---|---|
-| `low_coverage_today` | 30 |
-| `low_coverage_current` | 25 |
-| `sentiment_flip` | 11 |
+| `low_coverage_today` | 36 |
+| `low_coverage_current` | 30 |
+| `sentiment_flip` | 13 |
 ```
 
-**숫자 해석 주의**:
-- `source_rows: 34` ≠ `unique_dates_in_window: 1`. 현재 운영 단계에서
-  `_step_regime_check`가 같은 날짜에 복수 시나리오로 여러 row를 append
-  하므로(테스트/디버그 포함) row 수와 실제 관측 일수는 자리수가 다르다.
+**숫자 해석 주의 (row vs day)**:
+- `source_rows: 40` ≠ `unique_dates_in_window: 1`. 현재 운영 단계에서
+  `_step_regime_check`가 같은 날짜에 복수 시나리오·테스트·디버그 append를
+  생성하므로, row 수와 실제 관측 일수는 자리수가 다르다.
 - `window_days: 14`는 윈도우 **폭**이고, `unique_dates_in_window: 1`은
   그 윈도우 안에 실제로 기록된 **관측 일수**다. 2주 실전 누적 전에는
   `unique_dates_in_window`가 `window_days`에 접근하지 못하는 것이 정상.
+- 지표 이름 `_rows`가 붙은 것은 전부 **row 기준 count**다.
+  `consecutive_row_streak`는 연속된 jsonl row 개수이지 연속된 **날짜** 수가
+  아니다. 따라서 v12의 "3-day consecutive guard"가 실제 일자 기준으로
+  firing했는지를 이 표에서 단언할 수 없다.
 
-**해석**:
-- `churn proxy 0.0833` → 후보 12건 중 1건만 확정. 3일 연속 guard가 설계대로
-  작동. 완화 판단 금지.
-- `consecutive_days=0이 22/34` → 대부분의 row에서 후보조차 아님. v12
-  보수화가 과도하지 않다는 방증.
-- `sparse_fallback 10건` — single-tag 상태에서 `sentiment_flip` 여부로
-  candidate 판정한 케이스. 현재는 sentiment_flip 없으면 hold하는 쪽이
-  설계대로 작동.
+**해석 (row-level 기준, 보수적)**:
+- 현재 샘플은 동일 날짜 복수 append가 많아 day-level 판정보다는 **row-level
+  운영 신호 관찰**에 가깝다.
+- `candidate row 14건 중 confirmed 1건`(churn proxy 0.0714) — 현재 로그
+  기준에서는 candidate가 쉽게 확정으로 승격되지 않음을 확인할 수 있다.
+- `consecutive_row_streak` 분포상 대부분의 row(26/40)는 후보조차 아니며,
+  이는 현 시점 판정식이 **보수적으로 동작하고 있음을 시사**한다.
+- `sparse_fallback_rows 12건` — single-tag 상태에서 `sentiment_flip` 여부가
+  candidate 판정을 좌우한 케이스들. sentiment_flip이 없으면 hold로 잡히는
+  패턴이 row 단위로 확인된다.
+- **단**, `unique_dates_in_window=1`이므로 true day-level churn / false-negative
+  평가는 **2주 실전 누적 후 재판단** 대상이다. 위 해석은 어디까지나 row-level
+  운영 관측이지 day-level regime drift 진단이 아니다.
 
 ### 7.3 Entity demo page (실제 생성물)
 
@@ -466,15 +495,16 @@ $ python -m market_research.tools.alias_review --apply --strict
 
 $ python -m market_research.tools.regime_monitor --days 14
   window: 2026-04-04 ~ 2026-04-17 (14 days)
-  source_rows: 34  window_rows: 34  unique_dates_in_window: 1
-  shift_confirmed_count: 1   churn proxy: 0.0833
+  source_rows: 40  window_rows: 40  unique_dates_in_window: 1
+  shift_candidate_rows: 14  shift_confirmed_count: 1
+  churn proxy (confirmed / candidate_row): 0.0714
   → wrote regime_monitor_summary.{json,md}
 
 $ python -m market_research.tests.test_alias_review
   5 PASS (case1..case5), exit=0
 
 $ python -m market_research.tests.test_regime_monitor
-  5 PASS — case5: live file scan consistent (confirmed=1, window_rows=34)
+  5 PASS — case5: live file scan consistent (confirmed=1, window_rows=40)
   exit=0
 
 $ python -m market_research.tests.test_entity_demo_render
@@ -503,7 +533,7 @@ PASS**. GraphRAG P0→P1 metric 회귀 수치 변동 없음.
 | 리스크 | 심각도 | 이유 | 다음 배치 |
 |--------|-------|------|-----------|
 | Unresolved phrase 대부분이 count=1 → propose_alias 후보 0건 | Low | 설계대로 (보수화 우선). 2주 이상 누적 뒤 재평가 | 누적 후 재검토 |
-| regime 판정식 실전 증거가 여전히 `unique_dates_in_window=1` 수준 (같은 날짜 append 다수) | Med | 일일 배치가 규칙적으로 돌아야 의미 있는 14일 window 생김 | 운영 스케줄 정착 후 집계 재검토 |
+| regime 판정식 실전 증거가 여전히 `unique_dates_in_window=1` 수준 (같은 날짜 append 다수) | Med | 현재 monitor summary는 day-level regime drift 판단보다 **row-level append/debug 관측** 성격이 강하다. 지표 이름(`_rows`, `consecutive_row_streak`)도 row 기준으로 맞춰져 있고, 실전 threshold 판단은 `unique_dates_in_window`가 실질적으로 누적된 뒤 수행해야 한다 | 운영 스케줄 정착 + unique date 누적 후 재평가 |
 | Entity redesign이 3 demo에만 적용 — top_entities=5 설정에서도 media 5건 + graphnode 3건 = 8건 | Low | 설계대로 (demo 기반 회귀 안정성 우선) | 전면 entity redesign 시 graphnode 선정 기준 재정비 |
 | `_ASSET_TOPIC_MAP`이 7개 자산만 매핑 → "Related asset classes" 대부분 빈 값 | Low | v14에서 자산 매핑 테이블 확장 | 별도 배치 |
 | Related funds 라벨이 placeholder | Low | 지시서에서 미요구 — docs/entity_page_redesign §2 해결은 다음 배치 | 다음 배치 |
@@ -562,3 +592,31 @@ PASS**. GraphRAG P0→P1 metric 회귀 수치 변동 없음.
   - `tools/regime_monitor.py`: 출력 필드 rename + `unique_dates_in_window`
     계산 추가. 판정식 로직 무변경.
   - `tests/test_regime_monitor.py`: 필드명 교체. 5/5 PASS 유지.
+
+- **v13.1 → v13.2 (2026-04-17 15:06 KST)** — 패킷 신뢰도 마감:
+  - `regime_monitor` 지표 명명을 **row-level**로 정리: `shift_candidate_days`
+    → `shift_candidate_rows`, `empty_tag_days` → `empty_tag_rows`,
+    `sentiment_flip_count` → `sentiment_flip_rows`, `cooldown_block_count`
+    → `cooldown_block_rows`, `sparse_fallback_count` → `sparse_fallback_rows`,
+    `consecutive_days_distribution` → `consecutive_row_streak_distribution`,
+    `churn_proxy_...candidate` → `churn_proxy_...candidate_row`.
+    `shift_confirmed_count`는 의미가 명확하므로 그대로 유지. 섹션 제목
+    `Aggregate indicators (observation only)` → `Aggregate indicators
+    (row-level operational observation)`.
+  - §7.2 해석 문장에서 "3일 연속 guard가 설계대로 작동" 같이 day-level을
+    단언하던 표현을 **row-level 보수 톤**으로 교체. `unique_dates_in_window=1`
+    이므로 day-level 해석은 불가능하다는 경고를 명시.
+  - §5에 **5.1 초기 baseline 해석 (first packet cut)** 서브섹션 추가.
+    baseline 수치(22 rows)와 §7.2 최신 수치(40 rows)의 관계를 명시하고,
+    **최종 숫자는 §7.2를 우선**으로 고정.
+  - §1 판정 요청 블록에 "regime_monitor는 row-level operational summary로
+    읽어달라"는 한 줄 추가.
+  - §10 리스크 문구도 row/day 구분에 맞춰 보강 ("monitor summary는 day-level
+    drift 판단보다 row-level append/debug 관측 성격이 강하다").
+  - §9 실행 증거의 수치도 최신 재실행(40 rows) 기준으로 갱신.
+
+  코드 변경 (패킷 외부):
+  - `tools/regime_monitor.py`: summary/CLI/Markdown 전부 row-level naming
+    반영. 판정식/threshold/writer 경계 전부 불변.
+  - `tests/test_regime_monitor.py`: case 1의 필드 튜플을 `_rows` 접미사로
+    교체. 5/5 PASS 유지.

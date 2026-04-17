@@ -129,19 +129,22 @@ def _summarize(window: list[dict]) -> dict:
         if shift_candidate_days > 0 else None
     )
 
+    # Row-level naming: this summary aggregates jsonl ROWS, not unique days.
+    # Same-date append produces multiple rows, so row counts ≠ day counts.
+    # unique_dates_in_window is the companion signal for day-level coverage.
     return {
         'unique_dates_in_window': len(unique_dates),
-        'shift_candidate_days': shift_candidate_days,
+        'shift_candidate_rows': shift_candidate_days,
         'shift_confirmed_count': shift_confirmed_count,
-        'sentiment_flip_count': sentiment_flip_count,
-        'cooldown_block_count': cooldown_count,
-        'sparse_fallback_count': sparse_count,
-        'empty_tag_days': empty_tag_days,
+        'sentiment_flip_rows': sentiment_flip_count,
+        'cooldown_block_rows': cooldown_count,
+        'sparse_fallback_rows': sparse_count,
+        'empty_tag_rows': empty_tag_days,
         'avg_coverage_current': round(mean(cov_cur_vals), 4) if cov_cur_vals else None,
         'avg_coverage_today_core3': round(mean(cov_today_vals), 4) if cov_today_vals else None,
-        'consecutive_days_distribution': dict(sorted(cd_distribution.items())),
+        'consecutive_row_streak_distribution': dict(sorted(cd_distribution.items())),
         'candidate_rule_distribution': dict(rule_distribution.most_common()),
-        'churn_proxy_confirmed_over_candidate': (
+        'churn_proxy_confirmed_over_candidate_row': (
             round(churn_proxy, 4) if churn_proxy is not None else None
         ),
     }
@@ -162,8 +165,11 @@ def _render_markdown(window_meta: dict, summary: dict, rows: list[dict]) -> str:
         '> `source_rows` = 전체 집계 대상 row 수. `window_rows` = 윈도우 내 row.',
         '> `unique_dates_in_window` = 실제 관측 일수. 동일 날짜에 여러 row가',
         '> append될 수 있으므로 row 수와 관측 일수는 다를 수 있다.',
+        '> 지표 이름에 `_rows`가 붙은 것은 모두 **row-level count**이며,',
+        '> day-level 해석은 `unique_dates_in_window`가 충분히 커진 뒤에만',
+        '> 의미를 가진다.',
         '',
-        '## Aggregate indicators (observation only)',
+        '## Aggregate indicators (row-level operational observation)',
         '',
         '| indicator | value |',
         '|---|---|',
@@ -171,23 +177,23 @@ def _render_markdown(window_meta: dict, summary: dict, rows: list[dict]) -> str:
         f'| window_rows | {window_meta["window_rows"]} |',
         f'| unique_dates_in_window | {summary["unique_dates_in_window"]} |',
         f'| malformed_skipped | {window_meta["malformed_skipped"]} |',
-        f'| shift_candidate_days | {summary["shift_candidate_days"]} |',
+        f'| shift_candidate_rows | {summary["shift_candidate_rows"]} |',
         f'| shift_confirmed_count | {summary["shift_confirmed_count"]} |',
-        f'| sentiment_flip_count | {summary["sentiment_flip_count"]} |',
-        f'| cooldown_block_count | {summary["cooldown_block_count"]} |',
-        f'| sparse_fallback_count | {summary["sparse_fallback_count"]} |',
-        f'| empty_tag_days | {summary["empty_tag_days"]} |',
+        f'| sentiment_flip_rows | {summary["sentiment_flip_rows"]} |',
+        f'| cooldown_block_rows | {summary["cooldown_block_rows"]} |',
+        f'| sparse_fallback_rows | {summary["sparse_fallback_rows"]} |',
+        f'| empty_tag_rows | {summary["empty_tag_rows"]} |',
         f'| avg coverage_current | {summary["avg_coverage_current"]} |',
         f'| avg coverage_today (core top3) | {summary["avg_coverage_today_core3"]} |',
-        f'| churn proxy (confirmed / candidate) | '
-        f'{summary["churn_proxy_confirmed_over_candidate"]} |',
+        f'| churn proxy (confirmed / candidate_row) | '
+        f'{summary["churn_proxy_confirmed_over_candidate_row"]} |',
         '',
-        '## consecutive_days distribution',
+        '## consecutive_row_streak distribution',
         '',
-        '| consecutive_days | count |',
+        '| consecutive_row_streak | rows |',
         '|---|---|',
     ]
-    for k, v in summary['consecutive_days_distribution'].items():
+    for k, v in summary['consecutive_row_streak_distribution'].items():
         lines.append(f'| {k} | {v} |')
     lines += [
         '',
@@ -205,11 +211,19 @@ def _render_markdown(window_meta: dict, summary: dict, rows: list[dict]) -> str:
         '',
         '- This report is passive. v12 thresholds (coverage_current 0.5 /',
         '  coverage_today=core_top3 / sentiment_flip; 3-day consecutive + 14-day',
-        '  cooldown) are **not** tuned here. Accumulate ≥14 real days before any',
-        '  re-tuning decision (see review_packet_v12_1.md → section 6).',
-        '- `churn_proxy` < 0.5 means most candidates did not convert to confirmed,',
-        '  which is the designed behaviour (3-day consecutive guard).',
-        '- `empty_tag_days` counts rows where `current.topic_tags` was empty —',
+        '  cooldown) are **not** tuned here. Accumulate sufficient',
+        '  `unique_dates_in_window` (≥14) before any re-tuning decision',
+        '  (see review_packet_v12_1.md → section 6).',
+        '- All `_rows` indicators count jsonl rows, not distinct days.',
+        '  Same-date append (tests, debug, multi-scenario rerun) inflates row',
+        '  counts without adding day-level coverage. True day-level drift',
+        '  interpretation is blocked until `unique_dates_in_window` grows.',
+        '- `churn_proxy` low means most candidate rows did not convert to',
+        '  confirmed, which is *consistent* with the 3-day consecutive guard —',
+        '  but it is not proof the guard is firing, because "consecutive" here',
+        '  is row-level streak, not day-level streak. Read as operational',
+        '  observation only.',
+        '- `empty_tag_rows` counts rows where `current.topic_tags` was empty —',
         '  those are held intentionally (description-based judgement is banned).',
         '',
     ]
@@ -268,15 +282,16 @@ def main(argv: list[str] | None = None) -> int:
           f'window_rows: {payload["window_rows"]}  '
           f'unique_dates_in_window: {s["unique_dates_in_window"]}  '
           f'malformed_skipped: {payload["malformed_skipped"]}')
-    print(f'shift_candidate_days: {s["shift_candidate_days"]}')
+    print(f'shift_candidate_rows: {s["shift_candidate_rows"]}')
     print(f'shift_confirmed_count: {s["shift_confirmed_count"]}')
-    print(f'sentiment_flip_count: {s["sentiment_flip_count"]}')
-    print(f'cooldown_block_count: {s["cooldown_block_count"]}')
-    print(f'sparse_fallback_count: {s["sparse_fallback_count"]}')
-    print(f'empty_tag_days: {s["empty_tag_days"]}')
+    print(f'sentiment_flip_rows: {s["sentiment_flip_rows"]}')
+    print(f'cooldown_block_rows: {s["cooldown_block_rows"]}')
+    print(f'sparse_fallback_rows: {s["sparse_fallback_rows"]}')
+    print(f'empty_tag_rows: {s["empty_tag_rows"]}')
     print(f'avg coverage_current: {s["avg_coverage_current"]}')
     print(f'avg coverage_today (core_top3): {s["avg_coverage_today_core3"]}')
-    print(f'churn proxy: {s["churn_proxy_confirmed_over_candidate"]}')
+    print(f'churn proxy (confirmed / candidate_row): '
+          f'{s["churn_proxy_confirmed_over_candidate_row"]}')
     print(f'\nwrote {OUT_JSON.name} + {OUT_MD.name}')
     return 0
 
