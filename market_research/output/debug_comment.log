@@ -1,12 +1,17 @@
-[국내주식] news search start month=2026-04, contrib=+0.70
-[국내주식] news result count=5
-[국내주식] counts blog=0 news=4 indicator=1
-[해외주식] news search start month=2026-04, contrib=+0.51
-[해외주식] news result count=5
-[해외주식] counts blog=0 news=4 indicator=0
-[국내채권] news search start month=2026-04, contrib=+0.65
-[국내채권] news result count=5
-[국내채권] counts blog=0 news=4 indicator=1
-[대체투자] news search start month=2026-04, contrib=+0.71
-[대체투자] news result count=5
-[대체투자] counts blog=0 news=4 indicator=2
+[국내주식] news search start month=2026-03, contrib=-5.84
+[국내주식] news error=cannot import name 'news_vectordb' from 'market_research' (C:\Users\user\Downloads\python\DB_OCIO_Webview\market_research\__init__.py)
+[국내주식] counts blog=6 news=0 indicator=4
+[해외주식] news search start month=2026-03, contrib=-1.49
+[해외주식] news error=cannot import name 'news_vectordb' from 'market_research' (C:\Users\user\Downloads\python\DB_OCIO_Webview\market_research\__init__.py)
+[해외주식] counts blog=6 news=0 indicator=4
+[국내채권] news search start month=2026-03, contrib=-0.28
+[국내채권] news error=cannot import name 'news_vectordb' from 'market_research' (C:\Users\user\Downloads\python\DB_OCIO_Webview\market_research\__init__.py)
+[국내채권] counts blog=4 news=0 indicator=3
+[해외채권] news search start month=2026-03, contrib=+0.32
+[해외채권] news error=cannot import name 'news_vectordb' from 'market_research' (C:\Users\user\Downloads\python\DB_OCIO_Webview\market_research\__init__.py)
+[해외채권] counts blog=2 news=0 indicator=3
+[macro:주식시장] 9 items, 29 posts
+[macro:채권/금리] 8 items, 34 posts
+[macro:통화] 9 items, 20 posts
+[macro:대체/원자재] 9 items, 22 posts
+[macro:기타 매크로] 5 items, 14 posts

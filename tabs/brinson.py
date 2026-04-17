@@ -212,45 +212,104 @@ def render(ctx):
                 fig_ctb.update_layout(title='자산군별 기여수익률', height=400, yaxis_title='기여수익률(%)')
             st.plotly_chart(fig_ctb, width="stretch")
 
-        # ── 초과성과 요인분해: 좌=테이블, 우=워터폴 차트 ──
-        col_tbl2, col_chart2 = st.columns([2, 3])
+        # ── 초과성과 요인분해: 좌=테이블(자산군×요인), 우=워터폴 차트 ──
+        _excess_total = total_excess
+        col_tbl2, col_chart2 = st.columns([3, 2])
         with col_tbl2:
             st.markdown("##### 초과성과 요인분해")
-            _excess_total = total_excess
-            decomp_df = pd.DataFrame({
-                '요인': ['Allocation Effect', 'Selection Effect', 'Cross Effect', '유동성/기타', '합계'],
-                '기여도': [f"{total_alloc:+.2f}%", f"{total_select:+.2f}%", f"{total_cross:+.2f}%",
-                         f"{residual:+.2f}%", f"{_excess_total:+.2f}%"],
-                '비율': [f"{abs(total_alloc)/max(abs(_excess_total),0.01)*100:.0f}%",
-                        f"{abs(total_select)/max(abs(_excess_total),0.01)*100:.0f}%",
-                        f"{abs(total_cross)/max(abs(_excess_total),0.01)*100:.0f}%",
-                        f"{abs(residual)/max(abs(_excess_total),0.01)*100:.0f}%",
-                        '100%']
-            })
+            # 자산군별 Brinson 테이블 (행=자산군, 열=A/S/C/합계)
+            _brinson_rows = []
+            _display_classes = []
+            for i, ac in enumerate(pa_asset_classes_display):
+                a_val = alloc_effects[i]
+                s_val = select_effects[i]
+                c_val = cross_effects[i]
+                row_sum = a_val + s_val + c_val
+                # "유동성" → "유동성및기타", 비활성 자산군 합산
+                _label = '유동성및기타' if ac in ('유동성', '기타') else ac
+                _brinson_rows.append({'자산군': _label,
+                    'Allocation Effect': a_val, 'Security Selection Effect': s_val,
+                    'Cross Effect': c_val, '자산군별': row_sum})
+                _display_classes.append(_label)
+
+            # 동일 이름 행 합산 (유동성및기타 중복 방지)
+            _bdf = pd.DataFrame(_brinson_rows)
+            _bdf = _bdf.groupby('자산군', sort=False).sum(numeric_only=True).reset_index()
+
+            # 비활성 자산군 제거 (모든 값이 0인 행), 단 유동성및기타는 항상 유지
+            _bdf = _bdf[
+                (_bdf[['Allocation Effect','Security Selection Effect','Cross Effect']].abs() > 0.0001).any(axis=1)
+                | (_bdf['자산군'] == '유동성및기타')
+            ]
+
+            # 행 순서: 국내주식, 국내채권, 해외주식, 해외채권, FX, 유동성및기타
+            _BRINSON_ROW_ORDER = ['국내주식', '국내채권', '해외주식', '해외채권', '대체투자', 'FX', '모펀드', '유동성및기타']
+            _order_map = {ac: i for i, ac in enumerate(_BRINSON_ROW_ORDER)}
+            _bdf['_sort'] = _bdf['자산군'].map(_order_map).fillna(99)
+            _bdf = _bdf.sort_values('_sort').drop(columns='_sort').reset_index(drop=True)
+
+            # 유동성및기타에 잔차 포함
+            if abs(residual) > 0.0001:
+                _liq_mask = _bdf['자산군'] == '유동성및기타'
+                if _liq_mask.any():
+                    _bdf.loc[_liq_mask, 'Cross Effect'] += residual
+                    _bdf.loc[_liq_mask, '자산군별'] += residual
+                else:
+                    _bdf = pd.concat([_bdf, pd.DataFrame([{
+                        '자산군': '유동성및기타', 'Allocation Effect': 0,
+                        'Security Selection Effect': 0, 'Cross Effect': residual,
+                        '자산군별': residual}])], ignore_index=True)
+
+            # 요인별 합계 행
+            _totals = pd.DataFrame([{
+                '자산군': '요인별',
+                'Allocation Effect': _bdf['Allocation Effect'].sum(),
+                'Security Selection Effect': _bdf['Security Selection Effect'].sum(),
+                'Cross Effect': _bdf['Cross Effect'].sum(),
+                '자산군별': _bdf['자산군별'].sum()
+            }])
+            _bdf = pd.concat([_bdf, _totals], ignore_index=True)
+
+            # 포맷팅
+            def _fmt_pct(v):
+                s = f"{v:.3f}%"
+                if v < -0.0005:
+                    return f"\u2212{abs(v):.3f}%"
+                return s
+
+            _bdf_display = _bdf.copy()
+            for col in ['Allocation Effect', 'Security Selection Effect', 'Cross Effect', '자산군별']:
+                _bdf_display[col] = _bdf[col].apply(_fmt_pct)
+            _bdf_display = _bdf_display.set_index('자산군')
+
+            st.dataframe(_bdf_display, use_container_width=True)
             if _fx_contrib != 0:
                 st.caption(f"FX 기여: {_fx_contrib:+.2f}%")
-            st.dataframe(decomp_df, hide_index=True, width="stretch")
 
         with col_chart2:
+            # 워터폴 차트 (요인별 합계)
+            _wf_alloc = _bdf[_bdf['자산군']=='요인별']['Allocation Effect'].iloc[0] if len(_bdf) else total_alloc
+            _wf_select = _bdf[_bdf['자산군']=='요인별']['Security Selection Effect'].iloc[0] if len(_bdf) else total_select
+            _wf_cross = _bdf[_bdf['자산군']=='요인별']['Cross Effect'].iloc[0] if len(_bdf) else total_cross
             fig_wf = go.Figure(go.Waterfall(
                 name="", orientation="v",
-                x=['Allocation', 'Selection', 'Cross', '유동성/기타', '초과수익률'],
-                y=[total_alloc, total_select, total_cross, residual, _excess_total],
-                measure=['relative', 'relative', 'relative', 'relative', 'total'],
+                x=['Allocation', 'Selection', 'Cross', '초과수익률'],
+                y=[_wf_alloc, _wf_select, _wf_cross, _excess_total],
+                measure=['relative', 'relative', 'relative', 'total'],
                 connector_line_color='#888',
                 increasing_marker_color='#636EFA',
                 decreasing_marker_color='#EF553B',
                 totals_marker_color='#00CC96',
-                text=[f"{total_alloc:+.2f}%", f"{total_select:+.2f}%", f"{total_cross:+.2f}%",
-                      f"{residual:+.2f}%", f"{_excess_total:+.2f}%"],
+                text=[f"{_wf_alloc:+.2f}%", f"{_wf_select:+.2f}%", f"{_wf_cross:+.2f}%",
+                      f"{_excess_total:+.2f}%"],
                 textposition='outside'
             ))
-            _all_vals = [total_alloc, total_select, total_cross, residual, _excess_total]
+            _all_vals = [_wf_alloc, _wf_select, _wf_cross, _excess_total]
             _y_min = min(0, min(_all_vals)) * 1.4
             _y_max = max(0, max(_all_vals)) * 1.4
             fig_wf.update_layout(title='초과성과 요인분해 (Brinson)', height=400, yaxis_title='기여도 (%)',
                                   yaxis_range=[_y_min, _y_max])
-            st.plotly_chart(fig_wf, width="stretch")
+            st.plotly_chart(fig_wf, use_container_width=True)
 
     with pa_tabs[1]:
         # AP vs BM 누적수익률: DB NAV 데이터 활용

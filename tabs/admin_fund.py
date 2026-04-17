@@ -47,7 +47,9 @@ def render(ctx):
         _def_year = datetime.now().year
         _def_num = max(1, datetime.now().month - 1)
 
-    col_mode, col_year, col_period, col_fund = st.columns([1, 1, 1, 1])
+    fund_code = ctx.get('selected_fund', '')
+
+    col_mode, col_year, col_period = st.columns([1, 1, 1])
     with col_mode:
         mode = st.radio("기간 유형", ["월별", "분기"], index=["월별", "분기"].index(_def_mode),
                         horizontal=True, key="admf_mode")
@@ -65,19 +67,6 @@ def render(ctx):
             period_num = st.number_input("분기", min_value=1, max_value=4,
                                          value=def_q, key="admf_quarter")
             period_key = f"{year}-Q{period_num}"
-    with col_fund:
-        try:
-            from market_research.core.constants import FUND_CONFIGS
-            report_funds = sorted(FUND_CONFIGS.keys())
-        except ImportError:
-            report_funds = ['07G02', '07G03', '07G04', '08N33', '08N81', '08P22', '2JM23', '4JM12']
-        # 상단 공통 펀드 선택 바 연동
-        top_fund = ctx.get('selected_fund', '')
-        if top_fund in report_funds:
-            default_idx = report_funds.index(top_fund)
-        else:
-            default_idx = 0
-        fund_code = st.selectbox("펀드", report_funds, index=default_idx, key="admf_fund_v2")
 
     # ── 시장 debate 상태 확인 (approved final 우선, edited draft fallback) ──
     market_final = load_final(period_key, _MARKET_FUND_CODE)

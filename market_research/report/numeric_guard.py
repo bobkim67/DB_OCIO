@@ -26,9 +26,12 @@ def extract_numbers_from_text(text: str) -> list[dict]:
     - "WTI 108달러" → {'value': 108, 'unit': '달러', 'context': 'WTI'}
     - "USDKRW +4.4%" → {'value': 4.4, 'unit': '%', 'context': 'USDKRW'}
     - "금리 3.617%" → {'value': 3.617, 'unit': '%', 'context': '금리'}
+    - "UST 2Y 3.78%" → {'value': 3.78, 'unit': '%', 'context': 'UST 2Y'}
     """
     patterns = [
-        # 퍼센트: "-4.5%", "+3.2%", "4.5%"
+        # 퍼센트 (확장 컨텍스트): "UST 2Y 3.78%", "미국채 10년 4.29%"
+        r'(?P<ctx>[\w&/]+(?:\s+[\w&/]+){0,2})\s+(?P<sign>[+-]?)(?P<num>\d+\.?\d*)\s*%',
+        # 퍼센트 (기본): "-4.5%", "+3.2%", "4.5%"
         r'(?P<ctx>[\w&/]+)\s*(?P<sign>[+-]?)(?P<num>\d+\.?\d*)\s*%',
         # bp: "57.6bp", "+10bp"
         r'(?P<ctx>[\w]+)\s*(?P<sign>[+-]?)(?P<num>\d+\.?\d*)\s*bp',
@@ -38,9 +41,14 @@ def extract_numbers_from_text(text: str) -> list[dict]:
     ]
 
     results = []
+    seen_positions = set()  # 동일 위치 중복 매칭 방지 (확장 패턴 우선)
     for pattern in patterns:
         for m in re.finditer(pattern, text, re.IGNORECASE):
             try:
+                num_start = m.start('num')
+                if num_start in seen_positions:
+                    continue
+                seen_positions.add(num_start)
                 val = float(m.group('num'))
                 sign = m.groupdict().get('sign', '')
                 if sign == '-':
@@ -56,6 +64,14 @@ def extract_numbers_from_text(text: str) -> list[dict]:
                 pass
 
     return results
+
+
+# 금리/지수 수준을 나타내는 키워드 — 수익률(%)이 아닌 레벨로 판정
+_RATE_LEVEL_KEYWORDS = {
+    '금리', '기준금리', 'UST', '국채', 'YTM', '수익률곡선',
+    'MOVE', 'DXY', 'VIX', 'OAS', '미국채', '한국채',
+    '2Y', '3Y', '5Y', '7Y', '10Y', '20Y', '30Y',
+}
 
 
 def check_comment_numbers(comment: str, data_ctx: dict,
@@ -94,12 +110,22 @@ def check_comment_numbers(comment: str, data_ctx: dict,
         # %와 bp는 수익률, 달러/원은 레벨
         is_return = unit in ('%', 'bp')
 
-        if is_return:
+        # 1순위: 컨텍스트 키워드로 레벨(금리 수준 등) 판정 → 수익률 비교 스킵
+        ctx_words = ctx.split()
+        is_rate_level = any(
+            kw.upper() in ctx or kw.upper() in ' '.join(ctx_words)
+            for kw in _RATE_LEVEL_KEYWORDS
+        )
+
+        if is_return and is_rate_level:
+            # 금리/지수 수준(3.78%, 74pt 등) → 수익률 비교 부적합, 스킵
+            pass
+        elif is_return:
             # BM 수익률 매칭 (% 단위끼리만 비교)
             for bm_name, bm_val in bm.items():
                 if bm_name.upper() in ctx or ctx in bm_name.upper():
-                    # bm_val이 레벨(예: 98.999)이면 수익률과 비교 불가 → 스킵
-                    if abs(bm_val) > 50:  # 수익률은 ±50% 이내
+                    # 2순위 fallback: bm_val 절대값이 크면 레벨로 판정
+                    if abs(bm_val) > 50:
                         break
                     if abs(val - bm_val) > tolerance_pct:
                         issues.append({
@@ -175,3 +201,26 @@ if __name__ == '__main__':
     test_comment_bad = "S&P500 -4.0%, KOSPI -6.0%"
     issues = check_comment_numbers(test_comment_bad, test_ctx)
     print(format_guard_report(issues))
+
+    # 금리 레벨 테스트 — 수익률 비교 스킵되어야 함
+    print("\n--- 금리 레벨 테스트 ---")
+    test_rate = "UST 2Y 3.78%, 미국채 10년 4.29%, MOVE 74"
+    test_rate_ctx = {
+        'bm_returns': {'UST 2Y': 3.78, 'UST 10Y': 4.29, 'S&P500': -4.5},
+    }
+    issues = check_comment_numbers(test_rate, test_rate_ctx)
+    print(format_guard_report(issues))
+    assert len(issues) == 0, f"금리 레벨이 수익률로 오판됨: {issues}"
+    print("PASS: 금리 수준은 수익률 비교에서 제외됨")
+
+    # 일반 수익률은 여전히 검사되는지 (diff 1.5 > tolerance 0.5)
+    print("\n--- 수익률 정상 검사 테스트 ---")
+    test_mixed = "S&P500 -3.0%, UST 2Y 3.78%"
+    test_mixed_ctx = {
+        'bm_returns': {'S&P500': -4.5, 'UST 2Y': 3.78},
+    }
+    issues = check_comment_numbers(test_mixed, test_mixed_ctx)
+    print(format_guard_report(issues))
+    assert len(issues) == 1, f"S&P500 불일치 1건이어야 함: {issues}"
+    assert issues[0]['source'] == 'S&P500'
+    print("PASS: 일반 수익률 불일치 정상 감지, 금리 레벨은 스킵")

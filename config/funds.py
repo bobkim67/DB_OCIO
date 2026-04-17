@@ -55,7 +55,7 @@ FUND_GROUPS = {
 #   KIS KTB 10Y (209/33), KOSPI (253/9), KIS Call (288/40)
 # BM 미설정 펀드: 07P70, 07W15, 08N33, 08N81, 09L94, 2JM23, 4JM12
 
-_C = lambda ds, ser, w, nm, cur=None: {'dataset_id': ds, 'dataseries_id': ser, 'weight': w, 'name': nm, 'currency': cur}
+_C = lambda ds, ser, w, nm, cur=None, region='KR', hedged=False: {'dataset_id': ds, 'dataseries_id': ser, 'weight': w, 'name': nm, 'currency': cur, 'region': region, 'hedged': hedged}
 
 FUND_BM = {
     # 06X08: 0.5×MSCI ACWI Gross + 0.5×KIS종합채권
@@ -92,16 +92,16 @@ FUND_BM = {
         'name': '0.2×MSCI ACWI Gross + 0.8×KIS종합채권',
         'components': [_C(57, 9, 0.20, 'MSCI ACWI Gross TR'), _C(279, 40, 0.80, 'KIS 종합채권 TR')],
     },
-    # 08K88: 0.216×KOSPI + 0.504×MSCI ACWI Std + 0.1×BBG AGG(H) + 0.1×KIS종합채권 + 0.08×KIS Call
-    # (매경BP종합 → KIS종합채권으로 대체, 연34bp 비용 차감 생략)
+    # 08K88: 0.216×KOSPI + 0.504×MSCI ACWI Std + 0.1×BBG AGG(H) + 0.1×KIS종합 + 0.08×KIS Call
+    # R 동일: dseries 9/39/40 + FX 오버레이(MSCI ACWI unhedged) + BBG AGG hedged T-1
     '08K88': {
-        'name': '0.216×KOSPI + 0.504×MSCI ACWI + 0.1×BBG AGG(H) + 0.1×KIS종합 + 0.08×CALL',
+        'name': '0.216×KOSPI + 0.504×MSCI ACWI + 0.1×BBG AGG(H) + 0.1×KIS종합 + 0.08×KIS Call',
         'components': [
-            _C(253, 9, 0.216, 'KOSPI Index'),
-            _C(35, 39, 0.504, 'MSCI ACWI Standard TR'),
-            _C(256, 9, 0.100, 'Bloomberg AGG Hedged KRW'),
-            _C(279, 40, 0.100, 'KIS 종합채권 TR'),
-            _C(288, 40, 0.080, 'KIS Call'),
+            _C(253, 15, 0.216, 'KOSPI Index', cur='KRW'),                               # R: ds=253/dseries=15 (FG Price KRW)
+            _C(35, 15, 0.504, 'MSCI ACWI Index', cur='USD', region='ex_KR'),            # R: ds=35/dseries=15 (FG Price, USD) T-1×USDKRW
+            _C(256, 9, 0.100, 'Bloomberg AGG Hedged KRW', region='ex_KR', hedged=True),  # R: ds=256/dseries=9, hedged KRW T-1
+            _C(279, 40, 0.100, 'KIS Korea Bond All'),                                 # R: ds=279/dseries=40
+            _C(288, 40, 0.080, 'KIS Call'),                                           # R: ds=288/dseries=40
         ],
     },
     # 1JM96: 0.9×MSCI ACWI Standard + 0.1×CALL금리

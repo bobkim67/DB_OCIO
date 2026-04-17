@@ -546,6 +546,30 @@ FX_split=TRUE일 때 증권 수익률에서 환효과 분리:
 - 수학적 수식 `r_sec=(1+R)/(1+r_FX)-1`과 달리, **실제 환노출 기간에 대해서만** 환효과 인식
 - 08N81 기준 R Excel과 자산군 8개 + 종목 11개 전부 0.000000 차이 검증 완료
 
+## Brinson PA R일치 (2026-04-16)
+
+### 구현 완료
+- **보정인자1**: 경로의존적 상대초과수익률 기준 스케일링 (R func_PA_결합및요약용_final.R 동일)
+- **NAST_AMT 비중**: modify_unav_chg(기준가단위) / val(총액단위) 단위불일치 해결 → Residual 0%
+- **FX 오버레이**: 환산효과를 FX행으로 분리, AP FX비중=해외자산합/NAST, BM FX비중=50.4%
+- **유동성=잔차**: Brinson 5개 자산군만 계산, 유동성 A=0/S=0/Cross=잔차
+- **BM R동일 설정**: KOSPI(253/15), MSCI ACWI(35/15 USD, T-1×USDKRW), BBG AGG(256/9 hedged T-1), KAP All(257/9), KAP MMI Call(255/9)
+- **BM -34bp/yr**: 모든 자산군 균등 차감
+- **해외 T-1×FX**: USD가격→한국BD정렬(ffill)→T-1 shift→×USDKRW(T)
+- **Hedged 분기**: hedged=True면 KRW T-1만, False면 USD(T-1)×FX(T)
+- **USD DEPOSIT**: 유동성→FX 재분류
+
+### 검증 (08K88, 2025-12-31~2026-04-15)
+| 항목 | Python | R | 차이 |
+|------|--------|---|------|
+| AP | 15.956% | 15.917% | 0.04%p ✅ |
+| BM | 12.972% | 12.207% | 0.77%p ⚠️ |
+| Residual | 0% | 0% | ✅ |
+
+### 잔여 이슈
+- BM 0.77%p 차이: MSCI ACWI T-1×USDKRW 한국BD 정렬 정밀화 필요
+- Brinson 시작일: 현재 하드코딩, YTD 시 자동 전년말 시작 필요
+
 ## PDCA Status
 
 - Feature: DB_OCIO_Webview
@@ -554,6 +578,7 @@ FX_split=TRUE일 때 증권 수익률에서 환효과 분리:
 - Phase 4.1 완료: 연율화수익률/위험/RF/샤프 (R 동일 로직, Excel 검증 통과)
 - Phase 4.2 완료: PA 정밀화 — FX split R 완벽 일치 (환산_adjust 금액 기반)
 - Phase 4.3 완료: DT BM 연동, 기간수익률 DT 일치, 설정후 수익률 보정
+- Phase 4.4 완료: Brinson PA R일치 — 보정인자1, NAST비중, FX오버레이, 잔차0, BM R동일설정
 - Phase 5 진행: UI 개선 — BM 미설정 처리, 모펀드 분류 수정, 변동성 추가, 스파크라인 개선
 - 개발일지: `devlog/` 디렉토리 (일별)
 - 디버그 파일: `debug/` 디렉토리 (R/Python PA 검증용)
