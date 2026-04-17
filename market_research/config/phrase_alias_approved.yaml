@@ -1,0 +1,36 @@
+# market_research/config/phrase_alias_approved.yaml
+#
+# Approved PHRASE_ALIAS entries that extend the built-in map in
+# market_research/wiki/taxonomy.py::PHRASE_ALIAS at runtime.
+#
+# Rules (v13 contract):
+#   - The mapped value MUST be an exact TOPIC_TAXONOMY label.
+#     Allowed labels: 통화정책, 금리_채권, 물가_인플레이션, 경기_소비, 유동성_크레딧,
+#                     환율_FX, 달러_글로벌유동성, 에너지_원자재, 귀금속_금, 지정학,
+#                     부동산, 관세_무역, 크립토, 테크_AI_반도체
+#   - Entries whose value is outside this set are silently dropped by the
+#     runtime loader. `tools.alias_review --apply` prints the full reject list.
+#   - Entries whose phrase already exists in the built-in PHRASE_ALIAS are
+#     NOT overridden — the built-in map wins (setdefault semantics).
+#   - Ambiguous / descriptive phrases should stay under `keep_unresolved`
+#     rather than being force-mapped. Force-mapping violates the v11 contract.
+#   - Comment every entry with its origin (trace row index or reviewer note).
+#
+# Review workflow:
+#   1. python -m market_research.tools.alias_review --propose
+#        -> data/report_output/alias_candidates.{json,md}
+#   2. Inspect the report; copy high-confidence rows into `approved:` below.
+#   3. python -m market_research.tools.alias_review --apply
+#        -> validates the yaml and prints a merge preview.
+#        Does NOT mutate taxonomy.py. The runtime merge happens automatically
+#        via taxonomy._load_approved_alias() on the next import.
+#
+# Format:
+#   approved:
+#     "<phrase>": <taxonomy_tag>
+#   keep_unresolved:
+#     - "<phrase>"
+
+approved: {}
+
+keep_unresolved: []
