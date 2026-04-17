@@ -197,6 +197,105 @@ def test_case_5_live_file_scan():
           f'(confirmed={confirmed}, window_rows={payload["window_rows"]})')
 
 
+def test_case_6_prep_metrics_day_level():
+    """v14 prep metrics: unique_date_coverage_ratio, row_per_date_ratio,
+    observed_unique_dates_with_candidate/_with_empty_tags. All computed
+    over unique dates, not rows."""
+    text = '\n'.join([
+        # 2026-04-10: 2 rows (candidate + empty)
+        json.dumps({'date': '2026-04-10', 'shift_candidate': True,
+                    'shift_confirmed': False, 'coverage_current': 0.0,
+                    'coverage_today': 0.0, 'sentiment_flip': False,
+                    'cooldown_active': False, 'consecutive_days': 1,
+                    'current_topic_tags': [],
+                    'candidate_rules_triggered': []}),
+        json.dumps({'date': '2026-04-10', 'shift_candidate': False,
+                    'shift_confirmed': False, 'coverage_current': 0.5,
+                    'coverage_today': 0.1, 'sentiment_flip': False,
+                    'cooldown_active': True, 'consecutive_days': 0,
+                    'current_topic_tags': ['지정학'],
+                    'candidate_rules_triggered': []}),
+        # 2026-04-11: 1 row (candidate only, non-empty tags)
+        json.dumps({'date': '2026-04-11', 'shift_candidate': True,
+                    'shift_confirmed': False, 'coverage_current': 0.0,
+                    'coverage_today': 0.0, 'sentiment_flip': True,
+                    'cooldown_active': False, 'consecutive_days': 2,
+                    'current_topic_tags': ['지정학'],
+                    'candidate_rules_triggered': ['sentiment_flip']}),
+        # 2026-04-12: 1 row (neither candidate nor empty)
+        json.dumps({'date': '2026-04-12', 'shift_candidate': False,
+                    'shift_confirmed': False, 'coverage_current': 0.5,
+                    'coverage_today': 0.5, 'sentiment_flip': False,
+                    'cooldown_active': False, 'consecutive_days': 0,
+                    'current_topic_tags': ['환율_FX'],
+                    'candidate_rules_triggered': []}),
+    ]) + '\n'
+    mod, oq, oj, om, tmp = _with_fake_quality_file(text)
+    try:
+        # --days=14 anchored at 2026-04-12 → window 2026-03-30 ~ 2026-04-12
+        payload = mod.run(days=14)
+        s = payload['summary']
+        if s['unique_dates_in_window'] != 3:
+            _fail('case6.unique_dates', f'{s["unique_dates_in_window"]}')
+        # ratio: 3 / 14 = 0.2143
+        if s['unique_date_coverage_ratio'] != round(3 / 14, 4):
+            _fail('case6.coverage_ratio',
+                  f'{s["unique_date_coverage_ratio"]}')
+        # 4 rows / 3 dates = 1.33
+        if s['row_per_date_ratio'] != round(4 / 3, 2):
+            _fail('case6.row_per_date',
+                  f'{s["row_per_date_ratio"]}')
+        # candidate dates: 2026-04-10, 2026-04-11 → 2
+        if s['observed_unique_dates_with_candidate'] != 2:
+            _fail('case6.obs_candidate',
+                  f'{s["observed_unique_dates_with_candidate"]}')
+        # empty tags dates: only 2026-04-10 (first row) → 1
+        if s['observed_unique_dates_with_empty_tags'] != 1:
+            _fail('case6.obs_empty',
+                  f'{s["observed_unique_dates_with_empty_tags"]}')
+        _pass('case6: prep metrics computed over unique dates, not rows')
+    finally:
+        _restore(mod, oq, oj, om)
+
+
+def test_case_7_prep_metrics_null_safe():
+    """Null-safe behaviour when window has zero rows or zero unique dates."""
+    import market_research.tools.regime_monitor as mod
+    original_q = mod.QUALITY_FILE
+    original_j = mod.OUT_JSON
+    original_m = mod.OUT_MD
+    tmp_dir = Path(tempfile.mkdtemp(prefix='regime_monitor_test_'))
+    mod.QUALITY_FILE = tmp_dir / 'does_not_exist.jsonl'
+    mod.OUT_JSON = tmp_dir / 'regime_monitor_summary.json'
+    mod.OUT_MD = tmp_dir / 'regime_monitor_summary.md'
+    try:
+        payload = mod.run(days=14)
+        s = payload['summary']
+        if s['unique_dates_in_window'] != 0:
+            _fail('case7.unique_dates_zero', f'{s["unique_dates_in_window"]}')
+        # coverage_ratio: 0 / 14 = 0.0 (not null, because window_days > 0)
+        if s['unique_date_coverage_ratio'] != 0.0:
+            _fail('case7.coverage_ratio_zero',
+                  f'{s["unique_date_coverage_ratio"]}')
+        # row_per_date_ratio: unique=0 → must be None (null), not crash
+        if s['row_per_date_ratio'] is not None:
+            _fail('case7.row_per_date_null',
+                  f'expected None, got {s["row_per_date_ratio"]}')
+        if s['observed_unique_dates_with_candidate'] != 0:
+            _fail('case7.obs_cand_zero', '')
+        if s['observed_unique_dates_with_empty_tags'] != 0:
+            _fail('case7.obs_empty_zero', '')
+
+        # Now test days=0 → coverage_ratio must be None
+        payload2 = mod.run(days=0)
+        if payload2['summary']['unique_date_coverage_ratio'] is not None:
+            _fail('case7.days_zero_coverage_null',
+                  f'{payload2["summary"]["unique_date_coverage_ratio"]}')
+        _pass('case7: prep metrics null-safe on empty window / zero days')
+    finally:
+        _restore(mod, original_q, original_j, original_m)
+
+
 def main():
     print('\n=== regime_monitor tests ===')
     cases = [
@@ -205,6 +304,8 @@ def main():
         test_case_3_window_filter,
         test_case_4_idempotent,
         test_case_5_live_file_scan,
+        test_case_6_prep_metrics_day_level,
+        test_case_7_prep_metrics_null_safe,
     ]
     results = []
     for fn in cases:

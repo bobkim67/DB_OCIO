@@ -88,10 +88,25 @@ def _filter_window(rows: list[dict],
     return window, start_date, end_date
 
 
-def _summarize(window: list[dict]) -> dict:
+def _summarize(window: list[dict], window_days: int = 0) -> dict:
     unique_dates = {
         _parse_date(r.get('date')).isoformat()
         for r in window if _parse_date(r.get('date')) is not None
+    }
+    # v14 prep metrics — day-level observation proxies. These do NOT drive
+    # any decision; they just let the reviewer tell "row-level append noise"
+    # apart from "actual day-level drift".
+    observed_dates_with_candidate = {
+        _parse_date(r.get('date')).isoformat()
+        for r in window
+        if r.get('shift_candidate')
+        and _parse_date(r.get('date')) is not None
+    }
+    observed_dates_with_empty_tags = {
+        _parse_date(r.get('date')).isoformat()
+        for r in window
+        if not (r.get('current_topic_tags') or r.get('current_tags'))
+        and _parse_date(r.get('date')) is not None
     }
     shift_candidate_days = sum(1 for r in window if r.get('shift_candidate'))
     shift_confirmed_count = sum(1 for r in window if r.get('shift_confirmed'))
@@ -132,8 +147,20 @@ def _summarize(window: list[dict]) -> dict:
     # Row-level naming: this summary aggregates jsonl ROWS, not unique days.
     # Same-date append produces multiple rows, so row counts ≠ day counts.
     # unique_dates_in_window is the companion signal for day-level coverage.
+    u = len(unique_dates)
+    unique_date_coverage_ratio = (
+        round(u / window_days, 4) if window_days and window_days > 0 else None
+    )
+    # row_per_date_ratio — append pressure proxy. null when no dates.
+    row_per_date_ratio = (
+        round(len(window) / u, 2) if u > 0 else None
+    )
     return {
-        'unique_dates_in_window': len(unique_dates),
+        'unique_dates_in_window': u,
+        'unique_date_coverage_ratio': unique_date_coverage_ratio,
+        'row_per_date_ratio': row_per_date_ratio,
+        'observed_unique_dates_with_candidate': len(observed_dates_with_candidate),
+        'observed_unique_dates_with_empty_tags': len(observed_dates_with_empty_tags),
         'shift_candidate_rows': shift_candidate_days,
         'shift_confirmed_count': shift_confirmed_count,
         'sentiment_flip_rows': sentiment_flip_count,
@@ -176,6 +203,12 @@ def _render_markdown(window_meta: dict, summary: dict, rows: list[dict]) -> str:
         f'| source_rows | {window_meta["source_rows"]} |',
         f'| window_rows | {window_meta["window_rows"]} |',
         f'| unique_dates_in_window | {summary["unique_dates_in_window"]} |',
+        f'| unique_date_coverage_ratio | {summary["unique_date_coverage_ratio"]} |',
+        f'| row_per_date_ratio | {summary["row_per_date_ratio"]} |',
+        f'| observed_unique_dates_with_candidate | '
+        f'{summary["observed_unique_dates_with_candidate"]} |',
+        f'| observed_unique_dates_with_empty_tags | '
+        f'{summary["observed_unique_dates_with_empty_tags"]} |',
         f'| malformed_skipped | {window_meta["malformed_skipped"]} |',
         f'| shift_candidate_rows | {summary["shift_candidate_rows"]} |',
         f'| shift_confirmed_count | {summary["shift_confirmed_count"]} |',
@@ -207,6 +240,25 @@ def _render_markdown(window_meta: dict, summary: dict, rows: list[dict]) -> str:
 
     lines += [
         '',
+        '## Day-level prep metrics (v14)',
+        '',
+        '- `unique_date_coverage_ratio` = unique_dates / window_days',
+        '  (`null` when `window_days=0`). Tells the reviewer how close the',
+        '  summary is to a full day-level view of the window.',
+        '- `row_per_date_ratio` = window_rows / unique_dates (`null` when no',
+        '  dates). High values mean many same-date appends — operational',
+        '  debug noise, not drift signal.',
+        '- `observed_unique_dates_with_candidate` — distinct dates that',
+        '  produced at least one `shift_candidate=true` row. Day-level',
+        '  proxy; row-level equivalent is `shift_candidate_rows`.',
+        '- `observed_unique_dates_with_empty_tags` — distinct dates that',
+        '  saw at least one empty-tags hold. Day-level proxy for',
+        '  `empty_tag_rows`.',
+        '',
+        '> These four indicators are passive prep metrics. They do NOT drive',
+        '> any decision and do NOT change v12 judgement logic. Use them to',
+        '> tell row-level append noise apart from day-level drift.',
+        '',
         '## Notes',
         '',
         '- This report is passive. v12 thresholds (coverage_current 0.5 /',
@@ -235,7 +287,7 @@ def run(days: int = 14,
     rows, malformed = _load_quality(QUALITY_FILE)
     from_date = _parse_date(from_date_str) if from_date_str else None
     window, start_d, end_d = _filter_window(rows, days, from_date)
-    summary = _summarize(window)
+    summary = _summarize(window, window_days=days)
 
     generated_at = datetime.now().isoformat(timespec='seconds')
     try:
@@ -282,6 +334,12 @@ def main(argv: list[str] | None = None) -> int:
           f'window_rows: {payload["window_rows"]}  '
           f'unique_dates_in_window: {s["unique_dates_in_window"]}  '
           f'malformed_skipped: {payload["malformed_skipped"]}')
+    print(f'unique_date_coverage_ratio: {s["unique_date_coverage_ratio"]}  '
+          f'row_per_date_ratio: {s["row_per_date_ratio"]}  '
+          f'obs_dates_with_candidate: '
+          f'{s["observed_unique_dates_with_candidate"]}  '
+          f'obs_dates_with_empty_tags: '
+          f'{s["observed_unique_dates_with_empty_tags"]}')
     print(f'shift_candidate_rows: {s["shift_candidate_rows"]}')
     print(f'shift_confirmed_count: {s["shift_confirmed_count"]}')
     print(f'sentiment_flip_rows: {s["sentiment_flip_rows"]}')
