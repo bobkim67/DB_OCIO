@@ -108,6 +108,19 @@ def daily_update(date_str: str = None, dry_run: bool = False) -> dict:
           f'이벤트그룹 {refine_result.get("event_groups", 0)}, '
           f'fallback {refine_result.get("fallback_count", 0)}건')
 
+    # ── Step 2.6: Base wiki pages (event/entity/asset/fund) ──
+    # canonical regime / debate narrative / graph transmission path 포함 금지.
+    print(f'\n[Step 2.6] Base wiki pages...')
+    try:
+        from market_research.wiki.draft_pages import refresh_base_pages_after_refine
+        wiki_result = refresh_base_pages_after_refine(month_str)
+        result['steps']['wiki_base'] = wiki_result
+        print(f'  → events {wiki_result["events"]}, entities {wiki_result["entities"]}, '
+              f'assets {wiki_result["assets"]}, funds {wiki_result["funds"]}')
+    except Exception as exc:
+        print(f'  Base wiki 생성 실패: {exc}')
+        result['steps']['wiki_base'] = {'status': 'error', 'error': str(exc)}
+
     if dry_run:
         print(f'\n  [dry-run] GraphRAG/델타 생략')
         result['dry_run'] = True
@@ -300,31 +313,22 @@ def _step_graph_incremental(year: int, month: int, date_str: str) -> dict:
         return {'status': 'error', 'error': str(exc), 'node_count': 0, 'edge_count': 0}
 
 
-def _step_mtd_delta(year: int, month: int, date_str: str) -> dict:
+def _compute_delta_from_articles(articles: list[dict],
+                                  asof_date: date | None = None) -> dict:
+    """Pure function — articles → delta dict (topic_counts + sentiment +
+    topic_direction + asset_impact).
+
+    No file I/O. Caller is responsible for filtering `articles` to the
+    intended date range before calling (live uses MTD cutoff; replay uses
+    as-of-date rolling window). Articles must already carry
+    `_classified_topics` and `_asset_impact_vector` from the classifier
+    step — that upstream output is treated as input here.
     """
-    Step 4: MTD 델타 — 월초 Full Build 기저 대비 변화.
-    LLM 불필요 (토픽 카운트 + 방향성 집계).
-    """
-    month_str = f'{year}-{month:02d}'
-    news_file = NEWS_DIR / f'{month_str}.json'
-    if not news_file.exists():
-        return {'status': 'skip', 'topic_counts': {}, 'sentiment': 'N/A'}
+    topic_counts: dict[str, int] = {}
+    topic_direction: dict[str, dict] = {}
+    asset_impact_agg: dict[str, float] = {}
 
-    data = json.loads(news_file.read_text(encoding='utf-8'))
-    articles = data.get('articles', [])
-
-    # MTD: 월초~date_str까지 분류된 기사
-    mtd_articles = [
-        a for a in articles
-        if a.get('date', '') <= date_str and '_classified_topics' in a
-    ]
-
-    # 토픽 카운트 + 방향성 집계
-    topic_counts = {}
-    topic_direction = {}  # topic → {positive: n, negative: n, neutral: n}
-    asset_impact_agg = {}  # asset → sum
-
-    for article in mtd_articles:
+    for article in articles:
         topics = article.get('_classified_topics', [])
         for t in topics:
             name = t.get('topic', '')
@@ -334,13 +338,13 @@ def _step_mtd_delta(year: int, month: int, date_str: str) -> dict:
             direction = t.get('direction', 'neutral')
             if name not in topic_direction:
                 topic_direction[name] = {'positive': 0, 'negative': 0, 'neutral': 0}
-            topic_direction[name][direction] = topic_direction[name].get(direction, 0) + 1
-
-        impact = article.get('_asset_impact_vector', {})
+            topic_direction[name][direction] = (
+                topic_direction[name].get(direction, 0) + 1
+            )
+        impact = article.get('_asset_impact_vector', {}) or {}
         for asset, score in impact.items():
             asset_impact_agg[asset] = asset_impact_agg.get(asset, 0) + score
 
-    # 전체 방향성 요약
     total_pos = sum(d.get('positive', 0) for d in topic_direction.values())
     total_neg = sum(d.get('negative', 0) for d in topic_direction.values())
     if total_pos > total_neg * 1.3:
@@ -350,12 +354,9 @@ def _step_mtd_delta(year: int, month: int, date_str: str) -> dict:
     else:
         sentiment = 'mixed'
 
-    # 상위 5개 토픽
     top_topics = sorted(topic_counts.items(), key=lambda x: x[1], reverse=True)[:5]
 
     return {
-        'status': 'ok',
-        'mtd_articles': len(mtd_articles),
         'topic_counts': dict(top_topics),
         'topic_direction': topic_direction,
         'asset_impact': asset_impact_agg,
@@ -365,80 +366,257 @@ def _step_mtd_delta(year: int, month: int, date_str: str) -> dict:
     }
 
 
+def _step_mtd_delta(year: int, month: int, date_str: str) -> dict:
+    """
+    Step 4: MTD 델타 — 월초 Full Build 기저 대비 변화.
+    LLM 불필요 (토픽 카운트 + 방향성 집계).
+
+    (v15 refactor) 집계 로직은 `_compute_delta_from_articles`로 이동.
+    기능 불변 — 월초~date_str의 분류된 기사 집합을 그대로 넘긴다.
+    """
+    month_str = f'{year}-{month:02d}'
+    news_file = NEWS_DIR / f'{month_str}.json'
+    if not news_file.exists():
+        return {'status': 'skip', 'topic_counts': {}, 'sentiment': 'N/A'}
+
+    data = json.loads(news_file.read_text(encoding='utf-8'))
+    articles = data.get('articles', [])
+
+    mtd_articles = [
+        a for a in articles
+        if a.get('date', '') <= date_str and '_classified_topics' in a
+    ]
+
+    delta = _compute_delta_from_articles(mtd_articles)
+    return {
+        'status': 'ok',
+        'mtd_articles': len(mtd_articles),
+        **delta,
+    }
+
+
+MIN_REGIME_DURATION_DAYS = 14   # cooldown: 전환 후 2주 동안 재전환 잠금
+TAG_MATCH_MODE = 'exact_taxonomy'
+
+
+def _judge_regime_state(regime: dict,
+                         delta: dict,
+                         asof_date: date,
+                         taxonomy_set: set) -> tuple[dict, dict]:
+    """Pure judgement — regime + delta + asof_date → (updated_regime, quality_record).
+
+    (v15 Option C factor-out)  Rules and thresholds are **unchanged**; only
+    ``date.today()`` calls became ``asof_date`` parameters. No file I/O, no
+    canonical writer, no stdout print — callers are responsible for those
+    side effects. Feeds both the live ``_step_regime_check`` wrapper and the
+    ``tools.regime_replay`` as-of-date backfill.
+
+    Rules (v12 판정식, 불변):
+      - exact taxonomy intersection → coverage_current / coverage_today
+      - sentiment_flip까지 3개 규칙 중 2개 이상 만족 → shift candidate
+      - sparse tags fallback: 0개 → hold / 1개 → sentiment_flip 필수
+      - 3일 연속 + cooldown(MIN_REGIME_DURATION_DAYS) 통과 → 확정
+    """
+    current = regime.get('current', {})
+    current_tags_list = current.get('topic_tags', []) or []
+    current_tags = {t for t in current_tags_list if t in taxonomy_set}
+    non_taxonomy = [t for t in current_tags_list if t not in taxonomy_set]
+    top_topics = list(delta.get('topic_counts', {}).keys())
+    top_set = {t for t in top_topics if t in taxonomy_set}
+    unknown_today = [t for t in top_topics if t not in taxonomy_set]
+
+    intersection = current_tags & top_set
+    core_today = set(top_topics[:3]) & taxonomy_set
+    intersection_core = current_tags & core_today
+
+    coverage_current = len(intersection) / max(len(current_tags), 1)
+    coverage_today = len(intersection_core) / max(len(core_today), 1)
+
+    current_direction = current.get('direction', 'neutral')
+    today_sentiment = delta.get('sentiment', 'neutral')
+    sentiment_flip = (
+        (current_direction == 'bullish' and today_sentiment == 'negative') or
+        (current_direction == 'bearish' and today_sentiment == 'positive')
+    )
+
+    low_current = coverage_current < 0.5
+    low_today = coverage_today < 0.3
+
+    rules_triggered: list[str] = []
+    if low_current:
+        rules_triggered.append('low_coverage_current')
+    if low_today:
+        rules_triggered.append('low_coverage_today')
+    if sentiment_flip:
+        rules_triggered.append('sentiment_flip')
+    candidate_score = len(rules_triggered)
+
+    shift_detected = False
+    shift_reason = ''
+    if not current_tags:
+        shift_detected = False
+        shift_reason = 'current.topic_tags 비어있음 — hold (description 기반 판정 금지)'
+    elif len(current_tags) == 1:
+        shift_detected = candidate_score >= 2 and sentiment_flip
+        if not shift_detected and rules_triggered:
+            shift_reason = f'sparse(1 tag) — sentiment_flip 없이 shift 보류 (rules={rules_triggered})'
+        elif shift_detected:
+            shift_reason = f'sparse(1 tag) + sentiment_flip 포함 {candidate_score}/3 규칙'
+    else:
+        shift_detected = candidate_score >= 2
+        if shift_detected:
+            shift_reason = (f'coverage_current={coverage_current:.2f}, '
+                            f'coverage_today={coverage_today:.2f}, '
+                            f'rules={rules_triggered}')
+        elif rules_triggered:
+            shift_reason = f'단일 규칙만 만족 ({rules_triggered}) — shift 보류'
+
+    # ── cooldown ──
+    try:
+        since = date.fromisoformat(
+            current.get('since', asof_date.isoformat()))
+        days_in_regime = (asof_date - since).days
+    except Exception:
+        days_in_regime = 0
+    cooldown_active = days_in_regime < MIN_REGIME_DURATION_DAYS
+
+    # shift 연속일 카운트
+    consecutive = regime.get('_shift_consecutive_days', 0)
+    consecutive = consecutive + 1 if shift_detected else 0
+    regime['_shift_consecutive_days'] = consecutive
+
+    regime['shift_detected'] = False
+    if consecutive >= 3 and not cooldown_active:
+        new_tags = [t for t in top_topics if t in taxonomy_set][:3]
+        new_narrative = ' + '.join(new_tags)
+        prev_narrative = current.get('dominant_narrative', '')
+        prev_description = current.get('narrative_description', '')
+        regime.setdefault('history', []).append({
+            'narrative': prev_narrative,
+            'narrative_description': prev_description,
+            'topic_tags': sorted(current_tags),
+            'period': f'{current.get("since", "")} ~ {asof_date.isoformat()}',
+        })
+        regime['history'] = regime['history'][-24:]
+        regime['previous'] = {
+            'dominant_narrative': prev_narrative,
+            'narrative_description': prev_description,
+            'ended': asof_date.isoformat(),
+        }
+        direction_map = {'positive': 'bullish', 'negative': 'bearish',
+                         'mixed': 'neutral'}
+        regime['current'] = {
+            'dominant_narrative': new_narrative,
+            'topic_tags': new_tags,
+            'narrative_description': '',
+            'since': asof_date.isoformat(),
+            'direction': direction_map.get(delta.get('sentiment', ''), 'neutral'),
+            'weeks': 0,
+            '_unresolved_tags': [],
+        }
+        regime['shift_detected'] = True
+        regime['shift_description'] = f'{prev_narrative} → {new_narrative}'
+        regime['_shift_consecutive_days'] = 0
+        shift_reason = f'3일 연속 토픽 변화 → regime 전환: {new_narrative}'
+
+    # weeks 자동 계산
+    try:
+        since = date.fromisoformat(regime['current']['since'])
+        regime['current']['weeks'] = max(0, (asof_date - since).days // 7)
+    except Exception:
+        pass
+
+    regime['last_daily_update'] = asof_date.isoformat()
+
+    unknown_combined = list(dict.fromkeys(list(non_taxonomy) + list(unknown_today)))
+    quality_record = {
+        'date': asof_date.isoformat(),
+        'tag_match_mode': TAG_MATCH_MODE,
+        'decision_mode': 'multi_rule_v12',
+        'current_topic_tags': sorted(current_tags),
+        'top_topics_today': top_topics[:5],
+        'core_today': sorted(core_today),
+        'intersection_tags': sorted(intersection),
+        'intersection_tags_core': sorted(intersection_core),
+        'coverage_current': round(coverage_current, 3),
+        'coverage_today': round(coverage_today, 3),
+        'sentiment_today': today_sentiment,
+        'current_direction': current_direction,
+        'sentiment_flip': sentiment_flip,
+        'candidate_rules_triggered': rules_triggered,
+        'candidate_score': candidate_score,
+        'shift_candidate': shift_detected,
+        'consecutive_days': consecutive,
+        'cooldown_active': cooldown_active,
+        'shift_confirmed': regime.get('shift_detected', False),
+        'shift_reason': shift_reason,
+        'unknown_or_non_taxonomy_tags': unknown_combined,
+    }
+    return regime, quality_record
+
+
 def _step_regime_check(delta: dict) -> dict:
     """
-    Step 5: regime_memory 업데이트 + regime shift 자동 감지.
+    Step 5: regime_memory 갱신 + regime shift 자동 감지 (canonical writer).
 
-    감지 룰 (LLM 불필요):
-      - 상위 토픽이 현재 narrative 키워드와 50% 이상 불일치 → shift 후보
-      - sentiment가 현재 regime 방향과 반대 → shift 후보
-      - shift 후보가 3일 연속 → shift 확정
+    **이 함수만이 regime_memory.json과 05_Regime_Canonical/ 페이지의 writer.**
+    (v15) 판정 로직은 `_judge_regime_state`로 이동. 이 wrapper는 파일 I/O와
+    canonical writer 호출, quality log append, 운영용 stdout print만 담당한다.
     """
     if not REGIME_FILE.exists():
         return {'status': 'skip', 'reason': 'no regime_memory'}
 
+    from market_research.wiki.canonical import (
+        normalize_regime_memory, update_canonical_regime,
+    )
+    from market_research.wiki.taxonomy import TAXONOMY_SET
+
     regime = json.loads(REGIME_FILE.read_text(encoding='utf-8'))
-    current = regime.get('current', {})
-    narrative = current.get('dominant_narrative', '')
+    regime = normalize_regime_memory(regime)
 
-    # ── shift 감지 ──
-    shift_detected = False
-    shift_reason = ''
-    top_topics = list(delta.get('topic_counts', {}).keys())
+    regime, quality_record = _judge_regime_state(
+        regime, delta, asof_date=date.today(), taxonomy_set=TAXONOMY_SET,
+    )
 
-    if narrative and top_topics:
-        # 현재 narrative에서 키워드 추출
-        narrative_keywords = set(narrative.replace('+', ' ').replace(',', ' ').split())
-        # 상위 토픽과 교집합
-        overlap = sum(1 for t in top_topics if any(kw in t for kw in narrative_keywords))
-        overlap_ratio = overlap / len(top_topics) if top_topics else 1.0
+    shift_detected_today = quality_record['shift_candidate']
+    shift_confirmed = quality_record['shift_confirmed']
+    cooldown_active = quality_record['cooldown_active']
+    shift_reason = quality_record['shift_reason']
+    consecutive = quality_record['consecutive_days']
 
-        if overlap_ratio < 0.3:
-            shift_detected = True
-            shift_reason = f'토픽 불일치 {1-overlap_ratio:.0%} (상위: {", ".join(top_topics[:3])})'
+    if shift_confirmed:
+        print(f'  ⚠ Regime shift 확정: {shift_reason}')
+    elif shift_detected_today and cooldown_active:
+        # 현재 regime이 시작된 뒤 days (quality_record에는 미포함)
+        try:
+            since = date.fromisoformat(regime['current'].get('since', ''))
+            days_in_regime = (date.today() - since).days
+        except Exception:
+            days_in_regime = 0
+        print(f'  shift 후보이나 cooldown '
+              f'({days_in_regime}/{MIN_REGIME_DURATION_DAYS}일) — 전환 보류')
 
-    # shift 연속일 카운트
-    consecutive = regime.get('_shift_consecutive_days', 0)
-    if shift_detected:
-        consecutive += 1
-    else:
-        consecutive = 0
-    regime['_shift_consecutive_days'] = consecutive
+    REGIME_FILE.write_text(
+        json.dumps(regime, ensure_ascii=False, indent=2), encoding='utf-8')
 
-    # 3일 연속 shift → 확정
-    if consecutive >= 3:
-        new_narrative = ' + '.join(top_topics[:3])
-        old = current.copy()
-        regime.setdefault('history', []).append({
-            'narrative': narrative,
-            'period': f'{current.get("since", "?")} ~ {date.today().isoformat()}',
-        })
-        regime['previous'] = {
-            'dominant_narrative': narrative,
-            'ended': date.today().isoformat(),
-        }
-        regime['current'] = {
-            'dominant_narrative': new_narrative,
-            'weeks': 0,
-            'since': date.today().isoformat(),
-        }
-        regime['shift_detected'] = True
-        regime['shift_description'] = f'{narrative} → {new_narrative}'
-        regime['_shift_consecutive_days'] = 0
-        shift_reason = f'3일 연속 토픽 변화 → regime 전환: {new_narrative}'
-        print(f'  ⚠ Regime shift 감지: {shift_reason}')
-    else:
-        regime['shift_detected'] = False
+    try:
+        update_canonical_regime(REGIME_FILE)
+    except Exception as exc:
+        print(f'  [wiki] canonical page 갱신 실패: {exc}')
 
-    regime['last_daily_update'] = date.today().isoformat()
-    REGIME_FILE.write_text(json.dumps(regime, ensure_ascii=False, indent=2), encoding='utf-8')
+    quality_log = DATA_DIR / 'report_output' / '_regime_quality.jsonl'
+    quality_log.parent.mkdir(parents=True, exist_ok=True)
+    with open(quality_log, 'a', encoding='utf-8') as fh:
+        fh.write(json.dumps(quality_record, ensure_ascii=False) + '\n')
 
     return {
         'status': 'ok',
         'current_narrative': regime['current'].get('dominant_narrative', ''),
+        'topic_tags': regime['current'].get('topic_tags', []),
         'weeks': regime['current'].get('weeks', 0),
         'shift_consecutive_days': consecutive,
-        'shift_reason': shift_reason if shift_detected else '',
+        'cooldown_active': cooldown_active,
+        'shift_reason': shift_reason if shift_detected_today else '',
     }
 
 
