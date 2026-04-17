@@ -89,7 +89,10 @@ def _filter_window(rows: list[dict],
 
 
 def _summarize(window: list[dict]) -> dict:
-    total = len(window)
+    unique_dates = {
+        _parse_date(r.get('date')).isoformat()
+        for r in window if _parse_date(r.get('date')) is not None
+    }
     shift_candidate_days = sum(1 for r in window if r.get('shift_candidate'))
     shift_confirmed_count = sum(1 for r in window if r.get('shift_confirmed'))
     sentiment_flip_count = sum(1 for r in window if r.get('sentiment_flip'))
@@ -127,7 +130,7 @@ def _summarize(window: list[dict]) -> dict:
     )
 
     return {
-        'total_days': total,
+        'unique_dates_in_window': len(unique_dates),
         'shift_candidate_days': shift_candidate_days,
         'shift_confirmed_count': shift_confirmed_count,
         'sentiment_flip_count': sentiment_flip_count,
@@ -152,14 +155,22 @@ def _render_markdown(window_meta: dict, summary: dict, rows: list[dict]) -> str:
         f'- Source: `{window_meta["source"]}`',
         f'- Window: `{window_meta["window_start"]}` ~ `{window_meta["window_end"]}` '
         f'({window_meta["window_days"]} days)',
-        f'- Rows in source: {window_meta["total_rows_in_source"]}  '
-        f'(malformed skipped: {window_meta["malformed_rows"]})',
+        f'- Source rows: {window_meta["source_rows"]}  '
+        f'(window rows: {window_meta["window_rows"]}, '
+        f'malformed skipped: {window_meta["malformed_skipped"]})',
+        '',
+        '> `source_rows` = 전체 집계 대상 row 수. `window_rows` = 윈도우 내 row.',
+        '> `unique_dates_in_window` = 실제 관측 일수. 동일 날짜에 여러 row가',
+        '> append될 수 있으므로 row 수와 관측 일수는 다를 수 있다.',
         '',
         '## Aggregate indicators (observation only)',
         '',
         '| indicator | value |',
         '|---|---|',
-        f'| total_days | {summary["total_days"]} |',
+        f'| source_rows | {window_meta["source_rows"]} |',
+        f'| window_rows | {window_meta["window_rows"]} |',
+        f'| unique_dates_in_window | {summary["unique_dates_in_window"]} |',
+        f'| malformed_skipped | {window_meta["malformed_skipped"]} |',
         f'| shift_candidate_days | {summary["shift_candidate_days"]} |',
         f'| shift_confirmed_count | {summary["shift_confirmed_count"]} |',
         f'| sentiment_flip_count | {summary["sentiment_flip_count"]} |',
@@ -223,9 +234,9 @@ def run(days: int = 14,
         'window_start': start_d.isoformat(),
         'window_end': end_d.isoformat(),
         'window_days': days,
-        'total_rows_in_source': len(rows),
-        'malformed_rows': malformed,
-        'rows_in_window': len(window),
+        'source_rows': len(rows),
+        'window_rows': len(window),
+        'malformed_skipped': malformed,
     }
     payload = {**window_meta, 'summary': summary}
 
@@ -253,9 +264,10 @@ def main(argv: list[str] | None = None) -> int:
     print('=== regime_monitor summary ===')
     print(f'window: {payload["window_start"]} ~ {payload["window_end"]} '
           f'({payload["window_days"]} days)')
-    print(f'rows in source: {payload["total_rows_in_source"]} '
-          f'(malformed: {payload["malformed_rows"]})')
-    print(f'rows in window: {payload["rows_in_window"]}')
+    print(f'source_rows: {payload["source_rows"]}  '
+          f'window_rows: {payload["window_rows"]}  '
+          f'unique_dates_in_window: {s["unique_dates_in_window"]}  '
+          f'malformed_skipped: {payload["malformed_skipped"]}')
     print(f'shift_candidate_days: {s["shift_candidate_days"]}')
     print(f'shift_confirmed_count: {s["shift_confirmed_count"]}')
     print(f'sentiment_flip_count: {s["sentiment_flip_count"]}')

@@ -23,7 +23,11 @@
 
 ## 1. 이번 패킷에서 받고 싶은 판정
 
-- **목표 판정: pass**
+- **목표 판정: packet 기준 pass-leaning** (최종 pass는 코드 diff와 실행
+  증거 재확인 전제)
+- 본 패킷은 코드 diff 자체가 아니라 운영/표시 품질 보강 패킷이므로,
+  판정은 **packet 기준**으로 요청한다. 실제 코드 동작/회귀는 §9 실행 증거로
+  검증해주길 바란다.
 - 핵심 목표는 3가지 운영성 산출물:
   1. PHRASE_ALIAS 반자동 제안 루프 (propose/apply CLI + YAML)
   2. Regime 판정식 2주 관측용 passive summariser
@@ -174,7 +178,7 @@ false negative 분포를 확인한 뒤 결정할 일이다.
 
 리스크: 2주 관측 기간이 지나도 운영자가 집계 리포트를 안 본다면 이
 투자는 낭비된다. 대응책: `regime_monitor_summary.md`를 review packet의
-`B. 로그 샘플` 옆에 항상 끼워넣어 리뷰어가 놓치지 않게 한다 (§B).
+실제 샘플 출력 섹션(§7.2) 옆에 항상 끼워넣어 리뷰어가 놓치지 않게 한다.
 
 ---
 
@@ -270,54 +274,69 @@ entity_id는 `source__{매체명}` 또는 `graphnode__{node_id}` — v12.1의
 
 ### 7.2 Regime monitor summary (실제 생성물)
 
-경로: `data/report_output/regime_monitor_summary.md` (실행: 2026-04-17)
+경로: `data/report_output/regime_monitor_summary.md` (실행: 2026-04-17T14:55)
 
 ```markdown
 # Regime monitor summary
 
-- Generated: `2026-04-17T14:33:30`
+- Generated: `2026-04-17T14:55:54`
 - Source: `data/report_output/_regime_quality.jsonl`
 - Window: `2026-04-04` ~ `2026-04-17` (14 days)
-- Rows in source: 22  (malformed skipped: 0)
+- Source rows: 34  (window rows: 34, malformed skipped: 0)
+
+> `source_rows` = 전체 집계 대상 row 수. `window_rows` = 윈도우 내 row.
+> `unique_dates_in_window` = 실제 관측 일수. 동일 날짜에 여러 row가
+> append될 수 있으므로 row 수와 관측 일수는 다를 수 있다.
 
 ## Aggregate indicators (observation only)
 
 | indicator | value |
 |---|---|
-| total_days | 22 |
-| shift_candidate_days | 8 |
+| source_rows | 34 |
+| window_rows | 34 |
+| unique_dates_in_window | 1 |
+| malformed_skipped | 0 |
+| shift_candidate_days | 12 |
 | shift_confirmed_count | 1 |
-| sentiment_flip_count | 7 |
-| cooldown_block_count | 8 |
-| sparse_fallback_count | 6 |
-| empty_tag_days | 8 |
+| sentiment_flip_count | 11 |
+| cooldown_block_count | 12 |
+| sparse_fallback_count | 10 |
+| empty_tag_days | 12 |
 | avg coverage_current | 0.0833 |
 | avg coverage_today (core top3) | 0.0 |
-| churn proxy (confirmed / candidate) | 0.125 |
+| churn proxy (confirmed / candidate) | 0.0833 |
 
 ## consecutive_days distribution
 
 | consecutive_days | count |
 |---|---|
-| 0 | 14 |
-| 1 | 7 |
+| 0 | 22 |
+| 1 | 11 |
 | 3 | 1 |
 
 ## candidate_rule distribution
 
 | rule | count |
 |---|---|
-| `low_coverage_today` | 18 |
-| `low_coverage_current` | 15 |
-| `sentiment_flip` | 7 |
+| `low_coverage_today` | 30 |
+| `low_coverage_current` | 25 |
+| `sentiment_flip` | 11 |
 ```
 
+**숫자 해석 주의**:
+- `source_rows: 34` ≠ `unique_dates_in_window: 1`. 현재 운영 단계에서
+  `_step_regime_check`가 같은 날짜에 복수 시나리오로 여러 row를 append
+  하므로(테스트/디버그 포함) row 수와 실제 관측 일수는 자리수가 다르다.
+- `window_days: 14`는 윈도우 **폭**이고, `unique_dates_in_window: 1`은
+  그 윈도우 안에 실제로 기록된 **관측 일수**다. 2주 실전 누적 전에는
+  `unique_dates_in_window`가 `window_days`에 접근하지 못하는 것이 정상.
+
 **해석**:
-- `churn proxy 0.125` → 후보 8건 중 1건만 확정. 3일 연속 guard가 설계대로
+- `churn proxy 0.0833` → 후보 12건 중 1건만 확정. 3일 연속 guard가 설계대로
   작동. 완화 판단 금지.
-- `consecutive_days=0이 14/22` → 대부분의 날짜에서 후보조차 아님. v12
+- `consecutive_days=0이 22/34` → 대부분의 row에서 후보조차 아님. v12
   보수화가 과도하지 않다는 방증.
-- `sparse_fallback 6건` — single-tag 상태에서 `sentiment_flip` 여부로
+- `sparse_fallback 10건` — single-tag 상태에서 `sentiment_flip` 여부로
   candidate 판정한 케이스. 현재는 sentiment_flip 없으면 hold하는 쪽이
   설계대로 작동.
 
@@ -425,33 +444,57 @@ updated_at: 2026-04-17T14:39:28
 
 ---
 
-## 9. 회귀 테스트 결과
+## 9. 회귀 테스트 결과 + 실행 증거
+
+**실행 환경** (2026-04-17 세션):
+- Branch: `feature/insight-v13` @ commit `e91e410` (v13 #4 시점 기준)
+- Python: 3.14.3 · Platform: win32 (Windows 11)
+- 실행 시각: 2026-04-17 14:54 ~ 14:55 KST
+- pytest 미설치 → 기존 관행인 `python -m market_research.tests.<name>` 방식으로 실행
+
+**실행 증거 (실제 출력 핵심 1~2줄만)**:
 
 ```
-=== Taxonomy contract tests ===
-  PASS — case1: 정상 taxonomy 매칭 (overlap = 3)
-  PASS — case2: phrase 유입 차단
-  PASS — case3: empty tags → shift 보류
+$ python -m market_research.tools.alias_review --propose
+  total trace rows: 31
+  unresolved unique phrases: 10  (keep_unresolved: 7, review_needed: 3)
+  → wrote alias_candidates.json + alias_candidates_report.md
 
-=== Regime decision v12 tests ===
-  PASS — case_a: 1/5 overlap → 즉시 shift 안됨
-  PASS — case_b: intersection 0 + sentiment_flip → candidate
-  PASS — case_c: single tag — flip 없으면 hold, flip 있으면 candidate
-  PASS — case_d: empty tags → hold + warning
+$ python -m market_research.tools.alias_review --apply --strict
+  accepted (new aliases): 0   keep_unresolved entries: 0
+  exit=0   (approved yaml is empty seed)
 
-=== GraphRAG P0 vs P1 비교 — 2026-04 ===
-total_paths     P0 2 → P1 6
-unique_triggers P0 2 → P1 4   (configured 4/9, active 4/6)
-unique_targets  P0 2 → P1 3   (configured 3/10, active 3/5)
-avg_confidence  P0 0.544 → P1 0.532
+$ python -m market_research.tools.regime_monitor --days 14
+  window: 2026-04-04 ~ 2026-04-17 (14 days)
+  source_rows: 34  window_rows: 34  unique_dates_in_window: 1
+  shift_confirmed_count: 1   churn proxy: 0.0833
+  → wrote regime_monitor_summary.{json,md}
 
-=== New v13 tests ===
-  alias_review          : 5/5 PASS
-  regime_monitor        : 5/5 PASS
-  entity_demo_render    : 5/5 PASS
+$ python -m market_research.tests.test_alias_review
+  5 PASS (case1..case5), exit=0
+
+$ python -m market_research.tests.test_regime_monitor
+  5 PASS — case5: live file scan consistent (confirmed=1, window_rows=34)
+  exit=0
+
+$ python -m market_research.tests.test_entity_demo_render
+  5 PASS (case1..case5), exit=0
+
+$ python -m market_research.tests.test_taxonomy_contract
+  3 PASS (case1 overlap=3, case2 phrase blocked, case3 empty hold)
+
+$ python -m market_research.tests.test_regime_decision_v12
+  4 PASS (case_a ~ case_d)
+
+$ python -m market_research.tests.test_graphrag_p0_vs_p1 2026-04
+  total_paths   P0 2 → P1 6
+  unique_trig   P0 2 → P1 4   (configured 4/9, active 4/6)
+  unique_tgt    P0 2 → P1 3   (configured 3/10, active 3/5)
+  avg_conf      P0 0.544 → P1 0.532
 ```
 
-기존 기능 회귀 0건, 신규 기능 15개 케이스 모두 통과.
+**집계**: 기존 회귀 3종 **10 케이스 모두 PASS**, 신규 3종 **15 케이스 모두
+PASS**. GraphRAG P0→P1 metric 회귀 수치 변동 없음.
 
 ---
 
@@ -460,11 +503,12 @@ avg_confidence  P0 0.544 → P1 0.532
 | 리스크 | 심각도 | 이유 | 다음 배치 |
 |--------|-------|------|-----------|
 | Unresolved phrase 대부분이 count=1 → propose_alias 후보 0건 | Low | 설계대로 (보수화 우선). 2주 이상 누적 뒤 재평가 | 누적 후 재검토 |
-| regime 판정식 실전 증거가 여전히 22 rows 뿐 (대부분 동일 날짜) | Med | 일일 배치가 규칙적으로 돌아야 의미 있는 14일 window 생김 | 운영 스케줄 정착 후 집계 재검토 |
+| regime 판정식 실전 증거가 여전히 `unique_dates_in_window=1` 수준 (같은 날짜 append 다수) | Med | 일일 배치가 규칙적으로 돌아야 의미 있는 14일 window 생김 | 운영 스케줄 정착 후 집계 재검토 |
 | Entity redesign이 3 demo에만 적용 — top_entities=5 설정에서도 media 5건 + graphnode 3건 = 8건 | Low | 설계대로 (demo 기반 회귀 안정성 우선) | 전면 entity redesign 시 graphnode 선정 기준 재정비 |
 | `_ASSET_TOPIC_MAP`이 7개 자산만 매핑 → "Related asset classes" 대부분 빈 값 | Low | v14에서 자산 매핑 테이블 확장 | 별도 배치 |
 | Related funds 라벨이 placeholder | Low | 지시서에서 미요구 — docs/entity_page_redesign §2 해결은 다음 배치 | 다음 배치 |
 | `regime_monitor`가 daily_update와 연동되지 않음 — 사람이 CLI 실행해야 함 | Low | 당장은 의도. Streamlit admin이나 cron 연동은 2주 뒤 재평가 | 별도 연동 배치 |
+| self-loop성 draft transmission path 노출 가능 (예: `유가 → 유가`) | Low | P1 dynamic target이 entity node와 가까울 때 draft evidence에 유사 self-loop 경로가 표시될 수 있음. 현재는 `07_Graph_Evidence`/Draft 섹션에만 격리되어 canonical 오염은 없고, draft badge + 경고 blockquote로 노출 의미도 명시됨 | target dedupe / path presentation cleanup 검토 (canonical 승격 금지 유지) |
 
 ---
 
@@ -497,4 +541,24 @@ avg_confidence  P0 0.544 → P1 0.532
 
 ---
 
-**총평: pass**
+**총평: packet 기준 pass-leaning.** 최종 pass는 코드 diff 및 §9 실행 증거
+재확인 전제. 방향성·범위 통제·고정 규칙 준수 모두 문서 기준으로는
+명료하지만, 이 패킷 자체는 review packet이지 code diff가 아니므로
+"final pass"를 단정하지 않는다.
+
+---
+
+## Revision note
+
+- **v13 → v13.1 (2026-04-17 14:55 KST)**:
+  총평 톤 조정 (pass → pass-leaning, packet 기준). regime_monitor 필드
+  분리 (`source_rows` / `window_rows` / `unique_dates_in_window` /
+  `malformed_skipped`; `total_days` 제거) 및 §7.2 수치 재측정. §5의 죽은
+  참조(`B. 로그 샘플`) → `§7.2` 교정. §9에 실제 실행 커맨드 + 핵심 출력 +
+  실행 환경 메타 추가. §10 리스크 표에 self-loop성 draft path 행 추가.
+  §1에 "packet 기준 판정 요청" 문구 추가.
+
+  코드 변경 (패킷 외부):
+  - `tools/regime_monitor.py`: 출력 필드 rename + `unique_dates_in_window`
+    계산 추가. 판정식 로직 무변경.
+  - `tests/test_regime_monitor.py`: 필드명 교체. 5/5 PASS 유지.

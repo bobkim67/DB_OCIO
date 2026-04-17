@@ -63,8 +63,8 @@ def test_case_1_empty_window_no_crash():
     mod.OUT_MD = tmp_dir / 'regime_monitor_summary.md'
     try:
         payload = mod.run(days=14)
-        if payload['total_rows_in_source'] != 0:
-            _fail('case1.empty_total', f'{payload["total_rows_in_source"]}')
+        if payload['source_rows'] != 0:
+            _fail('case1.empty_total', f'{payload["source_rows"]}')
         s = payload['summary']
         for key in ('shift_candidate_days', 'shift_confirmed_count',
                     'sentiment_flip_count', 'cooldown_block_count'):
@@ -88,10 +88,10 @@ def test_case_2_malformed_skipped():
     mod, oq, oj, om, tmp = _with_fake_quality_file(text)
     try:
         payload = mod.run(days=14)
-        if payload['malformed_rows'] != 1:
-            _fail('case2.malformed_count', f'{payload["malformed_rows"]}')
-        if payload['total_rows_in_source'] != 2:
-            _fail('case2.valid_rows_kept', f'{payload["total_rows_in_source"]}')
+        if payload['malformed_skipped'] != 1:
+            _fail('case2.malformed_count', f'{payload["malformed_skipped"]}')
+        if payload['source_rows'] != 2:
+            _fail('case2.valid_rows_kept', f'{payload["source_rows"]}')
         _pass('case2: malformed row skipped + counted')
     finally:
         _restore(mod, oq, oj, om)
@@ -119,18 +119,18 @@ def test_case_3_window_filter():
     try:
         # days=7 anchored at max_date (2026-04-16) → start = 2026-04-10
         payload = mod.run(days=7)
-        if payload['rows_in_window'] != 2:
+        if payload['window_rows'] != 2:
             _fail('case3.window_excludes_old',
-                  f'rows_in_window={payload["rows_in_window"]}')
+                  f'window_rows={payload["window_rows"]}')
         if payload['summary']['shift_confirmed_count'] != 1:
             _fail('case3.confirmed_in_window',
                   f'{payload["summary"]["shift_confirmed_count"]}')
 
         # days=90 → includes March row too
         payload2 = mod.run(days=90)
-        if payload2['rows_in_window'] != 3:
+        if payload2['window_rows'] != 3:
             _fail('case3.wide_window',
-                  f'rows_in_window={payload2["rows_in_window"]}')
+                  f'window_rows={payload2["window_rows"]}')
         _pass('case3: window filter --days respected')
     finally:
         _restore(mod, oq, oj, om)
@@ -194,7 +194,7 @@ def test_case_5_live_file_scan():
               f'summary={payload["summary"]["shift_confirmed_count"]} '
               f'vs direct={confirmed}')
     _pass(f'case5: live file scan consistent '
-          f'(confirmed={confirmed}, rows_in_window={payload["rows_in_window"]})')
+          f'(confirmed={confirmed}, window_rows={payload["window_rows"]})')
 
 
 def main():
