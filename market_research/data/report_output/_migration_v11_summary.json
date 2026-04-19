@@ -1,0 +1,23 @@
+{
+  "current": {
+    "before_topic_tags": [],
+    "before_non_taxonomy_count": 0,
+    "after_topic_tags": [
+      "지정학",
+      "물가_인플레이션"
+    ],
+    "unresolved": [
+      "단기 랠리와 장기 리스크의 불일치"
+    ]
+  },
+  "history_entries_normalized": 12,
+  "history_with_tags": 12,
+  "history_unresolved_only": 0,
+  "debate_pages_updated": 1,
+  "debate_pages_with_taxonomy_tags": 1,
+  "debate_pages_unresolved_only": 0,
+  "total_remapped_phrases": 21,
+  "total_unresolved_phrases": 10,
+  "remap_trace_rows_written": 31,
+  "remap_trace_file": "data\\report_output\\_taxonomy_remap_trace.jsonl"
+}
