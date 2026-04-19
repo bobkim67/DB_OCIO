@@ -60,18 +60,21 @@ Streamlit은 `session_state`에 이전 위젯 값을 유지하므로 **코드만
 - `tabs/admin.py`는 펀드 현황 + **debate workflow** (생성→검토→수정→승인). 전처리 로직 없음.
 - `prototype.py` 탭 구조: Overview / 편입종목 / 성과분석 / 매크로 / **운용보고** / **운용보고(전체)** / Admin.
 
-### Comment Engine v3 + 3-Tier 파이프라인
+### Comment Engine v3 + 3-Tier 파이프라인 (v12.1 최신)
 
 ```
 [외부 배치 — market_research]
   [일일 — daily_update.py]
   Step 0: 매크로 지표 (SCIP/FRED/NYFed/ECOS)
   Step 1: 뉴스 수집 (네이버 + Finnhub)
-  Step 2: 뉴스 분류 (Haiku 21주제)
+  Step 2: 뉴스 분류 (Haiku 14주제, TOPIC_TAXONOMY)
   Step 2.5: 정제 — dedupe → salience(bm_anomaly) → fallback
-  Step 3: GraphRAG 증분 (primary + stratified → TKG decay/merge/prune)
+  Step 2.6: Base wiki pages (01_Events ~ 04_Funds + 02_Entities graph nodes) ★v11+
+  Step 3: GraphRAG 증분 + transmission path P1 (alias + embed fallback) ★v12
   Step 4: MTD 델타 (토픽 카운트)
-  Step 5: regime_memory (shift 감지)
+  Step 5: regime canonical writer — multi-rule 판정식 + Canonical wiki 갱신 ★v10+
+          → _regime_quality.jsonl append
+          → 05_Regime_Canonical/current_regime.md + regime_history.md
 
   [월별]
   블로그 digest → enriched_digest_builder → 뉴스 벡터DB 교차검증
@@ -80,11 +83,13 @@ Streamlit은 `session_state`에 이전 위젯 값을 유지하므로 **코드만
 
   [CLI — report_cli.py]
   build --prepare: debate input package 생성 → report_output/{period}/{fund}.input.json
-  build: 대화형/자동 모드 — debate + 코멘트 생성 (CLI 직접 실행도 가능)
+  build: 대화형/자동 모드 — debate + 코멘트 생성
 
 [Streamlit Admin — tabs/admin.py]
-  debate 실행 버튼 → _run_debate_and_save() → report_store.save_draft()
-  → 후처리(sanitize) + evidence annotations + warning severity
+  debate 실행 버튼 → debate_service.run_debate_and_save()
+  → 후처리(sanitize) + evidence annotations
+  → report_store.save_draft()
+  → wiki.write_debate_memory_page() → 06_Debate_Memory/ (canonical regime 불변) ★v10+
   → admin 검토 textarea → draft 저장 / 최종 승인
   → report_store.approve_and_save_final() → .final.json
 
@@ -93,6 +98,36 @@ Streamlit은 `session_state`에 이전 위젯 값을 유지하므로 **코드만
   report_cache → PA 기여도 표시
   (draft/warning/evidence raw 미노출)
 ```
+
+### Wiki 2-Tier 구조 (v10+)
+
+```
+market_research/data/wiki/
+├── 00_Index/                     index.md (routing 순서)
+├── 01_Events/                    이벤트 base pages (pipeline_refine)
+├── 02_Entities/                  entity base pages — media + GraphRAG 상위 노드
+├── 03_Assets/                    asset base pages
+├── 04_Funds/                     fund base pages
+├── 05_Regime_Canonical/          ★ daily_update Step 5만 writer
+│   ├── current_regime.md         (topic_tags: exact taxonomy only)
+│   └── regime_history.md
+├── 06_Debate_Memory/             ★ debate_engine만 writer, provisional
+│   └── {period}_{fund}_{ts}.md
+└── 07_Graph_Evidence/            transmission path draft — canonical 승격 금지 (Phase 4+)
+    ├── {period}_transmission_paths_draft.md
+    └── transmission_paths_summary.md
+```
+
+조회 라우팅: `05_Regime_Canonical → 01~04 base → 06_Debate_Memory → 07_Graph_Evidence → raw`
+
+### Regime taxonomy contract (v11+) + 판정식 v12
+
+- `topic_tags`는 반드시 `TOPIC_TAXONOMY` 14개 label만 (exact). 서술형 phrase는 `narrative_description`으로 분리
+- 매핑 실패 phrase는 `_unresolved_tags` + `_taxonomy_remap_trace.jsonl` 기록 (억지 매핑 금지)
+- shift 판정: `coverage_current / coverage_today(core=top3) / sentiment_flip` 중 **2개 이상** 만족 시 candidate
+- sparse tags fallback: 0개 hold / 1개 flip 필수
+- cooldown 14일 + 3일 연속 규칙 → 확정
+- `decision_mode = multi_rule_v12`, `tag_match_mode = exact_taxonomy`
 
 ### 저장 구조 (report_output)
 
@@ -152,8 +187,9 @@ market_research/data/report_output/
 
 ### Known Issues
 
-- `NewsAPI` 무료 플랜 약관 위반 가능성 → 대체 소스 미구현.
-- evidence ref 오매핑률 누적 데이터 부족 (debate 2회+ 필요).
+- PHRASE_ALIAS 수작업 유지 부담 — `_taxonomy_remap_trace.jsonl` unresolved 누적 분석으로 반자동 보강 대기.
+- regime v12 판정식 false negative 방어 증거 시뮬 1건뿐 — 실전 2주 데이터 축적 필요.
+- `coverage_today=core_top3` 규칙이 tail 2개 완전 무시 — 실전 로그 측정 후 조정 검토.
 
 ### 해결 완료
 
@@ -165,11 +201,19 @@ market_research/data/report_output/
 - ~~evidence trace~~ → [ref:N] 프롬프트 + 파싱 유틸 + 누적 추적 체계
 - ~~vectorDB + GraphRAG 리빌드~~ → 4개월 완료
 - ~~아키텍처 정리~~ → 3-Tier (외부 배치/admin/client) + report_store + IO contract
+- ~~evidence ref 오매핑률 누적 데이터~~ → debate 재실행 2회 완료, `_evidence_quality.jsonl` 15건 누적
+- ~~regime_memory.json 쓰기 이중화~~ → v10에서 debate write 제거, canonical writer는 `daily_update._step_regime_check` 단일화
+- ~~topic_tags 서술형 phrase 유입~~ → v11에서 exact taxonomy contract 강제, `narrative_description` 필드 분리
+- ~~GraphRAG transmission path 중복/self-loop/오매칭~~ → v11 P0 (word-boundary + self-loop + pair당 1경로)
+- ~~GraphRAG P0 coverage 제한~~ → v12 P1 (dynamic trigger/target + alias dict + embedding fallback)
+- ~~regime 판정식 과민도 (단일 overlap)~~ → v12 multi-rule (coverage_current + coverage_today + sentiment_flip 중 2개 이상)
+- ~~coverage 분모 불일치~~ → v12.1 configured/active 두 지표 분리 명시
 
 ### TODO (P0 — 다음 세션)
 
-1. **debate 재실행 2회+** → `_evidence_quality.jsonl` 누적 기록 확보
-2. **pilot_checklist 13항목 전수 확인** → 전부 PASS 후 파일럿 시작
+1. **PHRASE_ALIAS 반자동 보강** — `_taxonomy_remap_trace.jsonl` unresolved 빈도 상위 N개를 후보 제시 + 수동 검토 루프
+2. **Entity page 전면 redesign** — `docs/entity_page_redesign.md` 기준, media 중심 → GraphRAG 노드 중심 교체 (v12.1에서 3건 demo 완료)
+3. **regime 판정식 실전 모니터링 2주** — daily_update 로그에서 false positive/negative 분포 확인 후 threshold 재조정
 
 ## Project Purpose
 

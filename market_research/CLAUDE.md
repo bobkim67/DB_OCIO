@@ -37,14 +37,15 @@ market_research/
 │   └── collect_news.bat           ← 월별 배치 (8단계 파이프라인)
 │
 ├── analyze/                       ← 분석 엔진
-│   ├── engine.py                  ← 21개 주제 태깅 + 진단 룰 + 패턴 DB
-│   ├── news_classifier.py         ← 21주제 + 13키 자산영향도 벡터 (Haiku)
-│   ├── graph_rag.py               ← 인과관계 그래프 (stratified sampling + Self-Regulating TKG)
+│   ├── engine.py                  ← 주제 태깅 + 진단 룰 + 패턴 DB
+│   ├── news_classifier.py         ← TOPIC_TAXONOMY (14) + 자산영향도 벡터 (Haiku)
+│   ├── graph_rag.py               ← 인과 그래프 + transmission path P0/P1
+│   ├── graph_vocab.py             ← ★v12 DRIVER/ASSET taxonomy + alias dict
 │   ├── blog_analyst.py            ← monygeek 관점 분석 (eurodollar school)
 │   └── news_vectordb.py           ← ChromaDB + hybrid_score(cosine+salience) 검색
 │
 ├── pipeline/                      ← 배치 파이프라인
-│   ├── daily_update.py            ← 일일 증분 (수집→분류→정제→GraphRAG→regime)
+│   ├── daily_update.py            ← Step 0~5 + Step 2.6 (base wiki) ★v10+
 │   ├── digest_builder.py          ← 블로그 월별 구조화 요약 (18주제, LLM-free)
 │   ├── enriched_digest_builder.py ← 블로그 digest ↔ 뉴스 벡터DB 교차검증
 │   ├── news_content_pool_builder.py ← 뉴스 클러스터링 + Haiku 요약
@@ -53,24 +54,52 @@ market_research/
 ├── report/                        ← 보고서 생성
 │   ├── comment_engine.py          ← BM/PA/프롬프트 빌드 + LLM 코멘트 (Opus/Sonnet)
 │   ├── cli.py                     ← 통합 CLI (build/list, 대화형/auto/edit/from-json)
-│   ├── debate_engine.py           ← 4인 debate + diversity guardrail + evidence 추적
+│   ├── debate_engine.py           ← 4인 debate + regime READ-ONLY (★v10: write 제거)
+│   ├── debate_service.py          ← draft 저장 + 06_Debate_Memory/ 페이지 생성
+│   ├── fund_comment_service.py    ← 펀드 코멘트 생성 (시장 debate + PA + 보유/거래)
 │   ├── timeseries_narrator.py     ← 시계열 내러티브 (z-score 세그먼트 + 뉴스 매칭)
 │   ├── report_service.py          ← 팩터 추출 + UI 오케스트레이션
 │   ├── report_store.py            ← draft/final 저장·로딩·상태 관리 (IO contract 구현)
 │   ├── numeric_guard.py           ← 수치 대조 (키워드 1순위 + abs>50 fallback)
 │   └── evidence_trace.py          ← [ref:N] 파싱 + article_id 매핑
 │
+├── wiki/                          ← ★v10+ canonical/draft wiki writer
+│   ├── paths.py                   ← 디렉토리 상수 (market_research/data/wiki/)
+│   ├── canonical.py               ← regime canonical writer + normalize (daily_update only)
+│   ├── debate_memory.py           ← 06_Debate_Memory/ writer (debate_engine only)
+│   ├── draft_pages.py             ← 01~04 base pages + entity graph linking
+│   ├── graph_evidence.py          ← 07_Graph_Evidence/ draft + summary
+│   └── taxonomy.py                ← ★v11 exact taxonomy contract + PHRASE_ALIAS + trace
+│
+├── tools/                         ← 운영 도구
+│   └── migrate_regime_v11.py      ← regime_memory + wiki 페이지 taxonomy 재정규화
+│
 ├── tests/                         ← 테스트
-│   └── ablation_test.py           ← 정제 효과 비교 (4조건 × 메트릭)
+│   ├── ablation_test.py
+│   ├── test_taxonomy_contract.py  ← ★v11 3 cases (exact / phrase reject / empty fallback)
+│   ├── test_regime_decision_v12.py ← ★v12 4 cases (false positive/negative 방어)
+│   └── test_graphrag_p0_vs_p1.py  ← ★v12 P0 vs P1 비교 리포트
 │
 ├── docs/                          ← 설계 문서
-│   ├── io_contract.md                 ← input/draft/final 스키마 정의
-│   ├── review_packet_v6.md            ← 파일럿 준비 보고서
-│   ├── pilot_checklist.md             ← 파일럿 체크리스트 13항목
-│   ├── upstream_refinement_review.md  ← 전체 정제 레이어 설계 리뷰
-│   └── cold_assessment.md             ← 냉정한 파이프라인 평가
+│   ├── io_contract.md                  ← input/draft/final 스키마
+│   ├── graphrag_transmission_paths_review.md  ← Phase 2/3 진단·설계
+│   ├── entity_page_redesign.md         ← ★v11 entity page 전면 redesign 설계
+│   ├── review_packet_v6~v12_1.md       ← 배치별 리뷰 패킷
+│   ├── pilot_checklist.md              ← 파일럿 체크리스트 13항목
+│   └── cold_assessment.md              ← 파이프라인 평가
 │
-├── data/                          ← .gitignore (뉴스, 벡터DB, 캐시 등)
+├── data/                          ← .gitignore
+│   ├── news/, monygeek/, insight_graph/, macro/, blog_insight/
+│   ├── regime_memory.json          (★machine SSOT — daily_update만 write)
+│   ├── report_output/
+│   │   ├── {period}/{fund}.(input|draft|final).json
+│   │   ├── _evidence_quality.jsonl
+│   │   ├── _regime_quality.jsonl              ★v10+ regime 판정 품질
+│   │   ├── _transmission_path_quality.jsonl   ★v11+ P0/P1 phase 기록
+│   │   ├── _transmission_path_quality_monthly.json ★v12
+│   │   ├── _taxonomy_remap_trace.jsonl        ★v12 alias/unresolved trace
+│   │   └── _migration_v11_summary.json
+│   └── wiki/                       ★v10+ canonical/draft 2-tier (paths.py 참조)
 └── CLAUDE.md
 ```
 
@@ -111,6 +140,18 @@ python -m market_research.tests.ablation_test --month 2026-03 2026-04
 
 # 월별 배치
 market_research/collect/collect_news.bat
+
+# ★v11+ taxonomy contract 테스트
+python -m market_research.tests.test_taxonomy_contract
+
+# ★v12 regime 판정식 테스트 (4 cases)
+python -m market_research.tests.test_regime_decision_v12
+
+# ★v12 GraphRAG P0 vs P1 비교 리포트
+python -m market_research.tests.test_graphrag_p0_vs_p1 2026-04
+
+# ★v11 regime migration (taxonomy 재정규화 + trace 수집)
+python -m market_research.tools.migrate_regime_v11
 ```
 
 ## Core Imports
@@ -135,48 +176,108 @@ from market_research.core.salience import (
 from market_research.report.comment_engine import build_report_prompt, load_bm_price_patterns
 from market_research.report.timeseries_narrator import build_report_narrative, build_debate_narrative
 from market_research.report.debate_engine import run_market_debate
+
+# Wiki canonical/draft writers (v10+)
+from market_research.wiki.canonical import (
+    update_canonical_regime, normalize_regime_memory,
+)
+from market_research.wiki.debate_memory import write_debate_memory_page
+from market_research.wiki.draft_pages import refresh_base_pages_after_refine
+from market_research.wiki.graph_evidence import (
+    write_transmission_paths_draft, write_transmission_paths_summary,
+)
+
+# Taxonomy contract (v11+)
+from market_research.wiki.taxonomy import (
+    TOPIC_TAXONOMY, TAXONOMY_SET, PHRASE_ALIAS,
+    extract_taxonomy_tags, validate_tags, write_remap_trace,
+)
+
+# Graph P1 vocab (v12+)
+from market_research.analyze.graph_vocab import (
+    DRIVER_TAXONOMY, ASSET_TAXONOMY,
+    TRIGGER_ALIAS, TARGET_ALIAS,
+    aliases_for_trigger, aliases_for_target,
+)
 ```
 
-## Pipeline Flow
+## Pipeline Flow (v12.1 최신)
 
 ```
 [수집]  collect/macro_data.py → data/news/{YYYY-MM}.json, data/macro/indicators.csv
         collect/naver_blog.py → data/monygeek/posts.json
 
-[분류]  analyze/news_classifier.py → 21주제 태깅 + 13키 자산영향도 (Haiku)
+[분류]  analyze/news_classifier.py → TOPIC_TAXONOMY(14개) 태깅 + 자산영향도 (Haiku)
 
 [정제]  core/dedupe.py → article_id + dedup_group + event_group (TOPIC_NEIGHBORS 교차)
         core/salience.py → event_salience(bm_anomaly+3단계source+corroboration)
                          → asset_relevance + fallback_classify (키워드 필수)
-        ※ pipeline/daily_update.py Step 2.5에서 월별 전체 기사 대상 실행
+        ※ pipeline/daily_update.py Step 2.5 월별 전체 기사 대상
 
-[분석]  analyze/graph_rag.py → stratified sample(300~500건) → 엔티티 추출(Haiku)
-                              → 인과추론(Sonnet) → salience 가중 엣지 → Self-Regulating TKG
-        analyze/news_vectordb.py → ChromaDB (hybrid_score = cosine + salience*0.3)
-        analyze/blog_analyst.py → 블로거 관점 (eurodollar school)
+[base wiki]  wiki/draft_pages.py → 01_Events + 02_Entities(media + graph nodes)
+                                  + 03_Assets + 04_Funds + index
+             ※ Step 2.6, canonical regime/debate narrative 포함 금지
+
+[분석]  analyze/graph_rag.py → stratified sample → 엔티티/인과 → Self-Regulating TKG
+                              → precompute_transmission_paths(phase='P1')
+                                 = dynamic trigger/target + alias dict + embed fallback
+        analyze/news_vectordb.py → ChromaDB (hybrid_score)
+        analyze/blog_analyst.py → 블로거 관점
+
+[graph evidence] wiki/graph_evidence.py → 07_Graph_Evidence/
+                     transmission_paths_{period}_draft.md + transmission_paths_summary.md
+                     + _transmission_path_quality_monthly.json
+                 ※ canonical 승격 금지 (Phase 4+)
+
+[regime]  pipeline/daily_update.py Step 5: _step_regime_check (canonical writer 단일)
+          → normalize_regime_memory() → exact taxonomy contract 강제
+          → multi-rule 판정식 (coverage_current / coverage_today=core_top3 / sentiment_flip)
+             중 ≥2 만족 + sparse fallback
+          → consecutive 3일 + cooldown 14일 → shift_confirmed
+          → update_canonical_regime() → 05_Regime_Canonical/*.md 재생성
+          → _regime_quality.jsonl append
 
 [보고]  report/debate_engine.py → primary필터 + diversity guardrail(토픽5/이벤트2)
                                 → 4인 debate → Opus 종합 → evidence_ids 추적
+                                → regime_memory.json READ-ONLY (write 제거, v10+)
+        report/debate_service.py → sanitize + save_draft
+                                → write_debate_memory_page() → 06_Debate_Memory/
         report/timeseries_narrator.py → BM 시계열 + 뉴스 매칭 내러티브
         report/comment_engine.py → 프롬프트 빌드 → LLM 코멘트
         report/cli.py → 대화형/자동/수정 모드 오케스트레이션
 ```
 
-## daily_update Step 구조
+## daily_update Step 구조 (v12.1)
 
 ```
 Step 0: 매크로 지표 수집 (SCIP/FRED/NYFed/ECOS)
-Step 1: 뉴스 수집 (네이버 금융 + Finnhub)
-Step 2: 뉴스 분류 (Haiku, 21개 주제)
+Step 1: 뉴스 수집 (네이버 금융 + Finnhub + NewsAPI)
+Step 1.5/1.6: 블로그 수집 + 인사이트 빌드 (Haiku 인과분석)
+Step 2: 뉴스 분류 (Haiku, TOPIC_TAXONOMY 14주제)
 Step 2.5: 정제 — _step_refine(month_str)
   └ load_bm_anomaly_dates(y, m) → z>1.5, 상위 7일 캡
   └ process_dedupe_and_events(articles) → article_id + dedup + event cluster
   └ compute_salience_batch(articles, bm_anomaly) → 3단계 source + bm_overlap
   └ fallback_classify_uncategorized(articles, bm_anomaly) → 키워드 필수
   └ safe_write_news_json() → 월별 JSON 덮어쓰기
-Step 3: GraphRAG 증분 (primary 기사 → 엔티티/인과 → TKG decay/merge/prune)
+Step 2.6: Base wiki pages (★v10+)
+  └ refresh_base_pages_after_refine(month_str)
+  └ 01_Events (top salience events) + 02_Entities (media + graph 상위 노드)
+     + 03_Assets + 04_Funds + 00_Index
+  └ regime/debate narrative / transmission path 포함 금지
+Step 3: GraphRAG 증분 + transmission path P1 (★v12)
+  └ add_incremental_edges → TKG decay/merge/recompute/prune
+  └ precompute_transmission_paths(phase='P1')
+     = _select_dynamic_triggers + _select_dynamic_targets + alias 루프 + embed fallback
+  └ write_transmission_paths_draft + write_transmission_paths_summary
 Step 4: MTD 델타 요약 (LLM 불필요, 토픽 카운트 집계)
-Step 5: regime_memory 업데이트 (shift 감지 3일 연속)
+Step 5: regime canonical writer (★v10+ 단일 writer)
+  └ normalize_regime_memory → taxonomy contract 강제
+  └ multi-rule 판정식 (coverage_current / coverage_today(core_top3) / sentiment_flip)
+     + sparse fallback (0개 hold, 1개 flip 필수)
+  └ consecutive 3일 + cooldown 14일 → shift_confirmed
+  └ update_canonical_regime → 05_Regime_Canonical/*.md
+  └ _regime_quality.jsonl append (decision_mode=multi_rule_v12, tag_match_mode=exact_taxonomy)
 ```
 
 ## Upstream Refinement Layer (2026-04-09, V2 taxonomy)
