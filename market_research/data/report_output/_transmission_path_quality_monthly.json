@@ -1,0 +1,24 @@
+[
+  {
+    "month": "2026-04",
+    "phase": "P1",
+    "promoted_to_canonical": false,
+    "total_paths": 6,
+    "unique_triggers": 4,
+    "unique_targets": 3,
+    "trigger_coverage": 0.667,
+    "target_coverage": 0.6,
+    "unmatched_triggers": [
+      "테크_AI_반도체",
+      "통화정책"
+    ],
+    "unmatched_targets": [
+      "해외주식",
+      "환율"
+    ],
+    "avg_confidence": 0.532,
+    "node_count": 274,
+    "edge_count": 252,
+    "generated_at": "2026-04-17T13:24:14"
+  }
+]

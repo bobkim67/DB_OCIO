@@ -322,10 +322,35 @@ JSON 배열만 응답:
 # 3. 전이경로 탐색 (BFS)
 # ═══════════════════════════════════════════════════════
 
+def _matches_keyword(node_label: str, keyword: str) -> bool:
+    """P0: word-boundary 매칭. '금'이 '자금'·'금통위'에 매칭되는 false positive 제거.
+
+    규칙 (순서대로 시도):
+      1. 완전 일치 (단어/토큰 단위)
+      2. 토큰이 keyword를 접두/접미로 포함하되 길이 차이가 작을 때 (파생형 허용)
+      3. keyword 길이가 3자 이상이고 토큰이 정확히 keyword + 형용사형일 때
+    """
+    if not keyword:
+        return False
+    norm = node_label.replace('·', '_').replace('-', '_').replace(' ', '_')
+    tokens = [t for t in norm.split('_') if t]
+    kw = keyword.strip()
+    for tok in tokens:
+        if tok == kw:
+            return True
+        # 파생형 허용 제한: keyword가 2자 이상 AND 토큰 길이 <= keyword + 3
+        if len(kw) >= 2 and len(tok) <= len(kw) + 3:
+            if tok.startswith(kw) or tok.endswith(kw):
+                return True
+    return False
+
+
 def query_transmission_path(graph: dict, from_entity: str, to_entity: str,
                             max_depth: int = 5) -> list[dict]:
     """
     BFS로 from_entity → to_entity 전이경로 탐색.
+    P0 적용: word-boundary 매칭 + self-loop 필터.
+
     Returns: [{"path": [node1, node2, ...], "confidence": 0.x}, ...]
     """
     nodes = graph.get('nodes', {})
@@ -336,12 +361,16 @@ def query_transmission_path(graph: dict, from_entity: str, to_entity: str,
     for e in edges:
         adj[e['from']].append((e['to'], e.get('weight', 0.5)))
 
-    from_id = _normalize_node_id(from_entity)
-    to_id = _normalize_node_id(to_entity)
+    from_kw = _normalize_node_id(from_entity)
+    to_kw = _normalize_node_id(to_entity)
 
-    # 부분 매칭: from_entity/to_entity를 포함하는 노드 찾기
-    from_candidates = [n for n in nodes if from_id.lower() in n.lower()]
-    to_candidates = [n for n in nodes if to_id.lower() in n.lower()]
+    # P0: word-boundary 매칭 (substring → 토큰 단위)
+    from_candidates = [n for n, meta in nodes.items()
+                        if _matches_keyword(meta.get('label', n), from_kw)
+                        or _matches_keyword(n, from_kw)]
+    to_candidates = [n for n, meta in nodes.items()
+                      if _matches_keyword(meta.get('label', n), to_kw)
+                      or _matches_keyword(n, to_kw)]
 
     if not from_candidates or not to_candidates:
         return []
@@ -349,8 +378,11 @@ def query_transmission_path(graph: dict, from_entity: str, to_entity: str,
     all_paths = []
     for start in from_candidates:
         for end in to_candidates:
+            # P0: self-loop 제거 — 같은 노드 + 같은 keyword 세트면 스킵
             if start == end:
                 continue
+            if _matches_keyword(start, to_kw) and _matches_keyword(end, from_kw):
+                continue   # 개념적 self-loop
             paths = _bfs_all_paths(adj, start, end, max_depth)
             for path, conf in paths:
                 all_paths.append({
@@ -389,27 +421,240 @@ def _bfs_all_paths(adj: dict, start: str, end: str, max_depth: int) -> list:
     return found
 
 
-def precompute_transmission_paths(graph: dict) -> list[dict]:
-    """주요 자산군 간 전이경로 사전 계산"""
-    asset_keywords = ['국내주식', '국내채권', '해외주식', '해외채권', '원자재', '통화',
-                       'KOSPI', 'SP500', '금리', '환율', '유가', '금']
-    trigger_keywords = ['달러_부족', '금리_상승', '유가_급등', '인플레', '위안화', '엔화',
-                         '관세', '지정학', '레포']
+# P0 레거시 키워드 (quality log의 호환 필드용)
+_TRIGGER_KEYWORDS = ['달러_부족', '금리_상승', '유가_급등', '인플레', '위안화', '엔화',
+                      '관세', '지정학', '레포']
+_ASSET_KEYWORDS = ['국내주식', '국내채권', '해외주식', '해외채권', '원자재', '통화',
+                    'KOSPI', 'SP500', '금리', '환율', '유가', '금']
 
-    paths = []
-    for trigger in trigger_keywords:
-        for asset in asset_keywords:
-            results = query_transmission_path(graph, trigger, asset, max_depth=4)
-            for r in results[:2]:  # 트리거당 최대 2경로
-                if r['confidence'] > 0.1:
-                    paths.append({
-                        'trigger': trigger,
-                        'target': asset,
-                        **r,
-                    })
 
-    print(f'  전이경로 사전계산: {len(paths)}개')
+def _query_with_aliases(graph: dict, canon: str, aliases: list[str],
+                        role: str, max_depth: int = 4,
+                        embed_fallback=None) -> list[dict]:
+    """canon + aliases 전체를 시도해 path 후보 수집. role='from' or 'to'."""
+    collected: list[dict] = []
+    for alias in aliases:
+        if role == 'from':
+            results = query_transmission_path(graph, alias, canon, max_depth=max_depth)
+        else:
+            results = query_transmission_path(graph, canon, alias, max_depth=max_depth)
+        collected.extend(results)
+    # Embedding fallback — 기본(alias) 매칭 실패 시만 시도
+    if not collected and embed_fallback is not None:
+        extra = embed_fallback(graph, canon, role)
+        collected.extend(extra)
+    return collected
+
+
+def _select_dynamic_triggers(graph: dict, top_n_salience: int = 5) -> list[str]:
+    """drivers + 월별 salience 상위 노드 → 해당 월 그래프에 실제 존재하는 canonical만 반환."""
+    from market_research.analyze.graph_vocab import (
+        DRIVER_TAXONOMY, TRIGGER_ALIAS, aliases_for_trigger,
+    )
+    nodes = graph.get('nodes', {})
+    active: list[str] = []
+    for canon in DRIVER_TAXONOMY:
+        for alias in aliases_for_trigger(canon):
+            if any(_matches_keyword(n_meta.get('label', n), alias) or
+                   _matches_keyword(n, alias)
+                   for n, n_meta in nodes.items()):
+                active.append(canon)
+                break
+    return active
+
+
+def _select_dynamic_targets(graph: dict) -> list[str]:
+    """asset taxonomy 중 현재 그래프에 존재하는 canonical만 반환."""
+    from market_research.analyze.graph_vocab import ASSET_TAXONOMY, aliases_for_target
+    nodes = graph.get('nodes', {})
+    active: list[str] = []
+    for canon in ASSET_TAXONOMY:
+        for alias in aliases_for_target(canon):
+            if any(_matches_keyword(n_meta.get('label', n), alias) or
+                   _matches_keyword(n, alias)
+                   for n, n_meta in nodes.items()):
+                active.append(canon)
+                break
+    return active
+
+
+def precompute_transmission_paths(graph: dict, quality_log_path=None,
+                                   phase: str = 'P1') -> list[dict]:
+    """주요 자산군 간 전이경로 사전 계산.
+
+    phase='P0' : 하드코딩 9×12 vocabulary (레거시)
+    phase='P1' : dynamic trigger/target + alias dict + embedding fallback
+
+    공통:
+      - word-boundary 매칭 (query_transmission_path 내부)
+      - self-loop 제거 (trigger ≈ target이면 skip)
+      - pair당 1경로 (confidence 최상위만 채택)
+      - quality log append
+    """
+    from market_research.analyze.graph_vocab import (
+        aliases_for_trigger, aliases_for_target,
+        DRIVER_TAXONOMY, ASSET_TAXONOMY,
+    )
+    if phase == 'P0':
+        triggers = _TRIGGER_KEYWORDS
+        targets = _ASSET_KEYWORDS
+        alias_t = {t: [t] for t in triggers}
+        alias_a = {a: [a] for a in targets}
+    else:
+        triggers = _select_dynamic_triggers(graph)
+        targets = _select_dynamic_targets(graph)
+        alias_t = {t: aliases_for_trigger(t) for t in triggers}
+        alias_a = {a: aliases_for_target(a) for a in targets}
+
+    # P1-3: embedding fallback (선택적; 실패 시 no-op)
+    embed_fallback = _build_embed_fallback(graph) if phase == 'P1' else None
+
+    paths: list[dict] = []
+    pairs_total = 0
+    pairs_with_path = 0
+    self_loops_skipped = 0
+    triggers_matched: set[str] = set()
+    targets_matched: set[str] = set()
+    embed_fallback_used = 0
+
+    for trigger in triggers:
+        for target in targets:
+            pairs_total += 1
+            if trigger == target:
+                self_loops_skipped += 1
+                continue
+            # alias 전체 시도 (P1) — P0에서는 단일 키워드
+            from_candidates = alias_t[trigger]
+            to_candidates = alias_a[target]
+
+            # 개념 self-loop (alias 간 겹침)
+            if set(from_candidates) & set(to_candidates):
+                self_loops_skipped += 1
+                continue
+
+            candidates: list[dict] = []
+            for fa in from_candidates:
+                for ta in to_candidates:
+                    results = query_transmission_path(graph, fa, ta, max_depth=4)
+                    candidates.extend(results)
+
+            # Embedding fallback — alias로 못 찾은 pair만
+            if not candidates and embed_fallback is not None:
+                extra = embed_fallback(graph, trigger, target)
+                if extra:
+                    embed_fallback_used += 1
+                    candidates.extend(extra)
+
+            if not candidates:
+                continue
+            candidates.sort(key=lambda x: -x['confidence'])
+            top = candidates[0]
+            if top['confidence'] <= 0.1:
+                continue
+            pairs_with_path += 1
+            triggers_matched.add(trigger)
+            targets_matched.add(target)
+            paths.append({
+                'trigger': trigger,      # canonical label
+                'target': target,
+                **top,
+            })
+
+    # quality log
+    if quality_log_path is not None:
+        try:
+            from datetime import date as _date
+            import json as _json
+            q = {
+                'date': _date.today().isoformat(),
+                'phase': phase,
+                'tag_match_mode': 'word_boundary+alias' if phase == 'P1' else 'word_boundary',
+                'pairs_total': pairs_total,
+                'pairs_with_path': pairs_with_path,
+                'self_loops_skipped': self_loops_skipped,
+                'total_paths': len(paths),
+                'unique_triggers': len(triggers_matched),
+                'unique_targets': len(targets_matched),
+                'triggers_active': sorted(triggers_matched),
+                'targets_active': sorted(targets_matched),
+                'unmatched_triggers': sorted(set(triggers) - triggers_matched),
+                'unmatched_targets': sorted(set(targets) - targets_matched),
+                'avg_confidence': round(
+                    sum(p['confidence'] for p in paths) / len(paths), 3) if paths else 0,
+                'embed_fallback_used': embed_fallback_used,
+            }
+            with open(quality_log_path, 'a', encoding='utf-8') as fh:
+                fh.write(_json.dumps(q, ensure_ascii=False) + '\n')
+        except Exception as exc:
+            print(f'  [경고] transmission path quality log 실패: {exc}')
+
+    print(f'  전이경로 사전계산({phase}): {len(paths)}개 '
+          f'(trigger {len(triggers_matched)}/{len(triggers)}, '
+          f'target {len(targets_matched)}/{len(targets)}, '
+          f'self-loop skip {self_loops_skipped}, embed fb {embed_fallback_used})')
     return paths
+
+
+# ══════════════════════════════════════════
+# P1-3: Embedding fallback (lightweight)
+# ══════════════════════════════════════════
+
+_EMBED_MODEL = None  # 지연 로드 (module-level singleton)
+
+
+def _build_embed_fallback(graph: dict, similarity_threshold: float = 0.7):
+    """closure를 반환. 실제 embedding 모델이 없으면 None 반환.
+
+    경량 구현: sentence_transformers 로드 실패 시 None → fallback 비활성.
+    """
+    try:
+        global _EMBED_MODEL
+        if _EMBED_MODEL is None:
+            from sentence_transformers import SentenceTransformer
+            _EMBED_MODEL = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+    except Exception as exc:
+        print(f'  [info] embedding fallback 비활성 ({exc.__class__.__name__})')
+        return None
+
+    model = _EMBED_MODEL
+
+    # 노드 label 임베딩 사전계산
+    node_ids = list(graph.get('nodes', {}).keys())
+    labels = [graph['nodes'][n].get('label', n) for n in node_ids]
+    try:
+        import numpy as np
+        node_embs = model.encode(labels, show_progress_bar=False, convert_to_numpy=True)
+    except Exception as exc:
+        print(f'  [info] embedding 계산 실패 — fallback 비활성 ({exc})')
+        return None
+
+    def _fallback(g, from_canon: str, to_canon: str) -> list[dict]:
+        import numpy as np
+        # 가장 가까운 노드 찾기 — from/to 각각
+        q_from = model.encode([from_canon], show_progress_bar=False, convert_to_numpy=True)[0]
+        q_to = model.encode([to_canon], show_progress_bar=False, convert_to_numpy=True)[0]
+        # cosine sim
+        def _cos(a, b):
+            na = np.linalg.norm(a); nb = np.linalg.norm(b)
+            return float(a @ b / (na * nb + 1e-9))
+        sims_from = [(_cos(q_from, node_embs[i]), node_ids[i]) for i in range(len(node_ids))]
+        sims_to = [(_cos(q_to, node_embs[i]), node_ids[i]) for i in range(len(node_ids))]
+        sims_from.sort(reverse=True)
+        sims_to.sort(reverse=True)
+        # threshold 이상인 상위 1개씩
+        best_from = next((n for s, n in sims_from if s >= similarity_threshold), None)
+        best_to = next((n for s, n in sims_to if s >= similarity_threshold), None)
+        if not best_from or not best_to or best_from == best_to:
+            return []
+        # 해당 노드로 BFS
+        paths = query_transmission_path(g, best_from, best_to, max_depth=4)
+        # embedding 매칭이므로 confidence 감쇠
+        for p in paths:
+            p['confidence'] = round(p['confidence'] * 0.7, 3)
+            p['_via'] = 'embedding_fallback'
+        return paths
+
+    return _fallback
 
 
 # ═══════════════════════════════════════════════════════
@@ -580,8 +825,10 @@ def build_insight_graph(year: int, month: int, include_news: bool = True) -> dic
     prune_graph(graph)
     print(f'  prune 후: {len(graph["nodes"])} 노드, {len(graph["edges"])} 엣지')
 
-    # Step 3: 전이경로 사전 계산
-    graph['transmission_paths'] = precompute_transmission_paths(graph)
+    # Step 3: 전이경로 사전 계산 (P0 적용) + quality log
+    _q_log = BASE_DIR / 'data' / 'report_output' / '_transmission_path_quality.jsonl'
+    _q_log.parent.mkdir(parents=True, exist_ok=True)
+    graph['transmission_paths'] = precompute_transmission_paths(graph, quality_log_path=_q_log)
 
     # Step 4: 메타데이터 + 저장
     graph['metadata'] = {
@@ -597,6 +844,17 @@ def build_insight_graph(year: int, month: int, include_news: bool = True) -> dic
     out_file = GRAPH_DIR / f'{month_str}.json'
     out_file.write_text(json.dumps(graph, ensure_ascii=False, indent=2), encoding='utf-8')
     print(f'  저장: {out_file}')
+
+    # Step 4.5: draft evidence page + summary (07_Graph_Evidence/)
+    try:
+        from market_research.wiki.graph_evidence import (
+            write_transmission_paths_draft, write_transmission_paths_summary,
+        )
+        draft_file = write_transmission_paths_draft(graph, month_str)
+        summary_md, _ = write_transmission_paths_summary(graph, month_str, phase='P1')
+        print(f'  [wiki] draft evidence: {draft_file.name}, summary: {summary_md.name}')
+    except Exception as exc:
+        print(f'  [경고] draft evidence 생성 실패: {exc}')
     print(f'  요약: {graph["metadata"]}')
 
     return graph
@@ -645,11 +903,24 @@ def add_incremental_edges(year: int, month: int, new_articles: list[dict]) -> di
     recompute_scores(graph)
     prune_graph(graph)
 
-    # 전이경로 갱신 (debate가 최신 경로를 참조하도록)
-    graph['transmission_paths'] = precompute_transmission_paths(graph)
+    # 전이경로 갱신 (debate가 최신 경로를 참조하도록) + P0 quality log
+    _q_log = BASE_DIR / 'data' / 'report_output' / '_transmission_path_quality.jsonl'
+    _q_log.parent.mkdir(parents=True, exist_ok=True)
+    graph['transmission_paths'] = precompute_transmission_paths(graph, quality_log_path=_q_log)
 
     # 저장
     graph_file.write_text(json.dumps(graph, ensure_ascii=False, indent=2), encoding='utf-8')
+
+    # draft evidence page + summary (07_Graph_Evidence/)
+    try:
+        from market_research.wiki.graph_evidence import (
+            write_transmission_paths_draft, write_transmission_paths_summary,
+        )
+        write_transmission_paths_draft(graph, month_str)
+        write_transmission_paths_summary(graph, month_str, phase='P1')
+    except Exception as exc:
+        print(f'  [경고] draft evidence 생성 실패: {exc}')
+
     return graph
 
 
