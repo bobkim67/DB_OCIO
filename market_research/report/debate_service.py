@@ -483,6 +483,8 @@ def run_debate_and_save(mode: str, year: int, period_num: int,
         'evidence_count': len(evidence_ids),
     }
 
+    debate_interp = result.get('debate_narrative', {}) or {}
+
     draft_data = {
         'fund_code': fund_code,
         'period': period_key,
@@ -493,6 +495,9 @@ def run_debate_and_save(mode: str, year: int, period_num: int,
         'consensus_points': synthesis.get('consensus_points', []),
         'disagreements': synthesis.get('disagreements', []),
         'tail_risks': synthesis.get('tail_risks', []),
+        'debate_narrative': debate_interp.get('debate_narrative', ''),
+        'canonical_regime_snapshot': debate_interp.get('canonical_snapshot', {}),
+        'diverges_from_canonical': debate_interp.get('diverges_from_canonical', False),
         'generated_at': result.get('debated_at', time.strftime('%Y-%m-%dT%H:%M:%S')),
         'model': 'claude-opus-4-6',
         'cost_usd': 0.34,
@@ -518,5 +523,14 @@ def run_debate_and_save(mode: str, year: int, period_num: int,
         'critical_warnings': warning_counts['critical'],
     }
     append_evidence_quality(eq_record)
+
+    # 06_Debate_Memory/ 페이지 생성 (canonical regime은 건드리지 않음)
+    try:
+        from market_research.wiki.debate_memory import write_debate_memory_page
+        regime_file = Path(__file__).resolve().parent.parent / 'data' / 'regime_memory.json'
+        wiki_path = write_debate_memory_page(draft_data, regime_file)
+        print(f'  [wiki] debate memory 기록: {wiki_path.name}')
+    except Exception as exc:
+        print(f'  [wiki] debate memory 기록 실패: {exc}')
 
     return draft_data

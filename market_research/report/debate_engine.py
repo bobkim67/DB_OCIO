@@ -632,11 +632,25 @@ def _load_regime_memory() -> dict:
     }
 
 
-def _update_regime_memory(agent_responses: dict, year: int, month: int):
-    """에이전트 합의에서 Haiku로 지배적 내러티브 추출 -> regime 업데이트"""
-    regime = _load_regime_memory()
+def _summarize_debate_narrative(agent_responses: dict) -> dict:
+    """에이전트 합의에서 Haiku로 debate 시점의 해석 narrative를 생성.
 
-    # 4인의 key_points를 Haiku로 요약하여 지배적 내러티브 추출
+    **regime_memory.json을 수정하지 않음.** canonical regime 확정은
+    `daily_update.py::_step_regime_check` 만 수행한다. 여기서는 debate의
+    interpretation만 반환하고, 호출자는 이를 06_Debate_Memory/ wiki 페이지로
+    저장해야 한다.
+
+    Returns
+    -------
+    dict with keys:
+      - debate_narrative: str (이번 debate의 해석)
+      - canonical_snapshot: dict (debate 시점 canonical regime 복사본, 읽기 전용)
+      - diverges_from_canonical: bool
+    """
+    canonical = _load_regime_memory()
+    canonical_current = canonical.get('current', {})
+    canonical_narr = canonical_current.get('dominant_narrative', '')
+
     all_points = []
     for agent, resp in agent_responses.items():
         name = AGENT_PERSONAS.get(agent, {}).get('name', agent)
@@ -657,42 +671,25 @@ def _update_regime_memory(agent_responses: dict, year: int, month: int):
             )
             new_narrative = _call_llm(
                 'claude-haiku-4-5-20251001', '', prompt, max_tokens=50,
-                log_label='regime_narrative',
+                log_label='debate_narrative',
             ).strip('"\'').strip()
         except Exception:
             new_narrative = '분석 중'
 
-    current = regime.get('current', {})
-    prev_narrative = current.get('dominant_narrative', '')
-
-    date_str = f'{year}-{month:02d}'
-    if prev_narrative and prev_narrative != new_narrative:
-        regime['previous'] = {
-            'dominant_narrative': prev_narrative,
-            'ended': date_str,
-        }
-        regime['shift_detected'] = True
-        regime['shift_description'] = f'{prev_narrative} -> {new_narrative}'
-        regime['history'].append({
-            'narrative': prev_narrative,
-            'period': f'{current.get("since", "?")} ~ {date_str}',
-        })
-        regime['current'] = {
-            'dominant_narrative': new_narrative,
-            'weeks': 1,
-            'since': date_str,
-        }
-    else:
-        regime['current']['dominant_narrative'] = new_narrative
-        regime['current']['weeks'] = current.get('weeks', 0) + 1
-        if not regime['current'].get('since'):
-            regime['current']['since'] = date_str
-        regime['shift_detected'] = False
-
-    regime['history'] = regime['history'][-12:]
-
-    REGIME_FILE.write_text(json.dumps(regime, ensure_ascii=False, indent=2), encoding='utf-8')
-    return regime
+    return {
+        'debate_narrative': new_narrative,
+        'canonical_snapshot': {
+            'current': {
+                'dominant_narrative': canonical_narr,
+                'narrative_description': canonical_current.get('narrative_description', ''),
+                'topic_tags': canonical_current.get('topic_tags', []),
+                'since': canonical_current.get('since', ''),
+                'direction': canonical_current.get('direction', 'neutral'),
+                'weeks': canonical_current.get('weeks', 0),
+            }
+        },
+        'diverges_from_canonical': bool(canonical_narr and new_narrative != canonical_narr),
+    }
 
 
 # ===================================================================
@@ -731,12 +728,13 @@ def run_market_debate(year: int, month: int) -> dict:
                 }
                 print(f'    {AGENT_PERSONAS[agent]["name"]}: 실패 - {exc}')
 
-    # Regime memory 업데이트
-    regime = _update_regime_memory(agent_responses, year, month)
-    if regime.get('shift_detected'):
-        print(f'  레짐 전환 감지: {regime["shift_description"]}')
+    # Debate 해석 narrative (canonical regime 덮어쓰지 않음 — 읽기만)
+    debate_interp = _summarize_debate_narrative(agent_responses)
+    if debate_interp.get('diverges_from_canonical'):
+        print(f'  debate 해석: {debate_interp["debate_narrative"]} '
+              f'(canonical `{debate_interp["canonical_snapshot"]["dominant_narrative"]}`와 상이)')
     else:
-        print(f'  레짐: {regime["current"]["dominant_narrative"]}')
+        print(f'  debate 해석: {debate_interp["debate_narrative"]}')
 
     # Opus 종합 (시장 전체)
     print(f'  Opus 종합 중...')
@@ -749,7 +747,7 @@ def run_market_debate(year: int, month: int) -> dict:
         'debated_at': time.strftime('%Y-%m-%dT%H:%M:%S'),
         'agents': agent_responses,
         'synthesis': synthesis,
-        'regime': regime,
+        'debate_narrative': debate_interp,
         '_evidence_ids': context.get('_evidence_ids', []),
     }
 
@@ -854,9 +852,12 @@ def run_quarterly_debate(year: int, quarter: int) -> dict:
                 }
                 print(f'    {AGENT_PERSONAS[agent]["name"]}: 실패 - {exc}')
 
-    regime = _update_regime_memory(agent_responses, year, months[-1])
-    if regime.get('shift_detected'):
-        print(f'  레짐 전환 감지: {regime["shift_description"]}')
+    debate_interp = _summarize_debate_narrative(agent_responses)
+    if debate_interp.get('diverges_from_canonical'):
+        print(f'  debate 해석: {debate_interp["debate_narrative"]} '
+              f'(canonical `{debate_interp["canonical_snapshot"]["dominant_narrative"]}`와 상이)')
+    else:
+        print(f'  debate 해석: {debate_interp["debate_narrative"]}')
 
     print(f'  Opus 종합 중...')
     synthesis = _synthesize_debate(agent_responses, None, merged_context)
@@ -869,7 +870,7 @@ def run_quarterly_debate(year: int, quarter: int) -> dict:
         'debated_at': time.strftime('%Y-%m-%dT%H:%M:%S'),
         'agents': agent_responses,
         'synthesis': synthesis,
-        'regime': regime,
+        'debate_narrative': debate_interp,
         '_evidence_ids': all_evidence_ids,
     }
 
