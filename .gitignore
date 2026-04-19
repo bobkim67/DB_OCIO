@@ -19,3 +19,6 @@ market_research/devlog/
 General_Backtest/.RData
 MP_monitoring/.RData
 MP_monitoring/shiny-server-1.5.22.1017-amd64.deb
+
+# Backup files (수동 백업용, 커밋 금지)
+*.bak
