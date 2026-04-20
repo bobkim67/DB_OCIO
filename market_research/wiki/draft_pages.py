@@ -147,91 +147,36 @@ def _related_asset_classes_for(label: str) -> list[str]:
     return out
 
 
-def _graph_adjacency_for(node_id: str | None,
-                         edges: list[dict] | None,
-                         limit: int = 5) -> list[dict]:
-    if not node_id or not edges:
-        return []
-    out: list[dict] = []
-    for e in edges:
-        frm = e.get('from')
-        to = e.get('to')
-        if frm == node_id:
-            direction = 'out'
-            neighbor = to
-        elif to == node_id:
-            direction = 'in'
-            neighbor = frm
-        else:
-            continue
-        out.append({
-            'neighbor': neighbor,
-            'direction': direction,
-            'relation': e.get('relation') or '',
-            'weight': float(e.get('effective_score')
-                            or e.get('weight') or 0),
-        })
-    out.sort(key=lambda x: -x['weight'])
-    return out[:limit]
+def write_entity_page(candidate: dict, month_str: str) -> Path:
+    """Render an entity page (v13 redesign — graph-structure driven base page).
 
+    The caller (``entity_builder.select_entity_candidates``) precomputes all
+    fields needed. Base page contains:
+      - Confirmed facts (mention summary + linked events + asset classes +
+        recent articles with article_id refs)
+      - Graph provenance — summary numerics ONLY (node_importance,
+        support_count_sum, path_count, path_role_hit). Adjacency list and
+        transmission path detail are intentionally NOT rendered here;
+        those live in ``07_Graph_Evidence/``.
 
-def _paths_involving(node_label: str,
-                     node_id: str | None,
-                     transmission_paths: list[dict] | None,
-                     limit: int = 5) -> list[dict]:
-    if not transmission_paths:
-        return []
-    nl = (node_label or '').strip()
-    nid = (node_id or '').strip()
-    matched: list[dict] = []
-    for p in transmission_paths:
-        trig = str(p.get('trigger') or '')
-        tgt = str(p.get('target') or '')
-        labels = p.get('path_labels') or p.get('path') or []
-        hit_in_path = any(
-            nl and (nl == s or nl in s or s in nl)
-            for s in labels
-        )
-        if (nl and (nl == trig or nl == tgt)) \
-                or (nid and (nid == trig or nid == tgt)) \
-                or hit_in_path:
-            matched.append(p)
-    # stable order: highest confidence first
-    matched.sort(key=lambda p: -float(p.get('confidence') or 0))
-    return matched[:limit]
-
-
-def write_entity_page(entity_id: str, label: str, topic: str,
-                      mentioned_in: list[str], month_str: str,
-                      graph_node_id: str | None = None,
-                      canonical_entity_label: str | None = None,
-                      linked_events: list[str] | None = None,
-                      adjacent_nodes: list[dict] | None = None,
-                      paths_involving: list[dict] | None = None,
-                      graph_node_meta: dict | None = None) -> Path:
-    """Render an entity page with Confirmed / Draft evidence separation.
-
-    Confirmed facts — sourced from ``pipeline_refine``:
-      mention count, linked events, related asset classes (derived),
-      recent article titles.
-
-    Draft evidence — sourced from ``07_Graph_Evidence`` (GraphRAG P1):
-      adjacent graph nodes (top 5) and transmission paths that involve
-      this node. This section ALWAYS carries the draft badge so callers
-      cannot mistake it for canonical regime signal.
-
-    Media entities (no ``graph_node_id``) gracefully render an empty
-    draft section with a "not applicable" note.
-
-    frontmatter stays at ``status: base``. Two optional helper fields
-    (``has_draft_evidence``, ``draft_sources``) signal to downstream
-    readers whether the draft block carried any content.
+    severity-based fields are removed. ``taxonomy_topic`` is supplied by the
+    builder via PHRASE_ALIAS exact gate — never from ``node.topic``.
     """
-    linked_events = linked_events or []
-    adjacent_nodes = adjacent_nodes or []
-    paths_involving = paths_involving or []
-    has_draft = bool(adjacent_nodes or paths_involving)
-    draft_sources = ['graph_evidence'] if has_draft else []
+    label = candidate['label']
+    entity_id = candidate['entity_id']
+    taxonomy_topic = candidate['taxonomy_topic']
+    graph_node_id = candidate.get('graph_node_id')
+    linked_events = candidate.get('linked_events') or []
+    primary_articles = candidate.get('primary_articles') or []
+    recent_titles = candidate.get('recent_titles') or []
+    unique_count = int(candidate.get('unique_article_count') or 0)
+    first_seen = candidate.get('first_seen') or ''
+    last_seen = candidate.get('last_seen') or ''
+    node_importance = float(candidate.get('node_importance') or 0.0)
+    importance_basis = candidate.get('importance_basis') or 'edge_effective_score_sum'
+    support_count_sum = int(candidate.get('support_count_sum') or 0)
+    path_count = int(candidate.get('path_count') or 0)
+    path_role_hit = bool(candidate.get('path_role_hit'))
 
     frontmatter: list[str] = [
         '---',
@@ -239,66 +184,54 @@ def write_entity_page(entity_id: str, label: str, topic: str,
         'status: base',
         f'entity_id: {entity_id}',
         f'label: "{label}"',
-        f'topic: {topic}',
-        f'period: {month_str}',
+        f'taxonomy_topic: {taxonomy_topic}',
+        f'node_importance: {node_importance:.4f}',
+        f'importance_basis: {importance_basis}',
+        f'support_count_sum: {support_count_sum}',
+        f'path_count: {path_count}',
+        f'path_role_hit: {"true" if path_role_hit else "false"}',
+        f'unique_article_count: {unique_count}',
     ]
+    if first_seen:
+        frontmatter.append(f'first_seen: {first_seen}')
+    if last_seen:
+        frontmatter.append(f'last_seen: {last_seen}')
+    if primary_articles:
+        frontmatter.append(
+            'primary_articles: [' + ', '.join(primary_articles[:5]) + ']'
+        )
     if graph_node_id:
         frontmatter.append(f'graph_node_id: {graph_node_id}')
-    if canonical_entity_label:
-        frontmatter.append(f'canonical_entity_label: "{canonical_entity_label}"')
-    if linked_events:
-        frontmatter.append(
-            'linked_events: [' + ', '.join(linked_events[:5]) + ']'
-        )
-    frontmatter.append(
-        'has_draft_evidence: ' + ('true' if has_draft else 'false')
-    )
-    if draft_sources:
-        frontmatter.append(
-            'draft_sources: [' + ', '.join(draft_sources) + ']'
-        )
     frontmatter += [
-        'source_of_truth: pipeline_refine',
+        f'period: {month_str}',
+        'has_graph_signal: true',
+        'source_of_truth: pipeline_refine+graphrag',
         f'updated_at: {datetime.now().isoformat(timespec="seconds")}',
         '---',
         '',
     ]
 
-    # ── severity proxy for Provenance ──
-    severity_str = '—'
-    if graph_node_meta:
-        sev_weight = graph_node_meta.get('severity_weight')
-        if sev_weight is not None:
-            try:
-                severity_str = f'{float(sev_weight):.2f}'
-            except (TypeError, ValueError):
-                pass
-        if severity_str == '—':
-            sev_label = graph_node_meta.get('severity')
-            if sev_label:
-                severity_str = str(sev_label)
-
     related_assets = _related_asset_classes_for(label)
-    canon = canonical_entity_label or label
-
-    header_topic = f'**Topic**: `{topic}`'
-    if graph_node_id:
-        header_topic += f' · **Graph node**: `{graph_node_id}`'
 
     body: list[str] = [
         f'# Entity — {label}',
         '',
-        f'**Canonical label**: `{canon}`  ',
-        header_topic,
+        f'**Canonical label**: `{label}`  ',
+        f'**Taxonomy**: `{taxonomy_topic}` · **Graph node**: `{graph_node_id or "—"}`',
         '',
-        '## Confirmed facts  _[source: `pipeline_refine`]_',
+        '## Confirmed facts',
         '',
-        f'- Mentioned in **{len(mentioned_in)}** articles this period',
     ]
+    if first_seen and last_seen:
+        body.append(
+            f'- Mention summary: {first_seen} ~ {last_seen} · '
+            f'{unique_count} articles'
+        )
+    else:
+        body.append(f'- Mention summary: {unique_count} articles')
     if linked_events:
         body.append(
-            '- Linked events: '
-            + ', '.join(f'`{e}`' for e in linked_events[:5])
+            '- Linked events: ' + ', '.join(f'`{e}`' for e in linked_events[:5])
         )
     else:
         body.append('- Linked events: —')
@@ -309,67 +242,31 @@ def write_entity_page(entity_id: str, label: str, topic: str,
         )
     else:
         body.append('- Related asset classes (derived): —')
-    body.append('- Related funds: —  _(populated in a later batch)_')
+
     body += ['', '### Recent articles']
-    if mentioned_in:
-        for t in mentioned_in[:8]:
-            body.append(f'- {t}')
+    if recent_titles:
+        # article_id ref 병기: primary_articles 순서 기준으로 매핑
+        ref_iter = iter(primary_articles)
+        for title in recent_titles[:8]:
+            ref_id = next(ref_iter, None)
+            if ref_id:
+                body.append(f'- {title} (ref:`{ref_id}`)')
+            else:
+                body.append(f'- {title}')
     else:
         body.append('- _No articles matched this entity this period._')
 
-    # ── Draft evidence ──
     body += [
         '',
-        '## Draft evidence  _[source: `07_Graph_Evidence` · draft]_',
+        '## Graph provenance',
         '',
-        '> Adjacency and transmission paths below are **draft evidence** produced',
-        '> by GraphRAG. Do NOT treat as confirmed regime signal.',
-        '> Canonical regime lives in `05_Regime_Canonical/`.',
+        f'- `node_importance`: {node_importance:.4f} ({importance_basis})',
+        f'- `support_count_sum`: {support_count_sum}',
+        f'- `path_count`: {path_count}',
+        f'- `path_role_hit`: {"true" if path_role_hit else "false"}',
         '',
-        '### Graph adjacency (top 5)',
-    ]
-    if adjacent_nodes:
-        for a in adjacent_nodes:
-            arrow = '→' if a.get('direction') == 'out' else '←'
-            rel = a.get('relation') or '—'
-            body.append(
-                f'- {arrow} `{a.get("neighbor")}`  '
-                f'({rel}, w={a.get("weight", 0):.2f})'
-            )
-    elif graph_node_id:
-        body.append('- _No adjacent edges recorded this period._')
-    else:
-        body.append(
-            '- _Not applicable — media entity, no graph node attached._'
-        )
-
-    body += ['', '### Transmission paths involving this node']
-    if paths_involving:
-        for p in paths_involving:
-            labels = p.get('path_labels') or p.get('path') or []
-            path_str = ' → '.join(f'`{n}`' for n in labels) or '_empty path_'
-            conf = float(p.get('confidence') or 0)
-            body.append(
-                f'- trigger `{p.get("trigger","?")}` → target '
-                f'`{p.get("target","?")}`: {path_str}  (conf={conf:.2f})'
-            )
-    elif graph_node_id:
-        body.append('- _No transmission path matched this node this period._')
-    else:
-        body.append('- _Not applicable for media entities._')
-
-    # ── Provenance ──
-    body += [
-        '',
-        '## Provenance',
-        '',
-        '- Base entity: `pipeline_refine` (daily_update Step 2.5 / 2.6)',
-        f'- Graph node: {"`"+graph_node_id+"`" if graph_node_id else "—"}',
-        f'- Confidence proxy (node severity): `{severity_str}`',
-        '',
-        '> Base page. Canonical regime → `05_Regime_Canonical/`. '
-        'Debate commentary → `06_Debate_Memory/`. '
-        'Full transmission paths → `07_Graph_Evidence/`.',
+        '> Detailed adjacency and transmission paths are available in '
+        '`07_Graph_Evidence/`. This base page records only summary provenance.',
     ]
 
     out = ENTITIES_DIR / f'{month_str}_{_safe_filename(entity_id)}.md'
@@ -483,116 +380,29 @@ def refresh_base_pages_after_refine(month_str: str,
         if write_event_page(eid, arts, month_str):
             event_count += 1
 
-    # Entity pages (v13 redesign — media + GraphRAG 상위 노드, confirmed/draft 분리)
+    # Entity pages (v13 redesign — graph-structure driven, taxonomy exact gate)
+    # - severity 기반 로직 제거 (실데이터 severity_weight=0, severity=neutral)
+    # - media entity (source__*) 생성 중단
+    # - node.topic fallback 금지; PHRASE_ALIAS exact hit만 허용
+    # - body에 adjacency/path 상세 미노출 (07_Graph_Evidence/ 소유)
     entity_count = 0
-    src_counter = Counter(a.get('source', '') for a in articles if a.get('source'))
-
-    # GraphRAG 로드 (nodes + edges + transmission_paths 전부)
-    graph_nodes: dict = {}
-    graph_edges: list[dict] = []
-    graph_paths: list[dict] = []
     try:
-        from pathlib import Path as _P
-        import json as _j
-        graph_path = (_P(__file__).resolve().parent.parent /
-                      'data' / 'insight_graph' / f'{month_str}.json')
-        if graph_path.exists():
-            _g = _j.loads(graph_path.read_text(encoding='utf-8'))
-            graph_nodes = _g.get('nodes', {}) or {}
-            graph_edges = _g.get('edges', []) or []
-            graph_paths = _g.get('transmission_paths', []) or []
-    except Exception:
-        graph_nodes, graph_edges, graph_paths = {}, [], []
-
-    def _find_graph_node(text: str) -> tuple[str | None, str | None]:
-        """text 에 대응하는 GraphRAG 노드 id / canonical label 시도."""
-        if not graph_nodes:
-            return None, None
-        t_norm = text.replace(' ', '').lower()
-        for nid, meta in graph_nodes.items():
-            label = (meta.get('label') or nid).replace(' ', '').lower()
-            if t_norm and (t_norm in label or label in t_norm):
-                return nid, meta.get('label', nid)
-        return None, None
-
-    def _linked_events(src_name: str) -> list[str]:
-        evs: list[str] = []
-        seen_ids: set = set()
-        for a in articles:
-            if a.get('source') == src_name:
-                eid = a.get('_event_group_id')
-                if eid and eid not in seen_ids:
-                    seen_ids.add(eid)
-                    evs.append(str(eid))
-        return evs[:5]
-
-    # --- Media entities (source__) — no graph node, draft section shows N/A ---
-    for src, _ in src_counter.most_common(top_entities):
-        samples = [a.get('title', '') for a in articles
-                   if a.get('source') == src][:8]
-        node_id, canon_label = _find_graph_node(src)
-        adj = _graph_adjacency_for(node_id, graph_edges)
-        paths = _paths_involving(src, node_id, graph_paths)
-        meta = graph_nodes.get(node_id) if node_id else None
-        write_entity_page(
-            entity_id=f'source__{src}',
-            label=src,
-            topic='매체',
-            mentioned_in=samples,
-            month_str=month_str,
-            graph_node_id=node_id,
-            canonical_entity_label=canon_label,
-            linked_events=_linked_events(src),
-            adjacent_nodes=adj,
-            paths_involving=paths,
-            graph_node_meta=meta,
+        from market_research.wiki.entity_builder import (
+            load_graph_snapshot, select_entity_candidates,
         )
-        entity_count += 1
-
-    # --- GraphRAG 상위 severity 노드 — 기존 3 demo (유가/환율/달러) 유지.
-    # id는 graphnode__<node_id> 이라 stable하고, v12.1 샘플과 1:1 대응된다.
-    try:
-        if graph_nodes:
-            ranked = sorted(
-                graph_nodes.items(),
-                key=lambda kv: -float(kv[1].get('severity_weight', 0) or 0),
-            )
-            for nid, meta in ranked[:3]:
-                label = meta.get('label', nid)
-                topic_tag = meta.get('topic', '기타')
-                mentioned = [
-                    a.get('title', '') for a in articles
-                    if label and label.replace(' ', '').lower() in
-                    (a.get('title', '') + ' ' + a.get('description', '')).replace(' ', '').lower()
-                ][:6]
-                events: list[str] = []
-                seen_ids: set = set()
-                for a in articles:
-                    if not mentioned:
-                        break
-                    if any(a.get('title', '') == m for m in mentioned):
-                        eid = a.get('_event_group_id')
-                        if eid and eid not in seen_ids:
-                            seen_ids.add(eid)
-                            events.append(str(eid))
-                adj = _graph_adjacency_for(nid, graph_edges)
-                paths = _paths_involving(label, nid, graph_paths)
-                write_entity_page(
-                    entity_id=f'graphnode__{nid}',
-                    label=label,
-                    topic=topic_tag,
-                    mentioned_in=mentioned,
-                    month_str=month_str,
-                    graph_node_id=nid,
-                    canonical_entity_label=label,
-                    linked_events=events[:5],
-                    adjacent_nodes=adj,
-                    paths_involving=paths,
-                    graph_node_meta=meta,
-                )
-                entity_count += 1
-    except Exception:
-        pass
+        graph = load_graph_snapshot(month_str)
+        candidates = select_entity_candidates(
+            graph['nodes'], graph['edges'], graph['transmission_paths'],
+            articles,
+            max_entities=12, per_taxonomy_cap=3,
+        )
+        # 기존 페이지 정리 (media + legacy graphnode) 후 재생성
+        _purge_stale_entity_pages(month_str, keep_ids={c['entity_id'] for c in candidates})
+        for c in candidates:
+            write_entity_page(c, month_str)
+            entity_count += 1
+    except Exception as exc:
+        print(f'  [entity] 빌드 실패: {exc}')
 
     # Asset pages — topic buckets as proxy
     topic_bucket = defaultdict(list)
@@ -629,6 +439,24 @@ def refresh_base_pages_after_refine(month_str: str,
 # 하위 호환 alias (v10 이후 임시)
 def refresh_draft_pages_after_refine(*args, **kwargs):
     return refresh_base_pages_after_refine(*args, **kwargs)
+
+
+def _purge_stale_entity_pages(month_str: str, keep_ids: set) -> None:
+    """Remove entity pages from this month that are not in ``keep_ids``.
+
+    Covers both legacy ``source__*`` (media, deprecated in v13) and stale
+    ``graphnode__*`` pages from previous runs.
+    """
+    prefix = f'{month_str}_'
+    if not ENTITIES_DIR.exists():
+        return
+    for p in ENTITIES_DIR.glob(f'{prefix}*.md'):
+        stem = p.stem[len(prefix):]  # e.g. 'source__네이버검색' or 'graphnode__유가'
+        if stem not in keep_ids:
+            try:
+                p.unlink()
+            except OSError:
+                pass
 
 
 def _refresh_index(month_str: str, ec: int, en: int, ac: int, fc: int) -> None:
