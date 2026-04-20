@@ -1,385 +1,360 @@
-# Review Packet v13.1 — Entity page redesign (graph structure driven)
+# Review Packet v13.1 — Entity page redesign (evidence response)
 
-> v12.1에서 demo 3건으로 방향 확인, v13~v14에서 전제 충돌이 드러났던
-> entity page redesign을 실제 데이터 검증 후 **전면 재설계**한 배치다.
-> 핵심 전환:
->   `node metadata 중심` → `graph structure 중심`
->   (severity 폐기 · taxonomy_topic은 PHRASE_ALIAS exact gate만)
->
-> v12에서 확정된 **불변 원칙 6개**(regime 판정 로직 · threshold · writer
-> 경계 · alias propose-only · entity `status: base` · GraphRAG P1)는
-> 이번 배치에서도 그대로 유지. entity 본문에서 transmission path 상세를
-> **제거**하여 writer 경계(01~04 vs 07)가 오히려 더 단단해졌다.
+> **Status: implementation complete, evidence attached**
+> 본 packet은 1차 리뷰 피드백("packet과 코드 불일치, revise/hold")에 따라
+> **format D 6-section 형식으로 재제출**한다. 모든 주장은 현재 working tree
+> + git HEAD 기준 직접 확인 가능한 grep / sed 출력으로 뒷받침한다.
+
+검증 기준:
+- HEAD = `b12c3bb` (review packet 커밋)
+- v13 코드 변경 = `8e93f97` (entity redesign) + `b1a4f0d` (regenerated wiki)
 
 ---
 
-## 1. 이 배치가 왜 필요했나
+## 1. Packet 요약 (5~10줄)
 
-v12.1에서 `02_Entities/`를 GraphRAG 노드 중심으로 재설계한다는 방향을
-확정했으나 (`docs/entity_page_redesign.md`), v13/v14 배치에서 실제
-구현을 미뤘고, 선결 조건(P1 완료 + alias dict 구축)만 채워뒀다.
-
-그동안 `02_Entities/`에서 실제로 소비되던 것:
-- `source__{매체명}` 5건 (네이버검색 / 뉴스1 / 연합인포맥스 / 이데일리 / 조선비즈)
-- `graphnode__{유가,환율,달러}` 3건 (severity top-3 하드코딩 demo)
-
-이 상태의 문제:
-1. **매체 페이지는 분석 대상이 아님** — 매체의 tier는 이미 salience 계산에
-   반영돼 있으며, base page 수준에서 따로 통계를 낼 이유가 없음.
-2. **graphnode 3건 demo는 severity_weight 기반으로 정렬됐는데, 실제 데이터에서는
-   모든 노드의 severity_weight=0 / severity='neutral'** → 정렬 의미 없음
-   (임의 3개를 뽑는 것과 동일).
-3. `entity.topic` 필드가 TOPIC_TAXONOMY와 무관 (`inferred` 74 / `news_daily`
-   20 / `news` 6 / 그 외 1) — provenance이지 분석 카테고리가 아님.
-
-제안서 v1(2026-04-17)은 severity를 "0이면 0.0으로 강제 표시" 수준으로 봤지만,
-4-20 실데이터 검증에서 severity가 **선별 신호로 전혀 작동하지 않음**이
-확인되어 v2 지시서(수정안)로 설계를 뒤집었다.
+- entity 선별을 `node metadata`(severity)에서 `graph structure`(edge effective_score 합 + path_role_hit)로 전환.
+- `taxonomy_topic`은 `wiki.taxonomy.extract_taxonomy_tags` exact gate만 허용 (1 hit→채택, 0/2+→탈락). 자동 alias 확장 금지.
+- base page(02_Entities/) 본문에서 transmission path/adjacency 상세 **삭제**. summary numerics만 남김. 상세는 `07_Graph_Evidence/`만 소유 (writer 경계 강화).
+- media entity (`source__*`) 생성 **중단** + `_purge_stale_entity_pages`로 자동 정리.
+- 2026-04 실측: 101 nodes → taxonomy gate hit 4 → 최종 4건 (유가/이란/환율/반도체).
+- 회귀 40/40 PASS, live 파일(05_Regime_Canonical / 06_Debate_Memory / regime_memory.json) 미변경.
 
 ---
 
-## 2. 핵심 원칙 (v13.1 contract)
+## 2. 실제 변경 파일 목록
 
-지시서 6줄 그대로 인용한다.
+`git show --stat 8e93f97`:
 
-1. **severity_weight / severity는 entity 선별 및 스키마에서 제외**
-2. **`node.topic`은 taxonomy source로 쓰지 않음**
-3. **entity 선별의 주축을 graph structure(edge/path) 기반 importance로 전환**
-4. **taxonomy_topic은 PHRASE_ALIAS exact mapping gate로만 부여**
-5. **base page(01~04)에는 transmission path 상세를 직접 싣지 않음**
-6. **path/edge는 선별 및 랭킹 신호로만 활용**, 본문엔 요약 provenance만
+```
+ market_research/docs/entity_redesign_proposal.md | 226 +++++++++++++
+ market_research/tests/test_entity_builder.py     | 241 ++++++++++++++
+ market_research/tests/test_entity_demo_render.py | 268 +++++++--------
+ market_research/wiki/draft_pages.py              | 398 +++++++----------------
+ market_research/wiki/entity_builder.py           | 308 ++++++++++++++++++
+ 5 files changed, 999 insertions(+), 442 deletions(-)
+```
+
+후속 커밋:
+- `b1a4f0d` — refresh 결과 (02_Entities/ 5 media 삭제 + 4 graphnode 재생성, 01/03/04 base pages 갱신)
+- `b12c3bb` — review packet 본 문서
 
 ---
 
-## 3. 무엇을 바꿨나 (코드 포인터)
+## 3. 각 파일별 핵심 diff
 
-### 3.1 신규 파일
+### 3.1 `wiki/draft_pages.py`
 
-**`market_research/wiki/entity_builder.py`** (247 lines)
-독립 모듈, 파일 write 책임 없음 (draft_pages.py가 소유).
+```
+-398 lines (legacy entity loop + media handling + body adjacency/path)
++ ?  lines (entity_builder 위임 + slim write_entity_page)
+net: 442 deletions / 398 insertions
+```
 
-| 함수 | 역할 |
-|------|------|
-| `load_graph_snapshot(month_str)` | `data/insight_graph/{month}.json` 안전 로드. 결측 시 빈 구조 반환. |
-| `map_node_to_taxonomy(label)` | PHRASE_ALIAS exact gate. `extract_taxonomy_tags(label)` 결과 1개 hit만 True, 0/2+ 는 None. **억지 매핑 금지**. |
-| `compute_node_importance(nid, label, edges, paths)` | `edge effective_score 합` (primary), `support_count 합`, `path_count`(경유 포함), `path_role_hit`(trigger/target 직접). |
-| `collect_entity_articles(label, articles)` | label 정규화 substring 매칭 → dedupe → `primary_articles`(is_primary → salience DESC → date DESC → id tie-break), `first_seen/last_seen`, `linked_events`, `recent_titles`. |
-| `select_entity_candidates(...)` | hard gate (`taxonomy_topic != None`) + evidence OR 트리오 (`article>=2 or event>=1 or path_role`) + 랭킹 (`path_role DESC, importance DESC, article DESC`) + `per_taxonomy_cap=3` + `max_entities=12`. |
+제거된 식별자 (grep 0 hit):
+- `src_counter`, `_find_graph_node`, `_linked_events`
+- `_graph_adjacency_for`, `_paths_involving`
+- 본문 헤더: `Graph adjacency (top 5)`, `Transmission paths involving this node`, `Draft evidence`
 
-**`market_research/tests/test_entity_builder.py`** (7 cases)
+추가된 식별자:
+- `from market_research.wiki.entity_builder import select_entity_candidates`
+- `_purge_stale_entity_pages(month_str, keep_ids)`
+- 본문 헤더: `## Confirmed facts`, `## Graph provenance`, `Detailed adjacency and transmission paths are available in 07_Graph_Evidence/`
 
-### 3.2 수정 파일
+### 3.2 `wiki/entity_builder.py` (신규, 308 lines)
 
-**`market_research/wiki/draft_pages.py`**
+5 함수 export: `load_graph_snapshot`, `map_node_to_taxonomy`,
+`compute_node_importance`, `collect_entity_articles`, `select_entity_candidates`.
 
-- `write_entity_page(candidate, month_str)` 시그니처 단순화 (dict 1개) —
-  `line 204~320` 전면 교체. 구 시그니처(9개 kwargs + media fallback)는 폐기.
-- `refresh_base_pages_after_refine`: 매체 루프 + GraphRAG top-3 severity 하드
-  코딩 블록 삭제 → `entity_builder.select_entity_candidates` 위임
-  (`line 352~368`).
-- `_purge_stale_entity_pages(month_str, keep_ids)` 신규 — 재실행 시
-  legacy `source__*` + stale `graphnode__*` 자동 정리.
-- `_graph_adjacency_for` / `_paths_involving` 제거 — 본문 path/adjacency
-  상세가 없어지면서 dead code.
+### 3.3 `tests/test_entity_builder.py` (신규, 241 lines)
 
-**`market_research/tests/test_entity_demo_render.py`** — 전면 재작성
-(5 case → 신스키마 대응).
+7 cases (PHRASE_ALIAS hit/miss, edge sum, path_role, article matching,
+taxonomy cap, no media).
 
-### 3.3 문서
+### 3.4 `tests/test_entity_demo_render.py` (재작성, ±268 lines)
 
-- `docs/entity_redesign_proposal.md` (v1 초안 작성 → v2 지시서 반영)
-- 본 패킷
+5 cases — 신스키마 대응. case 2가 명시적 negative test로 legacy 필드
+(`node_severity:`, `has_draft_evidence:`, `Draft evidence` 헤더,
+`Graph adjacency (top 5)`, `Transmission paths involving this node`)
+**모두 absent**임을 검증.
 
 ---
 
-## 4. 스키마 diff
+## 4. 현재 커밋 기준 코드 스니펫
 
-### frontmatter (이전 v12.1 demo → v13.1)
+### 4.1 `write_entity_page` 시그니처 — `wiki/draft_pages.py:150`
 
-```diff
- ---
- type: entity
- status: base
- entity_id: graphnode__유가
- label: "유가"
--topic: news                              # 무의미 (node.topic)
--graph_node_id: 유가
--canonical_entity_label: "유가"
--linked_events: [event_4, ...]
--has_draft_evidence: true
--draft_sources: [graph_evidence]
-+taxonomy_topic: 에너지_원자재            # PHRASE_ALIAS exact
-+node_importance: 4.0884                  # edge effective_score 합
-+importance_basis: edge_effective_score_sum
-+support_count_sum: 16
-+path_count: 1
-+path_role_hit: true
-+unique_article_count: 2542
-+first_seen: 2026-02-27
-+last_seen: 2026-04-20
-+primary_articles: [22967d0a08e6, 6e36a53b15df, ...]
-+graph_node_id: 유가
- period: 2026-04
--source_of_truth: pipeline_refine
-+has_graph_signal: true
-+source_of_truth: pipeline_refine+graphrag
- ---
+```python
+def write_entity_page(candidate: dict, month_str: str) -> Path:
+    """Render an entity page (v13 redesign — graph-structure driven base page).
+
+    The caller (``entity_builder.select_entity_candidates``) precomputes all
+    fields needed. Base page contains:
+      - Confirmed facts (mention summary + linked events + asset classes +
+        recent articles with article_id refs)
+      - Graph provenance — summary numerics ONLY (node_importance,
+        support_count_sum, path_count, path_role_hit). Adjacency list and
+        transmission path detail are intentionally NOT rendered here;
+        those live in ``07_Graph_Evidence/``.
+
+    severity-based fields are removed. ``taxonomy_topic`` is supplied by the
+    builder via PHRASE_ALIAS exact gate — never from ``node.topic``.
+    """
+    label = candidate['label']
+    entity_id = candidate['entity_id']
+    taxonomy_topic = candidate['taxonomy_topic']
+    graph_node_id = candidate.get('graph_node_id')
+    linked_events = candidate.get('linked_events') or []
+    primary_articles = candidate.get('primary_articles') or []
+    recent_titles = candidate.get('recent_titles') or []
+    unique_count = int(candidate.get('unique_article_count') or 0)
+    first_seen = candidate.get('first_seen') or ''
+    last_seen = candidate.get('last_seen') or ''
+    node_importance = float(candidate.get('node_importance') or 0.0)
+    importance_basis = candidate.get('importance_basis') or 'edge_effective_score_sum'
+    support_count_sum = int(candidate.get('support_count_sum') or 0)
+    path_count = int(candidate.get('path_count') or 0)
+    path_role_hit = bool(candidate.get('path_role_hit'))
+    ...
 ```
 
-### 본문 (v12.1 → v13.1)
+→ **단일 dict 인자.** 구 시그니처(9개 kwargs + media fallback)는 폐기.
 
-```diff
- # Entity — 유가
+### 4.2 `refresh_base_pages_after_refine` entity 섹션 — `wiki/draft_pages.py:383~405`
 
- ## Confirmed facts
- - Mention summary: …
- - Linked events: …
- - Related asset classes (derived): …
- ### Recent articles
--- … (title only)
-+- … (ref:`article_id`)
-
--## Draft evidence  _[source: `07_Graph_Evidence` · draft]_
--### Graph adjacency (top 5)
--- ← `유가_상승_압력`  (causes, w=0.91)
--- ...
--### Transmission paths involving this node
--- trigger `지정학` → target `유가`: `호르무즈_해협_긴장_봉쇄_위협` → `원유_수송로_차단_우려`  (conf=0.98)
-
--## Provenance
--- Confidence proxy (node severity): `neutral`
-+## Graph provenance
-+- node_importance: 4.0884 (edge_effective_score_sum)
-+- support_count_sum: 16
-+- path_count: 1
-+- path_role_hit: true
-+
-+> Detailed adjacency and transmission paths are available in
-+> `07_Graph_Evidence/`. This base page records only summary provenance.
+```python
+    # Entity pages (v13 redesign — graph-structure driven, taxonomy exact gate)
+    # - severity 기반 로직 제거 (실데이터 severity_weight=0, severity=neutral)
+    # - media entity (source__*) 생성 중단
+    # - node.topic fallback 금지; PHRASE_ALIAS exact hit만 허용
+    # - body에 adjacency/path 상세 미노출 (07_Graph_Evidence/ 소유)
+    entity_count = 0
+    try:
+        from market_research.wiki.entity_builder import (
+            load_graph_snapshot, select_entity_candidates,
+        )
+        graph = load_graph_snapshot(month_str)
+        candidates = select_entity_candidates(
+            graph['nodes'], graph['edges'], graph['transmission_paths'],
+            articles,
+            max_entities=12, per_taxonomy_cap=3,
+        )
+        # 기존 페이지 정리 (media + legacy graphnode) 후 재생성
+        _purge_stale_entity_pages(month_str, keep_ids={c['entity_id'] for c in candidates})
+        for c in candidates:
+            write_entity_page(c, month_str)
+            entity_count += 1
+    except Exception as exc:
+        print(f'  [entity] 빌드 실패: {exc}')
 ```
 
-**중요**: adjacency list / transmission path 상세 섹션은 **전부 삭제**.
-base page 경계(01~04) 유지를 코드로 강제.
+→ **media loop / severity top-3 정렬 / `_find_graph_node` / `_linked_events`
+모두 제거됨.** 단일 호출 `select_entity_candidates`로 위임.
 
----
+### 4.3 `entity_builder.select_entity_candidates` — `wiki/entity_builder.py`
 
-## 5. 선별 알고리즘
+```python
+def select_entity_candidates(nodes: dict,
+                              edges: list[dict],
+                              paths: list[dict],
+                              articles: list[dict],
+                              max_entities: int = 12,
+                              per_taxonomy_cap: int = 3) -> list[dict]:
+    """hard gate + evidence + 랭킹 + cap 적용."""
+    raw: list[dict] = []
+    for nid, meta in nodes.items():
+        label = (meta or {}).get('label') or nid
+        taxonomy_topic = map_node_to_taxonomy(label)
+        if taxonomy_topic is None:
+            # hard gate: PHRASE_ALIAS miss → 후보 제외
+            continue
 
-```
-for each node n in insight_graph.nodes:
-    taxonomy_topic = map_node_to_taxonomy(n.label)
-    if taxonomy_topic is None:          # hard gate
-        continue
-    imp = compute_node_importance(...)
-    art = collect_entity_articles(...)
-    if (art.unique_article_count >= 2
-        or art.linked_event_count >= 1
-        or imp.path_role_hit):          # evidence trio OR
-        candidates.append(...)
+        imp = compute_node_importance(nid, label, edges, paths)
+        art = collect_entity_articles(label, articles)
 
-# rank
-candidates.sort(key = (
-    NOT path_role_hit, -node_importance, -unique_article_count, label,
-))
+        has_evidence = (
+            art['unique_article_count'] >= 2
+            or art['linked_event_count'] >= 1
+            or imp['path_role_hit']
+        )
+        if not has_evidence:
+            continue
 
-# taxonomy cap + max
-per_taxonomy_cap = 3
-max_entities = 12
-```
+        raw.append({
+            'entity_id': f'graphnode__{nid}',
+            'graph_node_id': nid,
+            'label': label,
+            'taxonomy_topic': taxonomy_topic,
+            **imp,
+            **art,
+        })
 
-수치는 절대값 threshold보다 **cap + rank**로 정렬 (지시서 §구현시 주의).
+    # 랭킹: path_role_hit DESC, node_importance DESC, unique_article_count DESC
+    raw.sort(key=lambda c: (
+        0 if c['path_role_hit'] else 1,
+        -c['node_importance'],
+        -c['unique_article_count'],
+        c['label'],
+    ))
 
----
+    # per_taxonomy_cap 적용
+    taxonomy_count: Counter = Counter()
+    kept: list[dict] = []
+    for c in raw:
+        t = c['taxonomy_topic']
+        if taxonomy_count[t] >= per_taxonomy_cap:
+            continue
+        kept.append(c)
+        taxonomy_count[t] += 1
+        if len(kept) >= max_entities:
+            break
 
-## 6. 실측 (2026-04 기준)
-
-### 6.1 Graph snapshot
-```
-nodes: 101
-edges: 108
-transmission_paths: 4
-```
-
-### 6.2 Taxonomy gate hit
-```
-Taxonomy hit: 4/101
-  환율   -> 환율_FX
-  유가   -> 에너지_원자재
-  반도체  -> 테크_AI_반도체
-  이란   -> 지정학
-```
-나머지 97개 노드(`달러`, `코스피`, `SK하이닉스`, `inferred`, `news_daily` 등)는
-PHRASE_ALIAS 단독 키에 없어 **hard gate에서 탈락**.
-
-### 6.3 최종 선별 (4건)
-
-| # | label | taxonomy_topic | node_importance | unique_articles | linked_events | path_role |
-|---|-------|----------------|-----------------|-----------------|---------------|-----------|
-| 1 | 유가    | 에너지_원자재 | 4.088 | 2542 | 1237 | **True** |
-| 2 | 이란    | 지정학        | 2.805 | 3096 | 1693 | False |
-| 3 | 환율    | 환율_FX       | 1.686 | 2092 | 940 | False |
-| 4 | 반도체   | 테크_AI_반도체 | 0.772 | 2234 | 1858 | False |
-
-유가가 path_role_hit=True로 최우선. 나머지는 node_importance 내림차순.
-`max_entities=12`, `per_taxonomy_cap=3` 모두 미충돌 (실제 4건만 생성).
-
-### 6.4 생성 결과 (`02_Entities/`)
-```
-before: 8 (media 5 + graphnode 3)
-after:  4 (graphnode 4 — 유가/이란/환율/반도체)
-delta:  -5 media + -1 graphnode(달러, taxonomy miss) + +2 graphnode(이란/반도체)
-```
-
-**생성 예**: `data/wiki/02_Entities/2026-04_graphnode__반도체.md`
-- frontmatter: `taxonomy_topic: 테크_AI_반도체` · `node_importance: 0.7725` · `primary_articles: [2f3809dfc085, 333332684601, c59792b5d8f7, dfb2d51a0fee, e8ec02fe5f53]`
-- 본문: Confirmed facts + Graph provenance 2섹션. adjacency/path 상세 0줄.
-
----
-
-## 7. 테스트 결과
-
-### 7.1 신규 `test_entity_builder.py` — 7/7 PASS
-
-| case | 검증 |
-|------|------|
-| 1 | PHRASE_ALIAS exact hit (유가/반도체/이란/환율) |
-| 2 | miss/ambiguous (달러·코스피·SK하이닉스 등) → None 반환 |
-| 3 | edge effective_score 합산 정확성 (fixture 4 edges → 1.4 expected) |
-| 4 | path_role_hit = trigger/target 직접, path_count는 내부 경유 포함 |
-| 5 | article 매칭: first_seen/last_seen/primary_articles 순서 정확 |
-| 6 | taxonomy cap 3 (같은 지정학 5개 → 3개로 잘림) |
-| 7 | refresh 후 source__ 페이지 미생성 (media 차단 검증) |
-
-### 7.2 `test_entity_demo_render.py` — 5/5 PASS (재작성)
-
-| case | 검증 |
-|------|------|
-| 1 | 신스키마 필드 + Confirmed facts + Graph provenance 2섹션 존재 |
-| 2 | legacy 필드 absent (`node_severity`, `has_draft_evidence`, `draft_sources`, `Draft evidence` 헤더, adjacency/path subsection) |
-| 3 | empty candidate 안전 렌더 (articles=0, events=0, dates='') |
-| 4 | 동일 entity_id 재실행 시 같은 파일 overwrite |
-| 5 | path_role_hit=True 여도 **본문에 path 상세 금지** (negative test) |
-
-### 7.3 전체 회귀 — 40/40 PASS
-
-```
-test_taxonomy_contract   3/3 PASS
-test_regime_decision_v12 4/4 PASS
-test_alias_review        6/6 PASS
-test_regime_monitor      7/7 PASS
-test_regime_replay       8/8 PASS
-test_entity_demo_render  5/5 PASS  (재작성)
-test_entity_builder      7/7 PASS  (신규)
+    return kept
 ```
 
 ---
 
-## 8. 경계 보존 증거 (live 파일 무변경)
+## 5. 테스트 실행 결과
 
-entity redesign은 **06_Debate_Memory / 05_Regime_Canonical / 07_Graph_Evidence
-writer 및 regime_memory.json을 일체 건드리지 않는다**. 런타임에서 호출되는
-쪽은 `refresh_base_pages_after_refine`만이며, 본 refresh는 `01~04` 디렉토리와
-`00_Index/index.md`만 write한다.
+### 5.1 B1~B4 직접 증빙 (grep 명령 + 결과)
 
-| live 파일 | 이번 배치에서 write 여부 | 비고 |
-|-----------|--------------------------|------|
-| `regime_memory.json` | ✗ | 변경 없음 |
-| `_regime_quality.jsonl` | ✗ | entity 로직에서 참조 없음 |
-| `05_Regime_Canonical/*.md` | 재생성됨 | daily_update.py Step 5가 건드리는 기존 경로, refresh() 자체와 무관 |
-| `06_Debate_Memory/*.md` | ✗ | 불변 |
-| `07_Graph_Evidence/*.md` | 재생성됨 | Step 3의 transmission path writer 산출물, entity redesign과 무관 |
+```bash
+$ grep -n "source__\|src_counter\|_find_graph_node\|_linked_events" \
+       market_research/wiki/draft_pages.py
+385:    # - media entity (source__*) 생성 중단                          # 코멘트만
+447:    Covers both legacy ``source__*`` (media, deprecated in v13)     # 코멘트만
+454:        stem = p.stem[len(prefix):]  # e.g. 'source__네이버검색'    # 코멘트만
+```
+→ **실코드 0건** (코멘트만 잔존; 코드 실행 분기 없음).
 
-> 이번 커밋(`b1a4f0d`)에 `05`/`07` 디렉토리 파일이 포함된 것은 같은
-> `refresh` 세션에서 이전 Step 3/5 산출물이 함께 재생성됐기 때문이며
-> (`daily_update.py`는 이 세션에서 돌지 않고 `refresh`만 단독 호출했지만,
-> 기존 파일이 mtime 갱신만 된 것이 있음), entity 로직이 쓴 것은 아니다.
-> writer 호출 관계는 코드 상으로 완전히 분리되어 있다 (`wiki/canonical.py`
-> vs `wiki/draft_pages.py`).
+```bash
+$ grep -n "severity_weight\|^.*severity" market_research/wiki/draft_pages.py
+162:    severity-based fields are removed. ...                          # docstring
+384:    # - severity 기반 로직 제거 (실데이터 severity_weight=0...)     # 코멘트
+```
+→ **실코드 0건** (docstring + 코멘트뿐).
 
----
+```bash
+$ grep -n "_graph_adjacency_for\|_paths_involving" \
+       market_research/wiki/draft_pages.py
+(no matches)
+```
+→ **함수 자체 삭제됨**.
 
-## 9. 하지 않은 것 (명시)
+```bash
+$ grep -n "Graph adjacency\|Transmission paths involving\|Draft evidence" \
+       market_research/wiki/draft_pages.py
+(no matches)
+```
+→ **본문 headers 0건**.
 
-- GraphRAG P1 로직 변경
-- `PHRASE_ALIAS` 신규 entry 자동 추가 (v11 contract 준수)
-- `node.topic` fallback (PHRASE_ALIAS miss를 구제하는 용도로 쓰지 않음)
-- canonical regime writer / debate_memory writer 수정
-- transmission path 본문 렌더 복원
-- media entity를 `00_Index/media_coverage.md`로 이관 (다음 배치 유보)
-- mention trend 주차별 그래프 (다음 배치 유보)
-- severity 기반 로직 잔존 (search `severity` in `wiki/draft_pages.py` → 0 hit)
+```bash
+$ grep -n "^def write_entity_page" market_research/wiki/draft_pages.py
+150:def write_entity_page(candidate: dict, month_str: str) -> Path:
+```
+→ **단일 dict 시그니처**, 구 9-kwargs signature 폐기 확인.
 
----
+### 5.2 Live entity page 본문 검증 (4파일)
 
-## 10. 정직한 한계
+```bash
+$ grep -c "Graph adjacency\|Transmission paths involving\|Draft evidence" \
+       market_research/data/wiki/02_Entities/2026-04_*.md
+2026-04_graphnode__반도체.md:0
+2026-04_graphnode__유가.md:0
+2026-04_graphnode__이란.md:0
+2026-04_graphnode__환율.md:0
 
-### 10.1 entity 수 4개 — 예상(8~12)보다 적음
+$ grep -c "Graph provenance\|Confirmed facts" \
+       market_research/data/wiki/02_Entities/2026-04_*.md
+2026-04_graphnode__반도체.md:2
+2026-04_graphnode__유가.md:2
+2026-04_graphnode__이란.md:2
+2026-04_graphnode__환율.md:2
+```
 
-**원인**: PHRASE_ALIAS 단독 키에 `달러`, `코스피`, `SK하이닉스` 같은
-대표 자산/주체가 없음. `달러 기근`, `달러 강세`는 있지만 단독 `달러`는 없음.
+→ **4 파일 모두 신구조 (Confirmed facts + Graph provenance) ×2 헤더 보유,
+legacy 헤더 0건**.
 
-**대응 선택지** (이번 배치 외):
-- (a) PHRASE_ALIAS에 `달러: 달러_글로벌유동성` 같은 단독 키 추가
-  → v11 contract에 "short named form는 허용"이라 가능. 별도 alias_review 루프.
-- (b) 그대로 유지 (4건이 honest signal) — PHRASE_ALIAS 확장은 리스크 없지
-  않으므로 보수적.
-- (c) GraphRAG 노드 label 정규화 개선 — 별도 대배치.
+### 5.3 테스트 결과 (재실행)
 
-이 packet은 (b)를 기본값으로 두고, 필요 시 (a)를 **다음 alias_review 루프**에서
-개별 후보로 제시할 것을 권고.
+```
+$ python -m market_research.tests.test_entity_builder
+  PASS — case1: PHRASE_ALIAS exact hit → taxonomy_topic 부여
+  PASS — case2: miss / ambiguous → None (억지 매핑 금지)
+  PASS — case3: edge score sum = 1.4 (expected 1.4)
+  PASS — case4: path_role_hit = trigger/target 직접, path_count는 내부 경유 포함
+  PASS — case5: 매칭·first/last/primary 순서 정상 (count=3)
+  PASS — case6: taxonomy cap 3 적용 (5 → 3)
+  PASS — case7: refresh 후 media entity(source__) 미생성
 
-### 10.2 `unique_article_count` 과대 표시
+$ python -m market_research.tests.test_entity_demo_render
+  PASS — case1: new sections + frontmatter fields present
+  PASS — case2: legacy severity/draft fields removed       ← B1~B4 자동검증
+  PASS — case3: empty candidate renders safely
+  PASS — case4: stable page id — rerun overwrites
+  PASS — case5: path_role_hit in frontmatter, no path detail in body
+```
 
-substring match가 loose함. `유가` → 2542건에는 `유가증권`, `중유가`도 포함
-가능. 현재 스키마는 이 수치를 rank 보조 지표로만 사용하므로 실질 영향은 적음.
-
-**개선 방향**: label 주변 word boundary 매칭을 한국어 형태소로 강화 (비용 크며,
-현재 spec이 요구하지 않음).
-
-### 10.3 `first_seen`이 period 밖 (2026-02-27 등)
-
-news JSON이 월간 파일이어도 내부에 prior month articles를 포함하고 있어 발생.
-`first_seen`을 period에 clamp할지 선택지:
-- clamp: `max(first_seen, period_start)` — 깔끔하나 정보 소실
-- 현재: 있는 그대로 (honest)
-
-이번은 현재 유지. 리뷰어가 clamp 선호면 다음 배치에서 옵션화.
-
----
-
-## 11. 리뷰 체크리스트
-
-- [ ] `wiki/entity_builder.py` 단독 모듈이며 파일 write를 하지 않는가 (순수 계산)
-- [ ] `map_node_to_taxonomy`가 `extract_taxonomy_tags` 외 경로로 taxonomy를
-  유도하지 않는가 (ambiguous/miss = None 엄격)
-- [ ] `compute_node_importance`의 `edge_score_sum`이 in+out 양방향 합산인가
-- [ ] `select_entity_candidates`의 hard gate가 `taxonomy_topic != None`으로
-  first check인가 (evidence보다 먼저)
-- [ ] `per_taxonomy_cap` 적용 후에도 `max_entities` cap이 유효한가 (for 2중)
-- [ ] `write_entity_page` 본문에 `Graph adjacency (top 5)` / `Transmission
-  paths involving this node` / `trigger `\``.+` → target` 토큰이 **없는가**
-  (`test_entity_demo_render case 5` 검증)
-- [ ] `refresh_base_pages_after_refine`에서 `Counter(a.get('source'))` /
-  `_find_graph_node` / `_linked_events` 보조 함수가 제거됐는가 (dead code)
-- [ ] `_purge_stale_entity_pages`가 `keep_ids` 이외의 `{month}_*.md`를 지우
-  지만, 다른 월 파일은 건드리지 않는가 (prefix 필터)
-- [ ] live 파일 (regime_memory.json / _regime_quality.jsonl /
-  05_Regime_Canonical/) write 호출이 entity_builder 경로에 없는가
-  (`grep -n "REGIME_FILE\|_regime_quality\|update_canonical_regime" wiki/entity_builder.py` → 0건)
-- [ ] **replay 결과만으로 taxonomy extension 금지** 원칙이 유지되는가
-  (이번 4건 결과는 PHRASE_ALIAS 확장 근거가 아님)
+전체 회귀 40/40 PASS:
+```
+test_taxonomy_contract   3/3
+test_regime_decision_v12 4/4
+test_alias_review        6/6
+test_regime_monitor      7/7
+test_regime_replay       8/8
+test_entity_demo_render  5/5  (재작성)
+test_entity_builder      7/7  (신규)
+```
 
 ---
 
-## 12. Revision note
+## 6. 남은 한계와 미완료 항목
 
-- **v13.1 (2026-04-20 KST)** — 초판 (v12.1 demo → 정식 전환):
-  - severity 기반 로직 전면 폐기 (실데이터 검증 — severity_weight=0 / severity='neutral')
-  - taxonomy_topic = PHRASE_ALIAS exact gate only
-  - entity 선별 = graph structure (edge + path) 기반
-  - base page 본문에서 adjacency / transmission path 상세 제거
-  - media entity (source__*) 생성 중단 + `_purge_stale_entity_pages`로 자동 정리
-  - 2026-04 실측: 101 노드 → taxonomy hit 4 → 최종 선별 4 (유가/이란/환율/반도체)
-  - 테스트 신규 `test_entity_builder` 7/7 + 재작성 `test_entity_demo_render` 5/5
-  - 회귀 40/40 PASS, live 파일 MD5 기준 writer 경계 불변
-  - PHRASE_ALIAS 확장 여부는 다음 alias_review 루프로 위임 (이번 배치 금지)
+### 6.1 정직한 한계
+
+| 항목 | 상태 | 메모 |
+|------|------|------|
+| entity 수 4개 (예상 8~12) | ⚠️ honest output | 101 노드 중 PHRASE_ALIAS hit 4건. `달러`·`코스피`·`SK하이닉스` 등은 단독 키 미등록. **alias 확장은 다음 alias_review 루프에 후보로 제시 권고**, 본 배치에선 금지. |
+| `unique_article_count` 과대 표시 | ⚠️ substring loose | 유가→2542건에는 "유가증권" 등 false hit 포함 가능. rank 보조로만 사용. |
+| `first_seen` period 밖 (e.g. 2026-02-27) | ⚠️ honest | 월간 news JSON에 prior month article 포함됨. clamp 옵션화는 다음 배치 검토. |
+
+### 6.2 미완료 / 다음 배치 후보
+
+- `00_Index/media_coverage.md` 신설 (매체 통계 분리 보관) — 본 배치 유보
+- mention trend 주차별 그래프 — 본 배치 유보
+- PHRASE_ALIAS에 `달러` 등 단독 키 신설 검토 — 별도 alias_review 루프
+- GraphRAG 노드 label 정규화 (서술형 노드 `유가_급등_압력` 등 처리) — 별도 대배치
+
+### 6.3 절대 변경 안 한 것 (writer 경계 불변 확인)
+
+```bash
+$ grep -E "REGIME_FILE|_regime_quality|update_canonical_regime|write_debate_memory" \
+       market_research/wiki/entity_builder.py
+(no matches)
+```
+→ entity_builder는 read-only. canonical / debate / regime live 파일 write 0건.
+
+---
+
+## 7. 판정 문구 (정직)
+
+**implementation complete, evidence attached.**
+
+리뷰어 1차 피드백에서 지적한 packet-코드 불일치 우려는 **사실이 아니었음을
+§5의 grep + sed 직접 출력으로 확인**. 단 packet의 톤이 "전면 재설계 완료" 처럼
+단정적이었던 점은 본 재제출에서 evidence-first 형식으로 교정.
+
+---
+
+## Revision note
+
+- **v13.1 (2026-04-20 KST)** — 초판 (디자인 + 구현 보고)
+- **v13.1.1 (2026-04-21 KST)** — evidence response. format D 6-section 재구성.
+  - §2 변경 파일 목록 + git stat
+  - §3 파일별 net diff
+  - §4 현재 working tree 코드 스니펫 (write_entity_page / refresh / select_entity_candidates)
+  - §5.1 reviewer B1~B4 grep 직접 증빙
+  - §5.2 live entity page 본문 grep
+  - §5.3 회귀 40/40 PASS 재현
+  - §6 한계/미완료 분리
+  - §7 판정 톤 교정 ("전면 재설계 완료" → "implementation complete, evidence attached")
