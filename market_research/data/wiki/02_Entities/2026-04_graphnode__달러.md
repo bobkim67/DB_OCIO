@@ -7,11 +7,11 @@ topic: 달러
 period: 2026-04
 graph_node_id: 달러
 canonical_entity_label: "달러"
-linked_events: [event_0, event_5, event_6, event_7, event_26]
+linked_events: [event_0, event_1, event_4, event_5, event_6]
 has_draft_evidence: true
 draft_sources: [graph_evidence]
 source_of_truth: pipeline_refine
-updated_at: 2026-04-17T14:39:28
+updated_at: 2026-04-20T09:31:25
 ---
 
 # Entity — 달러
@@ -22,17 +22,17 @@ updated_at: 2026-04-17T14:39:28
 ## Confirmed facts  _[source: `pipeline_refine`]_
 
 - Mentioned in **6** articles this period
-- Linked events: `event_0`, `event_5`, `event_6`, `event_7`, `event_26`
+- Linked events: `event_0`, `event_1`, `event_4`, `event_5`, `event_6`
 - Related asset classes (derived): —
 - Related funds: —  _(populated in a later batch)_
 
 ### Recent articles
-- 센터포인트에너지, 분기 배당 주당 0.23달러 확정…6월 11일 지급
-- '경상수지 흑자=환율 하락' 공식 깨졌다..."개인 해외 투자 확대 영향"
-- [서환] 개장 전 마(MAR) '+0.05원' 거래…픽싱 스퀘어
-- 정부 "중동 전쟁에 경기 하방위험 확대"
-- 한은 "'경상흑자=환율 하락' 공식 깨져"… 해외투자·저축 증가 영향
-- 톰 리 “이번 하락은 크립토 윈터 아니다”…비트코인, 기술주와 동조 ...
+- [오늘 금시세]호르무즈 해협 재개방에 금값, 상승 마감 전망
+- [오늘의 채권ㆍ외환 메모] (04월20일)
+- [오늘의 금시세] 4월 20일, 이란 긴장 속 환율 상승…금값 약세
+- 호르무즈 긴장에 유가 반등…WTI 6%↑
+- 코스피 상승 출발, 원달러환율은 하락
+- 코스피, 중동 긴장 재격화에도 상승…6200선 출발
 
 ## Draft evidence  _[source: `07_Graph_Evidence` · draft]_
 
@@ -41,9 +41,9 @@ updated_at: 2026-04-17T14:39:28
 > Canonical regime lives in `05_Regime_Canonical/`.
 
 ### Graph adjacency (top 5)
-- → `달러_강세_약세`  (causes, w=0.80)
-- ← `달러_강세_또는_약세_반응`  (reacts_to, w=0.60)
-- → `달러-유로_역의_상관관계`  (correlates, w=0.48)
+- → `달러_강세_약세`  (causes, w=0.51)
+- ← `달러_강세_또는_약세_반응`  (reacts_to, w=0.42)
+- → `달러-유로_역의_상관관계`  (correlates, w=0.31)
 
 ### Transmission paths involving this node
 - _No transmission path matched this node this period._

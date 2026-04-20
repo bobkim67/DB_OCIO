@@ -7,11 +7,11 @@ topic: news
 period: 2026-04
 graph_node_id: 유가
 canonical_entity_label: "유가"
-linked_events: [event_12, event_29, event_35, event_39, event_44]
+linked_events: [event_4, event_5, event_18, event_21, event_25]
 has_draft_evidence: true
 draft_sources: [graph_evidence]
 source_of_truth: pipeline_refine
-updated_at: 2026-04-17T14:39:28
+updated_at: 2026-04-20T09:31:25
 ---
 
 # Entity — 유가
@@ -22,17 +22,17 @@ updated_at: 2026-04-17T14:39:28
 ## Confirmed facts  _[source: `pipeline_refine`]_
 
 - Mentioned in **6** articles this period
-- Linked events: `event_12`, `event_29`, `event_35`, `event_39`, `event_44`
+- Linked events: `event_4`, `event_5`, `event_18`, `event_21`, `event_25`
 - Related asset classes (derived): `원자재`
 - Related funds: —  _(populated in a later batch)_
 
 ### Recent articles
-- [경제 안테나] 원유가 충격과 인플레, 그리고 금리
-- "중동전쟁에 경기 하방위험 커져...물가·민생부담 확대 우려"
-- 트럼프 "이란전 순조롭게 진행" 발언에…국제유가 하락 전환
-- 미-이란 협상 교착… 호르무즈 해협 봉쇄 우려에 국제유가 2%대 상승
-- 이란 전쟁 종료 기대에 국제 유가 하락
-- 트럼프 약발 끝?...장중, 아시아 6개국 증시 '일제히 하락'
+- [오늘의 금시세] 4월 20일, 이란 긴장 속 환율 상승…금값 약세
+- 호르무즈 긴장에 유가 반등…WTI 6%↑
+- 호르무즈 긴장 고조…국제유가 급등·코스피 혼조
+- [애널픽] "종전이후 종목 차별화…AI 인프라·증권 주목"
+- 코스피, 장초반 횡보…국제유가 7% 급등
+- 亞 장초반...한국·일본·호주증시 '혼조', 달러 '절상', 유가 '폭등'
 
 ## Draft evidence  _[source: `07_Graph_Evidence` · draft]_
 
@@ -41,17 +41,14 @@ updated_at: 2026-04-17T14:39:28
 > Canonical regime lives in `05_Regime_Canonical/`.
 
 ### Graph adjacency (top 5)
-- ← `원유_선물_가격_급등`  (causes, w=0.83)
-- ← `국제유가`  (correlates, w=0.69)
-- ← `공급_차질_우려_심화`  (causes, w=0.66)
-- → `에너지·소재_기업_수익성_변화`  (causes, w=0.63)
-- → `에너지_비용_상승`  (causes, w=0.45)
+- ← `유가_상승_압력`  (causes, w=0.91)
+- ← `유가_변동`  (causes, w=0.87)
+- ← `원유_선물_가격_급등`  (causes, w=0.58)
+- → `에너지·소재_기업_수익성_변화`  (causes, w=0.48)
+- ← `국제유가`  (correlates, w=0.37)
 
 ### Transmission paths involving this node
-- trigger `지정학` → target `유가`: `지정학적_리스크_상승` → `중동_산유국_공급_불안` → `원유_선물_가격_급등` → `유가`  (conf=0.79)
-- trigger `유가_급등` → target `유가`: `유가_급등_압력` → `국제유가`  (conf=0.66)
-- trigger `지정학` → target `유가`: `중동_지정학적_불안_고조` → `유가_상승_우려`  (conf=0.64)
-- trigger `유가_급등` → target `유가`: `유가_급등_압력` → `국제유가` → `유가`  (conf=0.44)
+- trigger `지정학` → target `유가`: `호르무즈_해협_긴장_봉쇄_위협` → `원유_수송로_차단_우려`  (conf=0.98)
 
 ## Provenance
 

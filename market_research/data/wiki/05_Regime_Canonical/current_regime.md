@@ -9,7 +9,7 @@ since: 2026-04-01
 direction: neutral
 weeks: 2
 source_of_truth: daily_update
-updated_at: 2026-04-17T17:42:30
+updated_at: 2026-04-20T14:25:57
 ---
 
 # Current Regime
@@ -27,8 +27,5 @@ updated_at: 2026-04-17T17:42:30
 - Narrative (tags): `지정학`
 - Description: 휴전 완화 vs 유가 구조적 충격의 줄다리기
 - Ended: 2026-04-01
-
-## Last shift
-- 휴전 완화 vs 유가 구조적 충격의 줄다리기 -> 지정학 완화 vs 구조적 인플레: 단기 랠리와 장기 리스크의 불일치
 
 > Written by `daily_update.Step 5`. Debate engine never writes to this page.

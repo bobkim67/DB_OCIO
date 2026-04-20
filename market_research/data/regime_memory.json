@@ -7,9 +7,7 @@
       "지정학",
       "물가_인플레이션"
     ],
-    "_unresolved_tags": [
-      "단기 랠리와 장기 리스크의 불일치"
-    ],
+    "_unresolved_tags": [],
     "narrative_description": "지정학 완화 vs 구조적 인플레: 단기 랠리와 장기 리스크의 불일치",
     "direction": "neutral"
   },
@@ -21,7 +19,7 @@
     ],
     "narrative_description": "휴전 완화 vs 유가 구조적 충격의 줄다리기"
   },
-  "shift_detected": true,
+  "shift_detected": false,
   "shift_description": "휴전 완화 vs 유가 구조적 충격의 줄다리기 -> 지정학 완화 vs 구조적 인플레: 단기 랠리와 장기 리스크의 불일치",
   "history": [
     {
@@ -98,11 +96,9 @@
       "narrative": "이란 위기 + 유가 급등 + 달러 기근",
       "period": "2026-03-01 ~ 2026-03-01",
       "topic_tags": [
+        "지정학",
         "에너지_원자재",
         "달러_글로벌유동성"
-      ],
-      "_unresolved_tags": [
-        "이란 위기"
       ]
     },
     {
@@ -144,5 +140,5 @@
     }
   ],
   "_shift_consecutive_days": 0,
-  "last_daily_update": "2026-04-17"
+  "last_daily_update": "2026-04-20"
 }
