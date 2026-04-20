@@ -3,56 +3,49 @@ type: entity
 status: base
 entity_id: graphnode__환율
 label: "환율"
-topic: news
-period: 2026-04
+taxonomy_topic: 환율_FX
+node_importance: 1.6862
+importance_basis: edge_effective_score_sum
+support_count_sum: 8
+path_count: 0
+path_role_hit: false
+unique_article_count: 2092
+first_seen: 2026-02-05
+last_seen: 2026-04-20
+primary_articles: [62883747508b, 010d90ce1787, 13a9b66a2f4e, 445792494826, ade3470dc6e8]
 graph_node_id: 환율
-canonical_entity_label: "환율"
-linked_events: [event_0, event_4, event_6, event_7, event_10]
-has_draft_evidence: true
-draft_sources: [graph_evidence]
-source_of_truth: pipeline_refine
-updated_at: 2026-04-20T09:31:25
+period: 2026-04
+has_graph_signal: true
+source_of_truth: pipeline_refine+graphrag
+updated_at: 2026-04-20T16:51:56
 ---
 
 # Entity — 환율
 
 **Canonical label**: `환율`  
-**Topic**: `news` · **Graph node**: `환율`
+**Taxonomy**: `환율_FX` · **Graph node**: `환율`
 
-## Confirmed facts  _[source: `pipeline_refine`]_
+## Confirmed facts
 
-- Mentioned in **6** articles this period
-- Linked events: `event_0`, `event_4`, `event_6`, `event_7`, `event_10`
+- Mention summary: 2026-02-05 ~ 2026-04-20 · 2092 articles
+- Linked events: `event_2213`, `event_2144`, `event_2457`, `event_3330`, `event_2990`
 - Related asset classes (derived): `환율`
-- Related funds: —  _(populated in a later batch)_
 
 ### Recent articles
-- [오늘 금시세]호르무즈 해협 재개방에 금값, 상승 마감 전망
-- [오늘의 금시세] 4월 20일, 이란 긴장 속 환율 상승…금값 약세
-- 코스피 상승 출발, 원달러환율은 하락
-- 코스피, 중동 긴장 재격화에도 상승…6200선 출발
-- 환율, 미·이란 휴전 종료 시한 임박 속 소폭 하락…1,478.4원
-- 코스피, 0.36% 상승 개장...6,210대 등락
+- [오늘 금시세]호르무즈 해협 재개방에 금값, 상승 마감 전망 (ref:`62883747508b`)
+- 환율, 미·이란 휴전 종료 시한 임박 속 소폭 하락…1,478.4원 (ref:`010d90ce1787`)
+- 코스피, 중동 긴장 재격화에도 상승…6200선 출발 (ref:`13a9b66a2f4e`)
+- 코스피 6216...원·달러 환율 1478원 출발 (ref:`445792494826`)
+- [개장시황] 코스피, 22.00포인트 오른 6213.92 출발 (ref:`ade3470dc6e8`)
+- 원·달러 환율, 4.0원 내린 1479.5원 개장
+- 원·달러 환율 4.0원 내린 1479.5원 출발
+- iM증권 "이번주 환율 1440~1490원 전망, 미국-이란 2차 종전 협상에 달려...
 
-## Draft evidence  _[source: `07_Graph_Evidence` · draft]_
+## Graph provenance
 
-> Adjacency and transmission paths below are **draft evidence** produced
-> by GraphRAG. Do NOT treat as confirmed regime signal.
-> Canonical regime lives in `05_Regime_Canonical/`.
+- `node_importance`: 1.6862 (edge_effective_score_sum)
+- `support_count_sum`: 8
+- `path_count`: 0
+- `path_role_hit`: false
 
-### Graph adjacency (top 5)
-- ← `원_달러_환율_변동`  (causes, w=0.51)
-- ← `원_달러`  (correlates, w=0.38)
-- → `원화약세→외국인_자금유출`  (causes, w=0.26)
-- ← `환율_상승_하락`  (causes, w=0.12)
-
-### Transmission paths involving this node
-- _No transmission path matched this node this period._
-
-## Provenance
-
-- Base entity: `pipeline_refine` (daily_update Step 2.5 / 2.6)
-- Graph node: `환율`
-- Confidence proxy (node severity): `neutral`
-
-> Base page. Canonical regime → `05_Regime_Canonical/`. Debate commentary → `06_Debate_Memory/`. Full transmission paths → `07_Graph_Evidence/`.
+> Detailed adjacency and transmission paths are available in `07_Graph_Evidence/`. This base page records only summary provenance.

@@ -1,9 +1,9 @@
 # Regime monitor summary
 
-- Generated: `2026-04-17T17:10:42`
+- Generated: `2026-04-21T07:57:39`
 - Source: `data\report_output\_regime_quality.jsonl`
-- Window: `2026-04-04` ~ `2026-04-17` (14 days)
-- Source rows: 46  (window rows: 46, malformed skipped: 0)
+- Window: `2026-04-08` ~ `2026-04-21` (14 days)
+- Source rows: 97  (window rows: 97, malformed skipped: 0)
 
 > `source_rows` = 전체 집계 대상 row 수. `window_rows` = 윈도우 내 row.
 > `unique_dates_in_window` = 실제 관측 일수. 동일 날짜에 여러 row가
@@ -16,39 +16,39 @@
 
 | indicator | value |
 |---|---|
-| source_rows | 46 |
-| window_rows | 46 |
-| unique_dates_in_window | 1 |
-| unique_date_coverage_ratio | 0.0714 |
-| row_per_date_ratio | 46.0 |
-| observed_unique_dates_with_candidate | 1 |
-| observed_unique_dates_with_empty_tags | 1 |
+| source_rows | 97 |
+| window_rows | 97 |
+| unique_dates_in_window | 3 |
+| unique_date_coverage_ratio | 0.2143 |
+| row_per_date_ratio | 32.33 |
+| observed_unique_dates_with_candidate | 3 |
+| observed_unique_dates_with_empty_tags | 3 |
 | malformed_skipped | 0 |
-| shift_candidate_rows | 16 |
+| shift_candidate_rows | 32 |
 | shift_confirmed_count | 1 |
-| sentiment_flip_rows | 15 |
-| cooldown_block_rows | 16 |
-| sparse_fallback_rows | 14 |
-| empty_tag_rows | 16 |
-| avg coverage_current | 0.0833 |
-| avg coverage_today (core top3) | 0.0 |
-| churn proxy (confirmed / candidate_row) | 0.0625 |
+| sentiment_flip_rows | 31 |
+| cooldown_block_rows | 32 |
+| sparse_fallback_rows | 30 |
+| empty_tag_rows | 32 |
+| avg coverage_current | 0.0968 |
+| avg coverage_today (core top3) | 0.0107 |
+| churn proxy (confirmed / candidate_row) | 0.0312 |
 
 ## consecutive_row_streak distribution
 
 | consecutive_row_streak | rows |
 |---|---|
-| 0 | 30 |
-| 1 | 15 |
+| 0 | 65 |
+| 1 | 31 |
 | 3 | 1 |
 
 ## candidate_rule distribution
 
 | rule | count |
 |---|---|
-| `low_coverage_today` | 42 |
-| `low_coverage_current` | 35 |
-| `sentiment_flip` | 15 |
+| `low_coverage_today` | 90 |
+| `low_coverage_current` | 75 |
+| `sentiment_flip` | 31 |
 
 ## Day-level prep metrics (v14)
 
