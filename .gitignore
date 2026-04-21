@@ -12,8 +12,14 @@ market_research/data/news_vectordb/
 market_research/data/news_content_pool/
 market_research/data/enriched_digests/
 market_research/data/timeseries_narratives/
+market_research/data/naver_research/
 market_research/output/
 market_research/devlog/
+
+# market_research — daily_update 매일 갱신 데이터 (재생성 가능)
+market_research/data/news/
+market_research/data/monygeek/
+market_research/data/report_cache/
 
 # Large files exceeding GitHub 100MB limit
 General_Backtest/.RData
