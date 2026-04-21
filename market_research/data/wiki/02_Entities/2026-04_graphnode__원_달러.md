@@ -17,7 +17,7 @@ graph_node_id: 원_달러
 period: 2026-04
 has_graph_signal: true
 source_of_truth: pipeline_refine+graphrag
-updated_at: 2026-04-21T09:27:26
+updated_at: 2026-04-21T09:51:14
 ---
 
 # Entity — 원/달러
@@ -28,7 +28,7 @@ updated_at: 2026-04-21T09:27:26
 ## Confirmed facts
 
 - Mention summary: 2026-04-01 ~ 2026-04-20 · 183 articles
-- Linked events: `event_2213`, `event_2457`, `event_2752`, `event_3330`, `event_2142`
+- Linked events: `event_2482`, `event_2726`, `event_3021`, `event_3599`, `event_2411`
 - Related asset classes (derived): `환율`
 
 ### Recent articles
