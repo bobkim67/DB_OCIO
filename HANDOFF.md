@@ -2,74 +2,168 @@
 
 ## Snapshot
 
-- Date: 2026-04-10
-- Project: `DB_OCIO_Webview`
-- Main focus: debate hallucination 방어체계 + 매크로 브리핑 UI
+- Date: 2026-04-21
+- Project: `DB_OCIO_Webview_news` (renamed from `DB_OCIO_Webview`)
+- Branch: `feature/regime-replay` (PR #18 → main, open)
+- HEAD: `f4e6b99`
+- Main focus 직전 세션: insight engine 정리 (v10~v15 + v13 entity redesign)
+- 다음 세션 의도: **뉴스 수집(collect) 로직 redesign** — 별도 새 세션 + 새 브랜치 권장
 
-## Completed (04-10 세션)
+---
 
-### debate 파이프라인 개선
-- 산출물 목적 재정의: 펀드 운용보고 → **매크로 시장 브리핑**
-- Opus 프롬프트 전면 재작성 (system_msg, 문단 구조, 금지 규칙)
-- 분기 통합 debate (`run_quarterly_debate`) 구현
-- daily_update에 블로그 수집(Step 1.5) + 인사이트 빌드(Step 1.6) + NewsAPI 통합
+## 이번 세션에서 한 일 (2026-04-20 ~ 04-21)
 
-### hallucination 방어체계
-- **ref 매핑 강화**: 프롬프트 뉴스 목록에 `[ref:N]` 식별자 직접 표기
-- **시제 validator**: evidence "유력" → 코멘트 "확정형" 탐지 (rule-based)
-- **ref 교차검증**: 문장 토픽 ↔ ref 기사 토픽 키워드 매칭
-- **ref 유효성 검증**: 존재하지 않는 ref 번호 탐지
-- **당일 기사 슬롯**: TIER1/TIER2 당일 기사 최대 2건 우선 배정
-- **structured warnings**: `list[dict]` (type/ref_no/message/severity)
+### 1. v15 regime replay (CLI + 17일 실증)
+- `tools/regime_replay.py` — as-of-date rolling 45일 replay
+- `_judge_regime_state` / `_compute_delta_from_articles` pure function 분리
+  (live `_step_regime_check`은 thin wrapper)
+- `tests/test_regime_replay.py` 8 cases PASS
+- 17일(2026-04-01~04-17) 실측: candidate=0 (initial state=neutral_empty 부작용, honest 보고)
+- 산출물: `_regime_quality_replay.jsonl`, `regime_replay_summary.{json,md}`
+- review packet: `docs/review_packet_replay.md`
 
-### client/admin 분리
-- **client**: inline ref 완전 제거, 하단 "참고 뉴스" 목록만 표시, 관련 지표 차트 (3열)
-- **admin**: debate 생성/수정/저장 UI, 출처에 ⚠️ 경고 표시, 내부 지표 가이드
-- 후처리: 펀드 액션 패턴 금지 (시장 설명 허용), 권고형 문장 탐지
+### 2. 미커밋 v10~v14 잔재 일괄 정리 (7배치)
+이전 세션들에서 컴미트 안 된 v10~v14 산출물을 batch별로 7개 commit으로 정리
++ git filter-repo로 news_vectordb (334MB) 히스토리 제거 → push 성공.
+PR #18 생성 (`gh pr create`).
 
-### 외부 리뷰 시스템
-- OpenAI reviewer hooks (`python/tools/`) 빌드 + DB_OCIO_Webview에 hooks 등록
-- `.env` 경로: `python/tools/.env`
-- review_packet_v5 작성
+### 3. 3일 백필 (2026-04-18 / 19 / 20)
+주말 포함 누락분 backfill. `.last_collect_date → 2026-04-20`.
+regime: 지정학 + 물가_인플레이션 (since 2026-04-01, weeks 2). shift 0건.
 
-### 기타
-- 미커밋 정리 + 2커밋 완료 (코드 + 데이터)
-- evidence [ref:N] 실전 검증: 9건 생성, 15건 매핑 성공
-- 문서 현행화: AGENTS.md, docs/market_research.md, CLAUDE.md 경로 수정
-- collect skill 현행화 (daily_update 단일 명령)
+### 4. PHRASE_ALIAS 2차 review (v15)
+unresolved 10건 → keep_unresolved 4건 추가, approved 0건 (v11 contract 준수).
 
-## Open Issues
+### 5. v13.1 entity page redesign — 본격 구현
+**핵심 전환**: node metadata (severity) → graph structure (edge effective_score + path_role).
+- `wiki/entity_builder.py` 신규: 5함수 (load/map/importance/articles/select)
+- `wiki/draft_pages.py::write_entity_page` 단순 dict 시그니처
+- 매체 entity (`source__*`) 생성 중단 + `_purge_stale_entity_pages`
+- 본문에서 adjacency/path 상세 제거 (07_Graph_Evidence/만 소유)
+- 신규 test 7 + 재작성 test 5
+- 실측 4월: 101 노드 → taxonomy gate hit 4 → 4 entities
+- 1차 review: revise/hold → format D evidence response로 재제출
 
-1. **Opus hallucination 잔여**: ref 오매핑/시제 변조 **완화**됨, 완전 해결 아님
-2. **매매이력 분석 문단**: DWPM10520 거래내역 + 가격 + 뉴스 → "운용 현황" 자동 생성
-3. **debate 결과 자산군별 분리**: customer_comment → 펀드별 매칭
-4. **GraphRAG 누적 폭발**: rolling window 리서치 필요
-5. **2025년 데이터 19,000건**: V2 분류 보류 (비용 $190, 우선순위 낮음)
+### 6. v13.2 entity alias backfill — coverage 검증
+- 16개 후보 검토 → APPROVE 4 / REJECT 8 / DEFER 4
+- 추가 alias: `국제유가`, `호르무즈 해협`, `호르무즈 봉쇄`, `이란 협상` (모두 evidence 충분, risk=low)
+- gate hit 4 → 8, entities 4 → 7 (이란 협상은 cap=3에서 drop)
 
-## 집에서 작업 가능한 것
+### 7. v13.3 entity diversity controls
+- `달러` audit 결과: defer 유지 (가격 단위 압도, funding 의미 1%만)
+- `entity_builder.select_entity_candidates`에 옵션 2개 추가:
+  - `per_taxonomy_floor` (default 0)
+  - `suppress_near_duplicates` (default False)
+- refresh에서 `suppress=True` 활성화 → `유가/국제유가` 중복 제거
+- alias 1건 추가: `원/달러 → 환율_FX`
+- after: 7 entities (지정학 3 / 에너지 1 / FX 2 / 테크 1)
+- false positive 0, contract 위반 0
+- 5 docs 작성 (diagnosis / dollar policy / options / alias review / result)
 
-- 뉴스/블로그 수집 (`daily_update.py`) — DB 불필요
-- debate 실행 + 코멘트 생성 — Anthropic API만 필요
-- Streamlit 운용보고(전체) 탭 — 로컬 JSON 기반
-- 후처리/validator 개선 — 코드 작업
+---
 
-## 집에서 불가능한 것
+## 현재 상태
 
+### Branch / PR
+- `feature/regime-replay` (HEAD `f4e6b99`)
+- PR #18 https://github.com/bobkim67/DB_OCIO/pull/18 (open, main 타겟)
+- 백업 브랜치: `feature/regime-replay-backup` (filter-repo 전 SHA 보존)
+
+### 02_Entities (2026-04, 7건)
+| label | taxonomy | importance | arts |
+|-------|----------|-----------:|-----:|
+| 유가 | 에너지_원자재 | 4.088 | 2542 |
+| 이란 | 지정학 | 2.805 | 3096 |
+| 호르무즈 해협 | 지정학 | 1.852 | 553 |
+| 환율 | 환율_FX | 1.686 | 2092 |
+| 반도체 | 테크_AI_반도체 | 0.772 | 2234 |
+| 호르무즈 봉쇄 | 지정학 | 0.517 | 78 |
+| 원/달러 | 환율_FX | 0.282 | 183 |
+
+### 회귀 테스트 (전체 PASS)
+- test_taxonomy_contract 3/3
+- test_alias_review 6/6
+- test_entity_builder 9/9 (case 8/9 신규 — suppress + floor)
+- test_entity_demo_render 5/5 (재작성)
+- test_regime_replay 8/8
+- test_regime_decision_v12 4/4
+- test_regime_monitor 7/7
+
+### 데이터 상태
+- last_collect_date: 2026-04-20
+- regime: 지정학 + 물가_인플레이션 (since 2026-04-01, weeks 2)
+- 4월 articles: 23,495건 (2026-04-21 09:30 기준)
+- 4월 graph: 101 nodes / 108 edges / 4 transmission paths
+
+---
+
+## Open Issues / TODO
+
+### 다음 세션 후보 (우선순위)
+1. **뉴스 수집 로직 redesign** ← 사용자 명시 (별도 새 세션 권장)
+   - 현재 위치: `collect/macro_data.py`, `collect/naver_blog.py`, `daily_update.py` Step 1
+   - 검토 후보 dimension: source quality 재평가, dedupe 정책, salience 가중치, fallback 분류 등 (사용자 의도 확인 필요)
+2. **regime 판정식 실전 모니터링 2주** (passive)
+   - daily_update 매일 실행 → `_regime_quality.jsonl` 누적 → 분포 분석
+3. **Entity layer 후속**
+   - `달러` split rule (분류기 신뢰도 측정 후 재검토)
+   - 종목명 entity 정책 (sector 외 layer 신설 여부)
+   - `per_taxonomy_floor` 활성화 trigger (alias 풀 보강 후)
+
+### 영구 deferred
+- `달러` 단독 alias — audit 결과 다의어 폭증 위험
+- 종목명 alias (`삼성전자`, `SK하이닉스`, `나스닥`) — 정책 미정
+- 새 taxonomy 항목 (`국내주식`, `해외주식` 등) — 14 contract 유지
+- media entity (`source__*`) 복구 금지
+
+### 기존 issue (이전 세션부터 carry)
+- Opus hallucination 잔여 (debate)
+- 매매이력 분석 문단 자동 생성 (DWPM10520)
+- GraphRAG 누적 폭발 (rolling window 리서치 필요)
+
+---
+
+## 집에서 작업 가능 vs 불가능
+
+### 가능 (DB 불필요)
+- 뉴스/블로그 수집 (`daily_update.py`)
+- debate 실행 + 코멘트 생성 (Anthropic API)
+- Streamlit 운용보고(전체) 탭 (로컬 JSON)
+- entity / wiki 작업
+- 후처리 / validator 개선
+
+### 불가능
 - SCIP/dt DB 접속 (192.168.195.55 내부망)
-- Overview/편입종목/성과분석/매크로 탭 (DB 필요)
+- Overview/편입종목/성과분석/매크로 탭
 - VP/BM/PA 관련 작업
+
+---
 
 ## GitHub
 
-- 뉴스/블로그/매크로/GraphRAG/debate 데이터 push 완료
-- vectorDB (661MB) + enriched_digests + news_content_pool은 .gitignore 제외
-- 집에서 clone 후 vectorDB만 리빌드하면 됨:
+- 코드 + 데이터 모두 push 완료 (`f4e6b99`)
+- vectorDB (334MB+)는 .gitignore + 히스토리 제거 (filter-repo 적용)
+- 집에서 clone 후 vectorDB만 리빌드:
   ```bash
   python -m market_research.analyze.news_vectordb 2026-04
   ```
 
-## Next 3 Actions
+---
 
-1. debate 재실행하여 ref [ref:N] 식별자 효과 검증
-2. review_packet_v5 외부 리뷰 전달
-3. 매매이력 분석 문단 구현 (DWPM10520)
+## Next Actions (다음 세션 시작 시)
+
+새 세션 시작 시 권장 순서:
+1. 본 HANDOFF.md 읽기
+2. `git log --oneline -20` 으로 최근 commit 확인
+3. 사용자 의도 파악 — "뉴스 수집 로직 redesign"의 구체적 방향성 질문
+   - 어떤 부분을 바꾸고 싶은지 (수집 source / dedupe / salience / fallback / 다른 것)
+   - 현 동작의 문제점 또는 새로 추가하고 싶은 기능
+4. 새 브랜치 cut (예: `feature/news-collect-redesign`) 또는 main 직접 작업 결정
+5. Spec-First 원칙대로 충분한 질문 후 구현 진입
+
+---
+
+## Revision
+
+- **2026-04-21** — v15 replay + v13.x entity redesign 통합 정리. 다음 세션은 뉴스 수집 로직.
+- 2026-04-10 (이전) — debate hallucination 방어 + 매크로 브리핑 UI.
