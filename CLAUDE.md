@@ -175,7 +175,7 @@ market_research/data/report_output/
 
 DB형 퇴직연금 OCIO(Outsourced CIO) 운용 현황 웹 대시보드.
 Streamlit 기반 프로토타입으로, R Shiny 기존 시스템(General_Backtest/)을 Python으로 재구현 중.
-21개 펀드 (총 AUM ~1.4조원)의 성과 모니터링, 자산배분, Brinson PA, 매크로 지표 분석 제공.
+9개 펀드의 성과 모니터링, 자산배분, Brinson PA, 매크로 지표 분석 제공 (2026-04-21: 12개 펀드 제거 — 06X08, 07J20/27/34/41, 07J48/49, 07P70, 07W15, 09L94, 1JM96/98).
 
 ## Running the App
 
@@ -204,7 +204,7 @@ python -m market_research.report_cache_builder 2026 3
 DB_OCIO_Webview/
 ├── prototype.py           ← 메인 Streamlit 앱 쉘 (탭 모듈 라우팅 + 공통 ctx/cache)
 ├── config/
-│   ├── funds.py           ← 21개 펀드 메타정보, BM/MP 매핑, 8개 그룹, DB 설정
+│   ├── funds.py           ← 9개 펀드 메타정보, BM/MP 매핑, 4개 그룹, DB 설정
 │   └── users.yaml         ← 사용자 인증 정보
 ├── modules/
 │   ├── auth.py            ← 로그인 인증 모듈
@@ -250,7 +250,7 @@ DB_OCIO_Webview/
 **DB 연동 완료 (전체 탭)**:
 - NAV/AUM: `dt.DWPM10510` → `load_fund_nav_with_aum()`
 - BM 지수: **DT 우선** (`DWPM10040/10041`) → SCIP fallback (`load_composite_bm_prices()`)
-  - DT BM 매핑: `data_loader.py::_DT_BM_CONFIG` (12개 펀드), `load_dt_bm_prices()`
+  - DT BM 매핑: `data_loader.py::_DT_BM_CONFIG` (5개 펀드: 07G02, 07G03, 07G04, 08K88, 4JM12), `load_dt_bm_prices()`
   - SCIP fallback: 나머지 9개 펀드 (`load_composite_bm_prices()`)
 - 보유종목: `dt.DWPM10530` → `load_fund_holdings_classified()` + `_classify_6class()`
 - Look-through: 모펀드 전개 → `load_fund_holdings_lookthrough()`
@@ -294,7 +294,7 @@ if DB_CONNECTED:
 ### Look-through 기능
 
 - 상단 펀드 선택 바에 토글 (모펀드 편입 펀드에서만 표시)
-- 모펀드 ITEM_CD 형식: `03228000{FUND_CD}` (예: `032280007J48` → `07J48`)
+- 모펀드 ITEM_CD 형식: `03228000{FUND_CD}` (예: `0322800007G02` → `07G02`)
 - `_extract_fund_code_from_item_cd()` → 하위 펀드 보유종목 로드 → 비중 가중 스케일 → 동일 종목 합산
 - 1단계 전개만 (재귀 아님)
 
@@ -388,16 +388,9 @@ Tab 2 VP 로딩 우선순위:
 # data_loader.py
 _DT_BM_CONFIG = {
     '07G04': ('10041', 'BM1'),   # 서브BM1
-    '06X08': ('10041', 'BM1'),   # 서브BM1
     '07G02': ('10041', 'BM1'),   # 서브BM1
     '07G03': ('10041', 'BM1'),   # 서브BM1
-    '07J20': ('10041', 'BM2'),   # 서브BM2
-    '07J27': ('10041', 'BM2'),   # 서브BM2
-    '07J34': ('10041', 'BM2'),   # 서브BM2
-    '07J41': ('10041', 'BM2'),   # 서브BM2
     '08K88': ('10041', 'BM2'),   # 서브BM2
-    '1JM96': ('10040', 'B'),     # 기본BM
-    '1JM98': ('10040', 'B'),     # 기본BM
     '4JM12': ('10040', 'B'),     # 기본BM
 }
 ```
@@ -444,10 +437,10 @@ _FUND_INCEPTION_BASE = {'4JM12': 1970.76}
 - `users.yaml`에 사용자 비밀번호 포함 — 커밋 시 주의.
 - Streamlit의 Pandas Styler 지원이 제한적: `.bar()` 등 일부 기능 미지원.
 - `pd.read_sql`에 DictCursor 사용하면 컬럼명이 값으로 들어가는 버그 → 반드시 `get_pandas_connection()` 사용.
-- BM 매핑: DT BM 우선 (12개 펀드 `_DT_BM_CONFIG`), SCIP fallback (9개 펀드 `FUND_BM`). SCIP 미설정: 07P70, 07W15, 08N33, 08N81, 08P22, 09L94, 2JM23.
+- BM 매핑: DT BM 우선 (5개 펀드 `_DT_BM_CONFIG`: 07G02, 07G03, 07G04, 08K88, 4JM12), SCIP fallback (`FUND_BM`: 07G04, 08K88, 4JM12 — 3개 설정). BM 미설정: 07G02, 07G03, 08N33, 08N81, 08P22, 2JM23.
 - NAV 로딩 시작일: `FUND_META[fund]['inception']` 사용 (이전 하드코딩 '20240101' 제거)
 - 기간수익률: `relativedelta` 달력월 기준 (DT DWPM10040 완벽 일치). `python-dateutil` 의존성 추가.
-- MP 비중: DB 연동 완료 (`sol_MP_released_inform` + `FUND_MP_DIRECT`). 19개 펀드 MP 설정, ABL 2개 미설정.
+- MP 비중: DB 연동 완료 (`sol_MP_released_inform` + `FUND_MP_DIRECT`). 2026-04-21 12펀드 제거 후 FUND_MP_MAPPING 3개(07G02/03/04) + FUND_MP_DIRECT 6개(08K88, 08N33, 08N81, 08P22, 2JM23, 4JM12).
 - VP 데이터: `sol_DWPM10530/10510` 사용 (VP 전용 코드: 3MP01, 2MP24 등). `sol_VP_rebalancing_inform`은 이벤트 로그만.
 - VP 코드 매핑: `data_loader.py::_FUND_DESC_TO_VP_CODE` dict로 관리.
 - Brinson PA: `dt.MA000410` 테이블의 컬럼명은 영문(`sec_id`, `modify_unav_chg`), 보유종목(`load_fund_holdings_classified`)의 컬럼명도 영문(`ITEM_CD`, `ITEM_NM`)이므로 매핑 시 영문 컬럼명 사용.
@@ -590,6 +583,8 @@ FX_split=TRUE일 때 증권 수익률에서 환효과 분리:
 ### 잔여 이슈
 - **FX 자산군 일별 수익률 0.20%p systematic 차이**: sec 구조 통합으로도 해결 안 됨. 2026-01-02 Python 0.000009 vs R 0.003337 등 일별 값 자체 차이. 후보 원인: ① 한국 영업일 캘린더 기준일 차이 ② USDKRW T-1 참조 방식 ③ r_sec 곱셈분해 정밀도 ④ 시가평가액(T-1) 계산 세부
 - **추적 방법**: R 실행 결과 일별 per-sec raw (환산_adjust, 조정평가액, r_sec) CSV 확보 후 1:1 비교 필요
+- **국내채권 factor 0.0026%p 잔여 (FoF + std_val precision)**: 2026-04-21 세션에서 `_load_etf_redemption_adjustment`에 FoF 추적배수(R line 191-210) 적용 → 해외채권/해외주식/FX Alloc 잔여차 0 완전 해소. 남는 국내채권 0.0026%p는 07G04 FoF Cartesian + 신규매수+기존혼합 edge case 3건 중 KR7385560008(3/9, std_val fractional 0.026)에서 distinct 실패로 발생. R Excel도 Cartesian sum(amt) 2x 부풀림이 자기 일관 값이라 Py 정확값과의 본질적 격차 — 한계 인정. (memory: feedback_brinson_domestic_bond_residual.md)
+- **4JM12 BM 정확 수정 ✅** (2026-04-21): 'KAP All(257/9, 0.495) + KAP MMI Call(255/9, 0.055) + MSCI ACWI(35/15) 0.225 unhedged + 0.225 hedged'. AP/BM/초과 R Excel 0bp 일치. 잔여: FX hedging 분리(R FX 비중 음수 처리) + 유동성 자산군 매핑.
 - Brinson 시작일: 현재 하드코딩, YTD 시 자동 전년말 시작 필요
 - UI 연결: `compute_brinson_attribution` 호출부를 v2로 교체 후 구함수 삭제 예정
 
@@ -621,7 +616,7 @@ FX_split=TRUE일 때 증권 수익률에서 환효과 분리:
 - 영향: 08P22 월넛은행채플러스일반사모투자신탁 → 모펀드에서 국내채권으로 정정
 
 ### BM 미설정 펀드 처리
-- 11개 펀드(07G02, 07G03, 07J48, 07J49, 07P70, 07W15, 08N33, 08N81, 08P22, 09L94, 2JM23) BM 미설정
+- 6개 펀드(07G02, 07G03, 08N33, 08N81, 08P22, 2JM23) BM 미설정
 - 기존: BM 없으면 mockup fallback → 변경: NAV만 표시, BM/초과수익 빈칸
 - 카드: vs BM delta 제거, BM 스파크라인 → "BM 미설정"
 - 기간수익률: BM/초과수익 행 조건부 삭제

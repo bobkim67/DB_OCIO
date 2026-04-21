@@ -525,17 +525,10 @@ def load_scip_bm_prices(dataset_id: int, dataseries_id: int,
 _DT_BM_CONFIG = {
     # DWPM10041 서브BM
     '07G04': ('10041', 'BM1'),   # 서브BM1
-    '06X08': ('10041', 'BM2'),   # 서브BM2
     '07G02': ('10041', 'BM1'),   # 서브BM1만 존재
     '07G03': ('10041', 'BM1'),   # 서브BM1만 존재
-    '07J20': ('10041', 'BM2'),
-    '07J27': ('10041', 'BM2'),
-    '07J34': ('10041', 'BM2'),
-    '07J41': ('10041', 'BM2'),
     '08K88': ('10041', 'BM2'),
     # DWPM10040 기본BM
-    '1JM96': ('10040', 'B'),
-    '1JM98': ('10040', 'B'),
     '4JM12': ('10040', 'B'),
 }
 
@@ -946,7 +939,7 @@ def load_fund_holdings_classified(fund_code: str, date: str = None) -> pd.DataFr
 def _extract_fund_code_from_item_cd(item_cd: str) -> str:
     """
     모펀드 ITEM_CD에서 펀드코드 추출.
-    DWPM10530의 모펀드 ITEM_CD 형식: '03228000{FUND_CD}' (예: 032280007J48 → 07J48)
+    DWPM10530의 모펀드 ITEM_CD 형식: '03228000{FUND_CD}' (예: 0322800007G02 → 07G02)
     """
     s = str(item_cd).strip()
     if len(s) > 5 and s.startswith('0322800'):
@@ -1457,13 +1450,13 @@ def _load_bm_daily_returns_by_class(bm_info: dict, start_date: str, end_date: st
 
     # 컴포넌트 → 자산군 매핑 및 비중 합산
     comp_class_map = {}
-    _bm_fx_weight = 0.0  # FX 오버레이 비중 (해외주식 unhedged BM)
+    _bm_fx_weight = 0.0  # FX 오버레이 비중 (해외주식 unhedged BM만, hedged 제외)
     for comp in components:
         ac = _map_bm_component_to_asset_class(comp['name'])
         bm_weights[ac] += comp['weight'] * 100
         comp_class_map[comp['name']] = ac
-        # 해외주식(unhedged)의 비중 = FX 오버레이 비중
-        if ac == '해외주식':
+        # 해외주식 **unhedged만** FX 오버레이 기여
+        if ac == '해외주식' and not comp.get('hedged', False) and comp.get('region') == 'ex_KR':
             _bm_fx_weight += comp['weight'] * 100
 
     # USDKRW 로드 (ex_KR 컴포넌트의 T-1×FX 변환에 사용)
@@ -1601,17 +1594,33 @@ def _load_bm_daily_returns_by_class(bm_info: dict, start_date: str, end_date: st
         # 자산군 내 비중 비례
         bm_daily[ac] += cr['daily_ret'].reindex(all_dates).fillna(0) * (w / total_w)
 
-    # FX 오버레이: R 동일 가산 분해 (Total = Securities + FX)
-    # R: FX_daily = total_ret - (1+total_ret)/(1+r_fx) + 1
-    #    Securities = (1+total_ret)/(1+r_fx) - 1
+    # FX 오버레이: unhedged ex_KR 컴포넌트만 FX 분리 (hedged 컴포넌트는 이미 FX 없음)
+    # 각 unhedged 컴포넌트 x: stock_ret = (1+x_ret)/(1+r_fx) - 1; fx_only = x_ret - stock_ret
+    # 해외주식 자산군에서 unhedged 기여를 원수익률 → stock_ret로 교체
+    # FX 자산군 = unhedged 컴포넌트들의 fx_only 수익률 (weight 비례 평균)
     if _bm_fx_weight > 0 and _fx_on_kr_ret is not None:
         try:
             fx_ret = _fx_on_kr_ret.reindex(all_dates).fillna(0)
-            if '해외주식' in bm_daily.columns:
-                total_ret = bm_daily['해외주식'].copy()
-                sec_ret = (1 + total_ret) / (1 + fx_ret) - 1
-                bm_daily['해외주식'] = sec_ret
-                bm_daily['FX'] = total_ret - sec_ret  # 가산 잔차 = FX 기여
+            _unhedged_entries = [
+                (cn, cr) for cn, cr in comp_returns.items()
+                if any(c['name'] == cn and c.get('region') == 'ex_KR' and not c.get('hedged', False)
+                       for c in components)
+            ]
+            _total_unhedged_w = sum(cr['weight'] for _, cr in _unhedged_entries)
+            fx_return_series = pd.Series(0.0, index=all_dates)
+            for cn, cr in _unhedged_entries:
+                ac = cr['class']
+                w = cr['weight']
+                unhedged_ret = cr['daily_ret'].reindex(all_dates).fillna(0)
+                stock_ret = (1 + unhedged_ret) / (1 + fx_ret) - 1
+                total_w_ac = bm_weights[ac] / 100 if bm_weights[ac] > 0 else 1
+                # 해외주식 자산군에서 unhedged 원수익률 제거 후 stock_ret 추가
+                bm_daily[ac] -= unhedged_ret * (w / total_w_ac)
+                bm_daily[ac] += stock_ret * (w / total_w_ac)
+                # FX 자산군 수익률 = weight 비례 fx_only
+                if _total_unhedged_w > 0:
+                    fx_return_series += (unhedged_ret - stock_ret) * (w / _total_unhedged_w)
+            bm_daily['FX'] = fx_return_series
             bm_weights['FX'] = _bm_fx_weight
         except Exception:
             pass
@@ -2083,7 +2092,8 @@ def compute_brinson_attribution(fund_code: str,
 
 def compute_brinson_attribution_v2(fund_code: str,
                                    start_date: str, end_date: str,
-                                   asset_classes: list = None) -> dict:
+                                   asset_classes: list = None,
+                                   mapping_method: str = '방법3') -> dict:
     """
     Brinson 3-Factor Attribution — R 완벽 일치 버전.
 
@@ -2108,7 +2118,7 @@ def compute_brinson_attribution_v2(fund_code: str,
     # ── 1) Single PA 호출 (R PA_from_MOS exact) ──
     single_pa = compute_single_port_pa(
         fund_code, start_date, end_date,
-        fx_split=True, mapping_method='방법3',
+        fx_split=True, mapping_method=mapping_method,
     )
     if single_pa is None:
         logger.warning(f"[BrinsonV2] {fund_code} Single PA 실패")
@@ -2685,6 +2695,44 @@ def _load_asset_classification_mapping(method: str = '방법3') -> dict:
         conn.close()
 
 
+def _load_derivative_mapping(method: str = '방법3') -> tuple:
+    """
+    파생 자산군/통화 매핑 (solution.universe_derivative).
+    ITEM_NM keyword 매칭 기반이라 list[(asset_gb, keyword, classification)] 반환.
+
+    Returns:
+        (asset_rules, ccy_rules) — asset_gb + keyword 규칙으로 ITEM_NM 매칭
+    """
+    conn = get_pandas_connection('solution')
+    try:
+        q = """
+            SELECT asset_gb, keyword, classification_method, classification
+            FROM universe_derivative
+            WHERE classification_method IN (%s, 'Currency Exposure')
+              AND classification IS NOT NULL
+        """
+        df = pd.read_sql(q, conn, params=[method])
+    finally:
+        conn.close()
+    asset_rules = [(r['asset_gb'], r['keyword'], r['classification'])
+                   for _, r in df[df['classification_method'] == method].iterrows()]
+    ccy_rules = [(r['asset_gb'], r['keyword'], r['classification'])
+                 for _, r in df[df['classification_method'] == 'Currency Exposure'].iterrows()]
+    return asset_rules, ccy_rules
+
+
+def _match_derivative_rule(rules: list, asset_gb: str, item_nm: str) -> str:
+    """(asset_gb, keyword, classification) 리스트에서 ITEM_NM에 keyword 포함된 첫 매치 반환. 미매치 None."""
+    if not item_nm or not asset_gb:
+        return None
+    ag = str(asset_gb)
+    inm = str(item_nm)
+    for rule_ag, rule_kw, cls in rules:
+        if (rule_ag == ag) and (rule_kw in inm):
+            return cls
+    return None
+
+
 def compute_single_port_pa(fund_code: str, start_date: str, end_date: str,
                            fx_split: bool = True, mapping_method: str = '방법3') -> dict:
     """
@@ -2892,6 +2940,18 @@ def compute_single_port_pa(fund_code: str, start_date: str, end_date: str,
 
     # 통화 노출 매핑
     sec_agg['노출통화'] = sec_agg['sec_id'].map(ccy_dict)
+    # ── derivative fallback (R line 285-302): ISIN 접두어 fallback 이전에 universe_derivative 매칭 ──
+    # 미국달러 F 등 파생상품은 ISIN이 KR 접두어라도 실제 노출통화는 USD. 순서 중요.
+    _deriv_asset_rules, _deriv_ccy_rules = _load_derivative_mapping(mapping_method)
+    na_ccy = sec_agg['노출통화'].isna()
+    for idx in sec_agg[na_ccy].index:
+        matched = _match_derivative_rule(
+            _deriv_ccy_rules,
+            sec_agg.loc[idx, 'asset_gb'],
+            sec_agg.loc[idx, 'ITEM_NM_pos'],
+        )
+        if matched:
+            sec_agg.loc[idx, '노출통화'] = matched
     # fallback: ISIN 접두어 기반
     na_ccy = sec_agg['노출통화'].isna()
     sec_agg.loc[na_ccy & sec_agg['sec_id'].str.startswith('KR'), '노출통화'] = 'KRW'
@@ -2906,7 +2966,17 @@ def compute_single_port_pa(fund_code: str, start_date: str, end_date: str,
 
     # 자산군 매핑
     sec_agg['자산군'] = sec_agg['sec_id'].map(asset_dict)
-    # fallback
+    # ── derivative fallback (universe_derivative 키워드 매칭) ──
+    na_cls = sec_agg['자산군'].isna()
+    for idx in sec_agg[na_cls].index:
+        matched = _match_derivative_rule(
+            _deriv_asset_rules,
+            sec_agg.loc[idx, 'asset_gb'],
+            sec_agg.loc[idx, 'ITEM_NM_pos'],
+        )
+        if matched:
+            sec_agg.loc[idx, '자산군'] = matched
+    # 나머지 fallback (asset_gb 기반)
     na_cls = sec_agg['자산군'].isna()
     for idx in sec_agg[na_cls].index:
         ag = str(sec_agg.loc[idx, 'asset_gb'])
