@@ -1,0 +1,586 @@
+{
+  "fund_code": "07G04",
+  "period": "2026-Q1",
+  "status": "edited",
+  "draft_comment": "2026년 3월 글로벌 매크로 시장은 이란을 둘러싼 지정학적 긴장의 급격한 고조가 자산시장...",
+  "admin_comment_raw": "2026년 3월 글로벌 매크로 시장은 이란을 둘러싼 지정학적 긴장의 급격한 고조가 자산시장 전반의 가격 구조를 재편한 달이었습니다. 이란-미국 간 외교적 결렬 우려가 확산되면서 국제유가가 배럴당 110달러를 돌파하였고[ref:32], 이는 에너지 공급 충격이라는 단일 변수를 통해 원자재·환율·채권시장으로 동시에 전이되는 양상을 보였습니다. 주목할 만한 점은 금 가격이 온스당 5,300달러에서 4,100달러 부근으로 약 23% 급락한 역설적 움직임인데, 이는 전통적 안전자산 선호보다 달러 표시 자산으로의 유동성 집중이 더 강력하게 작용했음을 시사합니다. 미국 성장주 섹터에는 오히려 자금 유입이 관측되었으나, 원유·금 등 실물자산에서는 극단적 쏠림과 이탈이 교차하며 자산 간 상관관계가 통상적 패턴에서 이탈한 국면이 전개되었습니다.\n\n단기적으로는 유가 상승이 미국 경기에 미치는 전이 강도를 둘러싸고 시장 내 시각이 양분되고 있습니다. 한편에서는 유가 충격이 인플레이션으로 전이되는 경로가 제한적이며, 2026년 중반 이후 대규모 LNG 플랜트 가동(Exxon, QatarEnergy 등)이 공급 정상화를 앞당길 수 있다는 구조적 완충론이 제기됩니다. 반면 경기침체 확률이 50% 근방까지 상승한 상황에서 유가 급등이 겹치면 스태그플레이션 초입 국면에 진입할 수 있다는 경계론 역시 만만치 않습니다. 민간 신용펀드 부문에서 대량 환매 조짐이 포착되고 있으며[ref:44], 이는 프라이빗 크레딧 시장의 유동성 완충력이 약화되고 있다는 신호로 읽힙니다. 단기 안도와 중기 구조적 불확실성이 병존하는 구도 아래, 방향성에 대한 확신을 갖기 어려운 환경입니다.\n\n금리·환율·유동성 측면에서 연준은 전례 없는 딜레마에 직면해 있습니다. 경기 둔화 우려에 대응한 추가 금리 인하 여력이 논의되는 동시에, 유가발 인플레이션 재점화 가능성이 인하 경로를 제약하는 이중 압박 구조가 형성된 것입니다. 유가가 현 수준을 상회하여 120달러 이상으로 추가 상승할 경우, 연준이 인하 기조를 중단하거나 역전해야 할 상황도 배제할 수 없으며, 이는 신용 스프레드의 급격한 확대와 레포 시장 불안정성 심화로 연결될 수 있습니다. 달러 강세가 지속되면서 신흥국 통화 및 채권시장에 대한 자본 이탈 압력이 높아지고 있고, 환 헤지 비용 상승으로 인해 해외 채권 투자의 실질 수익률 구조가 변화하는 점 역시 주시가 필요합니다.\n\n향후 시장 방향성을 가늠하기 위해 확인해야 할 핵심 변수는 다음과 같습니다. 첫째, 이란-미국 간 외교 채널의 복원 여부와 중동 지역 군사적 확전 가능성입니다[ref:32]. 둘째, 국제유가가 배럴당 120달러 임계치를 상향 돌파하는지 여부와 이에 따른 연준의 정책 커뮤니케이션 변화입니다. 셋째, 민간 신용펀드 환매 규모의 확대 추이와 레포 시장 기능의 안정성입니다[ref:44]. 넷째, 2분기 중 예정된 대규모 LNG 프로젝트 가동 일정의 이행 여부가 공급 충격의 지속 기간을 결정할 변수로 남아 있습니다. 이들 변수의 조합에 따라 시장의 가격 구조가 크게 달라질 수 있는 만큼, 다층적 시나리오 점검이 요구되는 시점입니다.",
+  "admin_summary": "3명의 유효 분석가(낙관 1, 비관 2) 중 이란 지정학 충격에 의한 유가 $110+ 돌파, 사모신용·레포시장 유동성 리스크 상존, 시장 변동성 극대화 국면이라는 점은 합의되었으나, 핵심 쟁점은 유가→인플레이션 전이 강도(신뢰도 0.164 vs 0.65~0.846)와 이에 따른 스태그플레이션 진입 여부, 금 급락의 해석(장기 재평가 vs 위험자산 청산 신호), 그리고 Fed의 인하 지속 vs 인상 전환 경로이다. 비관론자 2명이 수량적 근거로 위험자산 축소를 주장하는 반면, 낙관론자는 구조적 성장 촉매와 Fed 유연성에 기반한 비중확대를 제안하여 자산배분 방향이 정반대로 대립하고 있다.",
+  "consensus_points": [
+    "이란 지정학적 위기로 유가 $110/배럴 돌파 및 원유 공급 충격이 현실화되었으며, 이는 인플레이션 압력과 경기 둔화를 동시에 유발하는 핵심 매크로 변수로 작용 중",
+    "사모신용펀드(프라이빗 크레딧) 대량 환매 신호와 레포시장 불안정(신뢰도 0.3)이 결합하여 금융시스템 유동성 경색 리스크가 상존하며, 이는 낙관론자도 Tail Risk로 인정",
+    "3월 뉴스량 폭증(16,932건, 전월 대비 +181%)과 자산간 극단적 쏠림(성장주 +4,733 vs 금 -3,840)은 시장 변동성이 극대화 국면에 진입했음을 시사하며, 전 분석가가 단기 불확실성 고조를 인정"
+  ],
+  "disagreements": [
+    {
+      "topic": "유가 상승의 인플레이션 전이 강도 및 스태그플레이션 가능성",
+      "bull": "유가→인플레이션 전이경로 신뢰도 0.164로 낮아 인플레이션 영향 제한적이며, Fed 인하 여력과 경기 자정력이 스태그플레이션을 방어할 것",
+      "bear": "공급충격→인플레이션→금리인상 경로가 활성화되며 GDP 미스와 경기침체 확률 50%가 결합하여 스태그플레이션 초입 진입 신호",
+      "quant": "공급충격→인플레이션→금리인상 연쇄경로 신뢰도 0.65로 높으며, 경기침체율 50% 근접 데이터가 스태그플레이션 리스크를 수치적으로 확인",
+      "monygeek": "에이전트 실행 실패로 의견 없음"
+    },
+    {
+      "topic": "금 가격 급락($5,300→$4,100)의 해석",
+      "bull": "금 수요 급증(신뢰도 0.722)에 주목하며 장기 가치저장 수단으로서 재평가 국면, 인플레이션 헤지 효과 기대",
+      "bear": "달러 안전자산화로 금 수요 급감한 것이며 위험자산 청산과 신용시장 스트레스의 전조 신호",
+      "quant": "금 뉴스영향 -3,840.44로 역방향 이탈이 극단적이며, 투기적 쏠림과 동시에 안전자산 선호 패턴 붕괴 신호",
+      "monygeek": "에이전트 실행 실패로 의견 없음"
+    },
+    {
+      "topic": "성장주 뉴스영향 +4,733.82의 해석과 주식 자산배분 방향",
+      "bull": "ARM칩 수요 급증 등 구조적 성장 촉매가 유지되고 있어 성장주 최대 수혜를 나타내며, 변동성 속 장기 비중확대 기회",
+      "bear": "뉴스량 폭증 환경에서의 성장주 쏠림은 투기적 과열이며, 지정학·신용 리스크를 고려하면 주식 전반 축소 필요",
+      "quant": "성장주 +4,733.82는 3월 전체 뉴스량 +181% 대비 +599% 증가로 투기적 쏠림 신호이며, 위험자산 축소 전환 시점",
+      "monygeek": "에이전트 실행 실패로 의견 없음"
+    },
+    {
+      "topic": "Fed 정책 경로 전망",
+      "bull": "경기 둔화 우려에 대응한 Fed 추가 인하 여력이 존재하며 유연한 정책 대응이 하방 리스크를 제한",
+      "bear": "유가 $110+ 지속 시 인플레이션 재점화로 Fed가 인상기로 전환할 가능성이 있으며 고금리 장기화 우려",
+      "quant": "환율·금리 관련 뉴스 12,677건으로 통화정책 불확실성이 극증하며, 금리 200bp 급상승 시나리오를 Tail Risk로 산정",
+      "monygeek": "에이전트 실행 실패로 의견 없음"
+    }
+  ],
+  "tail_risks": [
+    "이란-미국 전면 군사 충돌로 유가 $140~150+/배럴 돌파 시 글로벌 공급망 마비, 신흥시장 신용위기 급증, 경기침체 가속화",
+    "사모신용펀드 연쇄 환매 → 신용스프레드 300bp+ 확대 → 레포마켓 마진콜 연쇄 → IG/HY 동시 붕괴로 2019년형 유동성 경색 재현",
+    "유가발 스태그플레이션 압력 장기화로 Fed 인하 여력 상실 → 고금리 장기화 → 저평가 자산 추가 하락 및 동시다발 패닉셀로 변동성지수 극단화"
+  ],
+  "generated_at": "2026-04-13T12:51:27",
+  "model": "claude-opus-4-6",
+  "cost_usd": 0.34,
+  "validation_summary": {
+    "sanitize_warnings": [
+      {
+        "type": "auto_remove",
+        "message": "내부 지표 제거: \\[ref:\\d+\\]",
+        "severity": "info"
+      }
+    ],
+    "warning_counts": {
+      "critical": 0,
+      "warning": 0,
+      "info": 1
+    }
+  },
+  "evidence_quality": {
+    "total_refs": 4,
+    "ref_mismatches": 0,
+    "tense_mismatches": 0,
+    "mismatch_rate": 0.0,
+    "evidence_count": 45
+  },
+  "evidence_annotations": [
+    {
+      "ref": 1,
+      "article_id": "b44547120398",
+      "title": "Gold At $5,000 - So What Happens Next?",
+      "url": "https://finnhub.io/api/news?id=5ee85ab7ce8911b0cd0b1380012127624084517146680d4f229ab98ef3c3ee6a",
+      "source": "SeekingAlpha",
+      "date": "2026-01-28",
+      "topic": "귀금속_금",
+      "salience": 0.71,
+      "salience_explanation": "TIER2 매체(SeekingAlpha), 높은 강도(8/10), 교차보도 2건"
+    },
+    {
+      "ref": 2,
+      "article_id": "e222d266685d",
+      "title": "Why A 'Suspected' Yen Intervention Just Sent The Dollar Sliding",
+      "url": "https://finnhub.io/api/news?id=9fa2dbb2379c494f2799cd96b6a977286b143b161b4277e9f2ca1bf9d9f56d5c",
+      "source": "Benzinga",
+      "date": "2026-01-26",
+      "topic": "환율_FX",
+      "salience": 0.71,
+      "salience_explanation": "TIER2 매체(Benzinga), 높은 강도(8/10), 교차보도 2건"
+    },
+    {
+      "ref": 3,
+      "article_id": "c3f661d0e554",
+      "title": "Gold Soars Past $5,300 After Trump Says Dollar Should 'Find Its Level'",
+      "url": "https://finnhub.io/api/news?id=a281d1c017246367004c25f1503bc22aac47cbe699938c8949e68ae3908b1c8d",
+      "source": "Benzinga",
+      "date": "2026-01-28",
+      "topic": "귀금속_금",
+      "salience": 0.685,
+      "salience_explanation": "TIER2 매체(Benzinga), 높은 강도(9/10)"
+    },
+    {
+      "ref": 4,
+      "article_id": "dea8835b7e98",
+      "title": "Gold Above $5k: The Bull Market Isn't Even Warming Up",
+      "url": "https://finnhub.io/api/news?id=103327bb918fa01758c576a76ec99c8af26894d47a723bde03a0dca0c194acaa",
+      "source": "SeekingAlpha",
+      "date": "2026-01-27",
+      "topic": "귀금속_금",
+      "salience": 0.685,
+      "salience_explanation": "TIER2 매체(SeekingAlpha), 높은 강도(9/10)"
+    },
+    {
+      "ref": 5,
+      "article_id": "f6fbbdade890",
+      "title": "Why Every Ounce Of Gold Now Carries A Greenland Tax",
+      "url": "https://finnhub.io/api/news?id=768af2c5ccea3b385424bfbf3003ba3329262c02110b015eebe936f7a31d90a1",
+      "source": "Benzinga",
+      "date": "2026-01-26",
+      "topic": "지정학",
+      "salience": 0.685,
+      "salience_explanation": "TIER2 매체(Benzinga), 높은 강도(9/10)"
+    },
+    {
+      "ref": 6,
+      "article_id": "0e695365da6b",
+      "title": "Hints Of U.S. Treasury Intervention To Support The Yen",
+      "url": "https://finnhub.io/api/news?id=df73afd884539f48636441018c10ebc575c2c85a2f92e8f807df40c6654690c2",
+      "source": "SeekingAlpha",
+      "date": "2026-01-26",
+      "topic": "환율_FX",
+      "salience": 0.685,
+      "salience_explanation": "TIER2 매체(SeekingAlpha), 높은 강도(7/10), 교차보도 2건"
+    },
+    {
+      "ref": 7,
+      "article_id": "c2346f404b76",
+      "title": "2025 Followed Gold's Lead; Silver Followed (And How)",
+      "url": "https://finnhub.io/api/news?id=6439802e027631349f6dc595260a298b33fd0e2ec0f643054159692a8a439748",
+      "source": "SeekingAlpha",
+      "date": "2026-01-08",
+      "topic": "귀금속_금",
+      "salience": 0.685,
+      "salience_explanation": "TIER2 매체(SeekingAlpha), 높은 강도(7/10), 교차보도 2건"
+    },
+    {
+      "ref": 8,
+      "article_id": "6b6a9b58f046",
+      "title": "Gold Rallies To $5,300, Memory Stocks Go Wild: What's Moving Markets Wednesday?",
+      "url": "https://finnhub.io/api/news?id=b879d8a0d9e0871a4668ab197d2cac552a89dafc2f2d4bebcc36ffde744d7ea4",
+      "source": "Benzinga",
+      "date": "2026-01-28",
+      "topic": "귀금속_금",
+      "salience": 0.66,
+      "salience_explanation": "TIER2 매체(Benzinga), 높은 강도(8/10)"
+    },
+    {
+      "ref": 9,
+      "article_id": "9fba25b6179a",
+      "title": "Why 2026 Could Redefine The U.S. Federal Reserve",
+      "url": "https://finnhub.io/api/news?id=db6855f225d2e71e22e1e63d0e480b37660b5f62c0207db4bd50faeecd2479e7",
+      "source": "SeekingAlpha",
+      "date": "2026-01-28",
+      "topic": "금리_채권",
+      "salience": 0.66,
+      "salience_explanation": "TIER2 매체(SeekingAlpha), 높은 강도(8/10)"
+    },
+    {
+      "ref": 10,
+      "article_id": "9df19ac23626",
+      "title": "Technical Levels For Major FX Pairs Ahead Of The FOMC Rate Decision",
+      "url": "https://finnhub.io/api/news?id=adf4b998891ddf1c6af56c26e1e681bab821364b54506bc5a04e00b69786e06e",
+      "source": "SeekingAlpha",
+      "date": "2026-01-28",
+      "topic": "금리_채권",
+      "salience": 0.66,
+      "salience_explanation": "TIER2 매체(SeekingAlpha), 높은 강도(8/10)"
+    },
+    {
+      "ref": 11,
+      "article_id": "33342d41ef60",
+      "title": "Trump-Powell Showdown Makes Wednesday's Fed Meeting About Much More Than Rates",
+      "url": "https://finnhub.io/api/news?id=bea72274b5ce11a7a380673d5976ba111784c3d8789fcfa0b4fe0febc4abe9f2",
+      "source": "Benzinga",
+      "date": "2026-01-28",
+      "topic": "금리_채권",
+      "salience": 0.66,
+      "salience_explanation": "TIER2 매체(Benzinga), 높은 강도(8/10)"
+    },
+    {
+      "ref": 12,
+      "article_id": "b3a939aa7571",
+      "title": "Why Trump's South Korea Tariffs Add Fuel To Memory-Chip Crunch",
+      "url": "https://finnhub.io/api/news?id=4f39936d267b97a85fb3eb58bcc093cc856f1bd920cd5f909f170cd19afd1ec4",
+      "source": "Benzinga",
+      "date": "2026-01-27",
+      "topic": "관세_무역",
+      "salience": 0.66,
+      "salience_explanation": "TIER2 매체(Benzinga), 높은 강도(8/10)"
+    },
+    {
+      "ref": 13,
+      "article_id": "2dcb64411e41",
+      "title": "The Yen Carry Trade May Be Entering A Dangerous Phase",
+      "url": "https://finnhub.io/api/news?id=48515c46803f23783381b61e8239c8c179e40312d55f7b090fa93e74aa3ad134",
+      "source": "SeekingAlpha",
+      "date": "2026-01-27",
+      "topic": "환율_FX",
+      "salience": 0.66,
+      "salience_explanation": "TIER2 매체(SeekingAlpha), 높은 강도(8/10)"
+    },
+    {
+      "ref": 14,
+      "article_id": "221a2d55a2dc",
+      "title": "Stock Market Today: Dow Futures Slip, Nasdaq Gains Amid Trump's Fresh South Korea Tariffs— General M",
+      "url": "https://finnhub.io/api/news?id=4049f0e647a97c24c3a0faa055af18183093ac5fd26d3b8640c14eca76cec0a3",
+      "source": "Benzinga",
+      "date": "2026-01-27",
+      "topic": "관세_무역",
+      "salience": 0.66,
+      "salience_explanation": "TIER2 매체(Benzinga), 높은 강도(8/10)"
+    },
+    {
+      "ref": 15,
+      "article_id": "a556c124e5c5",
+      "title": "U.S. Dollar Index (DXY) On Pace To Break 97.00 - Why Is The Dollar Falling Ahead Of The FOMC?",
+      "url": "https://finnhub.io/api/news?id=74f1aed8f80de6e89f70726a87d7d5948204580abd34da7fd72b51d156e42490",
+      "source": "SeekingAlpha",
+      "date": "2026-01-27",
+      "topic": "환율_FX",
+      "salience": 0.66,
+      "salience_explanation": "TIER2 매체(SeekingAlpha), 높은 강도(8/10)"
+    },
+    {
+      "ref": 16,
+      "article_id": "ba25084c35ed",
+      "title": "Supreme Court Pulls Plug On Trump's IEEPA Tariffs",
+      "url": "https://finnhub.io/api/news?id=67fb8c8dd1d1a45cb5e01e729f6cf9f3b911b05a1d3ee8cacb6389ed7489abd8",
+      "source": "SeekingAlpha",
+      "date": "2026-02-20",
+      "topic": "관세_무역",
+      "salience": 0.735,
+      "salience_explanation": "TIER2 매체(SeekingAlpha), 높은 강도(9/10), 교차보도 2건"
+    },
+    {
+      "ref": 17,
+      "article_id": "109e18f65f00",
+      "title": "Emerging markets lead 2026 rally as weaker dollar lifts risk appetite",
+      "url": "https://www.bloomberg.com/news/articles/2026-02-26/world-s-biggest-money-managers-favor-emerging-markets-citi-says",
+      "source": "Bloomberg",
+      "date": "2026-02-26",
+      "topic": "달러_글로벌유동성",
+      "salience": 0.725,
+      "salience_explanation": "TIER1 매체(Bloomberg), 높은 강도(7/10)"
+    },
+    {
+      "ref": 18,
+      "article_id": "c5d58e07f1f3",
+      "title": "Trump Threatens Countries Against Playing 'Games' With Supreme Court Ruling: Can Face 'A Much Higher",
+      "url": "https://finnhub.io/api/news?id=d3166beebf920c3985d6916a46910e58b4ce8671fa26573a24ac07dfb8c36b91",
+      "source": "Benzinga",
+      "date": "2026-02-24",
+      "topic": "관세_무역",
+      "salience": 0.71,
+      "salience_explanation": "TIER2 매체(Benzinga), 높은 강도(8/10), 교차보도 2건"
+    },
+    {
+      "ref": 19,
+      "article_id": "176940c76c64",
+      "title": "Stocks Drop From Tariff Uncertainty - Dow Jones And U.S. Index Outlook",
+      "url": "https://finnhub.io/api/news?id=34ddfbf259925d0421d260fc5ed96495b59e36479c657b4a0aee1b10c012cccc",
+      "source": "SeekingAlpha",
+      "date": "2026-02-23",
+      "topic": "관세_무역",
+      "salience": 0.71,
+      "salience_explanation": "TIER2 매체(SeekingAlpha), 높은 강도(8/10), 교차보도 2건"
+    },
+    {
+      "ref": 20,
+      "article_id": "9d1bdce88321",
+      "title": "The Supreme Court Strikes Down Tariffs: Prepare For Increased Volatility From Aftershocks",
+      "url": "https://finnhub.io/api/news?id=e502f4b41b1cea584a621e0a65b7063a6fbc1d4d58b5a226fc10712dfa86efd4",
+      "source": "SeekingAlpha",
+      "date": "2026-02-23",
+      "topic": "관세_무역",
+      "salience": 0.71,
+      "salience_explanation": "TIER2 매체(SeekingAlpha), 높은 강도(8/10), 교차보도 2건"
+    },
+    {
+      "ref": 21,
+      "article_id": "b7321061a065",
+      "title": "The Supreme Court Nullifies Tariffs",
+      "url": "https://finnhub.io/api/news?id=0a37a43100a0a34fee0a39290d74d2b981260ef50986e275317f5c387346cc4c",
+      "source": "SeekingAlpha",
+      "date": "2026-02-20",
+      "topic": "관세_무역",
+      "salience": 0.71,
+      "salience_explanation": "TIER2 매체(SeekingAlpha), 높은 강도(8/10), 교차보도 2건"
+    },
+    {
+      "ref": 22,
+      "article_id": "20f43b1fc927",
+      "title": "Nvidia Crushes Estimates, But The Real ETF Story Is The 263% Networking Surge",
+      "url": "https://finnhub.io/api/news?id=69f1c98286ca9f2b568db424f8e51e24a471fc5250f0f452fe0d9cc02a3ec605",
+      "source": "Benzinga",
+      "date": "2026-02-26",
+      "topic": "테크_AI_반도체",
+      "salience": 0.685,
+      "salience_explanation": "TIER2 매체(Benzinga), 높은 강도(9/10)"
+    },
+    {
+      "ref": 23,
+      "article_id": "b43237818309",
+      "title": "Inflation Drops More Than Expected To 2.4%, Lowest In 8 Months (UPDATED)",
+      "url": "https://finnhub.io/api/news?id=fdd5bb6c0114d57bdbf82d52d202608ab76e6b782b23e4263fda76bb5e6ac275",
+      "source": "Benzinga",
+      "date": "2026-02-13",
+      "topic": "물가_인플레이션",
+      "salience": 0.685,
+      "salience_explanation": "TIER2 매체(Benzinga), 높은 강도(7/10), 교차보도 2건"
+    },
+    {
+      "ref": 24,
+      "article_id": "88202856fe72",
+      "title": "The Fed Is Bracing For An AI Bubble Burst And Global Stagflation",
+      "url": "https://finnhub.io/api/news?id=0539ea1e36a290efaf8a7b3e3863cc773cfeff9ae1342dffaa784cfc3084db2b",
+      "source": "SeekingAlpha",
+      "date": "2026-02-25",
+      "topic": "금리_채권",
+      "salience": 0.66,
+      "salience_explanation": "TIER2 매체(SeekingAlpha), 높은 강도(8/10)"
+    },
+    {
+      "ref": 25,
+      "article_id": "d56731bec9a9",
+      "title": "Hotter Inflation And Weaker GDP, Private-Credit Canary In The Coal Mine",
+      "url": "https://finnhub.io/api/news?id=51684006939ba5dc4c88d54588a547fdba29bb8d00d08431093070195ce7f107",
+      "source": "Benzinga",
+      "date": "2026-02-20",
+      "topic": "유동성_크레딧",
+      "salience": 0.66,
+      "salience_explanation": "TIER2 매체(Benzinga), 높은 강도(8/10)"
+    },
+    {
+      "ref": 26,
+      "article_id": "cc788e1606dc",
+      "title": "Stagflation Trade Is Back – Gold, Silver Rally After GDP Miss, Hot Inflation",
+      "url": "https://finnhub.io/api/news?id=39a064fdaa679ae22517e4ec3bd06066231ff2d735ab7eaf4f8397145a733bb5",
+      "source": "Benzinga",
+      "date": "2026-02-20",
+      "topic": "귀금속_금",
+      "salience": 0.66,
+      "salience_explanation": "TIER2 매체(Benzinga), 높은 강도(8/10)"
+    },
+    {
+      "ref": 27,
+      "article_id": "a65c59eb202e",
+      "title": "Rates Spark: Risk Sentiment Remains Fragile Amid Geopolitical Tension",
+      "url": "https://finnhub.io/api/news?id=4a8de4351eb66a8b893e00ee8ede3f0a35627fb4f68c5a78a9f45b99244887ae",
+      "source": "SeekingAlpha",
+      "date": "2026-02-20",
+      "topic": "지정학",
+      "salience": 0.66,
+      "salience_explanation": "TIER2 매체(SeekingAlpha), 높은 강도(8/10)"
+    },
+    {
+      "ref": 28,
+      "article_id": "4bbaeceb49e1",
+      "title": "U.S. Inflation Slows, Fed May Cut Rates More Than The Market Prices In",
+      "url": "https://finnhub.io/api/news?id=31a8de8c611bd2b1d1a7cc137ef098d73b0455712207a83e03d7bcb472cf0b7c",
+      "source": "SeekingAlpha",
+      "date": "2026-02-13",
+      "topic": "물가_인플레이션",
+      "salience": 0.66,
+      "salience_explanation": "TIER2 매체(SeekingAlpha), 높은 강도(8/10)"
+    },
+    {
+      "ref": 29,
+      "article_id": "4189da0bd2bd",
+      "title": "Gold Touches $5,000 As Inflation Drops To 2.4%, Polymarket Traders Expect $5,500 By Q3",
+      "url": "https://finnhub.io/api/news?id=df1c92b89660834c548f70610cccb51e75b53458fc27a45eb583fbc09ffe208d",
+      "source": "Benzinga",
+      "date": "2026-02-13",
+      "topic": "귀금속_금",
+      "salience": 0.66,
+      "salience_explanation": "TIER2 매체(Benzinga), 높은 강도(8/10)"
+    },
+    {
+      "ref": 30,
+      "article_id": "60384cd68771",
+      "title": "Fed Rate Cuts Hinge On Possibly Hard-To-Gauge Job Market Deterioration",
+      "url": "https://finnhub.io/api/news?id=c697b29deef45f96755439537a5e82119cbcf8d020cd6a70b861987a774f71f1",
+      "source": "SeekingAlpha",
+      "date": "2026-02-05",
+      "topic": "금리_채권",
+      "salience": 0.66,
+      "salience_explanation": "TIER2 매체(SeekingAlpha), 높은 강도(8/10)"
+    },
+    {
+      "ref": 31,
+      "article_id": "88e775c1deab",
+      "title": "Iran war rattles Gulf petrodollar foundations - Reuters",
+      "url": "https://news.google.com/rss/articles/CBMinAFBVV95cUxQMl9BODlYRjJiSEJScU9jdGpicnZJM1dVRVF5aS1tMmZtSFNCRmZVcnFBd2tUbDRBMFBSQTVMcGRZU2IzSmxQQlRZa0JoZnd6RU5saGJSOVdUcDFMOUE5dVo2ZnljR0hUSU9CbkdXQ0tJQlJUUkQtc3BQSG5wZnF4cGhtRmpIMmpSa0pzVFcweXQ2NWJPRDFsNWp6bjQ?oc=5",
+      "source": "Reuters",
+      "date": "2026-03-25",
+      "topic": "지정학",
+      "salience": 0.975,
+      "salience_explanation": "TIER1 매체(Reuters), 높은 강도(9/10), 교차보도 38건"
+    },
+    {
+      "ref": 32,
+      "article_id": "beca0ce8414c",
+      "title": "Asia markets set to fall as Iran rules out direct U.S. talks despite reviewing proposal",
+      "url": "https://www.cnbc.com/2026/03/26/asia-pacific-markets-live-updates-nikkei-225-kospi-hang-seng-index.html",
+      "source": "CNBC",
+      "date": "2026-03-25",
+      "topic": "지정학",
+      "salience": 0.95,
+      "salience_explanation": "TIER1 매체(CNBC), 높은 강도(8/10), 교차보도 38건"
+    },
+    {
+      "ref": 33,
+      "article_id": "e2e58aea7cc6",
+      "title": "Iran War: How Global Markets Are Repricing A New Energy Shock",
+      "url": "https://finnhub.io/api/news?id=6e46ec42b37ec43dd672614c683990159a3062ab059812ef04e737f896a825c8",
+      "source": "Benzinga",
+      "date": "2026-03-04",
+      "topic": "지정학",
+      "salience": 0.885,
+      "salience_explanation": "TIER2 매체(Benzinga), 높은 강도(9/10), 교차보도 10건"
+    },
+    {
+      "ref": 34,
+      "article_id": "716139602ab5",
+      "title": "Middle East Conflict: Implications For Global Markets",
+      "url": "https://finnhub.io/api/news?id=be4b1b8200ac87f73476d3b0dd5f312b43d38774211c8dd7c11aaf10c9293065",
+      "source": "SeekingAlpha",
+      "date": "2026-03-04",
+      "topic": "지정학",
+      "salience": 0.86,
+      "salience_explanation": "TIER2 매체(SeekingAlpha), 높은 강도(8/10), 교차보도 10건"
+    },
+    {
+      "ref": 35,
+      "article_id": "d24744710e14",
+      "title": "Mark Zandi warns recession odds are creeping toward 50%, and the Iran war could launch us into econo",
+      "url": "https://fortune.com/2026/03/25/moodys-mark-zandi-recession-risk-50-percent-jobs-data-iran-war/",
+      "source": "Fortune",
+      "date": "2026-03-25",
+      "topic": "지정학",
+      "salience": 0.835,
+      "salience_explanation": "TIER3 매체(Fortune), 높은 강도(9/10), 교차보도 4건"
+    },
+    {
+      "ref": 36,
+      "article_id": "3d44516eb491",
+      "title": "Watch: How fluctuating oil prices are affecting people around the world",
+      "url": "https://www.bbc.com/news/videos/cd9g5kll3vqo",
+      "source": "BBC News",
+      "date": "2026-03-09",
+      "topic": "에너지_원자재",
+      "salience": 0.81,
+      "salience_explanation": "TIER3 매체(BBC News), 교차보도 6건"
+    },
+    {
+      "ref": 37,
+      "article_id": "ce91f7adb3c7",
+      "title": "World shares tumble as Iran war pushes crude prices over $110 a barrel",
+      "url": "https://www.npr.org/2026/03/09/nx-s1-5742307/world-shares-tumble-iran-war",
+      "source": "NPR",
+      "date": "2026-03-09",
+      "topic": "에너지_원자재",
+      "salience": 0.785,
+      "salience_explanation": "TIER3 매체(NPR), 높은 강도(9/10), 교차보도 3건"
+    },
+    {
+      "ref": 38,
+      "article_id": "0917674069c5",
+      "title": "Commodities: Shifting War Outlook",
+      "url": "https://finnhub.io/api/news?id=913838bd492663882951a92deeddb94418efb0521a48dbf630b6dc5115dca421",
+      "source": "SeekingAlpha",
+      "date": "2026-03-25",
+      "topic": "에너지_원자재",
+      "salience": 0.785,
+      "salience_explanation": "TIER2 매체(SeekingAlpha), 높은 강도(7/10), 교차보도 4건"
+    },
+    {
+      "ref": 39,
+      "article_id": "281b690a7992",
+      "title": "Dialing Down Risk Amid Supply Shock",
+      "url": "https://finnhub.io/api/news?id=361e5450e5845923566e863a790af0cf0fec4ed7369e4260c36df3d09ccc52b1",
+      "source": "SeekingAlpha",
+      "date": "2026-03-24",
+      "topic": "에너지_원자재",
+      "salience": 0.785,
+      "salience_explanation": "TIER2 매체(SeekingAlpha), 높은 강도(7/10), 교차보도 4건"
+    },
+    {
+      "ref": 40,
+      "article_id": "a22b75aca7c8",
+      "title": "'Gas Traders Await Start of Massive Exxon, QatarEnergy Plant in US as Iran War Hits Supply' - Bloomb",
+      "url": "https://finnhub.io/api/news?id=e54c52c986de97bc2302d837482d4c2be3a119d709eb2d7b4bc9973d2f7725aa",
+      "source": "Benzinga",
+      "date": "2026-03-19",
+      "topic": "에너지_원자재",
+      "salience": 0.785,
+      "salience_explanation": "TIER2 매체(Benzinga), 높은 강도(7/10), 교차보도 4건"
+    },
+    {
+      "ref": 41,
+      "article_id": "41d26885dcce",
+      "title": "Recession odds climb on Wall Street as economy shows cracks beneath the surface",
+      "url": "https://www.cnbc.com/2026/03/25/recession-odds-climb-on-wall-street-as-economy-shows-cracks-beneath-the-surface.html",
+      "source": "CNBC",
+      "date": "2026-03-25",
+      "topic": "금리_채권",
+      "salience": 0.775,
+      "salience_explanation": "TIER1 매체(CNBC), 높은 강도(7/10), 교차보도 2건"
+    },
+    {
+      "ref": 42,
+      "article_id": "2253f5dcaec5",
+      "title": "Arm jumps 16% as company expects revenue windfall from new chip, a 'significant shift' - CNBC",
+      "url": "https://www.cnbc.com/2026/03/25/arm-stock-chip-revenue-agi-cpu.html",
+      "source": "CNBC",
+      "date": "2026-03-25",
+      "topic": "테크_AI_반도체",
+      "salience": 0.725,
+      "salience_explanation": "TIER1 매체(CNBC), 높은 강도(7/10)"
+    },
+    {
+      "ref": 43,
+      "article_id": "471cb76650ea",
+      "title": "Gold Taps $4,100 And Dollar Emerges As Ultimate Crisis Safe Haven, Says TD Securities Strategist",
+      "url": "https://finnhub.io/api/news?id=8eb928a0c6be36ab3071b4e9f65baffd1a72466acf239dd5313e0869d79399b7",
+      "source": "Benzinga",
+      "date": "2026-03-24",
+      "topic": "귀금속_금",
+      "salience": 0.71,
+      "salience_explanation": "TIER2 매체(Benzinga), 높은 강도(8/10), 교차보도 2건"
+    },
+    {
+      "ref": 44,
+      "article_id": "67b4dbb8032d",
+      "title": "Private credit fund bonds were flagging risks before recent redemptions, hedge fund says",
+      "url": "https://economictimes.indiatimes.com/markets/us-stocks/news/private-credit-fund-bonds-were-flagging-risks-before-recent-redemptions-hedge-fund-says/articleshow/129811081.cms",
+      "source": "The Times of India",
+      "date": "2026-03-25",
+      "topic": "유동성_크레딧",
+      "salience": 0.71,
+      "salience_explanation": "TIER3 매체(The Times of India), 교차보도 3건"
+    },
+    {
+      "ref": 45,
+      "article_id": "598f58d1b4c8",
+      "title": "Trump Wanted A 'Golden Age,' The Iran War Is Delivering A Stagflation Trap",
+      "url": "https://finnhub.io/api/news?id=6758b129486a26f1ce21a32b4cfce4c4c18bfa89dadaa1d289189fd12e96672b",
+      "source": "Benzinga",
+      "date": "2026-03-24",
+      "topic": "물가_인플레이션",
+      "salience": 0.685,
+      "salience_explanation": "TIER2 매체(Benzinga), 높은 강도(9/10)"
+    }
+  ],
+  "internal_metrics_guide": {
+    "중요도(salience)": "기사 중요도 점수 (0~1). 매체등급 30% + 강도 25% + 교차보도 25% + BM이상치 20%로 산출",
+    "전이경로 신뢰도": "GraphRAG 인과추론 엣지의 신뢰도. 0.9 이상은 다수 기사에서 반복 확인된 인과 경로",
+    "교차보도 N건": "동일 이벤트를 서로 다른 매체가 보도한 횟수. 많을수록 사실 신뢰도 높음",
+    "BM 이상치": "해당 날짜에 벤치마크 수익률이 z-score 1.5 이상 급변한 경우 해당",
+    "매체등급": "TIER1(Reuters/Bloomberg/연합 등)=1.0, TIER2(SeekingAlpha/매경 등)=0.7, TIER3(기타)=0.3"
+  },
+  "edit_history": [
+    {
+      "edited_at": "2026-04-13T12:54:01",
+      "edited_by": "admin"
+    },
+    {
+      "edited_at": "2026-04-13T12:54:02",
+      "edited_by": "admin"
+    }
+  ]
+}

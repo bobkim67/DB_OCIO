@@ -1,0 +1,301 @@
+---
+title: "Information"
+output: 
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "/home/scip-r/MP_monitoring")
+```
+
+## 모니터링 목적
+
+									
+1. 솔루션 본부 주력 공모펀드인 'TDF알아서ETF포커스'와 'Mysuper'의 Performance, Risk, Position을 일간으로 모니터링하고 운용에 활용하기 위함										
+2. AP, VP, MP, BM을 분리하여 Performance, Risk, Position을 모니터링 함으로써, 시장(BM)과 비교한 펀드(AP)의 Performance, Risk, Position(AP-BM)을 투자전략에 의한 차이(VP-BM)와 매니저에 의한 차이(AP-VP)로 분해하기 위함										
+
+3. Risk를 감안하여 Performance를 측정하고 모니터링하기 위함										
+
+
+### 모니터링 대상 펀드 및 BM 산출 식
+
+펀드의 자산군에서 주식, 대체 자산을 합한 비중만큼 MSCI ACWI Gross Index의 비중으로, 채권 자산의 비중은 펀드에 따라서 MySuper는 KIS 종합 총수익지수를, TDF는 Barclays Global Aggregate Bond Total Return Index를 사용한다. MP가 업데이트 될 때마다 펀드별 자산군의 비중 합으로 BM 또한 업데이트 된다.  
+아래 표의 숫자는 BM 자산군의 비중을 나타내고, 소수점 4째자리까지 반올림 한 값을 사용했다.
+
+```{r,echo=FALSE,message=FALSE}
+suppressMessages(library(tidyverse)) 
+universe_criteria <- 
+  read_csv("00_data_updating/new_universe_criteria.csv", locale = locale(encoding = "CP949")) %>%
+  distinct() %>% 
+  # 23년 말 기준으로 새롭게 편입된 US 금 두 종목 존재. universe DB에 업데이트
+  bind_rows(
+    tribble( ~종목코드, ~종목명,~자산군_대,~자산군_중,~자산군_소,
+             "US98149E3036", "SPDR GOLD MINISHARES TRUST" , "대체","원자재","금",  
+             "US46436F1030", "ISHARES GOLD TRUST MICRO"   , "대체","원자재","금",
+             "US46435U8532", "iShares Broad USD High Yield Corporate B", "채권","미국 채권","미국 하이일드채권",
+             "KR7114460009", "ACE 국고채3년", "채권","한국 채권", "한국 3년국고채권",
+             "KR7278540000", "KODEX MSCI Korea TR", "주식","한국 주식","한국 주식",
+             "KR7114260003",	"KODEX 국고채3년","채권",	"한국 채권",	"한국 3년국고채권",
+             "KR7133690008",	"TIGER 미국나스닥100","주식",	"미국 주식",	"미국 성장주",
+             "KR7304940000",	"KODEX 미국나스닥100선물(H)","주식",	"미국 주식","미국 성장주",
+             "KR7310960000",	"TIGER 200TR", "주식",	"한국 주식",	"한국 주식",
+             "KR7367380003",	"ACE 미국나스닥100","주식",	"미국 주식",	"미국 성장주",
+             "KR7468380001",	"KODEX iShares미국하이일드액티브", "채권",	"미국 채권",	"미국 하이일드채권",
+             "KR7455030007",	"KODEX 미국달러SOFR금리액티브(합성)","채권",	"미국 채권",	"미국 채권",
+             "US78462F1030",  "SPDR TRUST SERIES 1", "주식", "미국 주식", "미국 주식"
+             
+             
+             
+    )
+  ) %>% filter(!(자산군_대 %in%c("유동성","07J48","07J49",NA) )) %>% 
+  select(-자산군_중) %>% 
+  arrange(자산군_대,종목코드)
+
+
+MP_LTCMA<- bind_rows(
+  read_csv("C:/Users/USER/Desktop/MP_monitoring/00_data/rebalancing/rebalancing_20221005.csv",locale = locale(encoding = "CP949")) %>% 
+    pivot_longer(cols = -c(`리밸런싱날짜`,`펀드설명`),names_to = "ISIN",values_to = "weight") ,
+  read_csv("C:/Users/USER/Desktop/MP_monitoring/00_data/rebalancing/rebalancing_20231129.csv",locale = locale(encoding = "CP949")) %>% 
+    pivot_longer(cols = -c(`리밸런싱날짜`,`펀드설명`),names_to = "ISIN",values_to = "weight") ,
+  read_csv("C:/Users/USER/Desktop/MP_monitoring/00_data/rebalancing/rebalancing_20231226.csv",locale = locale(encoding = "CP949")) %>% 
+    pivot_longer(cols = -c(`리밸런싱날짜`,`펀드설명`),names_to = "ISIN",values_to = "weight") ,
+  read_csv("C:/Users/USER/Desktop/MP_monitoring/00_data/rebalancing/rebalancing_20231229.csv",locale = locale(encoding = "CP949")) %>% 
+    pivot_longer(cols = -c(`리밸런싱날짜`,`펀드설명`),names_to = "ISIN",values_to = "weight") 
+  
+)
+
+
+
+MP_LTCMA<- bind_rows(
+  read_csv("00_data_updating/rebalancing/rebalancing_20221005.csv",locale = locale(encoding = "CP949")) %>% 
+    pivot_longer(cols = -c(`리밸런싱날짜`,`펀드설명`),names_to = "ISIN",values_to = "weight") ,
+  read_csv("00_data_updating/rebalancing/rebalancing_20231129.csv",locale = locale(encoding = "CP949")) %>% 
+    pivot_longer(cols = -c(`리밸런싱날짜`,`펀드설명`),names_to = "ISIN",values_to = "weight") ,
+  read_csv("00_data_updating/rebalancing/rebalancing_20231226.csv",locale = locale(encoding = "CP949")) %>% 
+    pivot_longer(cols = -c(`리밸런싱날짜`,`펀드설명`),names_to = "ISIN",values_to = "weight") ,
+  read_csv("00_data_updating/rebalancing/rebalancing_20231229.csv",locale = locale(encoding = "CP949")) %>% 
+    pivot_longer(cols = -c(`리밸런싱날짜`,`펀드설명`),names_to = "ISIN",values_to = "weight") 
+  
+) %>% 
+  group_by(펀드설명) %>% 
+  mutate(설정일 = min(리밸런싱날짜)) %>% 
+  ungroup()
+
+
+MP_LTCMA<- 
+  MP_LTCMA %>%
+  #reframe(daily_weight_MP = sum(weight)) %>% 
+  filter(!(펀드설명 =="TDF2030"&리밸런싱날짜 =="2023-12-26")) %>% 
+  bind_rows(
+    
+    
+    tribble(
+      ~"리밸런싱날짜", ~"펀드설명", ~"ISIN",~"weight",
+      "2023-12-26" ,  "TDF2030",  "US9229087369", 0.189492 ,
+      "2023-12-26" ,  "TDF2030",  "US98149E3036", 0.018949,
+      "2023-12-26" ,  "TDF2030",  "US9229087443", 0.132528 ,
+      "2023-12-26" ,  "TDF2030",  "US9219438580", 0.063835,
+      "2023-12-26" ,  "TDF2030",  "US9220428588", 0.040151,
+      "2023-12-26" ,  "TDF2030",  "KR7273130005", 0.500070/3 ,
+      "2023-12-26" ,  "TDF2030",  "KR7356540005", 0.500070/3 ,
+      "2023-12-26" ,  "TDF2030",  "KR7385540000", 0.500070/3 ,
+      "2023-12-26" ,  "TDF2030",  "KR7152380002", 0.054975,
+      # 골든그로스 둔화국면
+      "2023-12-28" ,  "Golden Growth", "US9229087369"   ,0.369361 ,
+      "2023-12-28" ,  "Golden Growth", "KR7278540000"  ,0.054345 ,
+      "2023-12-28" ,  "Golden Growth", "US78468R6229" ,0.070000 ,
+      "2023-12-28" ,  "Golden Growth", "KR7114460009" ,0.265768 ,
+      "2023-12-28" ,  "Golden Growth", "KR7365780006"  ,0.066669 ,
+      "2023-12-28" ,  "Golden Growth", "US78463V1070"  ,0.173857 ,
+      # 골든그로스 팽창국면      
+      "2024-01-26" ,  "Golden Growth", "US9229087369"   ,0.3977 ,
+      "2024-01-26" ,  "Golden Growth", "KR7278540000"  ,0.0571 ,
+      "2024-01-26" ,  "Golden Growth", "US78468R6229" ,0.070000 ,
+      "2024-01-26" ,  "Golden Growth", "KR7114460009" ,0.1953 ,
+      "2024-01-26" ,  "Golden Growth", "KR7365780006"  ,0.0938 ,
+      "2024-01-26" ,  "Golden Growth", "US78463V1070"  ,0.1861 ,
+      
+      
+      
+      "2024-04-08" ,  "TDF2080",  "US9229087369", 0.422077835 ,
+      "2024-04-08" ,  "TDF2080",  "US78463V1070", 0.140692612,
+      "2024-04-08" ,  "TDF2080",  "US9229087443", 0.307379033 ,
+      "2024-04-08" ,  "TDF2080",  "US9219438580", 0.030518196,
+      "2024-04-08" ,  "TDF2080",  "US9220428588", 0.089332324,
+      "2024-04-08" ,  "TDF2080",  "KR7356540005", 0.004638298 ,
+      "2024-04-08" ,  "TDF2080",  "KR7152380002", 0.005361702
+    ) %>% 
+      mutate(리밸런싱날짜 = ymd(리밸런싱날짜)) %>% 
+      mutate(설정일 = ymd("2022-10-05"))
+  ) %>% left_join(universe_criteria %>% select(종목코드, 자산군_대,자산군_소) %>% distinct(),by = join_by(ISIN ==종목코드))
+
+
+
+
+BM_weight<- 
+  MP_LTCMA %>%
+  #left_join(universe_criteria %>% select(종목코드,자산군_대, 자산군_소) %>% distinct(), by = join_by(ISIN==종목코드)) %>%
+  mutate(자산군 = if_else(자산군_대 == "대체", "주식", 자산군_대)) %>%
+  group_by(리밸런싱날짜,펀드설명, 자산군) %>%
+  reframe(weight = round(sum(weight),2),
+          설정일=설정일[1] ) %>% 
+  mutate(weight = if_else((펀드설명 =="MS STABLE" & 리밸런싱날짜=="2022-10-05" & 자산군=="주식"),0.3,weight )) %>% 
+  mutate(weight = if_else((펀드설명 =="MS STABLE" & 리밸런싱날짜=="2022-10-05" & 자산군=="채권"),0.7,weight )) %>% 
+  mutate(weight = if_else((펀드설명 =="Golden Growth" & 자산군=="주식"),0.6,weight )) %>% 
+  mutate(weight = if_else((펀드설명 =="Golden Growth" & 자산군=="채권"),0.4,weight )) %>% 
+  mutate(자산군 = case_when(
+    자산군 == "주식" ~ "[MSCI ACWI Gross Index(t-1)(USDKRW)]",
+    자산군 == "채권" & 펀드설명 %in% c("MS GROWTH", "MS STABLE","Golden Growth") ~ "KST0000T Index",#"KIS 종합 총수익지수",
+    자산군 == "채권" ~ "[Barclays Global Aggregate Bond Total Return Index(t-1)]",
+    TRUE ~ 자산군
+  )) %>% 
+  rename(ISIN= 자산군) %>% 
+  filter(!(펀드설명=="MS GROWTH" & 리밸런싱날짜!="2022-10-05")) %>% 
+  filter(!(펀드설명=="MS STABLE" & 리밸런싱날짜=="2023-11-29"))
+
+BM_weight %>% 
+  group_by(펀드설명) %>% 
+  slice_max(order_by = 리밸런싱날짜) %>% 
+  ungroup() %>% 
+  pivot_wider(id_cols = c(리밸런싱날짜,펀드설명),names_from = ISIN,values_from = weight) %>% 
+  mutate(across(.cols = everything(),.fns = ~replace_na(.x,0))) %>% 
+  rename(최근리밸런싱날짜 = 리밸런싱날짜) %>%knitr::kable()
+
+```
+
+
+
+### Performance & Risk {.tabset .tabset-fade}
+
+#### 수익률
+
+1. AP,VP의 경우 `BOS8183`을 통해 기준가를 불러와 계산한다.
+2. MP,BM의 경우 Bloomberg, Factset을 통해 구성종목의 일별 종가를 불러와 수익률을 계산한다.
+  + 세부 고려사항 1) 해외 자산은 $(t-1)$거래일 종가를 사용한다.
+  + 세부 고려사항 2) 해외 자산도 한국 휴장일을 반영. 즉, 한국 휴장일에 해당 종목의 종가 정보가 있더라도, 한국 휴장일 직전거래일에 사용했던 종가를 lagging 하여 기준가를 계산한다.
+  + 세부 고려사항 3) USD/KRW는 기준일자 종가를 사용한다.
+
+
+
+**수익률(Return) : ** 
+
+ $$ \text{Return} = \frac{\text{기준일자 수정기준가}}{\text{조회기간 시작일 수정기준가}} - 1 $$ 
+
+**연율화 수익률(Annualized Return) : ** 
+
+
+ 선택된 조회 기간 중, 기준일자의 요일을 필터링하여 주별 수익률을 계산한 뒤 평균을 구하여 연율화한다.
+ 예를 들어, 선택된 기준일자가 금요일이고 YTD 수익률이라면, 해당년도 금요일의 수정기준가만 필터링하고 주별 수익률을 계산하여 평균을 구하고 52를 곱한다.
+
+$$ \text{Annualized Return} = \overline{\text{주별 수익률}} \times 52 $$ 
+
+#### 변동성
+
+
+**연율화 변동성(Annualized Volatility) : **  
+
+선택된 조회 기간 중, 기준일자의 요일을 필터링하여 주별 수익률을 계산한 뒤 표준편차을 구하여 연율화한다.
+ 예를 들어, 선택된 기준일자가 금요일이고 YTD 변동성이라면, 해당년도 금요일의 수정기준가만 필터링하고 주별 수익률을 계산하여 표준편차을 구하고 $\sqrt{52}$를 곱한다.
+
+
+$$ \text{Annualized Volatility} = \sigma(\text{주별 수익률}) \times \sqrt{52} $$ 
+
+
+#### Return-to-Risk
+
+
+
+**Return-to-Risk(Risk-Adjusted Return) : **
+
+$$ \text{Return-to-Risk} = \frac{\text{Annualized Return}}{\text{Annualized Volatility}} $$
+
+#### 추적오차
+
+
+
+**추적오차(Tracking Error) : ** 
+
+$$ \text{Tracking Error} = \sigma(\text{Annualized Return}_{\text{Portfolio}} - \text{Annualized Return}_{\text{BM}}) $$ 
+
+
+
+#### 정보비율
+
+**정보비율(Information Ratio) : **
+추적오차 대비 초과 수익률을 측정하는 지표
+
+$$ \text{Information Ratio} = \frac{\overline{(\text{Annualized Return}_{\text{Portfolio}} - \text{Annualized Return}_{\text{BM}})}}{\text{Tracking Error}} $$ 
+
+#### 샤프비율
+
+**샤프비율(Sharpe Ratio) : ** 
+위험 대비 초과 수익률을 측정하는 지표
+
+$$ \text{Sharpe Ratio} = \frac{\text{Annualized Return} - \text{무위험 수익률}}{\text{Annualized Volatility}} $$ 
+이때 무위험 수익률은 연 2.25%를 사용
+
+### {-}
+
+
+### Position {.tabset .tabset-fade}
+
+#### 자산군 비중
+
+**AP, VP : **
+
+자산군 분류에 따른 각 자산의 비중은 기준일자 기준 순자산, 시가평가액을 사용하여 계산한다.
+
+$$순자산비중 = \frac{\text{시가평가액}}{\text{순자산}} $$
+
+**MP : **
+
+기준일자를 기준으로 가장 최근에 리밸런싱 된 비중을 나타낸다.
+
+
+
+#### 자산군 분류표
+
+```{r,echo=FALSE,message=FALSE}
+
+
+
+knitr::kable(universe_criteria)
+
+```
+
+#### 복제율
+
+**주식 및 대체**
+
+포트폴리오 $P_1, P_2$에 대하여 복제율을 구하는 과정이다.
+
+
+1. 포트폴리오 $P_1, P_2$에 포함된 자산군 소분류의 unique 한 종류의 개수를 $k$개 라고 하자. 이때 `대체` 자산군은 소분류 전부를 통합하여 하나의 소분류로 취급한다. (i.e., 글로벌 부동산, 글로벌 인프라, 금 등등의 비중을 합하여 하나의 소분류로 취급)  
+
+2. 포트폴리오를 구성하고 있는 개별 자산군의 순자산비중은 $W_i, \quad{i=1,\dots,k}$ 이다.  
+
+3. 개별 자산군의 순자산 비중을 주식, 대체자산을 전부 합한 순자산 비중으로 Normalize한다.
+$$W'_{i} = \frac{W_i}{\sum_{i=1}^k W_i} , \quad i=1,\dots,k$$
+4. $P_1, P_2$를 구성하고 있는 자산군의 Normalize된 비중을 비교했을 때, 작은 값들을 합하여 복제율을 계산한다. 
+
+$$\text{복제율}=\sum_{i=1}^k \text{min}(W'^{P_1}_i,W'^{P_2})$$
+
+
+
+
+**채권**
+
+### {-}
+
+
+
+
+
+

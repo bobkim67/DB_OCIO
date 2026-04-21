@@ -1,0 +1,69 @@
+# market_research/config/phrase_alias_approved.yaml
+#
+# Approved PHRASE_ALIAS entries that extend the built-in map in
+# market_research/wiki/taxonomy.py::PHRASE_ALIAS at runtime.
+#
+# Rules (v13 contract):
+#   - The mapped value MUST be an exact TOPIC_TAXONOMY label.
+#     Allowed labels: 통화정책, 금리_채권, 물가_인플레이션, 경기_소비, 유동성_크레딧,
+#                     환율_FX, 달러_글로벌유동성, 에너지_원자재, 귀금속_금, 지정학,
+#                     부동산, 관세_무역, 크립토, 테크_AI_반도체
+#   - Entries whose value is outside this set are silently dropped by the
+#     runtime loader. `tools.alias_review --apply` prints the full reject list.
+#   - Entries whose phrase already exists in the built-in PHRASE_ALIAS are
+#     NOT overridden — the built-in map wins (setdefault semantics).
+#   - Ambiguous / descriptive phrases should stay under `keep_unresolved`
+#     rather than being force-mapped. Force-mapping violates the v11 contract.
+#   - Comment every entry with its origin (trace row index or reviewer note).
+#
+# Review workflow:
+#   1. python -m market_research.tools.alias_review --propose
+#        -> data/report_output/alias_candidates.{json,md}
+#   2. Inspect the report; copy high-confidence rows into `approved:` below.
+#   3. python -m market_research.tools.alias_review --apply
+#        -> validates the yaml and prints a merge preview.
+#        Does NOT mutate taxonomy.py. The runtime merge happens automatically
+#        via taxonomy._load_approved_alias() on the next import.
+#
+# Format:
+#   approved:
+#     "<phrase>": <taxonomy_tag>
+#   keep_unresolved:
+#     - "<phrase>"
+
+approved:
+  # v14 first-loop approval.
+  # Trace source: _taxonomy_remap_trace.jsonl history[7], unresolved once.
+  # Why approved: short named event/subject form, repeatable, clean taxonomy
+  # convergence (not a descriptive sentence). "이란 위기" == geopolitical
+  # event reference → 지정학.
+  "이란 위기": 지정학
+
+  # v13.2 entity alias backfill — graph node taxonomy gate coverage.
+  # 검토 문서: docs/entity_alias_backfill_review.md
+  # 4건 모두 risk=low, article evidence 충분, 다의어 위험 낮음.
+  "국제유가": 에너지_원자재     # "유가" 동의어, arts=1032, 다의 없음
+  "호르무즈 해협": 지정학        # 지리적 명사, arts=553, 지정학 외 해석 사실상 없음
+  "호르무즈 봉쇄": 지정학        # event form, arts=78, supply 맥락도 1차 분류는 지정학
+  "이란 협상": 지정학            # arts=165, "이란"·"이란 위기" 동일 dimension
+
+  # v13.3 diversity backfill — under-covered taxonomy 1건만 보강.
+  # 검토 문서: docs/entity_alias_diversity_review.md
+  # `달러` 단독은 audit 결과 다의어(가격 단위)라 defer 유지.
+  # `삼성전자/SK하이닉스/나스닥` 종목명은 정책 미정으로 defer.
+  "원/달러": 환율_FX             # 환율 명백, arts=183, near-dup 없음 (환율과 substring 무관)
+
+keep_unresolved:
+  # Descriptive / interpretation-heavy phrases — explicitly NOT mapped.
+  # Forcing these into taxonomy violates the v11 contract. Each entry is
+  # annotated with the reason so future reviewers don't re-propose them.
+  - "단기 랠리와 장기 리스크의 불일치"   # 문장형 · 해석 의존
+  - "유가 구조적 충격의 줄다리기"         # 문장형 · 해석 의존
+  - "인플레·성장 둔화의 불확실성 충돌"    # 문장형 · 반복 주제성 낮음
+  - "에너지 인플레이션 압박의 긴장."      # 문장형 · taxonomy 강제 매핑 위험
+  - "구조적 인플레 딜레마"                # 서술형 색채 강함 · 보수 제외
+  # v15 2차 루프 추가 — unresolved 10건 중 5건은 이미 등록, 4건 신규.
+  - "구조적 유가 급등의 불안정한 균형"    # review_needed(0.6) · 서술형 · "유가"·"유가 급등" 이미 alias
+  - "에너지 인플레 압력 교차"             # score 0.3 · 문장형 · "에너지 인플레이션" 이미 alias
+  - "유가 인플레 충격"                    # score 0.3 · "유가"·"인플레" 개별 alias로 충분
+  - "인플레 압력의 불확실성 충돌"         # score 0.3 · 문장형 · 해석 의존

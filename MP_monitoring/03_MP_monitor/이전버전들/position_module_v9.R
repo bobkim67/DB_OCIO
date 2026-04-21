@@ -1,0 +1,421 @@
+library(DT)
+# Shiny UI 정의
+positionUI <- function(id) {
+  ns <- NS(id)
+  sidebarLayout(
+    sidebarPanel(
+      radioButtons(ns("assetGroupSelect"), "자산군:",
+                   choices = c("소" = "자산군_소", "대" = "자산군_대"),
+                   inline = TRUE),
+      downloadButton(ns("downloadExcel_position"), "Download Excel"),
+      width = 2,
+      style = "position: fixed; top: 220px; width: 250px;  overflow: auto;"  # 너비 설정 추가
+      
+    ),
+    
+    mainPanel(
+      actionButton(ns("toggle1"), "VP 리밸런싱 Trigger"),
+      uiOutput(ns("description_section1")),
+      plotlyOutput(ns("replication_stock_AI")),
+      actionButton(ns("toggle2"), "AP 채권 듀레이션 복제율 관리 기준"),
+      uiOutput(ns("description_section2")),
+      uiOutput(ns("replication_bond")),
+      plotlyOutput(ns("plotAP")),
+      plotlyOutput(ns("plotVP")),
+      plotlyOutput(ns("plotMP")),
+      plotlyOutput(ns("diffPlot")),
+      plotlyOutput(ns("diffPlot_VPMP")),
+      width = 10,
+      style = "margin-left: 300px;"
+    )
+  )
+}
+
+positionServer <- function(id, global_date, selectedCategory) {
+  moduleServer(id, function(input, output, session) {
+    ns <- session$ns
+    
+    observe({
+      req(global_date())
+      print(global_date())
+    })
+    
+    AP_asset_adjust_filtered <- reactive({
+      fund_list <- AP_fund_name %>% filter(펀드설명 %in% selectedCategory()) %>% pull(펀드)
+      filtered_data <- AP_asset_adjust %>% filter(펀드 %in% c(fund_list, "07J48", "07J49"))
+      filtered_data
+    })
+    
+    VP_asset_adjust_filtered <- reactive({
+      fund_list <- VP_fund_name %>% filter(펀드설명 %in% selectedCategory()) %>% pull(펀드)
+      filtered_data <- position_VP_summarised %>% filter(펀드 %in% c(fund_list))
+      filtered_data
+    })
+    
+    MP_asset_adjust_filtered <- reactive({
+      fund_list <- VP_fund_name %>% filter(펀드설명 %in% selectedCategory()) %>% pull(펀드)
+      filtered_data <- position_MP_summarised %>% filter(펀드 %in% c(fund_list))
+      filtered_data
+    })
+    
+    
+    
+    position_AP <- reactive({
+      data <- AP_asset_adjust_filtered()
+      calculate_portfolio_weights(
+        data = data,
+        asset_group = input$assetGroupSelect,
+        division = "AP"
+      )
+    })
+    
+    position_VP <- reactive({
+      data <- VP_asset_adjust_filtered()%>%
+        group_by(기준일자, 펀드, !!sym(input$assetGroupSelect)) %>%
+        summarise(daily_weight = sum(daily_weight, na.rm = TRUE), .groups = 'drop')
+      
+    })
+    
+    position_MP <- reactive({
+      data <- MP_asset_adjust_filtered()%>%
+        group_by(기준일자, 펀드, !!sym(input$assetGroupSelect)) %>%
+        summarise(daily_weight = sum(daily_weight, na.rm = TRUE), .groups = 'drop')
+      
+    })
+    
+    
+    
+    output$plotAP <- renderPlotly({
+      req(input$assetGroupSelect, global_date())
+      asset_group_sym <- sym(input$assetGroupSelect)
+      position_AP <- position_AP() %>%
+        filter(기준일자 == global_date()) %>%
+        left_join(AP_fund_name, by = "펀드")
+      
+      p <- ggplot(position_AP, aes_string(x = "펀드설명", y = "daily_weight", fill = as.character(asset_group_sym))) +
+        geom_bar(stat = "identity", position = "stack", alpha = 0.8) +
+        geom_text(aes(label = scales::percent(daily_weight, accuracy = 0.01)), 
+                  position = position_stack(vjust = 0.5), 
+                  color = "black", 
+                  size = 3) +
+        scale_y_continuous(labels = scales::percent_format(), limits = c(0, 1.05)) +
+        theme_minimal() +
+        labs(title = paste("선택된 날짜:", global_date(), "- 펀드별 자산군 비중(AP)"),
+             x = "펀드",
+             y = "비중")
+      
+      ggplotly(p)
+    })
+    
+    output$plotVP <- renderPlotly({
+      req(input$assetGroupSelect, global_date())
+      asset_group_sym <- sym(input$assetGroupSelect)
+      position_VP <- position_VP() %>%
+        filter(기준일자 == global_date()) %>%
+        #left_join(VP_fund_name, by = "펀드")
+        mutate(펀드설명 = 펀드)
+      
+      p <- ggplot(position_VP, aes_string(x = "펀드설명", y = "daily_weight", fill = as.character(asset_group_sym))) +
+        geom_bar(stat = "identity", position = "stack", alpha = 0.8) +
+        geom_text(aes(label = scales::percent(daily_weight, accuracy = 0.01)), 
+                  position = position_stack(vjust = 0.5), 
+                  color = "black", 
+                  size = 3) +
+        scale_y_continuous(labels = scales::percent_format(), limits = c(0, 1.05)) +
+        theme_minimal() +
+        labs(title = paste("선택된 날짜:", global_date(), "- 펀드별 자산군 비중(VP)"),
+             x = "펀드",
+             y = "비중")
+      
+      ggplotly(p)
+    })
+    
+    output$plotMP <- renderPlotly({
+      req(input$assetGroupSelect, global_date())
+      asset_group_sym <- sym(input$assetGroupSelect)
+      position_MP <- position_MP() %>%
+        filter(기준일자 == global_date()) %>%
+        #left_join(VP_fund_name, by = "펀드")
+        mutate(펀드설명 = 펀드)
+      
+      p <- ggplot(position_MP, aes_string(x = "펀드설명", y = "daily_weight", fill = as.character(asset_group_sym))) +
+        geom_bar(stat = "identity", position = "stack", alpha = 0.8) +
+        geom_text(aes(label = scales::percent(daily_weight, accuracy = 0.01)), 
+                  position = position_stack(vjust = 0.5), 
+                  color = "black", 
+                  size = 3) +
+        scale_y_continuous(labels = scales::percent_format(), limits = c(0, 1.05)) +
+        theme_minimal() +
+        labs(title = paste("선택된 날짜:", global_date(), "- 펀드별 자산군 비중(MP)"),
+             x = "펀드",
+             y = "비중")
+      
+      ggplotly(p)
+    })
+    
+    
+    # AP - VP ----
+    
+    # AP와 VP의 비중 차이를 시각화하는 그래프 생성
+    output$diffPlot <- renderPlotly({
+      # 'input$assetGroupSelect' 값이 NULL인지 확인
+      req(input$assetGroupSelect,global_date())  
+      
+      # position_AP와 position_VP를 펀드설명을 기준으로 full_join하고 차이 계산
+      
+      
+      if(input$assetGroupSelect=="자산군_대"){
+        AP_VP_diff<- AP_VP_MP_diff_summarised %>% 
+          rename(펀드설명=펀드) %>% 
+          filter(기준일자 == global_date()) %>%
+          group_by(펀드설명, !!sym(input$assetGroupSelect) ) %>%
+          reframe(`비중(AP-VP)` = sum(`비중(AP-VP)`)) 
+        
+      }else{
+        AP_VP_diff <- AP_VP_MP_diff_summarised %>% 
+          rename(펀드설명=펀드) %>% 
+          mutate(자산군_대 = if_else(is.na(자산군_대),"대체",자산군_대)) %>% 
+          filter(기준일자 == global_date()) %>%
+          group_by(펀드설명, !!sym(input$assetGroupSelect) ) %>%
+          reframe(`비중(AP-VP)` = sum(`비중(AP-VP)`)) 
+      }
+      
+      
+      
+      # ggplot 그래프 생성
+      p <- ggplot(AP_VP_diff, aes(x = 펀드설명, y = `비중(AP-VP)`, fill = !!sym(input$assetGroupSelect))) +
+        geom_bar(stat = "identity", width = 0.75, position = "dodge") +
+        geom_hline(yintercept = 0.05, color = "red", linetype = "dashed") +
+        geom_hline(yintercept = -0.05, color = "red", linetype = "dashed") +
+        scale_y_continuous(labels = scales::percent) + # y축 레이블을 백분율로 변경
+        theme_minimal() +
+        labs(title = "AP vs. VP Active Weight Difference", x = "Fund Description", y = "Weight Difference")
+      
+      ggplotly(p)#%>% layout(legend = list(orientation = "h", y = -0.3))
+      
+    })
+    
+    # VP - MP ----
+    
+    output$diffPlot_VPMP <- renderPlotly({
+      # 'input$assetGroupSelect' 값이 NULL인지 확인
+      req(input$assetGroupSelect,global_date())  
+      
+      # position_AP와 position_VP를 펀드설명을 기준으로 full_join하고 차이 계산
+      if(input$assetGroupSelect=="자산군_대"){
+        VP_MP_diff<- AP_VP_MP_diff_summarised %>% 
+          rename(펀드설명=펀드) %>% 
+          filter(기준일자 == global_date()) %>%
+          group_by(펀드설명, !!sym(input$assetGroupSelect) ) %>%
+          reframe(`비중(VP-MP)` = first(`비중(VP-MP)`) ) 
+        
+        # ggplot 그래프 생성
+        p <- ggplot(VP_MP_diff, aes(x = 펀드설명, y = `비중(VP-MP)`, fill = !!sym(input$assetGroupSelect))) +
+          geom_bar(stat = "identity", width = 0.75, position = "dodge") +
+          geom_hline(yintercept = 0.05, color = "red", linetype = "dashed") +
+          geom_hline(yintercept = -0.05, color = "red", linetype = "dashed") +
+          scale_y_continuous(labels = scales::percent) + # y축 레이블을 백분율로 변경
+          theme_minimal() +
+          labs(title = "VP vs. MP Active Weight Difference", x = "Fund Description", y = "Weight Difference")
+        ggplotly(p)
+        
+      }else{
+       
+        VP_MP_diff <- 
+          AP_VP_MP_diff_summarised %>% 
+          rename(펀드설명=펀드) %>% 
+          filter(자산군_대%in%c("주식","대체")) %>% 
+          #mutate(자산군_대 = if_else(is.na(자산군_대),"대체",자산군_대)) %>% 
+          #mutate(자산군_대 = if_else(자산군_대=="대체","주식",자산군_대)) %>% 
+          group_by(기준일자,펀드설명) %>% 
+          mutate(normalize_factor_VP = sum(daily_weight_VP), 
+                 normalize_factor_MP = sum(daily_weight_MP),
+          ) %>% ungroup() %>% 
+          filter(기준일자 == global_date()) %>%
+          group_by(펀드설명, !!sym(input$assetGroupSelect) ) %>%
+          summarise(`비중(VP-MP)` = daily_weight_VP/normalize_factor_VP-daily_weight_MP/normalize_factor_MP) 
+        
+        
+        # ggplot 그래프 생성
+        p <- ggplot(VP_MP_diff, aes(x = 펀드설명, y = `비중(VP-MP)`, fill = !!sym(input$assetGroupSelect))) +
+          geom_bar(stat = "identity", width = 0.75, position = "dodge") +
+          geom_hline(yintercept = 0.05, color = "red", linetype = "dashed") +
+          geom_hline(yintercept = -0.05, color = "red", linetype = "dashed") +
+          scale_y_continuous(labels = scales::percent) + # y축 레이블을 백분율로 변경
+          theme_minimal() +
+          labs(title = "VP vs. MP Active Weight Difference(Normalized)", x = "Fund Description", y = "Weight Difference")
+        ggplotly(p)
+      }
+      
+      
+      
+      
+    })
+    
+    
+    
+    output$replication_stock_AI <- renderPlotly({
+      # 'input$assetGroupSelect' 값이 NULL인지 확인
+      req(global_date())
+      
+      
+      
+      
+      long_data <- replicate_disparate_rate %>%
+        pivot_longer(cols = -c(기준일자, 펀드설명), names_to = "구분", values_to = "복제율&괴리율") %>% 
+        mutate(구분= factor(구분,levels=c("괴리율(VP&MP, 주식+대체 대분류)","괴리율(AP&MP, 주식+대체 대분류)",
+                                      "괴리율N.(VP&MP,주식+대체 소분류)","괴리율N.(AP&MP,주식+대체 소분류)",
+                                      "복제율N.(AP&VP,주식+대체 소분류)","복제율(AP&VP,주식+대체 & 채권 대분류)"))) %>% 
+        mutate(구분= fct_rev(구분))  %>% 
+        mutate(복제율 = str_detect(구분,"복제율") ) %>%
+        group_by(기준일자, 펀드설명) %>%
+        ungroup() %>% 
+        mutate(
+          # 부호 정보 추가
+          original_sign = sign(`복제율&괴리율`),
+          `복제율&괴리율`=abs(`복제율&괴리율`),
+          impact_color = case_when(
+            ((!str_detect(구분,".N"))&(펀드설명=="TIF") &(복제율==FALSE) &(abs(`복제율&괴리율`) >= 0.03)) ~ "red",
+            ((펀드설명=="TIF") &(복제율==FALSE) &(abs(`복제율&괴리율`) >= 0.02))  ~ "#FFA500",
+            ((복제율==TRUE) &(abs(`복제율&괴리율`) <= 0.95)) ~ "red",
+            ((복제율==TRUE) &(abs(`복제율&괴리율`) <= 0.97))  ~ "#FFA500",
+            ((복제율==FALSE) &(abs(`복제율&괴리율`) >= 0.05)) ~ "red",
+            ((복제율==FALSE) &(abs(`복제율&괴리율`) >= 0.03))  ~ "#FFA500",
+            TRUE ~ "white"
+          ),
+          # 부호에 따른 텍스트 색상 설정
+          text_color = case_when(
+            (original_sign==0 |복제율==TRUE)  ~ "black",                # 0은 검은색
+            (impact_color=="red")&(original_sign > 0) ~ "yellow",
+            original_sign > 0 ~ "red",   # 양수는 빨간색
+            original_sign < 0 ~ "blue"    # 음수는 파란색
+          ),
+          text_label = label_percent(accuracy = 0.01)(`복제율&괴리율`)
+        )
+      
+      
+      # 히트맵 생성
+      p <- ggplot(long_data %>% filter(기준일자==global_date(),펀드설명 %in% selectedCategory() ), aes(x = 펀드설명, y = 구분)) +
+        geom_tile(aes(fill = impact_color)) +  
+        geom_text(aes(label = text_label, color = text_color), vjust = 1.5) +
+        scale_fill_identity() +  
+        scale_color_identity() + # text_color를 사용하여 색상 적용
+        guides(fill = FALSE, color = FALSE) +  
+        labs(title = paste("선택된 날짜:", global_date(), "- 복제율 & 괴리율"),
+             x = "펀드설명", 
+             y = "") +
+        theme_minimal() +
+        theme(axis.title.y = element_text(margin = margin(l = 10, unit = "pt")))
+      
+      
+      
+      ggplotly(p)
+    })
+    
+    # 첫 번째 설명 섹션 UI 정의
+    output$description_section1 <- renderUI({
+      if (input$toggle1 %% 2 == 1) {
+        tags$div(
+          style = "padding: 20px; font-size: 14px; line-height: 1.5;",
+          # tags$h3(style = "font-weight: bold;", "VP Rebalancing Trigger Threshold"),
+          tags$ul(
+            tags$span(style = "font-weight: bold; color: red;", "리밸런싱 대상 : 채권을 포함한 전체 포트폴리오"),
+            tags$li("괴리율(VP&MP, 주식+대체 대분류)  : x > 5% (GG, MS, TDF)"),
+            tags$li("괴리율N.(VP&MP, 주식+대체 소분류): x > 5% (GG, MS, TDF)"),
+            tags$li("괴리율(VP&MP, 주식+대체 대분류)  : x > 3% (TIF)"),
+            tags$li("괴리율N.(VP&MP, 주식+대체 소분류): x > 3% (TIF)")
+          )
+        )
+      }
+    })
+    
+    # 두 번째 설명 섹션 UI 정의
+    output$description_section2 <- renderUI({
+      if (input$toggle2 %% 2 == 1) {
+        tags$div(
+          style = "padding: 20px; font-size: 14px; line-height: 1.5;",
+          # tags$h3(style = "font-weight: bold;", "AP 채권 듀레이션 복제율 관리 기준"),
+          tags$ul(
+            tags$span(style = "font-weight: bold; color: red;", "리밸런싱 대상 : 채권"),
+            tags$li("채권듀레이션(AP/MP) : 80% < x < 120% (GG, MS, TDF, TIF)")
+          )
+        )
+      }
+    })
+    
+    output$replication_bond <- renderUI({
+      req(global_date())
+      
+      if(global_date() < ymd("2024-06-10")) {
+        tags$div(
+          style = "color: red; font-weight: bold; text-align: center; padding: 20px;",
+          "채권 듀레이션 복제율은 2024.06.10 부터 확인할 수 있습니다."
+        )
+      } else {
+        plotlyOutput(ns("replication_bond_plot"))
+      }
+    })
+    
+    output$replication_bond_plot <- renderPlotly({
+      long_data <- bond_duration_replicate %>%
+        select(-contains("duration")) %>% 
+        pivot_longer(cols = -c(기준일자, 펀드설명), names_to = "구분", values_to = "복제율") %>% 
+        mutate(구분 = factor(구분, levels = c("펀드듀레이션(AP/VP)", "펀드듀레이션(AP/MP)","펀드듀레이션(VP/MP)",
+                                          "채권듀레이션(AP/VP)", "채권듀레이션(AP/MP)","채권듀레이션(VP/MP)"))) %>%  
+        mutate(구분 = fct_rev(구분))  %>% 
+        group_by(기준일자, 펀드설명) %>%
+        ungroup() %>% 
+        mutate(
+          impact_color = case_when(
+            (abs(복제율 - 1) >= 0.20) ~ "red",    # 복제율이 0.95 이하일 때 빨간색
+            (abs(복제율 - 1) >= 0.10) ~ "#FFA500", # 복제율이 0.97 이하일 때 주황색
+            TRUE ~ "white"            # 그 외의 경우 흰색
+          ),
+          text_label = label_percent(accuracy = 0.01)(복제율) # 소수점 둘째자리까지 표시
+        )
+      
+      # 히트맵 생성
+      p <- ggplot(long_data %>% filter(기준일자 == global_date(), 펀드설명 %in% selectedCategory()), aes(x = 펀드설명, y = 구분)) +
+        geom_tile(aes(fill = impact_color)) +  # 조건에 따른 색상 적용
+        geom_text(aes(label = text_label), vjust = 1.5, color = "black") +
+        scale_fill_identity() +  # 'identity'를 사용하여 데이터의 'impact_color' 값을 직접 색상으로 사용
+        guides(fill = FALSE) +  # 범례 제거
+        labs(title = paste("선택된 날짜:", global_date(), "- 듀레이션 복제율"), x = "펀드설명", y = "") +
+        theme_minimal() +
+        theme(axis.title.y = element_text(margin = margin(l = 10, unit = "pt")))
+      
+      ggplotly(p)
+    })
+    
+    
+    output$downloadExcel_position <- downloadHandler(
+      filename = function() {
+        paste("Position-",input$assetGroupSelect,"-",global_date(), ".xlsx", sep="")
+      },
+      content = function(file) {
+        #writexl::write_xlsx(position_AP() , file)
+        #writexl::write_xlsx(position_VP() , file)
+        if(input$assetGroupSelect=="자산군_대"){
+          return_xlsx <-  AP_VP_MP_diff_summarised %>% 
+            group_by(기준일자,펀드,자산군_대) %>% 
+            reframe(across(.cols = contains("AP")|contains("VP")|contains("MP"),.fns = ~sum(.x) )) 
+          writexl::write_xlsx(list( "daily_weight" =return_xlsx,
+                                    "듀레이션" = bond_duration_replicate) , file)
+        }else{
+          return_xlsx <-  AP_VP_MP_diff_summarised %>% 
+            select(기준일자,펀드,자산군_대,자산군_소,
+                   daily_weight_AP,daily_weight_VP,daily_weight_MP,
+                   `비중(AP-VP)`,`비중(VP-MP)`) %>% 
+            filter(!(abs(daily_weight_AP)==0 & abs(daily_weight_VP)==0 & abs(daily_weight_MP)==0) )
+          
+          writexl::write_xlsx(list( "daily_weight" = return_xlsx,
+                                    "듀레이션" = bond_duration_replicate) , file)
+        }
+        
+        #writexl::write_xlsx(replication_rate() , file)
+      }
+    )
+    
+  })
+}
+

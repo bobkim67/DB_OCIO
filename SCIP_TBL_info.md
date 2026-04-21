@@ -1,0 +1,42 @@
+﻿테이블명	설명
+BMJISU	지수테이블
+DWCI10160	거래코드
+DWCI10170	공통그룹코드
+DWCI10180	공통코드
+DWCI10260	환율정보
+DWCI10310	매매처
+DWPI10011	펀드기본
+DWPI10021	종목정보
+DWPM10120	예수금설정환매내역
+DWPM10510	펀드기준가
+DWPM10520	펀드거래내역
+DWPM10530	펀드보유내역
+DWPM11030	총계정원장
+DWPM11060	외화미결제
+DWPM12790	해외현금거래내역
+DWPM12880	설정해지내역
+DWPM12900	해외미수채권
+FDTFN201	펀드데일리분석(제로인)
+FDTPF301	펀드보유내역(협회)
+MI_CTY_W	MSCI지수 국가별비중
+MI_DJISU	MSCI지수
+MI_DSJISU	MSCI 섹터지수
+ST_KITCA_DS	펀드별판매사설정현황
+DWCI10220	달력
+BOS3203	보수율정보
+MA000410	펀드성과분해(개별종목)
+DWPM10040	펀드수익율
+DWPM10041	펀드서브BM수익율
+CR_EOD0IX	CRSP Index  Levels
+CR_EOD0JG_O	CRSP Index  Constituents Open
+CR_EOD0JG_C	CRSP Index  Constituents close
+CR_EOD0CA	CRSP Index  Change
+BB_EOD0IX	BLOOMBERG TDF ETF Index
+BB_TDF0JG	BLOOMBERG TDF/자산배분 Index
+BB_LVLOPN	Index(DM,EM,EMV,DXAVP) Levels Open
+BB_LVLCLS	Index(DM,EM,EMV,DXAVP) Levels Close
+BB_IDXEVT	Index(DM,EM,EMV,DXAVP) Index Event
+BB_HLDOPN	Index(DM,EM,EMV,DXAVP) Holding Open
+BB_HLDCLS	Index(DM,EM,EMV,DXAVP) Holding Close
+BB_HLDDLT	Index(DM,EM,EMV,DXAVP) Holding Delta
+BB_HLDPFM	Index(DM,EM,EMV,DXAVP) Holding Proforma

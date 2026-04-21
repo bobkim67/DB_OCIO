@@ -1,0 +1,293 @@
+{
+  "generated_at": "2026-04-21T09:32:32",
+  "source": "data\\report_output\\_taxonomy_remap_trace.jsonl",
+  "total_trace_rows": 31,
+  "match_type_counts": {
+    "exact": 3,
+    "alias": 18,
+    "unresolved": 10
+  },
+  "alias_matches_sample": [
+    {
+      "phrase": "지정학 리스크",
+      "mapped_tag": "지정학",
+      "count": 3
+    },
+    {
+      "phrase": "지정학 완화",
+      "mapped_tag": "지정학",
+      "count": 2
+    },
+    {
+      "phrase": "휴전 안도감",
+      "mapped_tag": "지정학",
+      "count": 2
+    },
+    {
+      "phrase": "유가 급등",
+      "mapped_tag": "에너지_원자재",
+      "count": 2
+    },
+    {
+      "phrase": "유동성 경색",
+      "mapped_tag": "유동성_크레딧",
+      "count": 2
+    },
+    {
+      "phrase": "구조적 인플레",
+      "mapped_tag": "물가_인플레이션",
+      "count": 1
+    },
+    {
+      "phrase": "지정학적 완화",
+      "mapped_tag": "지정학",
+      "count": 1
+    },
+    {
+      "phrase": "지정학적 안도감",
+      "mapped_tag": "지정학",
+      "count": 1
+    },
+    {
+      "phrase": "달러 기근",
+      "mapped_tag": "달러_글로벌유동성",
+      "count": 1
+    },
+    {
+      "phrase": "지정학 위기",
+      "mapped_tag": "지정학",
+      "count": 1
+    },
+    {
+      "phrase": "인플레 재점화",
+      "mapped_tag": "물가_인플레이션",
+      "count": 1
+    },
+    {
+      "phrase": "휴전 완화",
+      "mapped_tag": "지정학",
+      "count": 1
+    }
+  ],
+  "unresolved_phrases": [
+    {
+      "phrase": "에너지 인플레이션 압박의 긴장.",
+      "normalized": "에너지 인플레이션 압박의 긴장.",
+      "count": 1,
+      "sources": [
+        "history[5]"
+      ],
+      "first_seen_source": "history[5]",
+      "last_seen_source": "history[5]",
+      "suggested_taxonomy": [
+        {
+          "tag": "물가_인플레이션",
+          "score": 0.9,
+          "reason": "alias `인플레` → 물가_인플레이션 substring; alias `인플레이션` → 물가_인플레이션 substring; alias `에너지 인플레이션` → 물가_인플레이션 substring"
+        }
+      ],
+      "confidence_proxy": 0.9,
+      "sample_contexts": [
+        "history[5]"
+      ],
+      "recommended_action": "review_needed"
+    },
+    {
+      "phrase": "구조적 유가 급등의 불안정한 균형",
+      "normalized": "구조적 유가 급등의 불안정한 균형",
+      "count": 1,
+      "sources": [
+        "history[4]"
+      ],
+      "first_seen_source": "history[4]",
+      "last_seen_source": "history[4]",
+      "suggested_taxonomy": [
+        {
+          "tag": "에너지_원자재",
+          "score": 0.6,
+          "reason": "alias `유가` → 에너지_원자재 substring; alias `유가 급등` → 에너지_원자재 substring"
+        }
+      ],
+      "confidence_proxy": 0.6,
+      "sample_contexts": [
+        "history[4]"
+      ],
+      "recommended_action": "review_needed"
+    },
+    {
+      "phrase": "구조적 인플레 딜레마",
+      "normalized": "구조적 인플레 딜레마",
+      "count": 1,
+      "sources": [
+        "history[1]"
+      ],
+      "first_seen_source": "history[1]",
+      "last_seen_source": "history[1]",
+      "suggested_taxonomy": [
+        {
+          "tag": "물가_인플레이션",
+          "score": 0.6,
+          "reason": "alias `인플레` → 물가_인플레이션 substring; alias `구조적 인플레` → 물가_인플레이션 substring"
+        }
+      ],
+      "confidence_proxy": 0.6,
+      "sample_contexts": [
+        "history[1]"
+      ],
+      "recommended_action": "review_needed"
+    },
+    {
+      "phrase": "이란 위기",
+      "normalized": "이란 위기",
+      "count": 1,
+      "sources": [
+        "history[7]"
+      ],
+      "first_seen_source": "history[7]",
+      "last_seen_source": "history[7]",
+      "suggested_taxonomy": [
+        {
+          "tag": "지정학",
+          "score": 0.6,
+          "reason": "alias `이란` → 지정학 substring; alias `이란 위기` → 지정학 substring"
+        }
+      ],
+      "confidence_proxy": 0.6,
+      "sample_contexts": [
+        "history[7]"
+      ],
+      "recommended_action": "review_needed"
+    },
+    {
+      "phrase": "에너지 인플레 압력 교차",
+      "normalized": "에너지 인플레 압력 교차",
+      "count": 1,
+      "sources": [
+        "history[2]"
+      ],
+      "first_seen_source": "history[2]",
+      "last_seen_source": "history[2]",
+      "suggested_taxonomy": [
+        {
+          "tag": "물가_인플레이션",
+          "score": 0.3,
+          "reason": "alias `인플레` → 물가_인플레이션 substring"
+        }
+      ],
+      "confidence_proxy": 0.3,
+      "sample_contexts": [
+        "history[2]"
+      ],
+      "recommended_action": "keep_unresolved"
+    },
+    {
+      "phrase": "유가 구조적 충격의 줄다리기",
+      "normalized": "유가 구조적 충격의 줄다리기",
+      "count": 1,
+      "sources": [
+        "history[11]"
+      ],
+      "first_seen_source": "history[11]",
+      "last_seen_source": "history[11]",
+      "suggested_taxonomy": [
+        {
+          "tag": "에너지_원자재",
+          "score": 0.3,
+          "reason": "alias `유가` → 에너지_원자재 substring"
+        }
+      ],
+      "confidence_proxy": 0.3,
+      "sample_contexts": [
+        "history[11]"
+      ],
+      "recommended_action": "keep_unresolved"
+    },
+    {
+      "phrase": "유가 인플레 충격",
+      "normalized": "유가 인플레 충격",
+      "count": 1,
+      "sources": [
+        "history[3]"
+      ],
+      "first_seen_source": "history[3]",
+      "last_seen_source": "history[3]",
+      "suggested_taxonomy": [
+        {
+          "tag": "물가_인플레이션",
+          "score": 0.3,
+          "reason": "alias `인플레` → 물가_인플레이션 substring"
+        },
+        {
+          "tag": "에너지_원자재",
+          "score": 0.3,
+          "reason": "alias `유가` → 에너지_원자재 substring"
+        }
+      ],
+      "confidence_proxy": 0.3,
+      "sample_contexts": [
+        "history[3]"
+      ],
+      "recommended_action": "keep_unresolved"
+    },
+    {
+      "phrase": "인플레 압력의 불확실성 충돌",
+      "normalized": "인플레 압력의 불확실성 충돌",
+      "count": 1,
+      "sources": [
+        "history[6]"
+      ],
+      "first_seen_source": "history[6]",
+      "last_seen_source": "history[6]",
+      "suggested_taxonomy": [
+        {
+          "tag": "물가_인플레이션",
+          "score": 0.3,
+          "reason": "alias `인플레` → 물가_인플레이션 substring"
+        }
+      ],
+      "confidence_proxy": 0.3,
+      "sample_contexts": [
+        "history[6]"
+      ],
+      "recommended_action": "keep_unresolved"
+    },
+    {
+      "phrase": "인플레·성장 둔화의 불확실성 충돌",
+      "normalized": "인플레·성장 둔화의 불확실성 충돌",
+      "count": 1,
+      "sources": [
+        "history[0]"
+      ],
+      "first_seen_source": "history[0]",
+      "last_seen_source": "history[0]",
+      "suggested_taxonomy": [
+        {
+          "tag": "물가_인플레이션",
+          "score": 0.3,
+          "reason": "alias `인플레` → 물가_인플레이션 substring"
+        }
+      ],
+      "confidence_proxy": 0.3,
+      "sample_contexts": [
+        "history[0]"
+      ],
+      "recommended_action": "keep_unresolved"
+    },
+    {
+      "phrase": "단기 랠리와 장기 리스크의 불일치",
+      "normalized": "단기 랠리와 장기 리스크의 불일치",
+      "count": 1,
+      "sources": [
+        "regime_current"
+      ],
+      "first_seen_source": "regime_current",
+      "last_seen_source": "regime_current",
+      "suggested_taxonomy": [],
+      "confidence_proxy": 0.0,
+      "sample_contexts": [
+        "regime_current"
+      ],
+      "recommended_action": "keep_unresolved"
+    }
+  ]
+}

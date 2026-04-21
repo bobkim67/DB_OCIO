@@ -1,0 +1,36 @@
+__pycache__/
+*.pyc
+nul
+.DS_Store
+Thumbs.db
+.Rproj.user/
+.bkit/
+.claude/
+
+# market_research — 재생성 가능 대용량 데이터
+market_research/data/news_vectordb/
+market_research/data/news_content_pool/
+market_research/data/enriched_digests/
+market_research/data/timeseries_narratives/
+market_research/data/naver_research/
+market_research/output/
+market_research/devlog/
+
+# market_research — daily_update 매일 갱신 데이터 (재생성 가능)
+market_research/data/news/
+market_research/data/monygeek/
+market_research/data/report_cache/
+
+# Backup files (수동 백업용, 커밋 금지)
+*.bak
+
+# Large files exceeding GitHub 100MB limit
+General_Backtest/.RData
+MP_monitoring/.RData
+MP_monitoring/shiny-server-1.5.22.1017-amd64.deb
+
+# Debug outputs (재생성 가능)
+debug/*.csv
+debug/*.xlsx
+debug/*.tmp
+debug/*.log

@@ -1,0 +1,36 @@
+# DB OCIO Webview 사용자 설정
+# 로그인 UI: admin / client 택1 접속 방식
+# admin: 전체 펀드 접근 + Admin 탭 표시
+# client: 할당된 펀드만 접근, Admin 탭 미표시
+
+roles:
+  admin:
+    name: OCIO 운용팀 (내부)
+    description: 전체 펀드 조회 및 관리
+    fund_codes:
+      - "*"
+    tabs:
+      - overview
+      - holdings
+      - attribution
+      - macro
+      - report
+      - admin
+  client:
+    name: 고객사
+    description: 할당 펀드 조회
+    fund_codes:
+      - "07J34"
+      - "07J41"
+      - "07J48"
+      - "07J49"
+    tabs:
+      - overview
+      - holdings
+      - attribution
+      - report
+
+cookie:
+  expiry_days: 30
+  key: db_ocio_webview_signature_key_2026
+  name: ocio_dashboard_cookie

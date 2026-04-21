@@ -1,0 +1,144 @@
+{
+  "current": {
+    "dominant_narrative": "지정학 + 물가_인플레이션",
+    "weeks": 2,
+    "since": "2026-04-01",
+    "topic_tags": [
+      "지정학",
+      "물가_인플레이션"
+    ],
+    "_unresolved_tags": [],
+    "narrative_description": "지정학 완화 vs 구조적 인플레: 단기 랠리와 장기 리스크의 불일치",
+    "direction": "neutral"
+  },
+  "previous": {
+    "dominant_narrative": "지정학",
+    "ended": "2026-04-01",
+    "dominant_narrative_tags": [
+      "지정학"
+    ],
+    "narrative_description": "휴전 완화 vs 유가 구조적 충격의 줄다리기"
+  },
+  "shift_detected": false,
+  "shift_description": "휴전 완화 vs 유가 구조적 충격의 줄다리기 -> 지정학 완화 vs 구조적 인플레: 단기 랠리와 장기 리스크의 불일치",
+  "history": [
+    {
+      "narrative": "지정학 리스크 vs 인플레·성장 둔화의 불확실성 충돌",
+      "period": "2026-04-01 ~ 2026-04-01",
+      "topic_tags": [
+        "지정학"
+      ],
+      "_unresolved_tags": [
+        "인플레·성장 둔화의 불확실성 충돌"
+      ]
+    },
+    {
+      "narrative": "지정학 완화 vs 구조적 인플레 딜레마",
+      "period": "2026-04-01 ~ 2026-04-01",
+      "topic_tags": [
+        "지정학"
+      ],
+      "_unresolved_tags": [
+        "구조적 인플레 딜레마"
+      ]
+    },
+    {
+      "narrative": "지정학적 완화 vs 에너지 인플레 압력 교차",
+      "period": "2026-04-01 ~ 2026-04-01",
+      "topic_tags": [
+        "지정학"
+      ],
+      "_unresolved_tags": [
+        "에너지 인플레 압력 교차"
+      ]
+    },
+    {
+      "narrative": "휴전 안도감 vs 유가 인플레 충격",
+      "period": "2026-04-01 ~ 2026-04-01",
+      "topic_tags": [
+        "지정학"
+      ],
+      "_unresolved_tags": [
+        "유가 인플레 충격"
+      ]
+    },
+    {
+      "narrative": "휴전 안도감 vs 구조적 유가 급등의 불안정한 균형",
+      "period": "2026-04-01 ~ 2026-04-01",
+      "topic_tags": [
+        "지정학"
+      ],
+      "_unresolved_tags": [
+        "구조적 유가 급등의 불안정한 균형"
+      ]
+    },
+    {
+      "narrative": "지정학적 안도감 vs 에너지 인플레이션 압박의 긴장.",
+      "period": "2026-04-01 ~ 2026-04-01",
+      "topic_tags": [
+        "지정학"
+      ],
+      "_unresolved_tags": [
+        "에너지 인플레이션 압박의 긴장."
+      ]
+    },
+    {
+      "narrative": "지정학 리스크 vs 인플레 압력의 불확실성 충돌",
+      "period": "2026-03-01 ~ 2026-04-01",
+      "topic_tags": [
+        "지정학"
+      ],
+      "_unresolved_tags": [
+        "인플레 압력의 불확실성 충돌"
+      ]
+    },
+    {
+      "narrative": "이란 위기 + 유가 급등 + 달러 기근",
+      "period": "2026-03-01 ~ 2026-03-01",
+      "topic_tags": [
+        "지정학",
+        "에너지_원자재",
+        "달러_글로벌유동성"
+      ]
+    },
+    {
+      "narrative": "지정학 위기 + 인플레 재점화 + 유동성 경색",
+      "period": "2026-03-01 ~ 2026-03-01",
+      "topic_tags": [
+        "지정학",
+        "물가_인플레이션",
+        "유동성_크레딧"
+      ]
+    },
+    {
+      "narrative": "지정학 리스크 + 유가 급등 + 유동성 경색",
+      "period": "2026-03-01 ~ 2026-04-17",
+      "topic_tags": [
+        "지정학",
+        "에너지_원자재",
+        "유동성_크레딧"
+      ]
+    },
+    {
+      "narrative": "지정학 + 환율_FX + 에너지_원자재",
+      "period": "2026-04-01 ~ 2026-04-17",
+      "topic_tags": [
+        "지정학",
+        "환율_FX",
+        "에너지_원자재"
+      ]
+    },
+    {
+      "narrative": "휴전 완화 vs 유가 구조적 충격의 줄다리기",
+      "period": "2026-04-01 ~ 2026-04-01",
+      "topic_tags": [
+        "지정학"
+      ],
+      "_unresolved_tags": [
+        "유가 구조적 충격의 줄다리기"
+      ]
+    }
+  ],
+  "_shift_consecutive_days": 0,
+  "last_daily_update": "2026-04-21"
+}

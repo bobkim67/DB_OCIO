@@ -1,0 +1,36 @@
+{
+  "generated_at": "2026-04-21T07:57:39",
+  "source": "data\\report_output\\_regime_quality.jsonl",
+  "window_start": "2026-04-08",
+  "window_end": "2026-04-21",
+  "window_days": 14,
+  "source_rows": 97,
+  "window_rows": 97,
+  "malformed_skipped": 0,
+  "summary": {
+    "unique_dates_in_window": 3,
+    "unique_date_coverage_ratio": 0.2143,
+    "row_per_date_ratio": 32.33,
+    "observed_unique_dates_with_candidate": 3,
+    "observed_unique_dates_with_empty_tags": 3,
+    "shift_candidate_rows": 32,
+    "shift_confirmed_count": 1,
+    "sentiment_flip_rows": 31,
+    "cooldown_block_rows": 32,
+    "sparse_fallback_rows": 30,
+    "empty_tag_rows": 32,
+    "avg_coverage_current": 0.0968,
+    "avg_coverage_today_core3": 0.0107,
+    "consecutive_row_streak_distribution": {
+      "0": 65,
+      "1": 31,
+      "3": 1
+    },
+    "candidate_rule_distribution": {
+      "low_coverage_today": 90,
+      "low_coverage_current": 75,
+      "sentiment_flip": 31
+    },
+    "churn_proxy_confirmed_over_candidate_row": 0.0312
+  }
+}

@@ -1,0 +1,220 @@
+{
+  "period": "2026-03",
+  "debated_at": "2026-04-10T11:09:12",
+  "customer_comment": "2026년 3월 시장은 이란-미국 지정학 분쟁의 심화가 에너지 공급 충격을 매개로 글로벌 자산 전반에 동시다발적 하방 압력을 가하는 구도로 전개되었습니다. 유가가 배럴당 110달러를 돌파하면서 인플레이션 재점화 우려가 부상하였고, 이는 Fed의 긴축 압박 강화→금리 상승→위험자산 가격 조정이라는 연쇄 경로를 활성화시키고 있습니다. Mark Zandi가 경고한 경기침체 확률 50% 임박 신호는 이러한 유가-인플레이션-정책 경로의 신뢰도(0.65)를 뒷받침하며, 단순한 일시적 지정학 프리미엄이 아닌 구조적 스태그플레이션 리스크로의 전이 가능성을 시사합니다. 주식시장에서는 S&P500 -4.5%, KOSPI -5.1%, 미국 성장주 -4.4%의 광범위한 동시 조정이 나타났으며, 3월 30~31일 S&P500이 +2.5%(z=2.2)의 기술적 반등을 보였으나 이는 과매도 구간에서의 단기 되돌림 성격이 강한 것으로 판단됩니다. ARM의 16% 급등과 테크·AI 반도체 섹터 뉴스 1,954건에서 확인되는 혁신 모멘텀이 일부 성장주를 지지하고 있으나, 달러 강세(DXY +1.3%, USDKRW +4.4%) 환경 하에서 신흥국 자산과 수출 의존도 높은 국내 주식시장에 대한 환율 부담이 가중되고 있습니다. 특히 이란의 직접 대화 거부(3월 25일)로 지정학 리스크 프리미엄의 상시화 가능성이 높아진 점은 변동성 장기화 요인으로 작용할 것입니다. 채권 및 크레딧 시장에서는 금리 상승 추세가 확정적 국면에 진입한 가운데, MOVE 지수 74.01이 표면적으로는 안정 범위이나 프라이빗 크레딧 펀드의 대량 환매 압력(3월 25일 보도)이 구조적 유동성 경색의 초기 신호로 포착되고 있습니다. 신흥국 채권 -2.4% 하락과 금 -12.2%(특히 3월 19~26일 -10.6%, z=2.5의 극단적 낙폭)은 전통적 안전자산 수요마저 약화되는 이례적 환경을 반영하며, 이는 달러 유동성 부족이 오프쇼어 신용 경로를 통해 글로벌 자산 가격을 압박하는 유로달러 시스템 차원의 스트레스로 해석될 여지가 있습니다. 종합적으로, 유가 급등→인플레이션 재가동→정책 경직→신용 악화→경기 둔화의 3중 악재 구도가 형성되고 있어 당분간 방어적 자산배분 기조를 유지할 필요가 있다고 판단됩니다. 국내외 주식에 대해서는 비중 축소 방향의 운용이 적절하며, 채권 포트폴리오 내에서는 듀레이션 관리를 강화하되 달러 표시 우량 채권 중심의 선별적 익스포저를 통해 글로벌 달러 유동성 경색 시나리오에 대비하는 것이 바람직합니다. 다만 Exxon-QatarEnergy 대형 플랜트 가동 임박에 따른 공급 정상화 경로와 Fed의 선제적 정책 대응 가능성은 하방 리스크를 일부 제한하는 요인으로 모니터링을 지속하겠습니다. 호르무즈 해협 봉쇄 확대, 프라이빗 크레딧 연쇄 환매, 유가 120달러 이상 스파이크 등 테일 리스크 시나리오에 대한 스트레스 테스트를 강화하며 대응 체계를 점검해 나가겠습니다.",
+  "admin_comment": "2026년 3월 시장은 이란-미국 지정학 분쟁의 심화가 에너지 공급 충격을 매개로 글로벌 자산 전반에 동시다발적 하방 압력을 가하는 구도로 전개되었습니다. 유가가 배럴당 110달러를 돌파하면서[ref:1] 인플레이션 재점화 우려가 부상하였고, 이는 Fed의 긴축 압박 강화→금리 상승→위험자산 가격 조정이라는 연쇄 경로를 활성화시키고 있습니다. Mark Zandi가 경고한 경기침체 확률 50% 임박 신호[ref:2]는 이러한 유가-인플레이션-정책 경로의 신뢰도(0.65)를 뒷받침하며, 단순한 일시적 지정학 프리미엄이 아닌 구조적 스태그플레이션 리스크로의 전이 가능성을 시사합니다.\n\n주식시장에서는 S&P500 -4.5%, KOSPI -5.1%, 미국 성장주 -4.4%의 광범위한 동시 조정이 나타났으며[ref:3], 3월 30~31일 S&P500이 +2.5%(z=2.2)의 기술적 반등을 보였으나 이는 과매도 구간에서의 단기 되돌림 성격이 강한 것으로 판단됩니다. ARM의 16% 급등과 테크·AI 반도체 섹터 뉴스 1,954건에서 확인되는 혁신 모멘텀이 일부 성장주를 지지하고 있으나[ref:4], 달러 강세(DXY +1.3%, USDKRW +4.4%)[ref:5] 환경 하에서 신흥국 자산과 수출 의존도 높은 국내 주식시장에 대한 환율 부담이 가중되고 있습니다. 특히 이란의 직접 대화 거부(3월 25일)[ref:6]로 지정학 리스크 프리미엄의 상시화 가능성이 높아진 점은 변동성 장기화 요인으로 작용할 것입니다.\n\n채권 및 크레딧 시장에서는 금리 상승 추세가 확정적 국면에 진입한 가운데, MOVE 지수 74.01[ref:7]이 표면적으로는 안정 범위이나 프라이빗 크레딧 펀드의 대량 환매 압력(3월 25일 보도)[ref:8]이 구조적 유동성 경색의 초기 신호로 포착되고 있습니다. 신흥국 채권 -2.4% 하락[ref:9]과 금 -12.2%(특히 3월 19~26일 -10.6%, z=2.5의 극단적 낙폭)[ref:10]은 전통적 안전자산 수요마저 약화되는 이례적 환경을 반영하며, 이는 달러 유동성 부족이 오프쇼어 신용 경로를 통해 글로벌 자산 가격을 압박하는 유로달러 시스템 차원의 스트레스로 해석될 여지가 있습니다.\n\n종합적으로, 유가 급등→인플레이션 재가동→정책 경직→신용 악화→경기 둔화의 3중 악재 구도가 형성되고 있어 당분간 방어적 자산배분 기조를 유지할 필요가 있다고 판단됩니다. 국내외 주식에 대해서는 비중 축소 방향의 운용이 적절하며, 채권 포트폴리오 내에서는 듀레이션 관리를 강화하되 달러 표시 우량 채권 중심의 선별적 익스포저를 통해 글로벌 달러 유동성 경색 시나리오에 대비하는 것이 바람직합니다. 다만 Exxon-QatarEnergy 대형 플랜트 가동 임박[ref:11]에 따른 공급 정상화 경로와 Fed의 선제적 정책 대응 가능성은 하방 리스크를 일부 제한하는 요인으로 모니터링을 지속하겠습니다. 호르무즈 해협 봉쇄 확대, 프라이빗 크레딧 연쇄 환매, 유가 120달러 이상 스파이크 등 테일 리스크 시나리오에 대한 스트레스 테스트를 강화하며 대응 체계를 점검해 나가겠습니다.",
+  "admin_summary": "4인 분석가 모두 이란-미국 지정학 리스크에 따른 유가 110달러 돌파, 스태그플레이션 경로 활성화, 프라이빗 크레딧 유동성 위기를 핵심 리스크로 공유하나, 시장 회복력과 자산배분 방향에서 극명히 대립합니다. 낙관론자는 기술주 반등과 공급 정상화를 근거로 비중확대를 주장하는 반면, 비관론·데이터·유로달러 학파는 경기둔화·금리인상·신용악화의 3중 악재와 달러 유동성 경색을 근거로 방어적 축소를 권고하여, DB형 퇴직연금 포트폴리오의 리스크 관리 강화 여부가 핵심 의사결정 쟁점입니다.",
+  "consensus_points": [
+    "이란-미국 지정학 리스크가 유가 110달러 돌파를 촉발하며 글로벌 자산시장의 핵심 변수로 부상했다는 점에 4인 모두 동의",
+    "유가 급등→인플레이션 재점화→Fed 정책 딜레마의 연쇄 전이 경로가 활성화되고 있으며, 스태그플레이션 리스크가 무시할 수 없는 수준이라는 점에 공감",
+    "프라이빗 크레딧 펀드 환매 압력이 신용시장 유동성 경색의 초기 신호이며, 경기침체 확률 50% 경고와 결합 시 하방 리스크가 확대된다는 점을 4인 모두 리스크 요인으로 인식"
+  ],
+  "disagreements": [
+    {
+      "topic": "시장 회복력 및 자정 능력 평가",
+      "bull": "3월 말 S&P500 +2.5% 반등과 기술주 강세는 시장의 자정 능력을 입증하며 과매도 구간에서 회복 전환이 시작됨",
+      "bear": "S&P500 -4.5%, KOSPI -5.1% 동시 낙으로 리스크 자산 광범위 조정이 진행 중이며 회복력이 약화되고 있음",
+      "quant": "실제 펀더멘탈은 주요 지수 -4~5% 악화로 가격에 반영 중이며, 긍정 뉴스 영향도와 실제 수익률 간 괴리가 펀더멘탈 악화를 확인",
+      "monygeek": "단기 반등은 유로달러 유동성 경색의 본질을 은폐하는 착시이며 달러 기반 결제시스템 마비가 진행되는 구조적 질식 국면"
+    },
+    {
+      "topic": "유가 급등의 성격과 향후 경로",
+      "bull": "유가 급등은 에너지 인프라 투자 가속화 신호이며 Exxon-QatarEnergy 대형 플랜트 가동 임박으로 공급 정상화 경로가 명확",
+      "bear": "유가 급등은 공급충격으로 스태그플레이션 함정을 초래하며 70년대 오일쇼크 패턴 재현 가능성 상존",
+      "quant": "유가-인플레이션-정책 연쇄 전이경로 신뢰도 0.65로 명확한 악화 경로가 활성화된 상태",
+      "monygeek": "유가 110달러는 단순 에너지 가격이 아닌 호르무즈 해협 봉쇄에 따른 달러 기반 국제무역금융 마비 신호"
+    },
+    {
+      "topic": "적정 자산배분 방향",
+      "bull": "글로벌 주식·채권 비중확대 적기이며 위기 속 혁신 수혜주(AI·반도체)와 신흥시장 채권에 기회 존재",
+      "bear": "국내외 주식 축소, 채권 유지의 방어적 배분이 필수적",
+      "quant": "국내외 주식·채권 전방위 축소가 정량 신호에 부합하며 3중 악재(경기둔화·금리인상·신용악화) 구도에 대응 필요",
+      "monygeek": "국내외 주식 축소하되 해외채권은 달러 유동성 프리미엄 확보 차원에서 비중확대 필요"
+    },
+    {
+      "topic": "금(Gold) -12.2% 하락 해석",
+      "bull": "금 하락은 과매도 해소 기회이며 안전자산 재진입 타이밍을 제공",
+      "bear": "달러 강세와 금리 상승에 따른 안전자산 쏠림 재편 신호",
+      "quant": "안전자산 수요 격감과 스태그플레이션 우려(금리+인플레이션) 동시 반영으로 시장 구조 약화 확인",
+      "monygeek": "금 하락은 달러 유동성 확보를 위한 자산 매도 압력의 표출이며 유로달러 부족의 방증"
+    }
+  ],
+  "tail_risks": [
+    "이란-미국 군사 충돌 에스컬레이션으로 호르무즈 해협 봉쇄 시 유가 150달러 이상 스파이크, 글로벌 무역금융 마비 및 스태그플레이션 구조화",
+    "프라이빗 크레딧 펀드 연쇄 환매가 하이일드 크레딧 이벤트로 확산되어 구조적 유동성 경색 및 신용스프레드 200-300bp 급확대"
+  ],
+  "evidence_annotations": [
+    {
+      "ref": 1,
+      "article_id": "88e775c1deab",
+      "title": "Iran war rattles Gulf petrodollar foundations - Reuters",
+      "url": "https://news.google.com/rss/articles/CBMinAFBVV95cUxQMl9BODlYRjJiSEJScU9jdGpicnZJM1dVRVF5aS1tMmZtSFNCRmZVcnFBd2tUbDRBMFBSQTVMcGRZU2IzSmxQQlRZa0JoZnd6RU5saGJSOVdUcDFMOUE5dVo2ZnljR0hUSU9CbkdXQ0tJQlJUUkQtc3BQSG5wZnF4cGhtRmpIMmpSa0pzVFcweXQ2NWJPRDFsNWp6bjQ?oc=5",
+      "source": "Reuters",
+      "date": "2026-03-25",
+      "topic": "지정학",
+      "salience": 0.975,
+      "salience_explanation": "TIER1 매체(Reuters), 높은 강도(9/10), 교차보도 38건"
+    },
+    {
+      "ref": 2,
+      "article_id": "beca0ce8414c",
+      "title": "Asia markets set to fall as Iran rules out direct U.S. talks despite reviewing proposal",
+      "url": "https://www.cnbc.com/2026/03/26/asia-pacific-markets-live-updates-nikkei-225-kospi-hang-seng-index.html",
+      "source": "CNBC",
+      "date": "2026-03-25",
+      "topic": "지정학",
+      "salience": 0.95,
+      "salience_explanation": "TIER1 매체(CNBC), 높은 강도(8/10), 교차보도 38건"
+    },
+    {
+      "ref": 3,
+      "article_id": "e2e58aea7cc6",
+      "title": "Iran War: How Global Markets Are Repricing A New Energy Shock",
+      "url": "https://finnhub.io/api/news?id=6e46ec42b37ec43dd672614c683990159a3062ab059812ef04e737f896a825c8",
+      "source": "Benzinga",
+      "date": "2026-03-04",
+      "topic": "지정학",
+      "salience": 0.885,
+      "salience_explanation": "TIER2 매체(Benzinga), 높은 강도(9/10), 교차보도 10건"
+    },
+    {
+      "ref": 4,
+      "article_id": "716139602ab5",
+      "title": "Middle East Conflict: Implications For Global Markets",
+      "url": "https://finnhub.io/api/news?id=be4b1b8200ac87f73476d3b0dd5f312b43d38774211c8dd7c11aaf10c9293065",
+      "source": "SeekingAlpha",
+      "date": "2026-03-04",
+      "topic": "지정학",
+      "salience": 0.86,
+      "salience_explanation": "TIER2 매체(SeekingAlpha), 높은 강도(8/10), 교차보도 10건"
+    },
+    {
+      "ref": 5,
+      "article_id": "d24744710e14",
+      "title": "Mark Zandi warns recession odds are creeping toward 50%, and the Iran war could launch us into econo",
+      "url": "https://fortune.com/2026/03/25/moodys-mark-zandi-recession-risk-50-percent-jobs-data-iran-war/",
+      "source": "Fortune",
+      "date": "2026-03-25",
+      "topic": "지정학",
+      "salience": 0.835,
+      "salience_explanation": "TIER3 매체(Fortune), 높은 강도(9/10), 교차보도 4건"
+    },
+    {
+      "ref": 6,
+      "article_id": "3d44516eb491",
+      "title": "Watch: How fluctuating oil prices are affecting people around the world",
+      "url": "https://www.bbc.com/news/videos/cd9g5kll3vqo",
+      "source": "BBC News",
+      "date": "2026-03-09",
+      "topic": "에너지_원자재",
+      "salience": 0.81,
+      "salience_explanation": "TIER3 매체(BBC News), 교차보도 6건"
+    },
+    {
+      "ref": 7,
+      "article_id": "ce91f7adb3c7",
+      "title": "World shares tumble as Iran war pushes crude prices over $110 a barrel",
+      "url": "https://www.npr.org/2026/03/09/nx-s1-5742307/world-shares-tumble-iran-war",
+      "source": "NPR",
+      "date": "2026-03-09",
+      "topic": "에너지_원자재",
+      "salience": 0.785,
+      "salience_explanation": "TIER3 매체(NPR), 높은 강도(9/10), 교차보도 3건"
+    },
+    {
+      "ref": 8,
+      "article_id": "0917674069c5",
+      "title": "Commodities: Shifting War Outlook",
+      "url": "https://finnhub.io/api/news?id=913838bd492663882951a92deeddb94418efb0521a48dbf630b6dc5115dca421",
+      "source": "SeekingAlpha",
+      "date": "2026-03-25",
+      "topic": "에너지_원자재",
+      "salience": 0.785,
+      "salience_explanation": "TIER2 매체(SeekingAlpha), 높은 강도(7/10), 교차보도 4건"
+    },
+    {
+      "ref": 9,
+      "article_id": "281b690a7992",
+      "title": "Dialing Down Risk Amid Supply Shock",
+      "url": "https://finnhub.io/api/news?id=361e5450e5845923566e863a790af0cf0fec4ed7369e4260c36df3d09ccc52b1",
+      "source": "SeekingAlpha",
+      "date": "2026-03-24",
+      "topic": "에너지_원자재",
+      "salience": 0.785,
+      "salience_explanation": "TIER2 매체(SeekingAlpha), 높은 강도(7/10), 교차보도 4건"
+    },
+    {
+      "ref": 10,
+      "article_id": "a22b75aca7c8",
+      "title": "'Gas Traders Await Start of Massive Exxon, QatarEnergy Plant in US as Iran War Hits Supply' - Bloomb",
+      "url": "https://finnhub.io/api/news?id=e54c52c986de97bc2302d837482d4c2be3a119d709eb2d7b4bc9973d2f7725aa",
+      "source": "Benzinga",
+      "date": "2026-03-19",
+      "topic": "에너지_원자재",
+      "salience": 0.785,
+      "salience_explanation": "TIER2 매체(Benzinga), 높은 강도(7/10), 교차보도 4건"
+    },
+    {
+      "ref": 11,
+      "article_id": "41d26885dcce",
+      "title": "Recession odds climb on Wall Street as economy shows cracks beneath the surface",
+      "url": "https://www.cnbc.com/2026/03/25/recession-odds-climb-on-wall-street-as-economy-shows-cracks-beneath-the-surface.html",
+      "source": "CNBC",
+      "date": "2026-03-25",
+      "topic": "금리_채권",
+      "salience": 0.775,
+      "salience_explanation": "TIER1 매체(CNBC), 높은 강도(7/10), 교차보도 2건"
+    },
+    {
+      "ref": 12,
+      "article_id": "2253f5dcaec5",
+      "title": "Arm jumps 16% as company expects revenue windfall from new chip, a 'significant shift' - CNBC",
+      "url": "https://www.cnbc.com/2026/03/25/arm-stock-chip-revenue-agi-cpu.html",
+      "source": "CNBC",
+      "date": "2026-03-25",
+      "topic": "테크_AI_반도체",
+      "salience": 0.725,
+      "salience_explanation": "TIER1 매체(CNBC), 높은 강도(7/10)"
+    },
+    {
+      "ref": 13,
+      "article_id": "471cb76650ea",
+      "title": "Gold Taps $4,100 And Dollar Emerges As Ultimate Crisis Safe Haven, Says TD Securities Strategist",
+      "url": "https://finnhub.io/api/news?id=8eb928a0c6be36ab3071b4e9f65baffd1a72466acf239dd5313e0869d79399b7",
+      "source": "Benzinga",
+      "date": "2026-03-24",
+      "topic": "귀금속_금",
+      "salience": 0.71,
+      "salience_explanation": "TIER2 매체(Benzinga), 높은 강도(8/10), 교차보도 2건"
+    },
+    {
+      "ref": 14,
+      "article_id": "67b4dbb8032d",
+      "title": "Private credit fund bonds were flagging risks before recent redemptions, hedge fund says",
+      "url": "https://economictimes.indiatimes.com/markets/us-stocks/news/private-credit-fund-bonds-were-flagging-risks-before-recent-redemptions-hedge-fund-says/articleshow/129811081.cms",
+      "source": "The Times of India",
+      "date": "2026-03-25",
+      "topic": "유동성_크레딧",
+      "salience": 0.71,
+      "salience_explanation": "TIER3 매체(The Times of India), 교차보도 3건"
+    },
+    {
+      "ref": 15,
+      "article_id": "598f58d1b4c8",
+      "title": "Trump Wanted A 'Golden Age,' The Iran War Is Delivering A Stagflation Trap",
+      "url": "https://finnhub.io/api/news?id=6758b129486a26f1ce21a32b4cfce4c4c18bfa89dadaa1d289189fd12e96672b",
+      "source": "Benzinga",
+      "date": "2026-03-24",
+      "topic": "물가_인플레이션",
+      "salience": 0.685,
+      "salience_explanation": "TIER2 매체(Benzinga), 높은 강도(9/10)"
+    }
+  ],
+  "internal_metrics_guide": {
+    "중요도(salience)": "기사 중요도 점수 (0~1). 매체등급 30% + 강도 25% + 교차보도 25% + BM이상치 20%로 산출",
+    "전이경로 신뢰도": "GraphRAG 인과추론 엣지의 신뢰도. 0.9 이상은 다수 기사에서 반복 확인된 인과 경로",
+    "교차보도 N건": "동일 이벤트를 서로 다른 매체가 보도한 횟수. 많을수록 사실 신뢰도 높음",
+    "BM 이상치": "해당 날짜에 벤치마크 수익률이 z-score 1.5 이상 급변한 경우 해당",
+    "매체등급": "TIER1(Reuters/Bloomberg/연합 등)=1.0, TIER2(SeekingAlpha/매경 등)=0.7, TIER3(기타)=0.3"
+  }
+}

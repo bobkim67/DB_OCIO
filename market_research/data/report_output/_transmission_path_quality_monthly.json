@@ -1,0 +1,24 @@
+[
+  {
+    "month": "2026-04",
+    "phase": "P1",
+    "promoted_to_canonical": false,
+    "total_paths": 5,
+    "unique_triggers": 4,
+    "unique_targets": 2,
+    "trigger_coverage": 0.8,
+    "target_coverage": 0.4,
+    "unmatched_triggers": [
+      "에너지_원자재"
+    ],
+    "unmatched_targets": [
+      "금리",
+      "해외주식",
+      "환율"
+    ],
+    "avg_confidence": 0.736,
+    "node_count": 274,
+    "edge_count": 252,
+    "generated_at": "2026-04-21T09:52:10"
+  }
+]

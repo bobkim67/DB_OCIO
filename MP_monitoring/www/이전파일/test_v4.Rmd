@@ -1,0 +1,421 @@
+---
+title: "Information"
+output: 
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "../")
+suppressMessages(library(tidyverse)) 
+suppressMessages(library(DBI))
+suppressMessages(library(RMariaDB))
+con_solution <- dbConnect(RMariaDB::MariaDB(), username = 'solution', password = 'Solution123!', dbname = 'solution', host = '192.168.195.55')
+
+universe_criteria <- 
+  read_csv("../00_data_updating/new_universe_criteria.csv", locale = locale(encoding = "CP949")) %>%
+  distinct() %>% 
+  # 23년 말 기준으로 새롭게 편입된 US 금 두 종목 존재. universe DB에 업데이트
+  bind_rows(
+    tribble( ~종목코드, ~종목명,~자산군_대,~자산군_중,~자산군_소,
+             "US98149E3036", "SPDR GOLD MINISHARES TRUST" , "대체","원자재","금",  
+             "US46436F1030", "ISHARES GOLD TRUST MICRO"   , "대체","원자재","금",
+             "US46435U8532", "iShares Broad USD High Yield Corporate B", "채권","미국 채권","미국 하이일드채권",
+             "KR7114460009", "ACE 국고채3년", "채권","한국 채권", "한국 3년국고채권",
+             "KR7278540000", "KODEX MSCI Korea TR", "주식","한국 주식","한국 주식",
+             "KR7114260003",	"KODEX 국고채3년","채권",	"한국 채권",	"한국 3년국고채권",
+             "KR7133690008",	"TIGER 미국나스닥100","주식",	"미국 주식",	"미국 성장주",
+             "KR7304940000",	"KODEX 미국나스닥100선물(H)","주식",	"미국 주식","미국 성장주",
+             "KR7310960000",	"TIGER 200TR", "주식",	"한국 주식",	"한국 주식",
+             "KR7367380003",	"ACE 미국나스닥100","주식",	"미국 주식",	"미국 성장주",
+             "KR7468380001",	"KODEX iShares미국하이일드액티브", "채권",	"미국 채권",	"미국 하이일드채권",
+             "KR7455030007",	"KODEX 미국달러SOFR금리액티브(합성)","채권",	"미국 채권",	"미국 채권",
+             "US78462F1030",  "SPDR TRUST SERIES 1", "주식", "미국 주식", "미국 주식"
+             
+             
+             
+    )
+  ) %>% filter(!(자산군_대 %in%c("유동성","07J48","07J49",NA) )) %>% 
+  select(-자산군_중) %>% 
+  arrange(자산군_대,종목코드)
+
+
+asset_criteria <- universe_criteria %>% select(자산군_대, 자산군_소) %>% distinct()
+
+MP_LTCMA_v2 <- tbl(con_solution,"sol_MP_released_inform") %>% 
+  select(리밸런싱날짜 = Release_date, 펀드설명, ISIN, weight, 자산군_소, 경기국면) %>% 
+  filter(!(str_detect(펀드설명,'ACETDF') & !str_detect(펀드설명, '2030|2050|2080')) ) %>%
+  collect() %>% 
+  mutate(리밸런싱날짜 = ymd(리밸런싱날짜))
+
+
+MP_LTCMA_v2 <- MP_LTCMA_v2 %>% left_join(asset_criteria, by = '자산군_소') %>% select(리밸런싱날짜, 펀드설명, ISIN, weight, 자산군_대, 자산군_소)
+
+MP_LTCMA_rebal_latest_regular <- MP_LTCMA_v2 %>%
+  group_by(펀드설명) %>% 
+  slice_max(order_by = 리밸런싱날짜) %>% 
+  ungroup() 
+
+MP_rebal_info <- tbl(con_solution,"sol_VP_rebalancing_inform") %>% select(리밸런싱날짜, 펀드설명) %>% collect()
+  
+MP_rebal_latest <- MP_rebal_info %>%
+  filter(펀드설명 %in% unique(MP_LTCMA_v2$펀드설명)) %>%
+  group_by(펀드설명) %>% 
+  slice_max(order_by = 리밸런싱날짜) %>% 
+  ungroup() %>% 
+  rename(최근리밸런싱일자 = 리밸런싱날짜) 
+
+BM_weight_2 <- 
+  MP_LTCMA_rebal_latest_regular %>%
+  #left_join(universe_criteria %>% select(종목코드,자산군_대, 자산군_소) %>% distinct(), by = join_by(ISIN==종목코드)) %>%
+  mutate(자산군 = if_else(자산군_대 == "대체", "주식", 자산군_대)) %>%
+  group_by(리밸런싱날짜,펀드설명, 자산군) %>%
+  reframe(weight = round(sum(weight),2) )  %>% 
+  mutate(weight = if_else((펀드설명 =="MS GROWTH" & 자산군=="주식"),0.70,weight )) %>%
+  mutate(weight = if_else((펀드설명 =="MS GROWTH" & 자산군=="채권"),0.30,weight )) %>%
+  mutate(weight = if_else((펀드설명 =="Golden Growth" & 자산군=="주식"),0.60,weight )) %>%
+  mutate(weight = if_else((펀드설명 =="Golden Growth" & 자산군=="채권"),0.40,weight )) %>%
+  mutate(자산군 = case_when(
+    자산군 == "주식" & str_detect(펀드설명, "ACE") ~ "M1WD Index",
+    자산군 == "주식" ~ "M2WD Index",
+    자산군 == "채권" & 펀드설명 %in% c("MS GROWTH", "MS STABLE","Golden Growth") ~ "KST0000T Index",#"KIS 종합 총수익지수",
+    자산군 == "채권" & str_detect(펀드설명, "ACE") ~ "KIS 종합채권 AA-이상 총수익지수",
+    자산군 == "채권" ~ "LEGATRUU Index",
+    TRUE ~ 자산군
+  )) %>% 
+  rename(ISIN= 자산군)
+
+BM_weight_2 <- BM_weight_2 %>% 
+  pivot_wider(id_cols = c(리밸런싱날짜,펀드설명),names_from = ISIN,values_from = weight) %>% 
+  mutate(across(.cols = everything(),.fns = ~replace_na(.x,0)))
+
+BM_weight_2 <- MP_rebal_latest %>% left_join(BM_weight_2, by = '펀드설명') %>% select(-리밸런싱날짜)
+
+BM_weight_BF <- BM_weight_2 %>% filter(펀드설명 %in% c("MS GROWTH", "MS STABLE","Golden Growth")) %>% select(where(~ !all(. == 0)))
+BM_weight_ACETDF <- BM_weight_2 %>% filter(str_detect(펀드설명, "ACE")) %>% select(where(~ !all(. == 0)))
+BM_weight_ETFFocus <- BM_weight_2 %>% filter(!(펀드설명 %in% c("MS GROWTH", "MS STABLE","Golden Growth")) & !str_detect(펀드설명, "ACE")) %>% select(where(~ !all(. == 0)))
+
+```
+## 펀드 모니터링
+
+### 모니터링 목적
+
+									
+1. 솔루션본부에서 운용하는 공모펀드 및 상장지수펀드의 Performance, Risk, Position을 일간으로 모니터링하여 운용에 활용하기 위함	
+2. 모니터링 대상 펀드의 AP, VP, MP, BM을 각각 모니터링함으로써, 시장(BM) 대비 펀드(AP)의 성과(AP-BM)를 투자전략에 의한 성과(VP-BM)와 매니저에 의한 성과(AP-VP)로 분해하여 분석할 수 있도록 함	
+
+$$ \underbrace{\mathrm{AP}-\mathrm{BM}}_{\textstyle\mathrm{시장대비성과}}=\underbrace{\mathrm{AP}-\mathrm{VP}}_{\textstyle\mathrm{매니저성과}}+\underbrace{\mathrm{VP}-\mathrm{BM}}_{\textstyle\mathrm{투자전략성과}}.  $$
+
+### 모니터링 대상 펀드 및 BM 산출 식
+
+솔루션본부 주력 공모펀드 **Balanced Funds (BF)**와 **TDF알아서ETF포커스** 및 ETF **ACE TDF**를 대상으로 모니터링한다.
+펀드의 BM 산출식은 공통적으로 다음 식을 만족한다(단, BF는 별도 지정).
+$$ \mathrm{BM} = \mathrm{(주식\!+\!대체자산\,비중)}\times\mathrm{주가지수}+\mathrm{(채권자산\,비중)}\times\mathrm{채권지수}. $$
+주가지수 및 채권지수는 펀드의 종류별로 상이하다. MP의 자산군 비중이 업데이트될 때마다 BM 또한 위 식에 맞게 업데이트된다.
+아래 표의 숫자들은 각 펀드별 해당 BM 주가지수 및 채권지수의 비중을 소수점 두 번째 자리까지 반올림한 값이다.
+
+1. **Balanced Funds**
+    - 주가지수: MSCI ACWI Gross Total Return Index$(t-1)$ * USDKRW$(t)$ (Ticker: M2WD Index) 
+    - 채권지수: KIS 종합채권 총수익지수 (Ticker: KST0000T Index)
+
+```{r,echo=FALSE,message=FALSE}
+BM_weight_BF %>% knitr::kable()
+```
+
+2. **TDF알아서ETF포커스**
+    - 주가지수: MSCI ACWI Gross Total Return Index$(t-1)$ * USDKRW$(t)$ (Ticker: M2WD Index)
+    - 채권지수: Barclays Global Aggregate Bond Total Return Index$(t-1)$ (Ticker: LEGATRUU Index)
+
+```{r,echo=FALSE,message=FALSE}
+BM_weight_ETFFocus %>% knitr::kable()
+```
+
+3. **ACE TDF**
+    - 주가지수: MSCI ACWI Net Total Return Index$(t-1)$ * USDKRW$(t)$ (Ticker: M1WD Index)
+    - 채권지수: KIS 종합채권 AA-이상 총수익지수
+
+```{r,echo=FALSE,message=FALSE}
+BM_weight_ACETDF %>% knitr::kable()
+```
+
+## 평가지표 정의 및 산출식
+
+### 데이터 출처
+
+1. AP, VP의 경우 <code>BOS8183</code>을 통해 기준가를 불러와 계산한다.
+2. MP, BM의 경우 Bloomberg, Factset을 통해 구성종목의 일별 종가를 불러와 수익률을 계산한다.
+3. 그 외 세부 고려사항:
+    i. 해외 자산은 $t-1$ 거래일 종가를 사용한다
+    ii. 해외 자산도 한국 휴장일을 반영. 즉, 한국 휴장일에 해당 종목의 종가 정보가 있더라도, 한국 휴장일 직전거래일에 사용했던 종가를 lagging 하여 기준가를 계산한다.
+    iii. USD/KRW는 기준일자 종가를 사용한다.
+
+### Performance & Risk {.tabset .tabset-fade}
+
+#### 수익률
+
+**기간 수익률(Return) : ** 
+
+ $$ \text{Return} = \frac{\text{기준일자 수정기준가}}{\text{조회기간 시작일 수정기준가}} - 1 $$ 
+
+**연환산 수익률(Annualized Return) : ** 
+
+선택된 조회 기간의 수익률, 총 일수를 사용하여 연환산 수익률을
+계산한다.  
+
+$$ \text{Annualized Return} =
+\big(1+\text{기간수익률}\big)^{\dfrac{365}{\text{선택된 기간의 총 일수}}}-1 $$ 
+
+#### 변동성
+
+
+**연환산 변동성(Annualized Volatility) : **  
+
+선택된 조회 기간 중, 기준일자의 요일을 필터링하여 주별 수익률을 계산한 뒤 표준편차을 구하여 연환산한다. 예를 들어, 선택된 기준일자가 금요일이고 YTD 변동성이라면, 해당년도 금요일의 수정기준가만 필터링하고 주별 수익률을 계산하여 표준편차을 구하고 $\sqrt{52}$를 곱한다.
+
+
+$$ \text{Annualized Volatility} = \sigma(\text{주별 수익률}) \times \sqrt{52} $$ 
+
+
+#### Return-to-Risk
+
+
+
+**Return-to-Risk (Risk-Adjusted Return) : **
+
+$$ \text{Return-to-Risk} = \frac{\text{Annualized Return}}{\text{Annualized Volatility}} $$
+
+#### 추적오차
+
+
+
+**추적오차(Tracking Error) : ** 
+
+$$ \text{Tracking Error} = \sigma(\text{주별수익률}_{\text{Portfolio}} - \text{주별수익률}_{\text{BM}})\times\sqrt{52} $$ 
+
+
+
+#### 정보비율
+
+**정보비율(Information Ratio) : **
+추적오차 대비 초과 수익률을 측정하는 지표
+
+$$ \text{Information Ratio} = \frac{\text{Annualized Return}_{\text{Portfolio}} - \text{Annualized Return}_{\text{BM}}}{\text{Tracking Error}} $$ 
+
+#### 샤프비율
+
+**샤프비율(Sharpe Ratio) : ** 
+위험 대비 초과 수익률을 측정하는 지표
+
+$$ \text{Sharpe Ratio} = \frac{\text{Annualized Return} - \text{무위험 수익률}}{\text{Annualized Volatility}} $$ 
+이때 무위험 수익률은 연 2.25%를 사용
+
+### Position {.tabset .tabset-fade}
+
+#### 자산군 비중
+
+**AP, VP : **
+
+자산군 분류에 따른 각 자산의 비중은 기준일자 기준 순자산, 시가평가액을 사용하여 계산한다.
+
+$$순자산비중 = \frac{\text{시가평가액}}{\text{순자산}} $$
+
+**MP : **
+
+기준일자를 기준으로 가장 최근에 리밸런싱 된 비중을 나타낸다.
+
+
+
+#### 자산군 분류표
+
+```{r,echo=FALSE,message=FALSE}
+
+
+
+knitr::kable(universe_criteria)
+
+dbDisconnect(con_solution)
+
+```
+
+
+#### 괴리율
+
+
+<h4>괴리율</h4>
+<p>포트폴리오 <span class="math inline">\(P_1, P_2\)</span>에 대하여
+괴리율을 구하는 과정은 다음과 같다.</p>
+
+<h5><strong>자산군 대분류</strong></h5>
+<p><strong>주식 및 대체에 대해서 계산</strong></p>
+<ol style="list-style-type: decimal">
+<li><p>포트폴리오 <span class="math inline">\(P_1, P_2\)</span> 에 대해서
+<code>주식 + 대체</code> 의 전체 비중합<span class="math inline">\(\big(W^{P_1},W^{P_2}\big)\)</span>을 각각
+계산한다.</p></li>
+<li><p>두 비중합의 차를 구한다.</p></li>
+</ol>
+<p><span class="math display">$$\text{괴리율}(P_1\text{&}P_2\text{,주식+대체
+대분류})= \lvert W^{P_1}-W^{P_2}\rvert $$</span></p>
+
+
+<h5><strong>자산군 소분류</strong></h5>
+<p><strong>주식 및 대체에 대해서 계산</strong></p>
+<ol style="list-style-type: decimal">
+<li><p>포트폴리오 <span class="math inline">\(P_1, P_2\)</span>에 포함된
+자산군 소분류의 unique 한 종류의 개수를 <span class="math inline">\(k\)</span> 라고 하자.</p></li>
+<li><p>포트폴리오를 구성하고 있는 개별 자산군의 순자산비중은 <span class="math inline">\(W_i, \quad{i=1,\dots,k}\)</span> 이다.</p></li>
+<li><p>개별 자산군의 순자산비중을 주식, 대체자산을 전부 합한 순자산비중으로 normalize한다.
+   <span class="math display">$$W_{i}^{'} =
+\frac{W_i}{\sum_{i=1}^k W_i} , \quad i=1,\dots,k$$</span></p></li>
+<li><p>개별 자산군마다 normalize된 비중의 차이를 각각 계산한 후, 최댓값을 구한다.</p></li>
+</ol>
+<p><span class="math display">
+$$\text{괴리율N.}(P_1\text{&}P_2\text{,주식+대체
+소분류})=\max_{1 \leq i \leq k}
+\{\lvert W_i^{'P_1}-W_i^{'P_2} \rvert \}$$</span></p>
+
+
+  
+#### 복제율(주식 + 대체)
+
+<p>포트폴리오 <span class="math inline">\(P_1, P_2\)</span>에 대하여
+복제율을 구하는 과정은 다음과 같다.</p>
+
+<h5><strong>자산군 대분류</strong></h5>
+<ol style="list-style-type: decimal">
+<li><p>포트폴리오 <span class="math inline">\(P_1, P_2\)</span>를
+<code>주식 + 대체</code> 와 <code>채권</code> 2가지 자산군으로
+구분한다.</p></li>
+<li><p>포트폴리오를 구성하고 있는 <code>주식 + 대체</code>와
+<code>채권</code>의 순자산비중은 각각 <span class="math inline">\(W_i,
+\quad{i=1,2}\)</span> 이다.</p></li>
+<li><p><span class="math inline">\(P_1, P_2\)</span> 자산군의 비중을
+비교했을 때, 작은 값들을 합하여 복제율을 계산한다.</p></li>
+</ol>
+<p><span class="math display">$$\text{복제율}(P_1\text{&}P_2\text{,주식+대체
+& 채권 대분류})=\sum_{i=1}^2
+\min\big(W^{P_1}_i,W^{P_2}_i\big)$$</span></p>
+
+<h5><strong>자산군 소분류</strong></h5>
+<p><strong>주식 및 대체에 대해서 계산</strong></p>
+<ol style="list-style-type: decimal">
+<li><p>포트폴리오 <span class="math inline">\(P_1, P_2\)</span>에 포함된
+자산군 소분류의 unique 한 종류의 개수를 <span class="math inline">\(k\)</span>개 라고 하자.</p></li>
+<li><p>포트폴리오를 구성하고 있는 개별 자산군의 순자산비중은 <span class="math inline">\(W_i, \quad{i=1,\dots,k}\)</span> 이다.</p></li>
+<li><p>개별 자산군의 순자산비중을 주식, 대체자산을 전부 합한 순자산비중으로 normalize한다. <span class="math display">$$W_{i}^{'} =
+\frac{W_i}{\sum_{i=1}^k W_i} , \quad i=1,\dots,k$$</span></p></li>
+<li><p>Normalize된 비중을 비교했을 때, 작은 값들을 합하여 복제율을
+계산한다.</p></li>
+</ol>
+<p><span class="math display">$$\text{복제율N.}(P_1\text{&}P_2\text{,주식+대체
+소분류})=\sum_{i=1}^k
+\min\big(W^{'P_1}_i,W^{'P_2}_i\big)$$</span></p>
+
+
+#### 복제율(채권)
+
+<p>자산군 소분류별로 다음과 같이 지정된 종목의 일별 듀레이션을 사용한다. 해외 채권의 경우 <span class="math inline">\(t-1\)</span> 기준
+듀레이션 값을 사용한다.</p>
+<table>
+<colgroup>
+<col width="20%" />
+<col width="60%" />
+<col width="20%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th align="left">자산군 소</th>
+<th align="left">종목명</th>
+<th align="left">값</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">한국 종합채권</td>
+<td align="left"><a href="https://www.aceetf.co.kr/fund/K55101D34156" target="_blank">ACE
+종합채권(AA-이상)KIS액티브</a></td>
+<td align="left">듀레이션</td>
+</tr>
+<tr class="even">
+<td align="left">한국 중장기국공채권</td>
+<td align="left"><a href="https://www.aceetf.co.kr/fund/K55101BQ9602" target="_blank">ACE
+중장기국공채액티브</a></td>
+<td align="left">듀레이션</td>
+</tr>
+<tr class="odd">
+<td align="left">한국 3년국고채권</td>
+<td align="left"><a href="https://www.aceetf.co.kr/fund/KR5101148215" target="_blank">ACE
+국고채3년</a></td>
+<td align="left">듀레이션</td>
+</tr>
+<tr class="even">
+<td align="left">한국 10년국고채권</td>
+<td align="left"><a href="https://www.aceetf.co.kr/fund/K55101D95314" target="_blank">ACE
+국고채10년</a></td>
+<td align="left">듀레이션</td>
+</tr>
+<tr class="odd">
+<td align="left">미국 하이일드채권</td>
+<td align="left"><a href="https://www.ishares.com/us/products/291299/" target="_blank">iShares
+Broad USD High Yield Corporate Bond ETF</a></td>
+<td align="left">Effective Duration</td>
+</tr>
+<tr class="even">
+<td align="left">미국 물가채</td>
+<td align="left"><a href="https://www.ishares.com/us/products/239467/ishares-tips-bond-etf" target="_blank">iShares
+TIPS Bond ETF</a></td>
+<td align="left">Effective Duration</td>
+</tr>
+</tbody>
+</table>
+
+<h5><strong>펀드듀레이션</strong></h5>
+<ol style="list-style-type: decimal">
+<li><p>포트폴리오 구성 종목 중 채권인 것의 unique 한 자산군 소분류의
+개수를 <span class="math inline">\(k\)</span> 라고 하자.</p></li>
+<li><p>포트폴리오를 구성하고 있는 개별 자산군 소분류기준의 순자산비중은
+<span class="math inline">\(W_i, \quad{i=1,\dots,k}\)</span>
+이다.</p></li>
+<li><p>포트폴리오를 구성하고 있는 개별 자산군 소분류별로 지정된 Ticker의
+듀레이션은 <span class="math inline">\(d_i,
+\quad{i=1,\dots,k}\)</span>이다.</p></li>
+</ol>
+<p><span class="math display">\[\text{펀드듀레이션}=\sum_{i=1}^k d_i
+W_i\]</span></p>
+
+
+<h5><strong>채권듀레이션</strong></h5>
+<ol style="list-style-type: decimal">
+<li><p>포트폴리오 구성 종목 중 채권인 것의 unique 한 자산군 소분류의
+개수를 <span class="math inline">\(k\)</span>개 라고 하자.</p></li>
+<li><p>포트폴리오를 구성하고 있는 개별 자산군 소분류기준의 순자산비중은
+<span class="math inline">\(W_i, \quad{i=1,\dots,k}\)</span>
+이다.</p></li>
+<li><p>포트폴리오를 구성하고 있는 개별 자산군 소분류별로 지정된 Ticker의
+듀레이션은 <span class="math inline">\(d_i,
+\quad{i=1,\dots,k}\)</span> 이다.</p></li>
+</ol>
+<p><span class="math display">\[\text{채권듀레이션}=\frac{\sum_{i=1}^k
+d_i W_i}{\sum_{i=1}^k W_i}\]</span></p>
+
+<h5><strong>듀레이션 복제율</strong></h5>
+<p>듀레이션의 종류는 위와 같이 <code>펀드듀레이션</code>,
+<code>채권듀레이션</code> 으로 구별된다.</p>
+<ul>
+<li><p><code>펀드듀레이션</code>은 전체 포트폴리오 중 채권의 비중 및 보유 채권의 듀레이션 수준을 나타낸다. 펀드듀레이션 복제율이 100%보다 작다는 것은
+포트폴리오에서 차지하고 있는 채권의 비중 자체가 작거나, 비교 포트폴리오
+대비 듀레이션이 짧은 채권을 더 보유하고 있음을 의미한다.</p></li>
+<li><p><code>채권듀레이션</code>은 채권의 전체 비중합으로 나눈 값이기
+때문에, 채권끼리의 가중평균 듀레이션을 의미한다.</p></li>
+</ul>
+<p>포트폴리오 <span class="math inline">\(P_1, P_2\)</span> 에 대해
+듀레이션 복제율은 다음과 같다.</p>
+<p><span class="math display">\[\text{듀레이션 종류}(P_1/P_2)=\frac{\text{듀레이션 종류}_{P_1}}{\text{듀레이션
+종류}_{P_2}}\]</span></p>
+
+
+
+
