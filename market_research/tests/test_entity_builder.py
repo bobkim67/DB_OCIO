@@ -168,6 +168,69 @@ def test_case_6_taxonomy_cap():
     _pass(f'case6: taxonomy cap 3 적용 (5 → 3)')
 
 
+def test_case_8_suppress_near_duplicates():
+    """v13.3 — suppress_near_duplicates: 같은 taxonomy + label substring 관계
+    중 후순위 drop. floor=0 default 유지로 기존 동작 미파괴 확인 포함."""
+    from market_research.wiki.entity_builder import select_entity_candidates
+    # '유가'(높은 importance) + '국제유가'(낮음) — 같은 taxonomy, substring 관계
+    nodes = {'n1': {'label': '유가'}, 'n2': {'label': '국제유가'}}
+    edges = [
+        {'from': 'n1', 'to': 'x', 'effective_score': 1.0, 'support_count': 1},
+        {'from': 'n2', 'to': 'x', 'effective_score': 0.3, 'support_count': 1},
+    ]
+    arts = []
+    # evidence 충족 위해 article 강제
+    for nid, label in [('n1', '유가'), ('n2', '국제유가')]:
+        for k in range(2):
+            arts.append({'_article_id': f'{nid}_{k}', 'title': label,
+                         'description': '', 'date': '2026-04-10',
+                         'is_primary': True, '_event_salience': 0.5,
+                         '_event_group_id': f'ev_{nid}_{k}'})
+    # default (suppress=False): 둘 다 통과
+    cands_default = select_entity_candidates(nodes, edges, [], arts)
+    if len(cands_default) != 2:
+        _fail('case8.default', f'expected 2, got {len(cands_default)}')
+    # suppress=True: 국제유가 drop (유가가 더 높은 importance라 우선)
+    cands_suppress = select_entity_candidates(nodes, edges, [], arts,
+                                               suppress_near_duplicates=True)
+    labels = [c['label'] for c in cands_suppress]
+    if labels != ['유가']:
+        _fail('case8.suppress', f'expected ["유가"], got {labels}')
+    _pass('case8: suppress_near_duplicates — default off, on suppresses substring 후순위')
+
+
+def test_case_9_per_taxonomy_floor():
+    """v13.3 — per_taxonomy_floor: 후보가 있는 taxonomy는 N건 우선 선발.
+    cap이 작아도 floor 만큼은 보장."""
+    from market_research.wiki.entity_builder import select_entity_candidates
+    # 같은 taxonomy 3건 (지정학) + 다른 taxonomy 1건 (환율_FX)
+    nodes = {
+        'n1': {'label': '이란'},      # 지정학
+        'n2': {'label': '호르무즈 해협'},  # 지정학
+        'n3': {'label': '호르무즈 봉쇄'},  # 지정학
+        'n4': {'label': '환율'},        # 환율_FX
+    }
+    edges = [{'from': nid, 'to': 'x', 'effective_score': 1.0 - i*0.1, 'support_count': 1}
+             for i, nid in enumerate(['n1', 'n2', 'n3', 'n4'])]
+    arts = [
+        {'_article_id': f'a_{nid}', 'title': meta['label'], 'description': '',
+         'date': '2026-04-10', 'is_primary': True, '_event_salience': 0.5,
+         '_event_group_id': f'ev_{nid}'}
+        for nid, meta in nodes.items()
+    ]
+    # cap=2, floor=1: 환율 1건 + 지정학 2건 = 3
+    cands = select_entity_candidates(nodes, edges, [], arts,
+                                      max_entities=12, per_taxonomy_cap=2,
+                                      per_taxonomy_floor=1)
+    topics = [c['taxonomy_topic'] for c in cands]
+    # 환율_FX는 floor=1로 첫 번째 슬롯에 보장
+    if '환율_FX' not in topics:
+        _fail('case9.floor', f'환율_FX 미포함: {topics}')
+    if topics.count('지정학') > 2:
+        _fail('case9.cap', f'지정학 cap=2 초과: {topics}')
+    _pass('case9: per_taxonomy_floor 1로 under-covered taxonomy 1건 보장')
+
+
 def test_case_7_no_media_entity():
     """refresh 후 source__ 페이지가 생성되지 않음을 확인."""
     import tempfile
@@ -222,6 +285,8 @@ def main():
         test_case_5_article_matching,
         test_case_6_taxonomy_cap,
         test_case_7_no_media_entity,
+        test_case_8_suppress_near_duplicates,
+        test_case_9_per_taxonomy_floor,
     )
     for fn in cases:
         try:

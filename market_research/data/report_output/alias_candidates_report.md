@@ -1,6 +1,6 @@
 # Alias candidates report
 
-- Generated: `2026-04-21T09:04:18`
+- Generated: `2026-04-21T09:32:32`
 - Source: `data\report_output\_taxonomy_remap_trace.jsonl`
 - Total trace rows: **31**
 - Match type counts: exact=3, alias=18, unresolved=10

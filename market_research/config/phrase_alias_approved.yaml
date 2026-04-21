@@ -47,6 +47,12 @@ approved:
   "호르무즈 봉쇄": 지정학        # event form, arts=78, supply 맥락도 1차 분류는 지정학
   "이란 협상": 지정학            # arts=165, "이란"·"이란 위기" 동일 dimension
 
+  # v13.3 diversity backfill — under-covered taxonomy 1건만 보강.
+  # 검토 문서: docs/entity_alias_diversity_review.md
+  # `달러` 단독은 audit 결과 다의어(가격 단위)라 defer 유지.
+  # `삼성전자/SK하이닉스/나스닥` 종목명은 정책 미정으로 defer.
+  "원/달러": 환율_FX             # 환율 명백, arts=183, near-dup 없음 (환율과 substring 무관)
+
 keep_unresolved:
   # Descriptive / interpretation-heavy phrases — explicitly NOT mapped.
   # Forcing these into taxonomy violates the v11 contract. Each entry is

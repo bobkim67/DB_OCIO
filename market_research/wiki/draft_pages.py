@@ -395,6 +395,7 @@ def refresh_base_pages_after_refine(month_str: str,
             graph['nodes'], graph['edges'], graph['transmission_paths'],
             articles,
             max_entities=12, per_taxonomy_cap=3,
+            suppress_near_duplicates=True,   # v13.3: 유가/국제유가 같은 중복 억제
         )
         # 기존 페이지 정리 (media + legacy graphnode) 후 재생성
         _purge_stale_entity_pages(month_str, keep_ids={c['entity_id'] for c in candidates})

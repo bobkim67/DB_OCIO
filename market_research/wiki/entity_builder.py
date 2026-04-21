@@ -233,23 +233,29 @@ def select_entity_candidates(nodes: dict,
                               paths: list[dict],
                               articles: list[dict],
                               max_entities: int = 12,
-                              per_taxonomy_cap: int = 3) -> list[dict]:
-    """hard gate + evidence + 랭킹 + cap 적용.
+                              per_taxonomy_cap: int = 3,
+                              per_taxonomy_floor: int = 0,
+                              suppress_near_duplicates: bool = False) -> list[dict]:
+    """hard gate + evidence + 랭킹 + cap 적용. (v13.3 diversity options 추가)
 
-    Returns: list[candidate]  — each candidate is a dict with fields
-      entity_id, node_id, label, taxonomy_topic, node_importance, ...
+    Args:
+      max_entities: 전체 cap (default 12)
+      per_taxonomy_cap: 같은 taxonomy 슬롯 상한 (default 3)
+      per_taxonomy_floor: 풀에 후보가 있는 taxonomy는 최소 N건 우선 선발
+        (default 0 — disabled). under-covered taxonomy 보강 후 활성화 권고.
+      suppress_near_duplicates: 같은 taxonomy 내 substring 관계의 두 label 중
+        하위 랭크를 drop. (default False — v13.3에서 default-on 검토)
+
+    Returns: list[candidate]
     """
     raw: list[dict] = []
     for nid, meta in nodes.items():
         label = (meta or {}).get('label') or nid
         taxonomy_topic = map_node_to_taxonomy(label)
         if taxonomy_topic is None:
-            # hard gate: PHRASE_ALIAS miss → 후보 제외
             continue
-
         imp = compute_node_importance(nid, label, edges, paths)
         art = collect_entity_articles(label, articles)
-
         has_evidence = (
             art['unique_article_count'] >= 2
             or art['linked_event_count'] >= 1
@@ -257,7 +263,6 @@ def select_entity_candidates(nodes: dict,
         )
         if not has_evidence:
             continue
-
         raw.append({
             'entity_id': f'graphnode__{nid}',
             'graph_node_id': nid,
@@ -275,10 +280,46 @@ def select_entity_candidates(nodes: dict,
         c['label'],
     ))
 
-    # per_taxonomy_cap 적용
+    # near-duplicate suppression: 같은 taxonomy + label substring 관계 →
+    # 더 우선 랭크가 살아남고 후순위 drop. 단순 substring 휴리스틱.
+    blocked: set = set()
+    if suppress_near_duplicates:
+        for i, ci in enumerate(raw):
+            for j, cj in enumerate(raw):
+                if i >= j:
+                    continue
+                if ci['taxonomy_topic'] != cj['taxonomy_topic']:
+                    continue
+                li, lj = ci['label'], cj['label']
+                if li == lj:
+                    continue
+                if li in lj or lj in li:
+                    # cj는 후순위라 blocked
+                    blocked.add(cj['entity_id'])
+
+    # taxonomy floor: 후보가 존재하는 taxonomy는 최소 floor건 우선 선발
     taxonomy_count: Counter = Counter()
     kept: list[dict] = []
+    if per_taxonomy_floor > 0:
+        per_t_seen: Counter = Counter()
+        for c in raw:
+            if c['entity_id'] in blocked:
+                continue
+            t = c['taxonomy_topic']
+            if per_t_seen[t] >= per_taxonomy_floor:
+                continue
+            kept.append(c)
+            per_t_seen[t] += 1
+            taxonomy_count[t] += 1
+            if len(kept) >= max_entities:
+                break
+
+    # 나머지 슬롯을 cap 한도까지 채움 (랭킹 순서 유지)
     for c in raw:
+        if c in kept:
+            continue
+        if c['entity_id'] in blocked:
+            continue
         t = c['taxonomy_topic']
         if taxonomy_count[t] >= per_taxonomy_cap:
             continue

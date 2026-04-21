@@ -17,7 +17,7 @@ graph_node_id: 환율
 period: 2026-04
 has_graph_signal: true
 source_of_truth: pipeline_refine+graphrag
-updated_at: 2026-04-21T09:03:37
+updated_at: 2026-04-21T09:27:26
 ---
 
 # Entity — 환율
