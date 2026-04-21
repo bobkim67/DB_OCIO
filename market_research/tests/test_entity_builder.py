@@ -37,9 +37,12 @@ def test_case_1_taxonomy_hit():
 
 def test_case_2_miss_excluded():
     from market_research.wiki.entity_builder import map_node_to_taxonomy
-    # miss (단독 단어 등록 안 됨)
-    for label in ['달러', '코스피', 'SK하이닉스', 'inferred', '투자심리_개선',
-                   '원_달러_환율_변동', '호르무즈 봉쇄']:
+    # miss (단독 단어 등록 안 됨, 또는 v13.2 backfill에서 reject/defer)
+    # NOTE: '호르무즈 봉쇄' 는 v13.2 batch에서 approve됐으므로 miss list 제외.
+    # 여기 남는 항목들은 reject(다의어/taxonomy 부재) 또는 defer(별도 정책).
+    for label in ['달러', '코스피', '코스닥', '나스닥', 'SK하이닉스', '삼성전자',
+                   '전쟁', '유로', 'inferred', '투자심리_개선',
+                   '원_달러_환율_변동', '지정학적_리스크_확대']:
         r = map_node_to_taxonomy(label)
         if r is not None:
             _fail('case2.miss', f'{label!r} 는 miss여야 하지만 {r!r} 반환')

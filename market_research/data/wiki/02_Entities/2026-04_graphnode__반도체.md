@@ -17,7 +17,7 @@ graph_node_id: 반도체
 period: 2026-04
 has_graph_signal: true
 source_of_truth: pipeline_refine+graphrag
-updated_at: 2026-04-20T16:51:56
+updated_at: 2026-04-21T09:03:37
 ---
 
 # Entity — 반도체

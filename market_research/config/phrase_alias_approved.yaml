@@ -39,6 +39,14 @@ approved:
   # event reference → 지정학.
   "이란 위기": 지정학
 
+  # v13.2 entity alias backfill — graph node taxonomy gate coverage.
+  # 검토 문서: docs/entity_alias_backfill_review.md
+  # 4건 모두 risk=low, article evidence 충분, 다의어 위험 낮음.
+  "국제유가": 에너지_원자재     # "유가" 동의어, arts=1032, 다의 없음
+  "호르무즈 해협": 지정학        # 지리적 명사, arts=553, 지정학 외 해석 사실상 없음
+  "호르무즈 봉쇄": 지정학        # event form, arts=78, supply 맥락도 1차 분류는 지정학
+  "이란 협상": 지정학            # arts=165, "이란"·"이란 위기" 동일 dimension
+
 keep_unresolved:
   # Descriptive / interpretation-heavy phrases — explicitly NOT mapped.
   # Forcing these into taxonomy violates the v11 contract. Each entry is
