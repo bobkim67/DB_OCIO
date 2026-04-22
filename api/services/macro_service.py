@@ -16,16 +16,18 @@ from ..schemas.meta import BaseMeta, SourceBreakdown
 DEFAULT_KEYS: list[str] = ["PE", "EPS", "USDKRW"]
 
 # public key (UI용) → modules.data_loader.MACRO_DATASETS 내부 키 매핑
+# PE/EPS는 MSCI ACWI (dataseries_id=24/31)가 SCIP에서 empty이므로 S&P 500으로 교체
+# (조사: 2026-04-22, S&P 500_PE/EPS 각 2427 points, last=2026-04-21)
 _PUBLIC_TO_INTERNAL: dict[str, str] = {
-    "PE": "MSCI ACWI_PE",
-    "EPS": "MSCI ACWI_EPS",
+    "PE": "S&P 500_PE",
+    "EPS": "S&P 500_EPS",
     "USDKRW": "USD/KRW",
 }
 
 # UI 라벨/단위 (MACRO_DATASETS에 없는 부가 정보만 유지)
 _LABEL: dict[str, str] = {
-    "PE": "PE (12M Fwd, MSCI ACWI)",
-    "EPS": "EPS (12M Fwd, MSCI ACWI)",
+    "PE": "PE (12M Fwd, S&P 500)",
+    "EPS": "EPS (12M Fwd, S&P 500)",
     "USDKRW": "USD/KRW",
 }
 _UNIT: dict[str, str] = {
