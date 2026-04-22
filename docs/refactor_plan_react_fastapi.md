@@ -1329,3 +1329,114 @@ _Week 2 완료: 2026-04-22_
 ---
 
 _Week 3 완료: 2026-04-22_
+
+---
+
+## Week 4 회고 — Macro 탭 이전 (2026-04-22)
+
+### 실제 실행 기록
+
+| 커밋 | 해시 | 범위 |
+|------|------|------|
+| W4.1 | 79e9316 | api: Macro timeseries 엔드포인트 + keys 파싱 + mixed fallback (pytest 31개) |
+| W4.1a | 8a1cc7d | api: Macro PE/EPS alias를 MSCI ACWI → S&P 500 로 교체 (SCIP empty 회피) |
+| W4.2 | d588508 | web: MacroTab + Dashboard 3탭 스위처 |
+| W4.3 | (this) | docs: Macro dual-run 검증 + 회고 |
+
+### alias 변경 이유 (W4.1a)
+
+- W4.1 초기 alias: `PE → MSCI ACWI_PE (57/24)`, `EPS → MSCI ACWI_EPS (57/31)` — 두 internal key 모두 SCIP에서 empty
+- 결과: 기본 호출이 매번 `mixed + warnings=['load failed: PE', 'load failed: EPS']` 경로로 떨어지고 series 1개만 반환
+- 원인 조사(2026-04-22, 8개 PE/EPS internal key 전수 조사):
+  - MSCI ACWI_PE, MSCI ACWI_EPS: **empty**
+  - **S&P 500_PE/EPS**, MSCI Korea_PE/EPS, MSCI EM_PE/EPS: 2427 points, last=2026-04-21까지 매일 업데이트
+- 교체 결정:
+  - `PE → S&P 500_PE`, `EPS → S&P 500_EPS`로 변경
+  - 이유: (a) Streamlit `tabs/macro.py:185 all_val_tickers`에 S&P 500 포함 — 기존 흐름 일치, (b) 미국 대표 지수가 글로벌 valuation 프록시로 가장 자연스러움
+  - public key(PE/EPS/USDKRW), API 스펙, DTO, 테스트 **모두 무변경** (6줄 수정)
+
+### dual-run 검증 (as_of = 2026-04-21, FastAPI 8000 + React 5173 via vite proxy)
+
+**검증 케이스 7개**:
+
+| # | 케이스 | 결과 요약 |
+|---|--------|----------|
+| 1 | 기본 keys 생략 | source=db, warnings=[], series 3개 (PE/EPS/USDKRW) |
+| 2 | `?keys=USDKRW` | source=db, series 1개 |
+| 3 | `?keys=PE,EPS` | source=db, series 2개 |
+| 4 | `?keys=PE,ZZZ_UNKNOWN` | **source=mixed**, warnings=`['unknown key: ZZZ_UNKNOWN']`, sources=[PE=db, ZZZ_UNKNOWN=mock(unknown)], series 1개 |
+| 5 | `?keys=ZZZ1,ZZZ2` | source=mock, **is_fallback=true**, warnings=['unknown key: ZZZ1', 'unknown key: ZZZ2'], series 0개 |
+| 6 | `?start=2026/01/01` | **HTTP 400** INVALID_PARAM |
+| 7 | Overview/Holdings 회귀 | 08K88 Overview source=db since_inception=65.0299%, 08K88 Holdings source=db items=16 — **회귀 없음** |
+
+### 기본 3개 지표 latest 값 (2026-04-21)
+
+| public key | label | unit | last value | points |
+|-----------|-------|------|-----------|-------|
+| PE | PE (12M Fwd, S&P 500) | ratio | **21.0765** | 2427 |
+| EPS | EPS (12M Fwd, S&P 500) | raw | **33.8492** | 2427 |
+| USDKRW | USD/KRW | krw | **1,469.35** | 2427 |
+
+### mixed / fallback / invalid param 결과 요약
+
+| 상황 | HTTP | meta.source | is_fallback | series | warnings | UX |
+|------|------|-------------|-------------|--------|----------|-----|
+| 전체 OK | 200 | `db` | false | 3 | [] | MetaBadge 초록, chart + latest 3개 |
+| 부분 실패 (알 수 없는 key 섞임) | 200 | **`mixed`** | false | 성공분만 | unknown/load failed 기록 | MetaBadge 노랑, 가능한 series만 렌더 |
+| 전체 실패 (모두 unknown / 모두 load 실패) | 200 | `mock` | **true** | 0 | 누적 | MetaBadge 오렌지, chart 대신 "데이터 없음" 메시지 |
+| invalid start | **400** | — | — | — | ErrorDTO | React axios interceptor 에러 로깅 |
+| 프론트 keys 전부 해제 | — | — | — | — | — | 네트워크 호출 안 함, "지표를 하나 이상 선택하세요" 표시 |
+
+### React 화면 검증 포인트
+
+| 항목 | 확인 |
+|------|------|
+| Dashboard 탭 3개 | Overview / 편입종목 / **Macro** 버튼 |
+| Macro 초기 진입 | PE/EPS/USDKRW 체크 모두 on, MetaBadge `db`, 3 trace chart |
+| 체크박스 토글 | 해제 시 refetch → latest/chart 자동 축소 |
+| 모두 해제 | "지표를 하나 이상 선택하세요" 회색 안내, 네트워크 호출 없음 |
+| Overview 탭 전환 | 기존 Week 2 동작 유지 (08K88 설정후 65.03% 등) |
+| 편입종목 탭 전환 | 기존 Week 3 동작 유지 (자산군 pie/테이블) |
+| MetaBadge sources | `PE=db · EPS=db · USDKRW=db` 회색 서브텍스트 |
+| latest value | PE=21.08 / EPS=33.85 / USDKRW=1,469.35 (2026-04-21) 가로 리스트 |
+
+### Streamlit ↔ FastAPI ↔ React 차이
+
+- Streamlit 8505 이번 세션에서 직접 기동하지 않음. FastAPI/React는 **동일 `modules.data_loader.load_macro_timeseries` 함수**를 호출 → 수치 동치 보장.
+- Streamlit `tabs/macro.py:168`의 `_macro_keys` 리스트는 MSCI ACWI_PE/EPS를 나열하지만 `all_val_tickers` 기반 default 선택과 데이터 없음 처리로 인해 사용자 관점에서는 mockup 경로로 우회 중. FastAPI/React 쪽도 동일 SCIP 제약을 공유하며, **W4.1a alias 교체로 정상 데이터(S&P 500) 경로로 전환**.
+- 프론트 재계산 없음: `MacroTab`이 `series[i].points.at(-1)` 그대로 표시. unit별 포맷(`pct/bp/krw/usd/raw/ratio`)만 클라이언트에서 처리.
+
+### 문서 반영 내용
+
+- 파일: `docs/refactor_plan_react_fastapi.md`
+- 섹션: "Week 4 회고 — Macro 탭 이전 (2026-04-22)" 추가
+  - 커밋 4개(79e9316 / 8a1cc7d / d588508 / this) 매핑
+  - alias 변경 사유 (MSCI ACWI empty → S&P 500)
+  - 7 케이스 dual-run 검증 결과 표
+  - 기본 3개 latest 값
+  - mixed/fallback/invalid param/프론트 해제 UX 정책 표
+  - Streamlit 대비 동치성 설명
+
+### Week 5 인입 (우선순위)
+
+1. **Admin 최소 viewer** — `/api/admin/evidence_quality` (read-only JSON viewer, `market_research/data/report_output/_evidence_quality.jsonl` 조회만)
+2. **openapi-typescript** — `web/src/api/endpoints.ts` 수동 → FastAPI `/openapi.json` 기반 자동 생성
+3. **Holdings FoF NAST 보강** — 07G04 lookthrough=true mixed 경로 해소 (STD_DT 유실 대응)
+4. **BM period_returns 채움** — Week 2 잔여 (`bm_period_returns={}`)
+5. **Macro 키 확장** — `KEY_OPTIONS`에 MSCI Korea_PE/EPS 등 추가 가능 (Week 5+ 필요 시)
+
+### Week 5 금지 유지
+
+- auth / JWT / LoginPage / users.yaml 이식
+- Report 생성 엔드포인트 (viewer만 가능)
+- Brinson 착수 (Week 5+로 보존, 3조건 미충족)
+- batch/CLI 트리거 엔드포인트
+- docker/nginx 배포
+- 전역상태 라이브러리 (zustand 등)
+- Plotly Figure JSON 서버 조립
+- 기존 Streamlit 코드 수정
+- async def 라우터
+
+---
+
+_Week 4 완료: 2026-04-22_
