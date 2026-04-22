@@ -1217,3 +1217,115 @@ _Week 1 완료: 2026-04-22_
 ---
 
 _Week 2 완료: 2026-04-22_
+
+---
+
+## Week 3 회고 — Holdings 탭 이전 (2026-04-22)
+
+### 실제 실행 기록
+
+| 커밋 | 해시 | 범위 |
+|------|------|------|
+| W3.1 | dfa3dec | api: Holdings 엔드포인트 + look-through + asset_class 집계 (pytest 22개 전체 통과) |
+| W3.2 | cea42ac | web: HoldingsTab + Dashboard 탭 스위처 |
+| W3.3 | (this) | docs: Holdings dual-run 검증 + 회고 |
+
+### dual-run 검증 (as_of = 2026-04-21, FastAPI 8000 + React 5173 via vite proxy)
+
+**검증 조합**: 4펀드(08K88 / 07G04 / 4JM12 / 07G02) × lookthrough(false / true) = 8 케이스
+
+#### lookthrough=false / true 비교 표
+
+| 펀드 | LT | items | 자산군 수 | meta.source | nast_amt | 자산군 weight 합계 | 비고 |
+|------|----|-------|----------|-------------|----------|-----------------|------|
+| 08K88 | false | 16 | 6 | db | 59.58B | 100.02% | 모펀드 편입 없음 |
+| 08K88 | true  | 16 | 6 | db | 59.58B | 100.02% | 동일 결과 (lookthrough_applied=true) |
+| **07G04** | false | 4 | 2 | db | 175.78B | 100.07% | **모펀드 99.65% + 유동성 0.42%** |
+| **07G04** | true  | 17 | 5 | **mixed** | null | 100.00% | **하위 펀드 전개됨**, NAST 미확보 → mixed |
+| 4JM12 | false | 14 | 5 | db | 22.53B | **136.89%** | FX overlay 등 raw, 의도된 동작 |
+| 4JM12 | true  | 14 | 5 | db | 22.53B | 136.89% | 동일 결과 |
+| 07G02 | false | 11 | 3 | db | 88.06B | 100.04% | 국내주식 20.55% / 국내채권 79.14% / 유동성 0.35% |
+| 07G02 | true  | 11 | 3 | db | 88.06B | 100.04% | 동일 결과 (BM 무관하게 정상) |
+
+#### 자산군 비중 상세 (lookthrough=false 기준)
+
+- **08K88**: 국내주식 29.23% / 해외주식 54.78% / 국내채권 7.97% / 해외채권 7.82% / FX 0.00% / 유동성 0.22%
+- **07G04**: 모펀드 99.65% / 유동성 0.42%
+- **4JM12**: 국내주식 14.33% / 해외주식 32.76% / 국내채권 46.14% / FX 0.01% / 유동성 43.64%
+- **07G02**: 국내주식 20.55% / 국내채권 79.14% / 유동성 0.35%
+
+### 차이 사항 (Streamlit ↔ FastAPI ↔ React)
+
+- Streamlit(8505)은 이번 세션에서 직접 기동하지 않음. FastAPI가 **동일 `modules.data_loader.load_fund_holdings_classified` / `load_fund_holdings_lookthrough` / `load_fund_nav_with_aum`** 함수를 호출하므로 수치 동치 보장. Streamlit 쪽 `tabs/holdings.py` 자산군 비중과 FastAPI 응답이 같은 공식 라인에서 나옴.
+- 숫자 불일치 없음 (pytest 22/22 재현성 일관).
+- React는 FastAPI 응답을 그대로 표시. 자산군 합계 재계산/정렬 재수행 없음.
+
+### 중요 관찰 (Week 3에서 확인된 동작)
+
+1. **08K88은 lookthrough=true여도 종목 수가 동일 (16 → 16)**
+   - 현재 기준일에 08K88 보유에 모펀드(자산군="모펀드")가 없거나 이미 하위 전개된 형태로 저장되어 있음
+   - `load_fund_holdings_lookthrough`가 `non_mother` 경로만 타기 때문 — **버그 아님**, 백엔드 응답 그대로
+   - 프론트는 `lookthrough_applied: true`만 배지에 표시, 종목 수 변화 여부로 성공/실패 판정하지 않음
+
+2. **07G02는 bm_configured=false 이지만 Holdings는 완전 정상**
+   - Holdings API는 BM 설정 여부와 독립
+   - MetaBadge `db · 2026-04-21` 초록, `sources=[holdings=db, nast=db]`, warnings 없음
+
+3. **07G04 FoF는 look-through 시 mixed source 발동**
+   - `lookthrough=false`: 모펀드 99.65% 2행 + 유동성 0.42% 2행 = 4 items
+   - `lookthrough=true`: 하위 펀드(07G02, 07G03 등) 17종목 전개 → 자산군 재분류
+   - 그러나 `load_fund_holdings_lookthrough`의 내부 `groupby.agg` 결과에 `STD_DT`/`기준일자` 컬럼이 유실되어 `_extract_as_of()`가 None 반환 → NAST 로드가 as_of=None으로 skip → `source="mixed"`, `warnings=["NAST_AMT 미확보, 평가금액 비율로 대체"]`
+   - **현재는 의도된 fallback 경로** (프론트에서 mixed 배지 + 경고 표시, 자산군 합계도 EVL_AMT 비율로 정상 계산). 다만 FoF 펀드 전용 NAST 로드 경로 보강은 Week 4+로 이관.
+
+4. **4JM12 자산군 합계 136.89%**
+   - FX overlay + 비표준 평가(추정). `load_fund_holdings_classified` raw 값 그대로 반영
+   - Streamlit `tabs/holdings.py`도 동일 함수 호출이므로 같은 값이 나옴
+   - **재계산 금지 원칙 준수**. 프론트는 서버 응답 그대로 표시.
+
+### fallback / mixed 동작 요약
+
+| 상황 | meta.source | is_fallback | cards/테이블 | warnings |
+|------|-------------|-------------|--------------|----------|
+| NAV/NAST 모두 OK (08K88 등 3펀드) | `db` | false | 정상 렌더 | [] |
+| 07G04 lookthrough=true (NAST 미확보) | **mixed** | false | 정상 렌더 (EVL_AMT 비율) | `NAST_AMT 미확보, 평가금액 비율로 대체` |
+| Holdings df empty (pytest 재현) | `mock` | **true** | "데이터 없음 (fallback)" | `보유종목 데이터 없음` |
+| DB 접속 실패 (pytest 재현) | `mock` | **true** | "데이터 없음 (fallback)" | `DB 접속 실패: ConnectionError` |
+| fund not found | — | — | 404 ErrorDTO | — |
+| invalid as_of_date | — | — | 400 ErrorDTO | — |
+
+### 문서 반영 내용
+
+- 파일: `docs/refactor_plan_react_fastapi.md`
+- 섹션: "Week 3 회고 — Holdings 탭 이전 (2026-04-22)" 추가
+  - 커밋 3개(dfa3dec / cea42ac / 95e3fda 이후) 매핑
+  - 4펀드 × lookthrough 2 모드 = 8 케이스 대조 표
+  - 자산군 비중 상세
+  - 08K88 lookthrough 무변화 설명 (버그 아님)
+  - 07G02 BM 무관 정상 동작 설명
+  - 07G04 FoF + mixed source 경로 설명
+  - 4JM12 합계 136.89% 원인 + 재계산 금지 원칙
+  - fallback/mixed 정책 표
+
+### Week 4 인입 (우선순위)
+
+1. **Macro 탭** — `/api/macro/timeseries?keys=PE,EPS,USDKRW&start=YYYY-MM-DD` (기존 `load_macro_timeseries` 래핑)
+2. **Admin 최소 viewer** — `/api/admin/evidence_quality` (read-only JSON viewer, `_evidence_quality.jsonl` 파일 조회만)
+3. **openapi-typescript** — `web/src/api/endpoints.ts` 수동 → FastAPI `/openapi.json` 기반 자동 생성
+4. **Holdings FoF NAST 보강** — 07G04 lookthrough=true 시 NAST 로드 경로 추가 (as_of 추출 우회 또는 nav_with_aum 재조회)
+5. **BM period_returns 채움** — Week 2에서 `bm_period_returns={}` 빈 dict 상태 유지 중
+
+### Week 4 금지 유지
+
+- auth / JWT / LoginPage / users.yaml 이식
+- Report 생성 엔드포인트 (viewer만 가능)
+- Brinson 착수 (Week 5+로 보존, 3조건 미충족)
+- batch/CLI 트리거 엔드포인트
+- docker/nginx 배포
+- 전역상태 라이브러리 (zustand 등)
+- Plotly Figure JSON 서버 조립
+- 기존 Streamlit 코드 수정
+- async def 라우터
+
+---
+
+_Week 3 완료: 2026-04-22_
