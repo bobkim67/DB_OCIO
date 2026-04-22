@@ -1054,3 +1054,61 @@ export default function OverviewTab({ fundCode }: { fundCode: string }) {
 ---
 
 _작성: 2026-04-22 — DB_OCIO_Webview 리팩토링 Week 1 착수 전 아키텍처 리뷰용_
+
+---
+
+## Week 1 회고 (2026-04-22)
+
+### 실제 실행 기록
+
+| Day | 커밋 | 범위 |
+|-----|------|------|
+| Day 0 | 443b2dd | 문서 보정 + 사전검증 (streamlit 의존 0건, _FUND_INCEPTION_BASE 확인) |
+| Day 1~3 | 4c9d989 + 6d7401a | FastAPI 스캐폴딩 + /health + /funds + /overview + pytest 5개 |
+| Day 3.5 | 6d7401a 포함 | _FUND_INCEPTION_BASE 보정 헬퍼 (`_inception_base`) |
+| Day 4 | 04f4c5f | Vite + React + /api/funds 연결 (FundSelector 9펀드) |
+| Day 5 | d6983e3 | OverviewTab + NavChart + MetaBadge + MetricCard |
+| Day 6 | (this) | dual-run 검증 + 회고 |
+
+### dual-run 수치 검증 (2026-04-21 as_of)
+
+| 펀드 | 설정후 수익률 (FastAPI) | 비고 |
+|------|------------------------|------|
+| 08K88 | **65.0299%** | NAV 569points, 2024-09-30 ~ 2026-04-21 |
+| 07G04 | **42.6217%** | NAV 2021-09-27 ~ 2026-04-21 |
+| 4JM12 | **38.2441%** | `_FUND_INCEPTION_BASE=1970.76` 보정 반영 (nav[0]=1998.62 기준이면 36.3167% 였음 → 격차 1.93%p) |
+
+### 아키텍처 확인
+
+- FastAPI 8000 / React 5173 dual-run **정상**
+- Vite proxy `/api → 127.0.0.1:8000` 통과 (CORS 직접 호출 없이도 /api/funds 응답)
+- FastAPI 중단 시 `HTTP 000` connection refused → React `failed to load overview` 메시지 노출 (UX 에러 경로 정상)
+- Streamlit 8505는 미기동 검증 (FastAPI 쪽 값이 Streamlit tabs/overview.py와 동일 공식(load_fund_nav_with_aum + `_FUND_INCEPTION_BASE`) 사용하므로 수치 동치 보장)
+
+### 발견/이슈
+
+- `tsc -b --noEmit`이 composite project와 충돌 → `tsc --noEmit -p tsconfig.json`로 변경 (커밋 5에 반영)
+- Python 3.14용 wheel 부재로 api/.venv 완전 격리 실패 → `--system-site-packages` 상속 모델 유지 (Week 2에 재검토)
+- MetaBadge `is_fallback=true` 경로는 DB 오프라인 시나리오 미실측 (현재 DB가 상시 OK). Week 2에 인위적 fallback 주입 테스트 추가 예정.
+
+### Week 2 인입 항목
+
+1. **BM 결합**: `/overview` 응답의 `nav_series.bm` / `nav_series.excess` 채움 (DT BM 우선 → SCIP composite fallback)
+2. **YTD / MDD / 변동성 카드**: `MetricCardDTO` 4개로 확장 (Week 1은 설정후 1개만)
+3. **period_returns**: 1M/3M/6M/1Y/YTD 기간 수익률
+4. **DB 오프라인 시나리오 테스트**: pytest에서 `load_fund_nav_with_aum` monkeypatch로 fallback 경로 검증
+5. **openapi-typescript**: `web/src/api/endpoints.ts` 수동 타입 → FastAPI OpenAPI schema 자동 생성으로 전환
+
+### Week 2 금지 유지
+
+- auth / JWT / LoginPage
+- Holdings / Macro / Report / Brinson
+- placeholder 탭/파일 생성
+- batch/CLI 트리거 엔드포인트
+- docker-compose / nginx 배포 설정
+- 전역상태 라이브러리 (zustand 등)
+- Plotly Figure JSON 서버 조립
+
+---
+
+_Week 1 완료: 2026-04-22_
