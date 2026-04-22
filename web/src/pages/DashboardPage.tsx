@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useFunds } from "../hooks/useFunds";
+import OverviewTab from "../tabs/OverviewTab";
 
 export default function DashboardPage() {
   const { data, isLoading, error } = useFunds();
@@ -45,9 +46,7 @@ export default function DashboardPage() {
           </select>
         </label>
       </header>
-      <section style={{ color: "#6b7280" }}>
-        TBD: OverviewTab (커밋 5에서 연결) — selected={selected}
-      </section>
+      <OverviewTab fundCode={selected} />
     </div>
   );
 }
