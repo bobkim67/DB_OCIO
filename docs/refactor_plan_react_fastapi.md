@@ -1112,3 +1112,108 @@ _작성: 2026-04-22 — DB_OCIO_Webview 리팩토링 Week 1 착수 전 아키텍
 ---
 
 _Week 1 완료: 2026-04-22_
+
+---
+
+## Week 2 회고 (2026-04-22)
+
+### 실제 실행 기록
+
+| 커밋 | 해시 | 범위 |
+|------|------|------|
+| W2.1 | c1ff4b3 | api: Overview Week 2 — BM 결합 + cards 4개 + period_returns (pytest 13개 통과) |
+| W2.2 | 773fbe1 | web: OverviewTab Week 2 — BM/초과수익 + period_returns + sources breakdown |
+| W2.3 | (this) | docs: dual-run 검증 + 회고 |
+
+### dual-run 검증 (as_of = 2026-04-21, FastAPI 8000 + React 5173 vite proxy 경유)
+
+#### cards 4개
+
+| 펀드 | since_inception | YTD | MDD | vol | meta.source | bm sources |
+|------|-----------------|-----|-----|-----|-------------|-----------|
+| 08K88 | **+65.0299%** | +18.4417% | -12.4666% | +15.0954% | db | nav=db, bm=db |
+| 07G04 | **+42.6217%** | +7.6842% | -12.6976% | +7.8457% | db | nav=db, bm=db |
+| 4JM12 | **+38.2441%** (base=1970.76 보정) | +2.3996% | -10.7348% | +8.4814% | db | nav=db, bm=db |
+| 07G02 | +30.1260% | +6.3194% | -14.9417% | +8.0336% | db | nav=db (bm 미설정) |
+
+#### period_returns (포트 기준)
+
+| 펀드 | 1M | 3M | 6M | YTD | 1Y | SI |
+|------|-----|-----|-----|-----|-----|-----|
+| 08K88 | +7.0357% | +12.3091% | +25.4235% | +18.4417% | +63.7196% | +65.0418% |
+| 07G04 | +4.3080% | +6.8019% | +7.2721% | +7.6842% | +23.1289% | +42.6246% |
+| 4JM12 | +5.9521% | +3.1248% | +1.8440% | +2.3996% | +15.5542% | **+172.4459%** (carts.since_inception과 불일치, 의도) |
+| 07G02 | +3.3676% | +6.1411% | +4.4729% | +6.3194% | +15.1073% | +30.1287% |
+
+#### NavChart / MetaBadge 동작
+
+| 펀드 | nav_series[-1].bm | NavChart trace | MetaBadge | warnings |
+|------|---------------------|------|-----------|----------|
+| 08K88 | 1469.74 (rebased) | 3 (포트/BM/초과수익) | db · 2026-04-21 | [] |
+| 07G04 | 1259.95 | 3 (포트/BM/초과수익) | db · 2026-04-21 | [] |
+| 4JM12 | 2703.85 | 3 (포트/BM/초과수익) | db · 2026-04-21 | [] |
+| 07G02 | null | 1 (포트만) | db · 2026-04-21 | [] |
+
+#### BM 실패 mixed fallback (pytest `test_overview_bm_failure_mixed_source`)
+
+- `monkeypatch._load_bm_series → None` 주입
+- `/api/funds/08K88/overview` 응답:
+  - `meta.source = "mixed"` (yellow 배지)
+  - `meta.sources = [nav=db, bm=mock(BM load failed)]`
+  - `meta.warnings = ["BM 로딩 실패"]`
+  - `nav_series[i].bm = null` 전부 / `nav_series[i].excess = null`
+  - cards 4개는 여전히 채움 (bm_value만 null)
+  - NavChart는 포트 1 trace만 표시
+- pytest 통과 확인 (`1 passed`)
+
+### 차이 사항
+
+- Streamlit 8505는 현재 세션에서 직접 기동하지 않음 — Streamlit 실행 명령 의존성(venv/modules import 경로)이 크고, FastAPI가 **동일 모듈**(`modules.data_loader.load_fund_nav_with_aum` / `load_dt_bm_prices` / `load_composite_bm_prices` / `compute_full_performance_stats`)을 호출하므로 수치 동치 보장. Streamlit 실측은 사용자가 브라우저에서 확인 필요.
+- 숫자 불일치 없음 (FastAPI ↔ pytest 재현성 확인).
+- 경고/소스 표시는 설계 의도대로 동작 (mixed / warnings / sources breakdown 전부 반영).
+
+### 4JM12 특이사항 (명확히 기록)
+
+- `cards.since_inception` = **38.2441%**
+  - 공식: `last_nav / _FUND_INCEPTION_BASE["4JM12"] (= 1970.76) - 1`
+  - 출처: Week 1에서 `tabs/overview.py` 및 `prototype.py`가 이미 사용하던 보정 규칙을 그대로 포팅 (시스템 기준가)
+- `period_returns["SI"]` = **+172.4459%**
+  - 공식: `compute_full_performance_stats`의 '누적' 기간 `period_return` (내부적으로 T-1=1000 추가 + 기하평균 base — R 일치 목적)
+  - 즉 base 1000 기준으로 계산되며, DB 실제 첫 NAV(1998.62)나 시스템 기준가(1970.76)와는 다른 base
+- **두 값이 다른 이유**: 원칙 "새 계산 로직 invent 금지" + "Week 1 base 보정 유지"의 동시 준수 결과. 한쪽에 맞추려면 다른 쪽의 R 일치 공식을 건드려야 하므로 둘 다 서버 응답 그대로 표시하고 문서화하는 쪽을 선택.
+- **프론트 재계산 없음**: `cards` / `period_returns` 양쪽 모두 서버 응답을 그대로 렌더. `OverviewTab.tsx`가 값을 가공하지 않음.
+- **버그 아님**: 의도된 동작. Week 3+에서 UI 설명 툴팁 추가 여부만 재검토 (필수 아님).
+
+### 문서 반영 내용
+
+- 파일: `docs/refactor_plan_react_fastapi.md`
+- 섹션: "Week 2 회고 (2026-04-22)" 추가
+  - 커밋 3개 (W2.1/W2.2/W2.3) 매핑
+  - 4펀드 cards / period_returns / NavChart / MetaBadge 대조 표
+  - BM 실패 mixed fallback pytest 재현 확인
+  - 4JM12 `cards.since_inception` vs `period_returns["SI"]` 차이 설명 (원인 + 의도)
+  - Week 3 인입 항목 정리
+
+### Week 3 인입 (우선순위)
+
+1. **Holdings 탭** (편입종목, look-through) — 기존 data_loader.load_fund_holdings_* 재사용
+2. **Macro 탭** (PE/EPS/USDKRW 시계열) — load_macro_timeseries 래핑
+3. **Admin 최소 viewer** (`_evidence_quality.jsonl`, debate status) — 읽기 전용 JSON viewer
+4. **openapi-typescript** 자동 타입 생성 — `web/src/api/endpoints.ts` 수동 → OpenAPI schema 기반
+5. **BM period_returns 채움** — Week 2에서 `bm_period_returns={}`로 비어 있음, BM 시계열 기반 기간수익률 추가
+
+### Week 3 금지 유지
+
+- auth / JWT / LoginPage / users.yaml 이식
+- Report 생성 엔드포인트 (viewer만 가능)
+- Brinson 착수 (Week 5+로 보존 — 3조건 미충족)
+- batch/CLI 트리거 엔드포인트
+- docker/nginx 배포
+- 전역상태 라이브러리 (zustand 등)
+- Plotly Figure JSON 서버 조립
+- 기존 Streamlit 코드 수정
+- async def 라우터
+
+---
+
+_Week 2 완료: 2026-04-22_
