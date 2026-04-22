@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routers import funds, health, holdings, overview
+from .routers import funds, health, holdings, macro, overview
 from .settings import get_settings
 
 
@@ -26,6 +26,7 @@ def create_app() -> FastAPI:
     app.include_router(funds.router, prefix="/api", tags=["funds"])
     app.include_router(overview.router, prefix="/api", tags=["overview"])
     app.include_router(holdings.router, prefix="/api", tags=["holdings"])
+    app.include_router(macro.router, prefix="/api", tags=["macro"])
     return app
 
 
