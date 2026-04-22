@@ -59,6 +59,8 @@ export interface OverviewResponseDTO {
   bm_configured: boolean;
   cards: MetricCardDTO[];
   nav_series: NavPointDTO[];
+  period_returns: Record<string, number>;        // Week 2: {"1M","3M","6M","YTD","1Y","SI"}
+  bm_period_returns: Record<string, number>;     // Week 2: 동일 키, BM 없으면 빈 객체
 }
 
 // === Fetchers ===

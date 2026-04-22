@@ -6,15 +6,15 @@ interface Props {
 
 export default function MetaBadge({ meta }: Props) {
   const color = meta.is_fallback
-    ? "#d97706"            // orange
+    ? "#d97706"            // orange — fallback
     : meta.source === "mixed"
-    ? "#ca8a04"            // yellow
-    : "#059669";           // green
+    ? "#ca8a04"            // yellow — mixed (부분 실패)
+    : "#059669";           // green — db
 
   const label = meta.is_fallback
     ? "⚠ fallback"
     : meta.source === "mixed"
-    ? "mixed source"
+    ? "mixed"
     : "db";
 
   return (
@@ -28,11 +28,24 @@ export default function MetaBadge({ meta }: Props) {
           color: "white",
           fontSize: 12,
           fontWeight: 600,
+          width: "fit-content",
         }}
       >
         {label}
         {meta.as_of_date ? ` · ${meta.as_of_date}` : ""}
       </span>
+
+      {meta.sources.length > 0 && (
+        <span style={{ fontSize: 11, color: "#6b7280" }}>
+          {meta.sources
+            .map(
+              (s) =>
+                `${s.component}=${s.kind}${s.note ? ` (${s.note})` : ""}`,
+            )
+            .join(" · ")}
+        </span>
+      )}
+
       {meta.warnings.length > 0 && (
         <ul
           style={{
