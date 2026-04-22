@@ -2,8 +2,9 @@ import { useState } from "react";
 import { useFunds } from "../hooks/useFunds";
 import OverviewTab from "../tabs/OverviewTab";
 import HoldingsTab from "../tabs/HoldingsTab";
+import MacroTab from "../tabs/MacroTab";
 
-type TabKey = "overview" | "holdings";
+type TabKey = "overview" | "holdings" | "macro";
 
 export default function DashboardPage() {
   const { data, isLoading, error } = useFunds();
@@ -71,12 +72,15 @@ export default function DashboardPage() {
       <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
         {tabBtn("overview", "Overview")}
         {tabBtn("holdings", "편입종목")}
+        {tabBtn("macro", "Macro")}
       </div>
 
       {tab === "overview" ? (
         <OverviewTab fundCode={selected} />
-      ) : (
+      ) : tab === "holdings" ? (
         <HoldingsTab fundCode={selected} />
+      ) : (
+        <MacroTab />
       )}
     </div>
   );

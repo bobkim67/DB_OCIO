@@ -121,3 +121,34 @@ export const fetchHoldings = async (
   );
   return r.data;
 };
+
+// === Macro ===
+export interface MacroPointDTO {
+  date: string;
+  value: number;
+}
+
+export interface MacroSeriesDTO {
+  key: string;
+  label: string;
+  unit: "pct" | "bp" | "idx" | "ratio" | "krw" | "usd" | "raw";
+  points: MacroPointDTO[];
+}
+
+export interface MacroTimeseriesResponseDTO {
+  meta: BaseMeta;
+  series: MacroSeriesDTO[];
+}
+
+export const fetchMacro = async (
+  keys: string[],
+  start?: string,
+): Promise<MacroTimeseriesResponseDTO> => {
+  const params: Record<string, string> = { keys: keys.join(",") };
+  if (start) params.start = start;
+  const r = await api.get<MacroTimeseriesResponseDTO>(
+    "/macro/timeseries",
+    { params },
+  );
+  return r.data;
+};
