@@ -321,7 +321,7 @@ def _parse_json_response(text: str):
 # ═══════════════════════════════════════════════════════
 
 def _build_classification_prompt(articles: list[dict]) -> str:
-    """배치 분류 프롬프트 생성"""
+    """배치 분류 프롬프트 생성 (뉴스용)"""
     topic_list = ', '.join(TOPIC_TAXONOMY)
 
     article_lines = []
@@ -368,6 +368,57 @@ def _build_classification_prompt(articles: list[dict]) -> str:
 ## 응답 형식 (JSON 배열만, 설명 없이)
 [
   {{"id": 1, "topics": [{{"topic": "금리_채권", "direction": "negative", "intensity": 7}}]}},
+  {{"id": 2, "topics": []}}
+]"""
+
+
+def _build_research_classification_prompt(articles: list[dict]) -> str:
+    """리서치 리포트 전용 분류 프롬프트.
+
+    source_type='naver_research' 기사는 종목 분석/ETF 소개 필터를 끄고,
+    리포트가 시사하는 거시 뷰 / 자산배분 뷰를 14개 taxonomy 안에서 뽑는다.
+    taxonomy는 뉴스와 동일.
+    """
+    topic_list = ', '.join(TOPIC_TAXONOMY)
+
+    article_lines = []
+    for i, a in enumerate(articles):
+        title = _clean_html(a.get('title', ''))[:160]
+        desc = _clean_html(a.get('description', ''))[:400]
+        broker = a.get('_raw_broker') or a.get('source', '')
+        cat = a.get('_raw_category', '')
+        article_lines.append(f'{i+1}. [{broker} / {cat}] {title}\n   {desc}')
+
+    return f"""증권사 리서치 리포트의 거시 관점을 14개 토픽으로 분류하세요.
+
+## 분류 체계 (14개 주제, 뉴스와 동일)
+{topic_list}
+
+## 리서치 분류 규칙 (뉴스와 다름)
+1. 입력은 증권사 리서치 리포트 (경제분석/시황/투자/산업/채권 카테고리).
+   뉴스와 달리 리포트는 거의 대부분 거시 해석을 담고 있으므로 **빈 배열은 예외적**이어야 한다.
+2. 각 리포트에 해당하는 주제를 1~3개 태깅 (multi-label).
+3. 각 주제에 대해:
+   - direction: "positive" (해당 자산/시장에 긍정 시사) / "negative" (부정 시사) / "neutral" (중립·혼재)
+   - intensity: 1-10 (리포트가 다루는 비중·강조도. 1=부차 언급, 10=리포트 핵심 주제)
+4. **리포트 제목에 종목명/ETF명이 있어도**, 그 종목을 통해 해석하려는 거시 주제가 있으면 태깅한다.
+   - 예: "키움 반도체 전망" → 테크_AI_반도체 positive, (경기_소비 보조)
+   - 예: "미국 HY 스프레드 점검" → 유동성_크레딧, 금리_채권
+   - 예: "삼성전자 분기 실적" 같은 **순수 개별 종목 실적 분석**은 빈 배열 허용 (리서치 중에서도 종목 단일 리포트)
+5. 카테고리 힌트:
+   - economy / debenture: 통화정책 / 금리_채권 / 물가_인플레이션 / 경기_소비 / 유동성_크레딧 중심
+   - market_info: 증시 시황 → 테크_AI_반도체 / 경기_소비 / 환율_FX 중 리포트가 실제 다룬 것
+   - invest: 자산배분·포트폴리오 뷰 → 관련 자산군 토픽 전부 태깅
+   - industry: 섹터 산업뷰 → 섹터에 대응하는 taxonomy 토픽 (반도체→테크_AI_반도체, 정유→에너지_원자재 등)
+6. direction 판정이 애매하면 "neutral"을 허용하지만, intensity는 낮춰라(3~5).
+7. **"주가 목표가 상향/하향" 한 줄 리포트, 단순 공모주/IPO 소개**는 빈 배열로.
+
+## 리포트 목록
+{chr(10).join(article_lines)}
+
+## 응답 형식 (JSON 배열만, 설명 없이)
+[
+  {{"id": 1, "topics": [{{"topic": "금리_채권", "direction": "negative", "intensity": 7}}, {{"topic": "통화정책", "direction": "neutral", "intensity": 5}}]}},
   {{"id": 2, "topics": []}}
 ]"""
 
@@ -461,17 +512,67 @@ def _sanitize_topic(raw_topic: str) -> str:
 _TOPIC_SET = set(TOPIC_TAXONOMY)
 
 
+def _apply_classification_results(to_classify: list[dict], results) -> None:
+    """LLM 응답(results) → to_classify 각 기사에 in-place 필드 기록."""
+    if not results or not isinstance(results, list):
+        print(f'    분류 응답 파싱 실패')
+        return
+
+    for item in results:
+        idx = item.get('id', 0) - 1
+        if not (0 <= idx < len(to_classify)):
+            continue
+        a = to_classify[idx]
+        raw_topics = item.get('topics', [])
+        topics = []
+        for t in raw_topics:
+            sanitized = _sanitize_topic(t.get('topic', ''))
+            if sanitized:
+                t['topic'] = sanitized
+                topics.append(t)
+        a['_classified_topics'] = topics
+
+        # asset impact vector
+        impact = {}
+        for t in topics:
+            topic_name = t.get('topic', '')
+            direction_sign = -1 if t.get('direction') == 'negative' else 1
+            intensity_scale = t.get('intensity', 5) / 10.0
+            sensitivity = TOPIC_ASSET_SENSITIVITY.get(topic_name, {})
+            for asset_key, base_val in sensitivity.items():
+                score = base_val * direction_sign * intensity_scale
+                impact[asset_key] = impact.get(asset_key, 0) + score
+        a['_asset_impact_vector'] = {
+            k: round(v, 2) for k, v in impact.items() if abs(v) >= 0.3
+        }
+        if topics:
+            a['asset_class_original'] = a.get('asset_class', a.get('category', ''))
+            primary = max(topics, key=lambda t: t.get('intensity', 0))
+            a['asset_class'] = _topic_to_asset_class(primary['topic'])
+            a['primary_topic'] = primary['topic']
+            a['direction'] = primary.get('direction', 'neutral')
+            a['intensity'] = primary.get('intensity', 5)
+
+
 def classify_batch(articles: list[dict]) -> list[dict]:
     """기사 배치 분류 → 각 기사에 topics, asset_impact_vector 추가.
 
-    Layer 1: Financial Filter (rule-based) → 비금융 앞단 차단
-    Layer 2: LLM 분류 (Haiku, 14개 토픽) → 거시 금융 기사만
+    source_type 기준으로 두 묶음으로 분기 (Phase 2.5, 2026-04-22):
+      - 기본 뉴스: Layer 1 Financial Filter → Layer 2 뉴스용 프롬프트
+      - source_type='naver_research': Financial Filter 우회 → 리서치 전용 프롬프트
+    각 묶음은 별도의 LLM call로 분류하고, 결과는 공통 처리기로 기사에 기록.
     """
-    # Layer 1: Financial Filter
-    to_classify = []
+    news_bucket: list[dict] = []
+    research_bucket: list[dict] = []
+
     for a in articles:
         if '_classified_topics' in a:
-            continue  # 이미 분류됨
+            continue
+        if a.get('source_type') == 'naver_research':
+            # 리서치는 Financial Filter 건너뛰고 전부 LLM으로 보낸다
+            a['_is_macro_financial'] = True
+            research_bucket.append(a)
+            continue
         is_fin, reason = is_macro_financial(a)
         if not is_fin:
             a['_classified_topics'] = []
@@ -479,62 +580,37 @@ def classify_batch(articles: list[dict]) -> list[dict]:
             a['_is_macro_financial'] = False
         else:
             a['_is_macro_financial'] = True
-            to_classify.append(a)
+            news_bucket.append(a)
 
-    if not to_classify:
-        return articles
+    # 뉴스 묶음 — 기존 프롬프트
+    if news_bucket:
+        prompt = _build_classification_prompt(news_bucket)
+        try:
+            text = _call_haiku(prompt, max_tokens=3000)
+            results = _parse_json_response(text)
+            _apply_classification_results(news_bucket, results)
+        except Exception as exc:
+            print(f'    뉴스 배치 분류 실패 ({len(news_bucket)}건): {type(exc).__name__}: {exc}')
+            for a in news_bucket:
+                if '_classified_topics' not in a:
+                    a['_classify_error'] = str(exc)[:100]
 
-    # Layer 2: LLM 분류 (거시 금융 기사만)
-    prompt = _build_classification_prompt(to_classify)
-    try:
-        text = _call_haiku(prompt, max_tokens=3000)
-        results = _parse_json_response(text)
-        if not results or not isinstance(results, list):
-            print(f'    분류 응답 파싱 실패')
-            return articles
-
-        for item in results:
-            idx = item.get('id', 0) - 1
-            if 0 <= idx < len(to_classify):
-                a = to_classify[idx]
-                raw_topics = item.get('topics', [])
-                # whitelist 검증: 깨진 토픽명 → 정상 토픽으로 복구 또는 제거
-                topics = []
-                for t in raw_topics:
-                    sanitized = _sanitize_topic(t.get('topic', ''))
-                    if sanitized:
-                        t['topic'] = sanitized
-                        topics.append(t)
-                a['_classified_topics'] = topics
-                # asset impact vector — TOPIC_ASSET_SENSITIVITY 룩업으로 계산
-                impact = {}
-                for t in topics:
-                    topic_name = t.get('topic', '')
-                    direction_sign = -1 if t.get('direction') == 'negative' else 1
-                    intensity_scale = t.get('intensity', 5) / 10.0
-                    sensitivity = TOPIC_ASSET_SENSITIVITY.get(topic_name, {})
-                    for asset_key, base_val in sensitivity.items():
-                        score = base_val * direction_sign * intensity_scale
-                        impact[asset_key] = impact.get(asset_key, 0) + score
-                a['_asset_impact_vector'] = {
-                    k: round(v, 2) for k, v in impact.items() if abs(v) >= 0.3
-                }
-                # 기존 asset_class 보존 + 새 분류 적용
-                if topics:
-                    a['asset_class_original'] = a.get('asset_class', a.get('category', ''))
-                    # 최고 intensity 주제를 primary asset_class로 매핑
-                    primary = max(topics, key=lambda t: t.get('intensity', 0))
-                    a['asset_class'] = _topic_to_asset_class(primary['topic'])
-                    a['primary_topic'] = primary['topic']
-                    a['direction'] = primary.get('direction', 'neutral')
-                    a['intensity'] = primary.get('intensity', 5)
-
-    except Exception as exc:
-        print(f'    배치 분류 실패 ({len(to_classify)}건): {type(exc).__name__}: {exc}')
-        # 실패한 기사에 마커 추가 — 재시도 대상 식별용
-        for a in to_classify:
-            if '_classified_topics' not in a:
-                a['_classify_error'] = str(exc)[:100]
+    # 리서치 묶음 — 전용 프롬프트
+    if research_bucket:
+        prompt = _build_research_classification_prompt(research_bucket)
+        try:
+            text = _call_haiku(prompt, max_tokens=3000)
+            results = _parse_json_response(text)
+            _apply_classification_results(research_bucket, results)
+            # 리서치 소스 분류 경로를 추적 가능하게 마킹
+            for a in research_bucket:
+                if '_classified_topics' in a:
+                    a['_classifier_prompt'] = 'research_v1'
+        except Exception as exc:
+            print(f'    리서치 배치 분류 실패 ({len(research_bucket)}건): {type(exc).__name__}: {exc}')
+            for a in research_bucket:
+                if '_classified_topics' not in a:
+                    a['_classify_error'] = str(exc)[:100]
 
     return articles
 
@@ -705,23 +781,52 @@ def classify_daily(date_str: str, batch_size: int = 20) -> dict:
     """
     일일 뉴스 분류 (Daily Incremental Mode용).
     당일 날짜의 기사만 필터하여 분류.
+
+    Phase 2 (2026-04-21): 2 소스 merge 지원.
+      - news/{month}.json  (기존 뉴스)
+      - naver_research/adapted/{month}.json  (adapter 산출, source_type='naver_research')
+    두 소스를 in-memory로 concat 해서 date 필터 + classify한 뒤 각각의 파일로 분리 저장.
+    raw news 파일은 naver_research 기사로 오염되지 않는다.
     """
     # YYYY-MM-DD → YYYY-MM
     month_str = date_str[:7]
     news_file = NEWS_DIR / f'{month_str}.json'
-    if not news_file.exists():
+
+    # news 로드 (없으면 빈 구조)
+    if news_file.exists():
+        news_data = json.loads(news_file.read_text(encoding='utf-8'))
+        news_articles = news_data.get('articles', [])
+    else:
+        news_data = {'month': month_str, 'articles': []}
+        news_articles = news_data['articles']
+
+    # naver_research adapted 로드 (있으면)
+    try:
+        from market_research.collect.naver_research_adapter import (
+            adapted_path as _nr_adapted_path,
+            load_adapted as _nr_load_adapted,
+        )
+        nr_file = _nr_adapted_path(month_str)
+        nr_articles = _nr_load_adapted(month_str) if nr_file.exists() else []
+    except Exception as exc:
+        print(f'  [naver_research adapter merge skipped: {exc}]')
+        nr_file = None
+        nr_articles = []
+
+    if not news_file.exists() and not nr_articles:
         return {"total": 0, "classified": 0}
 
-    data = json.loads(news_file.read_text(encoding='utf-8'))
-    articles = data.get('articles', [])
+    # 2 소스 merge (reference 공유 — classify_batch in-place 수정이 원본에도 반영됨)
+    merged = news_articles + nr_articles
 
     # 당일 기사만 필터
-    daily = [a for a in articles if a.get('date', '') == date_str and '_classified_topics' not in a]
+    daily = [a for a in merged if a.get('date', '') == date_str and '_classified_topics' not in a]
     if not daily:
-        print(f'  {date_str}: 분류할 기사 없음')
+        print(f'  {date_str}: 분류할 기사 없음 (news={len(news_articles)}, naver_research={len(nr_articles)})')
         return {"total": 0, "classified": 0}
 
-    print(f'  {date_str}: {len(daily)}건 분류 중...')
+    nr_in_daily = sum(1 for a in daily if a.get('source_type') == 'naver_research')
+    print(f'  {date_str}: {len(daily)}건 분류 중... (news {len(daily) - nr_in_daily} + naver_research {nr_in_daily})')
     for i in range(0, len(daily), batch_size):
         batch = daily[i:i + batch_size]
         classify_batch(batch)
@@ -730,11 +835,27 @@ def classify_daily(date_str: str, batch_size: int = 20) -> dict:
     classified = sum(1 for a in daily if a.get('_classified_topics'))
     print(f'  분류 완료: {classified}/{len(daily)}건')
 
-    # 저장
-    data['articles'] = articles
-    safe_write_news_json(news_file, data)
+    # 저장 — source 분리. 각 article 객체는 classify_batch에서 in-place 수정됐으므로
+    # 원본 list (news_articles / nr_articles) 안에서 그대로 보존됨.
+    if news_file.exists() or news_articles:
+        news_data['articles'] = news_articles
+        safe_write_news_json(news_file, news_data)
 
-    return {"total": len(daily), "classified": classified}
+    if nr_articles and nr_file is not None:
+        nr_payload = {
+            'month': month_str,
+            'source_type': 'naver_research',
+            'total': len(nr_articles),
+            'articles': nr_articles,
+        }
+        safe_write_news_json(nr_file, nr_payload)
+
+    return {
+        "total": len(daily),
+        "classified": classified,
+        "news_count": len(daily) - nr_in_daily,
+        "naver_research_count": nr_in_daily,
+    }
 
 
 # ═══════════════════════════════════════════════════════

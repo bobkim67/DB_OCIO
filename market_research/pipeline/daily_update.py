@@ -84,6 +84,12 @@ def daily_update(date_str: str = None, dry_run: bool = False) -> dict:
     result['steps']['collect'] = news_result
     print(f'  → {news_result.get("new_count", 0)}건 신규')
 
+    # ── Step 1.3: Naver Research adapter (raw → article-like) ──
+    print(f'\n[Step 1.3] Naver Research adapter...')
+    nr_adapt_result = _step_naver_research_adapter(month_str)
+    result['steps']['naver_research_adapter'] = nr_adapt_result
+    print(f'  → {nr_adapt_result.get("total", 0)}건 (band {nr_adapt_result.get("bands", {})})')
+
     # ── Step 1.5: 블로그 수집 ──
     print(f'\n[Step 1.5] 블로그 수집...')
     blog_result = _step_collect_blog()
@@ -212,7 +218,7 @@ def _step_collect_news(date_str: str) -> dict:
 
 
 def _step_classify(date_str: str) -> dict:
-    """Step 2: 당일 뉴스 분류"""
+    """Step 2: 당일 뉴스 분류 (news + naver_research adapted 두 소스 merge, 2026-04-21 Phase 2)"""
     try:
         from market_research.analyze.news_classifier import classify_daily
         return classify_daily(date_str)
@@ -221,25 +227,61 @@ def _step_classify(date_str: str) -> dict:
         return {'status': 'error', 'error': str(exc), 'total': 0, 'classified': 0}
 
 
+def _step_naver_research_adapter(month_str: str) -> dict:
+    """Step 1.3: Naver Research raw → article-like adapter 산출.
+
+    raw `data/naver_research/raw/{cat}/{month}.json` 5 카테고리 union → adapter 변환 →
+    `data/naver_research/adapted/{month}.json` 월별 단일 파일 저장.
+
+    이후 Step 2 classify_daily 내부에서 news_file + adapted_file merge 후 분류한다.
+    news raw는 오염시키지 않는다.
+    """
+    try:
+        from collections import Counter
+        from market_research.collect.naver_research_adapter import (
+            build_naver_research_articles,
+            save_adapted,
+        )
+        articles = build_naver_research_articles(month_str)
+        if not articles:
+            return {'status': 'skip', 'total': 0, 'bands': {}}
+        save_adapted(month_str, articles)
+        bands = Counter(a.get('_research_quality_band') for a in articles)
+        return {'status': 'ok', 'total': len(articles), 'bands': dict(bands)}
+    except Exception as exc:
+        print(f'  naver_research adapter 실패: {exc}')
+        import traceback
+        traceback.print_exc()
+        return {'status': 'error', 'error': str(exc), 'total': 0, 'bands': {}}
+
+
 def _step_refine(month_str: str) -> dict:
-    """Step 2.5: 월별 뉴스 전체에 dedupe + salience + uncategorized fallback 적용."""
+    """Step 2.5: 월별 뉴스 + naver_research 정제 (dedupe + salience + fallback).
+
+    Phase 2.5 (2026-04-22):
+      - news/{month}.json 와 naver_research/adapted/{month}.json 를 **각각 분리**해서 refine.
+      - dedupe / event clustering 은 소스 내부에서만 수행 (저장 분리 정책 유지).
+      - salience 의 source_quality 슬롯은 source_type='naver_research'면 _research_quality_score 사용.
+    """
     try:
         from market_research.core.dedupe import process_dedupe_and_events
         from market_research.core.salience import (
             compute_salience_batch, fallback_classify_uncategorized, load_bm_anomaly_dates)
-        from market_research.core.json_utils import safe_read_news_json, safe_write_news_json
+        from market_research.core.json_utils import safe_write_news_json
 
         news_file = NEWS_DIR / f'{month_str}.json'
-        if not news_file.exists():
-            return {'status': 'skip', 'reason': 'no news file'}
 
-        # 전체 데이터 로드 (메타 보존)
-        raw_data = json.loads(news_file.read_text(encoding='utf-8'))
-        articles = raw_data.get('articles', [])
-        if not articles:
-            return {'status': 'skip', 'reason': 'no articles'}
+        # naver_research adapted 경로 (있으면 함께 처리)
+        try:
+            from market_research.collect.naver_research_adapter import adapted_path
+            nr_file = adapted_path(month_str)
+        except Exception:
+            nr_file = None
 
-        # BM anomaly dates 로드 (z>1.5)
+        if (not news_file.exists()) and (nr_file is None or not nr_file.exists()):
+            return {'status': 'skip', 'reason': 'no news/adapted file'}
+
+        # BM anomaly dates 로드 (z>1.5) — 두 소스에 공통 적용
         y, m = int(month_str[:4]), int(month_str[5:7])
         try:
             bm_anomaly = load_bm_anomaly_dates(y, m)
@@ -248,32 +290,48 @@ def _step_refine(month_str: str) -> dict:
             print(f'  BM anomaly 로드 실패: {exc}')
             bm_anomaly = set()
 
-        # A. article_id + dedupe + event clustering
-        articles = process_dedupe_and_events(articles)
+        summary = {'status': 'ok', 'sources': {}}
+        agg = {'total': 0, 'primary_count': 0, 'dedup_groups': 0,
+               'event_groups': 0, 'fallback_count': 0}
 
-        # B. salience 점수 (bm_anomaly_dates 연동)
-        articles = compute_salience_batch(articles, bm_anomaly)
+        def _refine_source(label: str, file_path: Path, payload: dict) -> dict:
+            arts = payload.get('articles', [])
+            if not arts:
+                return {'status': 'skip', 'reason': 'empty'}
+            arts = process_dedupe_and_events(arts)
+            arts = compute_salience_batch(arts, bm_anomaly)
+            fb = fallback_classify_uncategorized(arts, bm_anomaly)
+            payload['articles'] = arts
+            safe_write_news_json(file_path, payload)
+            dgrp = len({a.get('_dedup_group_id') for a in arts if '_dedup_group_id' in a})
+            pcount = sum(1 for a in arts if a.get('is_primary', False))
+            egrp = len({a.get('_event_group_id') for a in arts if '_event_group_id' in a})
+            print(f'  [{label}] total={len(arts)} primary={pcount} '
+                  f'dedup_groups={dgrp} event_groups={egrp} fallback={fb}')
+            return {'status': 'ok', 'total': len(arts),
+                    'primary_count': pcount, 'dedup_groups': dgrp,
+                    'event_groups': egrp, 'fallback_count': fb}
 
-        # C. uncategorized fallback
-        fallback_count = fallback_classify_uncategorized(articles, bm_anomaly)
+        # 1) news
+        if news_file.exists():
+            news_data = json.loads(news_file.read_text(encoding='utf-8'))
+            r = _refine_source('news', news_file, news_data)
+            summary['sources']['news'] = r
+            for k in agg:
+                agg[k] += r.get(k, 0) if isinstance(r.get(k), int) else 0
 
-        # 통계 집계
-        dedup_groups = len({a.get('_dedup_group_id') for a in articles if '_dedup_group_id' in a})
-        primary_count = sum(1 for a in articles if a.get('is_primary', False))
-        event_groups = len({a.get('_event_group_id') for a in articles if '_event_group_id' in a})
+        # 2) naver_research adapted
+        if nr_file is not None and nr_file.exists():
+            nr_data = json.loads(nr_file.read_text(encoding='utf-8'))
+            # adapted 파일 스키마 보정 (source_type 메타 보존)
+            nr_data.setdefault('source_type', 'naver_research')
+            r = _refine_source('naver_research', nr_file, nr_data)
+            summary['sources']['naver_research'] = r
+            for k in agg:
+                agg[k] += r.get(k, 0) if isinstance(r.get(k), int) else 0
 
-        # 저장
-        raw_data['articles'] = articles
-        safe_write_news_json(news_file, raw_data)
-
-        return {
-            'status': 'ok',
-            'total': len(articles),
-            'primary_count': primary_count,
-            'dedup_groups': dedup_groups,
-            'event_groups': event_groups,
-            'fallback_count': fallback_count,
-        }
+        summary.update(agg)
+        return summary
     except Exception as exc:
         print(f'  Refine 실패: {exc}')
         import traceback; traceback.print_exc()

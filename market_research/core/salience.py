@@ -151,13 +151,19 @@ def compute_event_salience(article: dict, bm_anomaly_dates: set = None) -> float
         bm_anomaly_dates = set()
 
     # source quality (3단계: 1.0 / 0.7 / 0.3)
-    source = article.get('source', '')
-    if source in TIER1_SOURCES:
-        source_quality = 1.0
-    elif source in TIER2_SOURCES:
-        source_quality = 0.7
+    # Phase 2.5 (2026-04-22): source_type='naver_research'면 adapter가 산출한
+    # _research_quality_score를 source_quality 슬롯으로 사용. 가중치 합은 그대로.
+    if article.get('source_type') == 'naver_research':
+        rqs = article.get('_research_quality_score')
+        source_quality = float(rqs) if rqs is not None else 0.7  # adapter 미실행 fallback
     else:
-        source_quality = 0.3
+        source = article.get('source', '')
+        if source in TIER1_SOURCES:
+            source_quality = 1.0
+        elif source in TIER2_SOURCES:
+            source_quality = 0.7
+        else:
+            source_quality = 0.3
 
     # intensity (0~1)
     intensity_norm = min(article.get('intensity', 0) / 10.0, 1.0)
