@@ -1,10 +1,14 @@
 import { useState } from "react";
 import { useFunds } from "../hooks/useFunds";
 import OverviewTab from "../tabs/OverviewTab";
+import HoldingsTab from "../tabs/HoldingsTab";
+
+type TabKey = "overview" | "holdings";
 
 export default function DashboardPage() {
   const { data, isLoading, error } = useFunds();
   const [selected, setSelected] = useState<string>("08K88");
+  const [tab, setTab] = useState<TabKey>("overview");
 
   if (isLoading) return <div style={{ padding: 16 }}>loading funds...</div>;
   if (error || !data) {
@@ -15,6 +19,23 @@ export default function DashboardPage() {
     );
   }
 
+  const tabBtn = (key: TabKey, label: string) => (
+    <button
+      onClick={() => setTab(key)}
+      style={{
+        padding: "6px 14px",
+        border: "1px solid #e5e7eb",
+        borderBottom:
+          tab === key ? "2px solid #2563eb" : "1px solid #e5e7eb",
+        background: tab === key ? "#eff6ff" : "#fff",
+        fontSize: 13,
+        cursor: "pointer",
+      }}
+    >
+      {label}
+    </button>
+  );
+
   return (
     <div style={{ padding: 16, fontFamily: "system-ui, sans-serif" }}>
       <header
@@ -22,7 +43,7 @@ export default function DashboardPage() {
           display: "flex",
           alignItems: "center",
           gap: 12,
-          marginBottom: 16,
+          marginBottom: 12,
           paddingBottom: 12,
           borderBottom: "1px solid #e5e7eb",
         }}
@@ -46,7 +67,17 @@ export default function DashboardPage() {
           </select>
         </label>
       </header>
-      <OverviewTab fundCode={selected} />
+
+      <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
+        {tabBtn("overview", "Overview")}
+        {tabBtn("holdings", "편입종목")}
+      </div>
+
+      {tab === "overview" ? (
+        <OverviewTab fundCode={selected} />
+      ) : (
+        <HoldingsTab fundCode={selected} />
+      )}
     </div>
   );
 }

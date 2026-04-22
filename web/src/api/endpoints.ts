@@ -78,3 +78,46 @@ export const fetchOverview = async (
   });
   return r.data;
 };
+
+// === Holdings ===
+export interface HoldingAssetClassDTO {
+  asset_class: string;
+  weight: number;              // raw ratio
+  evl_amt: number;
+  item_count: number;
+  color: string | null;
+}
+
+export interface HoldingItemDTO {
+  item_cd: string;
+  item_nm: string;
+  asset_class: string;
+  weight: number;              // raw ratio
+  evl_amt: number;
+  sub_fund_cd: string | null;
+}
+
+export interface HoldingsResponseDTO {
+  meta: BaseMeta;
+  fund_code: string;
+  fund_name: string;
+  as_of_date: string | null;
+  lookthrough_applied: boolean;
+  nast_amt: number | null;
+  asset_class_weights: HoldingAssetClassDTO[];
+  holdings_items: HoldingItemDTO[];
+}
+
+export const fetchHoldings = async (
+  code: string,
+  lookthrough: boolean,
+  asOfDate?: string,
+): Promise<HoldingsResponseDTO> => {
+  const params: Record<string, string | boolean> = { lookthrough };
+  if (asOfDate) params.as_of_date = asOfDate;
+  const r = await api.get<HoldingsResponseDTO>(
+    `/funds/${code}/holdings`,
+    { params },
+  );
+  return r.data;
+};
