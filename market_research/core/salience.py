@@ -127,6 +127,22 @@ TIER2_SOURCES = {
 # Tier 3: 나머지 (0.3)
 # 네이버검색(미파싱), 블로그, 알 수 없는 소스
 
+# Phase 2.5 후속 (2026-04-22, Option A-strict): naver_research 가 top500 evidence를
+# 80%까지 점유하는 오버슈트 보정. _research_quality_score (TIER1=1.0)에 cap을 적용해
+# news TIER1(1.0)과 동률을 만들지 않고 살짝 낮춘다. 나머지 공식은 그대로.
+# Cap 진화: 0.85 (1차) → 0.70 (2차, news TIER2 동률, 2026-04-22)
+RESEARCH_QUALITY_CAP = 0.70
+
+# Phase 2.5 후속 (Option A-strict + intensity-fix, 2026-04-22):
+# news 기사 중 미분류(intensity=0)이지만 BM/event 신호가 강하면 intensity_norm에 floor 부여.
+# 의도: news 미분류로 intensity=0이라 깔리는 기사들이 nr에 밀려나는 구조 보정.
+# 적용 조건 (모두 충족 시):
+#   - source_type != 'naver_research'
+#   - _classified_topics 비어 있음
+#   - source_quality >= 0.7 (TIER1/TIER2)
+#   - bm_overlap == 1 또는 _event_source_count >= 3 (강한 corroboration)
+NEWS_UNCLASSIFIED_INTENSITY_FLOOR = 0.4
+
 # 거시 키워드 (uncategorized fallback 판정용)
 MACRO_KEYWORDS = [
     'Fed', 'FOMC', '연준', 'ECB', 'BOJ', 'BOK', '금통위',
@@ -153,9 +169,11 @@ def compute_event_salience(article: dict, bm_anomaly_dates: set = None) -> float
     # source quality (3단계: 1.0 / 0.7 / 0.3)
     # Phase 2.5 (2026-04-22): source_type='naver_research'면 adapter가 산출한
     # _research_quality_score를 source_quality 슬롯으로 사용. 가중치 합은 그대로.
+    # Phase 2.5 후속 cap (Option A): RESEARCH_QUALITY_CAP=0.85 로 상한 — 오버슈트 보정.
     if article.get('source_type') == 'naver_research':
         rqs = article.get('_research_quality_score')
-        source_quality = float(rqs) if rqs is not None else 0.7  # adapter 미실행 fallback
+        rqs_val = float(rqs) if rqs is not None else 0.7  # adapter 미실행 fallback
+        source_quality = min(rqs_val, RESEARCH_QUALITY_CAP)
     else:
         source = article.get('source', '')
         if source in TIER1_SOURCES:
@@ -175,6 +193,14 @@ def compute_event_salience(article: dict, bm_anomaly_dates: set = None) -> float
     # BM move overlap
     art_date = article.get('date', '')[:10]
     bm_overlap = 1.0 if art_date in bm_anomaly_dates else 0.0
+
+    # Phase 2.5 intensity-fix: news 미분류 + 강한 신호이면 intensity_norm floor.
+    # nr 우세의 진짜 원인은 news 미분류 기사들의 intensity=0이라는 점. 이걸 보정.
+    if (article.get('source_type') != 'naver_research'
+            and not article.get('_classified_topics')
+            and source_quality >= 0.7
+            and (bm_overlap == 1.0 or source_count >= 3)):
+        intensity_norm = max(intensity_norm, NEWS_UNCLASSIFIED_INTENSITY_FLOOR)
 
     score = (0.30 * source_quality
              + 0.25 * intensity_norm
