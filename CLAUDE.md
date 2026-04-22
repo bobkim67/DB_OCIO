@@ -258,7 +258,7 @@ DB_OCIO_Webview/
 - VP 비중: `solution.sol_DWPM10530` → `load_vp_holdings_8class()` (VP 전용 코드)
 - VP NAV: `solution.sol_DWPM10510` → `load_vp_nav()` (fund_desc → VP 코드 자동변환)
 - VP 리밸런싱: `solution.sol_VP_rebalancing_inform` → `load_vp_rebal_date()`
-- Brinson PA: `dt.MA000410` → `compute_brinson_attribution()` (3-Factor, 종목 기여도)
+- Brinson PA: `dt.MA000410` → `compute_brinson_attribution_v2()` (3-Factor, 종목 기여도, R 완벽 일치)
 - 매크로 지표: `SCIP.back_datapoint` → `load_macro_timeseries()` (PE/EPS/TR/FX/금리)
 - Gap 추이: `dt.DWPM10530` → `load_holdings_history_8class()` (월별 자산군 비중 이력)
 - 전체 펀드 요약: `load_fund_summary()` → Tab 6
@@ -585,8 +585,49 @@ FX_split=TRUE일 때 증권 수익률에서 환효과 분리:
 - **추적 방법**: R 실행 결과 일별 per-sec raw (환산_adjust, 조정평가액, r_sec) CSV 확보 후 1:1 비교 필요
 - **국내채권 factor 0.0026%p 잔여 (FoF + std_val precision)**: 2026-04-21 세션에서 `_load_etf_redemption_adjustment`에 FoF 추적배수(R line 191-210) 적용 → 해외채권/해외주식/FX Alloc 잔여차 0 완전 해소. 남는 국내채권 0.0026%p는 07G04 FoF Cartesian + 신규매수+기존혼합 edge case 3건 중 KR7385560008(3/9, std_val fractional 0.026)에서 distinct 실패로 발생. R Excel도 Cartesian sum(amt) 2x 부풀림이 자기 일관 값이라 Py 정확값과의 본질적 격차 — 한계 인정. (memory: feedback_brinson_domestic_bond_residual.md)
 - **4JM12 BM 정확 수정 ✅** (2026-04-21): 'KAP All(257/9, 0.495) + KAP MMI Call(255/9, 0.055) + MSCI ACWI(35/15) 0.225 unhedged + 0.225 hedged'. AP/BM/초과 R Excel 0bp 일치. 잔여: FX hedging 분리(R FX 비중 음수 처리) + 유동성 자산군 매핑.
-- Brinson 시작일: 현재 하드코딩, YTD 시 자동 전년말 시작 필요
-- UI 연결: `compute_brinson_attribution` 호출부를 v2로 교체 후 구함수 삭제 예정
+- Brinson 시작일: 전년 12/31 자동 (2026-04-22, `tabs/brinson.py`에서 `datetime(_year-1, 12, 31)` + 설정일 late 비교)
+- UI 연결: `compute_brinson_attribution_v2`만 사용, 구함수(v1) 삭제 완료 (2026-04-22)
+
+## 자산군 분류 방법 4종 지원 (2026-04-22)
+
+R Shiny UI의 `classification_method` 드롭다운을 Python에 이식. `solution.universe_non_derivative`/`universe_derivative`의 `classification_method` 컬럼 값을 그대로 사용.
+
+### 방법 정의
+
+| 방법 | 자산군 구성 | 특징 |
+|------|------------|------|
+| 방법1 | 주식 / 채권 / 대체 / FX / 유동성 | 국내외 병합, 대체 독립 |
+| 방법2 | 주식 / 채권 / FX / 유동성 | 국내외 병합, 대체 → 주식 흡수 |
+| **방법3** | 국내주식 / 해외주식 / 국내채권 / 해외채권 / 대체 / FX / 유동성 | **기본값** (기존) |
+| 방법4 | 국내주식 / 해외주식 / 국내채권 / 해외채권 / FX / 유동성 | 대체 → 해외주식 흡수 (4JM12 기본) |
+
+(방법5 = 지역 분류 / 파생 미지원 → 구현 제외)
+
+### 구현
+
+- `modules/data_loader.py`:
+  - `BRINSON_METHOD_CLASSES`, `BRINSON_METHOD_BM_CLASSES` dict 상수
+  - `_collapse_asset_class()` — 국내/해외 병합 및 대체 흡수 로직
+  - `_map_bm_component_to_asset_class(comp_name, method)` — BM 컴포넌트 매핑 method별 분기
+  - `_load_bm_daily_returns_by_class(..., mapping_method)` — FX 오버레이 대상 자산군 동적화
+  - `compute_brinson_attribution_v2(..., mapping_method='방법3')` — 방법별 자산군 동적 처리
+  - `compute_single_port_pa` fallback: 방법1/2일 때 '주식'/'채권'으로 병합, asset_summary 순서 method별
+- `config/funds.py`:
+  - `FUND_DEFAULT_MAPPING_METHOD = {'4JM12': '방법4'}` — 펀드별 기본값
+  - `DEFAULT_MAPPING_METHOD = '방법3'`
+- `prototype.py::cached_compute_brinson(..., mapping_method='방법3')` — 캐시 키에 method 포함
+- `tabs/brinson.py`:
+  - 드롭다운 "분류 방법" 추가 (방법1~4) + help tooltip
+  - 펀드별 기본값 자동 선택, 사용자 수동 변경 가능
+  - 5분류 축소 로직 method별 분기 (`_core5_by_method`)
+
+### 검증 (08K88 / 4JM12)
+
+- 08K88 (2026-01-01~04-16): 4개 방법 모두 `AP=17.1926% / BM=13.2015% / 초과=3.9910%` 불변 (R 완벽일치 회귀 없음)
+- 4JM12 (2026-01-01~04-16): 4개 방법 모두 `총초과=-0.5523%` 불변
+- **GDX (US92189F1066) 분류 확인 ✅**:
+  - 방법1: 대체 / 방법2: 주식 / **방법3: 대체** / **방법4: 해외주식** / 방법5: NULL
+  - `universe_non_derivative` DB 값과 `compute_single_port_pa` 결과 완전 일치
 
 ## PDCA Status
 
@@ -598,6 +639,7 @@ FX_split=TRUE일 때 증권 수익률에서 환효과 분리:
 - Phase 4.3 완료: DT BM 연동, 기간수익률 DT 일치, 설정후 수익률 보정
 - Phase 4.4 완료: Brinson PA R일치 — 보정인자1, NAST비중, FX오버레이, 잔차0, BM R동일설정
 - Phase 4.5 완료: Brinson v2 — compute_single_port_pa 재활용, 보정인자2 추가, 초과수익률 R 완벽 일치(+0.0003%p)
+- Phase 4.6 완료 (2026-04-22): 자산군 분류 방법 4종 (방법1~4) 지원, 사용자 드롭다운 선택, 펀드별 기본값 자동
 - Phase 5 진행: UI 개선 — BM 미설정 처리, 모펀드 분류 수정, 변동성 추가, 스파크라인 개선
 - 개발일지: `devlog/` 디렉토리 (일별)
 - 디버그 파일: `debug/` 디렉토리 (R/Python PA 검증용)

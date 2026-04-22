@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
 from modules.charts import make_nav, make_bm_nav
-from config.funds import FUND_BM
+from config.funds import FUND_BM, FUND_DEFAULT_MAPPING_METHOD, DEFAULT_MAPPING_METHOD
 
 
 def render(ctx):
@@ -26,18 +26,32 @@ def render(ctx):
 
     st.markdown("")
 
-    # 분석기간
-    bc1, bc2 = st.columns([3, 1])
+    # 분석기간 + 자산군 분류방법 + 5/8분류
+    bc1, bc2, bc3 = st.columns([3, 1, 1])
     with bc1:
-        _ytd_start = datetime(datetime.now().year, 1, 1)
+        _year = datetime.now().year
+        _ytd_start = datetime(_year - 1, 12, 31)
         _inception_str = FUND_META.get(selected_fund, {}).get('inception', '20220101')
         _inception_dt = datetime.strptime(_inception_str, '%Y%m%d')
-        if _inception_dt.year == datetime.now().year:
+        if _inception_dt > _ytd_start:
             _ytd_start = _inception_dt
         _ytd_end = datetime.now() - timedelta(days=1)
         analysis_period = st.date_input("분석기간", value=(_ytd_start, _ytd_end),
                                          key='brinson_period')
     with bc2:
+        _default_mm = FUND_DEFAULT_MAPPING_METHOD.get(selected_fund, DEFAULT_MAPPING_METHOD)
+        _mm_options = ['방법1', '방법2', '방법3', '방법4']
+        _mm_help = ("방법1: 주식/채권/대체/FX/유동성\n"
+                    "방법2: 주식/채권/FX/유동성 (대체→주식)\n"
+                    "방법3: 국내/해외 분리 + 대체\n"
+                    "방법4: 국내/해외 분리 (대체→해외주식)")
+        mapping_method = st.selectbox(
+            "분류 방법", _mm_options,
+            index=_mm_options.index(_default_mm),
+            key='brinson_mapping_method',
+            help=_mm_help,
+        )
+    with bc3:
         pa_method = st.selectbox("자산군 분류", ["8분류", "5분류"], key='pa_method')
 
     pa_fx = st.toggle("FX 분리 (FX를 별도 자산군으로 분리하여 분석)", value=True, key='pa_fx')
@@ -57,7 +71,8 @@ def render(ctx):
         _pa_end = analysis_period[1].strftime('%Y%m%d')
         # 1) Brinson 3-Factor (기존)
         try:
-            _brinson_result = cache['compute_brinson'](selected_fund, _pa_start, _pa_end)
+            _brinson_result = cache['compute_brinson'](selected_fund, _pa_start, _pa_end,
+                                                        mapping_method)
             if _brinson_result and not _brinson_result['pa_df'].empty:
                 _brinson_db = True
             elif _brinson_result is None:
@@ -70,7 +85,7 @@ def render(ctx):
             with concurrent.futures.ThreadPoolExecutor() as pool:
                 future = pool.submit(
                     cache['compute_single_port_pa'],
-                    selected_fund, _pa_start, _pa_end, fx_split=pa_fx, mapping_method='방법3')
+                    selected_fund, _pa_start, _pa_end, fx_split=pa_fx, mapping_method=mapping_method)
                 _single_pa_result = future.result(timeout=15)
             if _single_pa_result is not None:
                 _single_pa_db = True
@@ -82,16 +97,28 @@ def render(ctx):
     if _brinson_db:
         _pa_data = _brinson_result['pa_df']
         if pa_method == "5분류":
-            # 8분류 → 5분류 축소 (FX/모펀드/유동성 → 유동성으로 합산)
-            _pa5 = _pa_data[_pa_data['자산군'].isin(['국내주식','해외주식','국내채권','해외채권','대체투자'])].copy()
-            _other = _pa_data[~_pa_data['자산군'].isin(['국내주식','해외주식','국내채권','해외채권','대체투자'])]
-            _other_row = pd.DataFrame([{
-                '자산군': '기타', 'AP비중': _other['AP비중'].sum(), 'BM비중': _other['BM비중'].sum(),
-                'AP수익률': 0, 'BM수익률': 0,
-                'Allocation': _other['Allocation'].sum(), 'Selection': _other['Selection'].sum(),
-                'Cross': _other['Cross'].sum(), '기여수익률': _other['기여수익률'].sum()
-            }])
-            _pa_data = pd.concat([_pa5, _other_row], ignore_index=True)
+            # 5분류 축소: 주요 자산군 5개 유지 + 나머지 '기타'로 합산
+            # method별로 주요 자산군 정의
+            _core5_by_method = {
+                '방법1': ['주식', '채권', '대체', 'FX'],
+                '방법2': ['주식', '채권', 'FX'],
+                '방법3': ['국내주식', '해외주식', '국내채권', '해외채권', '대체'],
+                '방법4': ['국내주식', '해외주식', '국내채권', '해외채권'],
+            }
+            _core5 = _core5_by_method.get(mapping_method,
+                ['국내주식','해외주식','국내채권','해외채권','대체투자'])
+            _pa5 = _pa_data[_pa_data['자산군'].isin(_core5)].copy()
+            _other = _pa_data[~_pa_data['자산군'].isin(_core5)]
+            if not _other.empty:
+                _other_row = pd.DataFrame([{
+                    '자산군': '기타', 'AP비중': _other['AP비중'].sum(), 'BM비중': _other['BM비중'].sum(),
+                    'AP수익률': 0, 'BM수익률': 0,
+                    'Allocation': _other['Allocation'].sum(), 'Selection': _other['Selection'].sum(),
+                    'Cross': _other['Cross'].sum(), '기여수익률': _other['기여수익률'].sum()
+                }])
+                _pa_data = pd.concat([_pa5, _other_row], ignore_index=True)
+            else:
+                _pa_data = _pa5
 
         if not pa_fx and 'FX' in _pa_data['자산군'].values:
             _pa_data = _pa_data[_pa_data['자산군'] != 'FX']
@@ -242,8 +269,9 @@ def render(ctx):
                 | (_bdf['자산군'] == '유동성및기타')
             ]
 
-            # 행 순서: 국내주식, 국내채권, 해외주식, 해외채권, FX, 유동성및기타
-            _BRINSON_ROW_ORDER = ['국내주식', '국내채권', '해외주식', '해외채권', '대체투자', 'FX', '모펀드', '유동성및기타']
+            # 행 순서: method별 자산군 우선 + fallback 8분류
+            _BRINSON_ROW_ORDER = ['주식', '채권', '국내주식', '국내채권', '해외주식', '해외채권',
+                                    '대체', '대체투자', 'FX', '모펀드', '기타', '유동성', '유동성및기타']
             _order_map = {ac: i for i, ac in enumerate(_BRINSON_ROW_ORDER)}
             _bdf['_sort'] = _bdf['자산군'].map(_order_map).fillna(99)
             _bdf = _bdf.sort_values('_sort').drop(columns='_sort').reset_index(drop=True)

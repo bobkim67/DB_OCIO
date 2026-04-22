@@ -36,7 +36,6 @@ CSV/xlsx 출력은 `.gitignore` 처리 (재생성 가능).
 |------|------|
 | `debug_07g04_structure.py` | 07G04 FoF 구조 (DWPI10011 + DWPM10530 보유종목 분포) |
 | `debug_07g04_duplication.py` | 07G02/07G03 양측 보유 중복 sec_id 확인 |
-| `debug_07g04_v1_vs_v2.py` | compute_brinson_attribution v1 vs v2 |
 | `debug_ba_jungsan_scan.py` | 08K88/07G04/08N81 ETF 환매 후 잔존 보유 종목 스캔 |
 
 ## 레퍼런스 Excel 경로 (버전 관리 외부)

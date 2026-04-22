@@ -18,7 +18,7 @@ from modules.data_loader import (
     load_composite_bm_prices, load_dt_bm_prices, load_mp_weights_8class,
     load_vp_weights_8class, load_vp_nav, load_vp_rebal_date,
     load_all_fund_data, parse_data_blob,
-    compute_brinson_attribution, compute_brinson_attribution_v2, compute_single_port_pa,
+    compute_brinson_attribution_v2, compute_single_port_pa,
     load_macro_timeseries, load_macro_period_returns,
     load_holdings_history_8class,
     _FUND_INCEPTION_BASE,
@@ -105,9 +105,10 @@ def cached_load_vp_rebal_date(fund_desc):
     return load_vp_rebal_date(fund_desc)
 
 @st.cache_data(ttl=600)
-def cached_compute_brinson(fund_code, start_date, end_date):
+def cached_compute_brinson(fund_code, start_date, end_date, mapping_method='방법3'):
     # v2: R 일치 (compute_single_port_pa 재활용 + path-weighted 보정)
-    return compute_brinson_attribution_v2(fund_code, start_date, end_date)
+    return compute_brinson_attribution_v2(fund_code, start_date, end_date,
+                                           mapping_method=mapping_method)
 
 @st.cache_data(ttl=600, show_spinner=False)
 def cached_compute_single_port_pa(fund_code, start_date, end_date, fx_split=True, mapping_method='방법3'):
