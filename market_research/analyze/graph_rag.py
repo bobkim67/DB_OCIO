@@ -134,14 +134,27 @@ def _normalize_node_id(text: str) -> str:
     return text.strip('_')[:60]  # 최대 60자
 
 
-def _ensure_node(nodes: dict, node_id: str, label: str, topic: str, severity: str):
-    """노드가 없으면 추가"""
-    if node_id and node_id not in nodes:
+def _ensure_node(nodes: dict, node_id: str, label: str, topic: str, severity: str,
+                 source_type: str = None):
+    """노드가 없으면 추가. 있으면 source_types 집합에 source_type 을 누적 append.
+
+    Phase 3 (2026-04-22): source_type provenance 는 노드 단위로 set 형태로 쌓고
+    JSON 저장 시 list 로 직렬화된다. seed/inferred 노드는 source_type 인자가 None 으로
+    들어와 목록이 빈 채 남는다 (acceptance 에서 허용).
+    """
+    if not node_id:
+        return
+    if node_id not in nodes:
         nodes[node_id] = {
             'label': label.strip()[:100],
             'topic': topic,
             'severity': severity,
+            'source_types': [],
         }
+    else:
+        nodes[node_id].setdefault('source_types', [])
+    if source_type and source_type not in nodes[node_id]['source_types']:
+        nodes[node_id]['source_types'].append(source_type)
 
 
 def _severity_weight(severity: str) -> float:
@@ -717,6 +730,28 @@ def _stratified_sample(candidates: list[dict]) -> list[dict]:
                 selected.append(a)
                 selected_ids.add(aid)
 
+    # Phase 1.5 (Phase 3 fix-forward 2026-04-22): naver_research 최소 floor 보정
+    # 경계월 (nr 원본 비율이 낮은 달, e.g. 2026-04 ≈ 4%) 에서 nr_sampled_pct 가
+    # acceptance 기준(10%) 을 밑도는 것을 방지하기 위해 sampling 단계에서 nr 최소량을
+    # 확보한다. 전체 cap 은 유지되며, Phase 2 의 salience 상위 채움 로직과 충돌하지 않는다.
+    NR_FLOOR_PCT = 0.10
+    nr_target = max(1, int(cap * NR_FLOOR_PCT))
+    nr_in_selected = sum(1 for a in selected
+                         if a.get('source_type') == 'naver_research')
+    if nr_in_selected < nr_target:
+        nr_pool = sorted(
+            (a for a in candidates
+             if a.get('source_type') == 'naver_research'
+             and a.get('_article_id', id(a)) not in selected_ids),
+            key=lambda x: (-x.get('_event_salience', 0), -x.get('intensity', 0)),
+        )
+        need = nr_target - nr_in_selected
+        for a in nr_pool[:need]:
+            aid = a.get('_article_id', id(a))
+            if aid not in selected_ids:
+                selected.append(a)
+                selected_ids.add(aid)
+
     # Phase 2: 나머지 cap을 salience 상위로 채움
     remaining = cap - len(selected)
     if remaining > 0:
@@ -765,53 +800,78 @@ def build_insight_graph(year: int, month: int, include_news: bool = True) -> dic
     else:
         graph = build_seed_graph()
 
-    # Step 2: 뉴스 기반 엔티티/인과 (선택)
-    if include_news:
-        news_file = NEWS_DIR / f'{month_str}.json'
-        if news_file.exists():
-            data = json.loads(news_file.read_text(encoding='utf-8'))
-            articles = data.get('articles', [])
+    # Phase 3 migration (2026-04-22): 누적 그래프에서 이어받은 legacy 노드/엣지에
+    # source_types / source_type 필드 기본값 주입. 이번 월에서 새로 생성되는 것들과
+    # 섞여도 acceptance 집계를 깨지 않도록 사전 표식을 붙인다.
+    for _n in graph['nodes'].values():
+        _n.setdefault('source_types', [])
+    for _e in graph['edges']:
+        if _e.get('source') in ('news_entity', 'llm_inferred'):
+            _e.setdefault('source_type', None)  # None = legacy_pre_phase3
+    _edges_before = len(graph['edges'])
 
-            # 2-lane: primary + topic-stratified dynamic cap
+    # Step 2: 뉴스 + naver_research 기반 엔티티/인과 (Phase 3, 2026-04-22)
+    nr_sampled = 0
+    news_sampled = 0
+    if include_news:
+        from market_research.analyze.article_stream import (
+            load_month_articles, source_of, stream_stats,
+        )
+        articles = load_month_articles(month_str)
+        if articles:
+            print(f'  stream stats: {stream_stats(articles)}')
+
+            # 2-lane: primary + topic-stratified dynamic cap (both sources)
             primary_articles = [a for a in articles if a.get('is_primary', True)]
             candidates = [a for a in primary_articles if a.get('intensity', 0) >= 5]
             if not candidates:
                 candidates = primary_articles[:200]
             significant = _stratified_sample(candidates)
 
-            print(f'  뉴스 엔티티 추출: {len(significant)}건 (stratified, {len(candidates)} 후보)...')
+            # source_type stats on sampled articles
+            nr_sampled = sum(1 for a in significant if source_of(a) == 'naver_research')
+            news_sampled = len(significant) - nr_sampled
+            print(f'  엔티티 추출: {len(significant)}건 (stratified, {len(candidates)} 후보) '
+                  f'[nr={nr_sampled} / news={news_sampled}]...')
             entity_map = extract_entities_from_news(significant)
             print(f'  엔티티 보유 기사: {len(entity_map)}건')
 
-            # 엔티티 노드 추가 + salience 가중 엣지
+            # 엔티티 노드 추가 + salience 가중 엣지 (source_type provenance 전파)
             for idx, entities in entity_map.items():
+                art = significant[idx] if idx < len(significant) else {}
+                art_source_type = source_of(art) if art else None
                 for ent in entities:
                     ent_id = _normalize_node_id(ent)
-                    _ensure_node(graph['nodes'], ent_id, ent, 'news', 'neutral')
+                    _ensure_node(graph['nodes'], ent_id, ent, 'news', 'neutral',
+                                 source_type=art_source_type)
                     # 기사의 primary_topic과 연결 (salience 가중)
-                    if idx < len(significant):
-                        art = significant[idx]
-                        if art.get('primary_topic'):
-                            topic_id = _normalize_node_id(art['primary_topic'])
-                            salience = art.get('_event_salience', 0.3)
-                            base_weight = 0.3 + salience * 0.4  # 0.3~0.7
-                            if topic_id in graph['nodes']:
-                                graph['edges'].append({
-                                    'from': ent_id, 'to': topic_id,
-                                    'relation': 'mentioned_in',
-                                    'weight': round(base_weight, 3),
-                                    'source': 'news_entity',
-                                })
+                    if art and art.get('primary_topic'):
+                        topic_id = _normalize_node_id(art['primary_topic'])
+                        salience = art.get('_event_salience', 0.3)
+                        base_weight = 0.3 + salience * 0.4  # 0.3~0.7
+                        if topic_id in graph['nodes']:
+                            graph['edges'].append({
+                                'from': ent_id, 'to': topic_id,
+                                'relation': 'mentioned_in',
+                                'weight': round(base_weight, 3),
+                                'source': 'news_entity',
+                                'source_type': art_source_type,
+                            })
 
-            # 인과관계 추론
+            # 인과관계 추론 (source_type: 원본 배치의 지배 source 로 표시)
             if entity_map:
                 print(f'  인과관계 추론...')
                 inferred = infer_causal_edges(entity_map, significant)
+                # 배치 단위로 지배 source_type 판정
+                dominant_st = 'naver_research' if nr_sampled > news_sampled else 'news'
                 for edge in inferred:
-                    _ensure_node(graph['nodes'], edge['from'], edge['from'], 'inferred', 'neutral')
-                    _ensure_node(graph['nodes'], edge['to'], edge['to'], 'inferred', 'neutral')
+                    edge['source_type'] = dominant_st
+                    _ensure_node(graph['nodes'], edge['from'], edge['from'],
+                                 'inferred', 'neutral', source_type=dominant_st)
+                    _ensure_node(graph['nodes'], edge['to'], edge['to'],
+                                 'inferred', 'neutral', source_type=dominant_st)
                 graph['edges'].extend(inferred)
-                print(f'  추론 엣지: {len(inferred)}개')
+                print(f'  추론 엣지: {len(inferred)}개 (dominant_source_type={dominant_st})')
 
             # 중복 제거
             graph['edges'] = _dedup_edges(graph['edges'])
@@ -831,6 +891,24 @@ def build_insight_graph(year: int, month: int, include_news: bool = True) -> dic
     graph['transmission_paths'] = precompute_transmission_paths(graph, quality_log_path=_q_log)
 
     # Step 4: 메타데이터 + 저장
+    # source_type audit: 노드/엣지에서 nr 관여 비율
+    nr_nodes = sum(1 for n in graph['nodes'].values()
+                   if 'naver_research' in (n.get('source_types') or []))
+    ext_nodes_total = sum(1 for n in graph['nodes'].values()
+                          if n.get('source_types'))  # 외부 출처 있는 노드만 집계 대상
+    ext_edges = [e for e in graph['edges']
+                 if e.get('source') in ('news_entity', 'llm_inferred')]
+    ext_edges_with_st = sum(1 for e in ext_edges if e.get('source_type'))
+    nr_edges = sum(1 for e in ext_edges if e.get('source_type') == 'naver_research')
+
+    # 이번 월 신규 추가 ext_edges 만 별도 집계 (legacy 제외 판정용)
+    # prune/dedup 거친 뒤의 길이 변화로 근사: 누적 그래프에서 prune 되거나 dedup 되는 것이
+    # 있기 때문에 완전 정확하지는 않으나, source_type=None 을 'legacy', not None 을 '신규'
+    # 로 구분하는 방식이 더 안정적.
+    ext_edges_new = [e for e in ext_edges if e.get('source_type') is not None]
+    ext_edges_new_with_st = sum(1 for e in ext_edges_new if e.get('source_type'))
+    nr_edges_new = sum(1 for e in ext_edges_new if e.get('source_type') == 'naver_research')
+
     graph['metadata'] = {
         'month': month_str,
         'built_at': time.strftime('%Y-%m-%dT%H:%M:%S'),
@@ -839,6 +917,34 @@ def build_insight_graph(year: int, month: int, include_news: bool = True) -> dic
         'path_count': len(graph['transmission_paths']),
         'seed_edges': sum(1 for e in graph['edges'] if e.get('source') in ('engine_rule', 'worldview', 'indicator_map')),
         'llm_edges': sum(1 for e in graph['edges'] if e.get('source') == 'llm_inferred'),
+        # Phase 3 (2026-04-22): source_type provenance
+        # ext_edges_total/coverage_pct 는 누적 (legacy 포함) 집계
+        # ext_edges_new_* 는 이번 월(Phase 3 이후) 생성된 것만 대상 — acceptance 판정용
+        'source_type_stats': {
+            'nr_articles_sampled': nr_sampled,
+            'news_articles_sampled': news_sampled,
+            'nr_sampled_pct': (round(nr_sampled / (nr_sampled + news_sampled) * 100, 1)
+                               if (nr_sampled + news_sampled) > 0 else 0.0),
+            'nodes_with_source_type': ext_nodes_total,
+            'nr_nodes': nr_nodes,
+            'ext_edges_total': len(ext_edges),
+            'ext_edges_with_source_type': ext_edges_with_st,
+            'ext_edge_source_type_coverage_pct': (
+                round(ext_edges_with_st / len(ext_edges) * 100, 1)
+                if ext_edges else 0.0),
+            'nr_edges': nr_edges,
+            # 신규 분만 대상 — acceptance 기준
+            'ext_edges_new': len(ext_edges_new),
+            'ext_edges_new_with_source_type': ext_edges_new_with_st,
+            'ext_edges_new_coverage_pct': (
+                round(ext_edges_new_with_st / len(ext_edges_new) * 100, 1)
+                if ext_edges_new else 0.0),
+            'nr_edges_new': nr_edges_new,
+            'legacy_ext_edges_inherited': _edges_before and sum(
+                1 for e in graph['edges']
+                if e.get('source') in ('news_entity', 'llm_inferred')
+                and e.get('source_type') is None),
+        },
     }
 
     out_file = GRAPH_DIR / f'{month_str}.json'
@@ -880,18 +986,28 @@ def add_incremental_edges(year: int, month: int, new_articles: list[dict]) -> di
     if not primary_new:
         return graph
 
+    # Phase 3 (2026-04-22): source_type provenance 전파 (incremental 경로)
+    from market_research.analyze.article_stream import source_of
     entity_map = extract_entities_from_news(primary_new)
+    nr_n = sum(1 for a in primary_new if source_of(a) == 'naver_research')
+    news_n = len(primary_new) - nr_n
+    dominant_st = 'naver_research' if nr_n > news_n else 'news'
     for idx, entities in entity_map.items():
+        art = primary_new[idx] if idx < len(primary_new) else {}
+        art_st = source_of(art) if art else None
         for ent in entities:
             ent_id = _normalize_node_id(ent)
-            _ensure_node(graph['nodes'], ent_id, ent, 'news_daily', 'neutral')
+            _ensure_node(graph['nodes'], ent_id, ent, 'news_daily', 'neutral',
+                         source_type=art_st)
 
     if entity_map:
         inferred = infer_causal_edges(entity_map, primary_new)
-        # salience 기반 엣지 가중치 부스트
         for edge in inferred:
-            _ensure_node(graph['nodes'], edge['from'], edge['from'], 'inferred', 'neutral')
-            _ensure_node(graph['nodes'], edge['to'], edge['to'], 'inferred', 'neutral')
+            edge['source_type'] = dominant_st
+            _ensure_node(graph['nodes'], edge['from'], edge['from'],
+                         'inferred', 'neutral', source_type=dominant_st)
+            _ensure_node(graph['nodes'], edge['to'], edge['to'],
+                         'inferred', 'neutral', source_type=dominant_st)
         graph['edges'].extend(inferred)
         graph['edges'] = _dedup_edges(graph['edges'])
 

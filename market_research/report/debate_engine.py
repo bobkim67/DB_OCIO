@@ -157,6 +157,374 @@ def _parse_json_response(text: str):
 
 
 # ===================================================================
+# Source-aware evidence selection (2026-04-22)
+# research=primary lane / news=corroboration lane
+# ===================================================================
+
+RESEARCH_QUOTA = 0.7    # research 목표 비율 (나머지 = news quota)
+MAX_PER_TOPIC = 5
+MAX_PER_EVENT = 2
+LATEST_SLOT = 2         # 당일 TIER1/2 news 전용 슬롯 (news quota 내)
+
+# news corroboration lane 필터: primary_topic 명시 리스트
+# 부동산/크립토는 기본 제외
+NEWS_CLEAR_TOPICS = frozenset({
+    '통화정책', '금리_채권', '물가_인플레이션', '경기_소비',
+    '유동성_크레딧', '환율_FX', '달러_글로벌유동성',
+    '에너지_원자재', '귀금속_금',
+    '지정학', '관세_무역', '테크_AI_반도체',
+})
+
+_TIER1_NEWS_SOURCES = frozenset({
+    'Reuters', 'Bloomberg', 'AP', 'Financial Times', 'WSJ',
+    'CNBC', 'MarketWatch', '연합뉴스', '연합뉴스TV', '뉴시스', '뉴스1',
+})
+_TIER2_NEWS_PARTIAL = frozenset({
+    '헤럴드경제', '매일경제', '한경', '서울경제',
+    '머니투데이', '이데일리', 'SBS',
+})
+
+
+def _is_news_tier12(article: dict) -> bool:
+    src = article.get('source', '') or ''
+    if src in _TIER1_NEWS_SOURCES:
+        return True
+    return any(t2 in src for t2 in _TIER2_NEWS_PARTIAL)
+
+
+def _news_passes_corroboration(article: dict) -> bool:
+    """news 후보 필터: TIER1/2 AND (bm_anomaly OR cross>=3 OR primary_topic 명시리스트)."""
+    if not _is_news_tier12(article):
+        return False
+    if article.get('_bm_overlap'):
+        return True
+    if int(article.get('_event_source_count', 0) or 0) >= 3:
+        return True
+    return article.get('primary_topic', '') in NEWS_CLEAR_TOPICS
+
+
+def _load_bew_contract(year: int, month: int) -> dict | None:
+    """BEW visualization contract 로드. 없거나 깨졌으면 None.
+
+    fallback 경로: 기존 quota lane으로 직행.
+    """
+    fp = BASE_DIR / 'data' / 'benchmark_events' / f'{year}-{month:02d}.json'
+    if not fp.exists():
+        return None
+    try:
+        c = json.loads(fp.read_text(encoding='utf-8'))
+    except Exception:
+        return None
+    if not isinstance(c, dict) or not c.get('windows') or not c.get('evidence_cards'):
+        return None
+    return c
+
+
+def _build_evidence_candidates(year: int, month: int, target_count: int,
+                               start_idx: int) -> tuple[list, list, list, dict]:
+    """source-aware evidence 선발.
+
+    우선순위 (2026-04-22 v2):
+      1) BEW (Benchmark Event Window) contract 가 있으면 confidence 상위 window 순으로
+         evidence 를 먼저 채움 (각 evidence 는 article_id 로 nr/news pool 에서 lookup).
+      2) BEW 가 없거나 부족하면 기존 quota lane (research/news + 당일 TIER1/2 slot)으로 보충.
+      3) topic/event guardrail (MAX_PER_TOPIC=5, MAX_PER_EVENT=2) 은 전체 합산 기준 유지.
+      4) 총량은 target_count 고정 — BEW 경로가 있어도 늘리지 않음.
+
+    Returns:
+        (high_impact, evidence_ids, card_lines, debug)
+        - card_lines는 "주요 뉴스 ..." 헤더부터의 렌더 라인들
+        - debug: 기존 키(research_picked/news_picked/...) 전부 유지 + bew_* 키 추가
+    """
+    from datetime import date as _date
+
+    # ── Lane A: research primary (is_primary + classified + TIER1/2) ──
+    research_pool: list[dict] = []
+    try:
+        from market_research.collect.naver_research_adapter import load_adapted
+        adapted = load_adapted(f'{year}-{month:02d}')
+        for a in adapted:
+            if not a.get('_classified_topics'):
+                continue
+            if not a.get('is_primary', True):
+                continue
+            band = a.get('_research_quality_band', '')
+            if band not in ('TIER1', 'TIER2'):
+                continue
+            research_pool.append(a)
+    except Exception:
+        research_pool = []
+    research_pool.sort(key=lambda x: -float(x.get('_event_salience', 0) or 0))
+
+    # ── Lane B: news corroboration (primary + intensity>=6 + filter) ──
+    news_pool: list[dict] = []
+    news_file = BASE_DIR / 'data' / 'news' / f'{year}-{month:02d}.json'
+    if news_file.exists():
+        data = json.loads(news_file.read_text(encoding='utf-8'))
+        for a in data.get('articles', []):
+            if not a.get('_classified_topics'):
+                continue
+            if not a.get('is_primary', True):
+                continue
+            if int(a.get('intensity', 0) or 0) < 6:
+                continue
+            if not _news_passes_corroboration(a):
+                continue
+            news_pool.append(a)
+    news_pool.sort(
+        key=lambda x: (-float(x.get('_event_salience', 0) or 0),
+                       -int(x.get('intensity', 0) or 0)),
+    )
+
+    # ── Quota 산정 ──
+    research_quota = int(round(target_count * RESEARCH_QUOTA))
+    news_quota = target_count - research_quota
+
+    high_impact: list[dict] = []
+    topic_count: dict[str, int] = {}
+    event_count: dict[str, int] = {}
+    picked_ids: set[str] = set()
+    research_taken_via_bew = 0
+    news_taken_via_bew = 0
+    bew_windows_consumed: set[str] = set()
+
+    def _guardrails_ok(a: dict) -> bool:
+        topic = a.get('primary_topic', '')
+        egid = a.get('_event_group_id', '') or ''
+        if topic and topic_count.get(topic, 0) >= MAX_PER_TOPIC:
+            return False
+        if egid and event_count.get(egid, 0) >= MAX_PER_EVENT:
+            return False
+        return True
+
+    def _commit(a: dict):
+        high_impact.append(a)
+        aid = a.get('_article_id', '') or ''
+        if aid:
+            picked_ids.add(aid)
+        topic = a.get('primary_topic', '')
+        if topic:
+            topic_count[topic] = topic_count.get(topic, 0) + 1
+        egid = a.get('_event_group_id', '') or ''
+        if egid:
+            event_count[egid] = event_count.get(egid, 0) + 1
+
+    # ── (BEW) contract 로드 — source-lane 내부 우선순위로만 사용 (option A v2) ──
+    bew = _load_bew_contract(year, month)
+    bew_used = bew is not None
+    bew_pool_size = 0
+    bew_nr_ordered: list[dict] = []
+    bew_news_ordered: list[dict] = []
+    bew_window_of_aid: dict[str, str] = {}
+    if bew_used:
+        nr_index = {a.get('_article_id', ''): a for a in research_pool if a.get('_article_id')}
+        news_index = {a.get('_article_id', ''): a for a in news_pool if a.get('_article_id')}
+        windows_sorted = sorted(
+            bew.get('windows', []),
+            key=lambda w: (-float(w.get('confidence', 0) or 0),
+                           -abs(float(w.get('zscore', 0) or 0))),
+        )
+        wid_order = {w.get('window_id', ''): i for i, w in enumerate(windows_sorted)}
+        cards_by_window: dict[str, list] = {}
+        for c in bew.get('evidence_cards', []):
+            cards_by_window.setdefault(c.get('window_id', ''), []).append(c)
+        bew_pool_size = sum(len(v) for v in cards_by_window.values())
+
+        # window 순회로 source별 ordered queue 생성 (dedupe)
+        seen_nr: set[str] = set()
+        seen_news: set[str] = set()
+        for w in windows_sorted:
+            wid = w.get('window_id', '')
+            for card in cards_by_window.get(wid, []):
+                aid = card.get('evidence_id', '')
+                if not aid:
+                    continue
+                src_type = card.get('source_type', '')
+                if src_type == 'naver_research':
+                    if aid in seen_nr:
+                        continue
+                    article = nr_index.get(aid)
+                    if article is None:
+                        continue
+                    seen_nr.add(aid)
+                    bew_nr_ordered.append(article)
+                    bew_window_of_aid.setdefault(aid, wid)
+                else:
+                    if aid in seen_news:
+                        continue
+                    article = news_index.get(aid)
+                    if article is None:
+                        continue
+                    seen_news.add(aid)
+                    bew_news_ordered.append(article)
+                    bew_window_of_aid.setdefault(aid, wid)
+
+    def _commit_bew_aware(a: dict, lane: str):
+        """commit + bew 출처면 lane별 카운터 증가."""
+        _commit(a)
+        aid = a.get('_article_id', '') or ''
+        wid = bew_window_of_aid.get(aid)
+        if wid is not None:
+            bew_windows_consumed.add(wid)
+            if lane == 'research':
+                nonlocal_research_via_bew[0] += 1
+            else:
+                nonlocal_news_via_bew[0] += 1
+
+    # nonlocal 우회 (Python 2-style)
+    nonlocal_research_via_bew = [0]
+    nonlocal_news_via_bew = [0]
+
+    # (a) news quota 내 당일 TIER1/2 slot 우선 (기존 동작 유지)
+    today_str = _date.today().isoformat()
+    latest_news = [a for a in news_pool if a.get('date', '') == today_str]
+    news_taken = 0
+    slot_cap = min(LATEST_SLOT, news_quota)
+    for a in latest_news:
+        if len(high_impact) >= target_count or news_taken >= slot_cap:
+            break
+        if a.get('_article_id', '') in picked_ids:
+            continue
+        if not _guardrails_ok(a):
+            continue
+        _commit_bew_aware(a, 'news')
+        news_taken += 1
+
+    # (b) research lane: BEW(nr) 우선 → 기존 research_pool 보충
+    research_taken = 0
+    for a in bew_nr_ordered:
+        if len(high_impact) >= target_count or research_taken >= research_quota:
+            break
+        if a.get('_article_id', '') in picked_ids:
+            continue
+        if not _guardrails_ok(a):
+            continue
+        _commit_bew_aware(a, 'research')
+        research_taken += 1
+    for a in research_pool:
+        if len(high_impact) >= target_count or research_taken >= research_quota:
+            break
+        if a.get('_article_id', '') in picked_ids:
+            continue
+        if not _guardrails_ok(a):
+            continue
+        _commit_bew_aware(a, 'research')
+        research_taken += 1
+
+    # (c) news lane: BEW(news) 우선 → 기존 news_pool 보충
+    for a in bew_news_ordered:
+        if len(high_impact) >= target_count or news_taken >= news_quota:
+            break
+        if a.get('_article_id', '') in picked_ids:
+            continue
+        if not _guardrails_ok(a):
+            continue
+        _commit_bew_aware(a, 'news')
+        news_taken += 1
+    for a in news_pool:
+        if len(high_impact) >= target_count or news_taken >= news_quota:
+            break
+        if a.get('_article_id', '') in picked_ids:
+            continue
+        if not _guardrails_ok(a):
+            continue
+        _commit_bew_aware(a, 'news')
+        news_taken += 1
+
+    research_taken_via_bew = nonlocal_research_via_bew[0]
+    news_taken_via_bew = nonlocal_news_via_bew[0]
+
+    # (d) 총량 미달 시 상대 lane으로 흡수 (BEW 동일 lane 큐 우선 → 풀 보충)
+    if len(high_impact) < target_count:
+        for a in bew_nr_ordered:
+            if len(high_impact) >= target_count:
+                break
+            if a.get('_article_id', '') in picked_ids:
+                continue
+            if not _guardrails_ok(a):
+                continue
+            _commit_bew_aware(a, 'research')
+            research_taken += 1
+        for a in research_pool:
+            if len(high_impact) >= target_count:
+                break
+            if a.get('_article_id', '') in picked_ids:
+                continue
+            if not _guardrails_ok(a):
+                continue
+            _commit_bew_aware(a, 'research')
+            research_taken += 1
+    if len(high_impact) < target_count:
+        for a in bew_news_ordered:
+            if len(high_impact) >= target_count:
+                break
+            if a.get('_article_id', '') in picked_ids:
+                continue
+            if not _guardrails_ok(a):
+                continue
+            _commit_bew_aware(a, 'news')
+            news_taken += 1
+        for a in news_pool:
+            if len(high_impact) >= target_count:
+                break
+            if a.get('_article_id', '') in picked_ids:
+                continue
+            if not _guardrails_ok(a):
+                continue
+            _commit_bew_aware(a, 'news')
+            news_taken += 1
+
+    research_taken_via_bew = nonlocal_research_via_bew[0]
+    news_taken_via_bew = nonlocal_news_via_bew[0]
+
+    # ── card 렌더 + evidence_ids ──
+    evidence_ids: list[str] = []
+    card_lines: list[str] = []
+    if high_impact:
+        n_topics = len({a.get('primary_topic', '') for a in high_impact})
+        nr_n = sum(1 for a in high_impact if a.get('source_type') == 'naver_research')
+        news_n = len(high_impact) - nr_n
+        card_lines.append(
+            f'\n주요 뉴스 ({len(high_impact)}건, {n_topics}개 토픽, '
+            f'source-aware quota: nr {nr_n} / news {news_n}):'
+        )
+        for idx, a in enumerate(high_impact, start_idx):
+            aid = a.get('_article_id', '') or ''
+            topic = a.get('primary_topic', '')
+            src = a.get('source', '')
+            dt = a.get('date', '')
+            title = (a.get('title', '') or '')[:80]
+            desc = (a.get('description', '') or '')[:120]
+            tag = '[nr]' if a.get('source_type') == 'naver_research' else '[news]'
+            card = f'  [ref:{idx}] {tag} {topic} | {dt[:7]} | {src} | {title}'
+            if desc:
+                card += f'\n    핵심: {desc}'
+            card_lines.append(card)
+            if aid:
+                evidence_ids.append(aid)
+
+    debug = {
+        'target_count': target_count,
+        'research_quota': research_quota,
+        'news_quota': news_quota,
+        'research_pool_size': len(research_pool),
+        'news_pool_size': len(news_pool),
+        'research_picked': research_taken,
+        'news_picked': news_taken,
+        'total_picked': len(high_impact),
+        # BEW 우선 채움 추가 통계 (monitor 호환 — 신규 키만 추가)
+        'bew_used': bew_used,
+        'bew_pool_size': bew_pool_size,
+        'bew_picked': research_taken_via_bew + news_taken_via_bew,
+        'bew_windows_consumed': len(bew_windows_consumed),
+        'bew_research_picked': research_taken_via_bew,
+        'bew_news_picked': news_taken_via_bew,
+    }
+    _log('evidence_selection', month=f'{year}-{month:02d}', **debug)
+    return high_impact, evidence_ids, card_lines, debug
+
+
+# ===================================================================
 # 컨텍스트 빌더
 # ===================================================================
 
@@ -201,81 +569,12 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
         for topic, count in topic_counts.most_common(10):
             lines.append(f'  {topic}: {count}건')
 
-        # 주요 뉴스: diversity guardrail (토픽별 상한 5건, event_group 상한 2건)
-        # + 당일 기사 슬롯 (TIER1 매체 최대 2건 보장)
-        from datetime import date as _date
-        today_str = _date.today().isoformat()
-
-        candidates = sorted(
-            [a for a in primary_classified if a.get('intensity', 0) >= 6],
-            key=lambda x: (-x.get('_event_salience', 0), -x.get('intensity', 0)),
-        )
-        high_impact = []
-        topic_count = {}   # topic → 선발 수
-        event_count = {}   # event_group_id → 선발 수
-        MAX_PER_TOPIC = 5
-        MAX_PER_EVENT = 2
-        TARGET = target_count
-        LATEST_SLOT = 2    # 당일 기사 전용 슬롯
-
-        # Phase 1: 당일 TIER1/TIER2 기사 우선 배정
-        _tier1_sources = {'Reuters', 'Bloomberg', 'AP', 'Financial Times', 'WSJ',
-                          'CNBC', 'MarketWatch', '연합뉴스', '연합뉴스TV', '뉴시스', '뉴스1'}
-        _tier2_partial = {'헤럴드경제', '매일경제', '한경', '서울경제', '머니투데이', '이데일리', 'SBS'}
-        latest_candidates = sorted(
-            [a for a in candidates if a.get('date', '') == today_str],
-            key=lambda x: (-x.get('_event_salience', 0)),
-        )
-        latest_added_ids = set()
-        for a in latest_candidates:
-            if len(high_impact) >= LATEST_SLOT:
-                break
-            src = a.get('source', '')
-            is_authoritative = src in _tier1_sources or any(t2 in src for t2 in _tier2_partial)
-            if not is_authoritative:
-                continue
-            high_impact.append(a)
-            latest_added_ids.add(a.get('_article_id', ''))
-            topic = a.get('primary_topic', '')
-            topic_count[topic] = topic_count.get(topic, 0) + 1
-            egid = a.get('_event_group_id', '')
-            if egid:
-                event_count[egid] = event_count.get(egid, 0) + 1
-
-        # Phase 2: 나머지 salience 순 (기존 로직)
-        for a in candidates:
-            if len(high_impact) >= TARGET:
-                break
-            if a.get('_article_id', '') in latest_added_ids:
-                continue
-            topic = a.get('primary_topic', '')
-            egid = a.get('_event_group_id', '')
-            if topic_count.get(topic, 0) >= MAX_PER_TOPIC:
-                continue
-            if egid and event_count.get(egid, 0) >= MAX_PER_EVENT:
-                continue
-            high_impact.append(a)
-            topic_count[topic] = topic_count.get(topic, 0) + 1
-            if egid:
-                event_count[egid] = event_count.get(egid, 0) + 1
-
+        # 주요 뉴스: source-aware two-lane selection (research 70% / news 30%)
+        high_impact, lane_evidence_ids, card_lines, _sel_debug = \
+            _build_evidence_candidates(year, month, target_count, start_idx)
+        lines.extend(card_lines)
+        evidence_ids.extend(lane_evidence_ids)
         if high_impact:
-            n_topics = len(set(a.get('primary_topic', '') for a in high_impact))
-            lines.append(f'\n주요 뉴스 ({len(high_impact)}건, {n_topics}개 토픽, diversity 적용):')
-            for idx, a in enumerate(high_impact, start_idx):
-                aid = a.get('_article_id', '')
-                topic = a.get('primary_topic', '')
-                src = a.get('source', '')
-                dt = a.get('date', '')
-                title = a.get('title', '')[:80]
-                desc = a.get('description', '')[:120]
-                # evidence card: ref | 토픽 | 월 | 매체 | 제목 | 핵심 사실
-                card = f'  [ref:{idx}] {topic} | {dt[:7]} | {src} | {title}'
-                if desc:
-                    card += f'\n    핵심: {desc}'
-                lines.append(card)
-                if aid:
-                    evidence_ids.append(aid)
             context['_next_idx'] = start_idx + len(high_impact)
 
         # 자산군별 영향 집계 (asset_impact_vector 합산)

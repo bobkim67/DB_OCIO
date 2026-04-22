@@ -318,5 +318,96 @@
       "prompt_preview": "4명의 분석가 의견을 분석하여 합의점과 쟁점을 추출하세요.\n\n## 분석가별 의견\n[낙관론자] 스탠스: bullish\n  핵심: 이란 분쟁 속 유가 급등(110달러 돌파)은 에너지 인프라 투자 가속화 신호: Exxon-QatarEnergy 대형 플랜트 가동 임박으로 공급 정상화 경로 명확; 3월 30-31일 S&P500 +2.5%(z=2.2), 성장주 +3.4% 반등은 시장 자정 능력 입증: 과매도 구간에서 기술주 강세로 회복 전환 시작; ARM 16% 급등(신규 칩 수익 기대), 테크AI 반도체 섹터 뉴스 1954건으로 성장 모멘텀 유지: 위기 속 혁신 수혜주 부상\n  리스크: 이란 직접 대화 거부(25일 CNBC)로 단기 지정학 긴장 지속, 유가 변동성 확대(원유 -3743.62점), 경기 약화 우려(Mark Zandi 경고, 경기침체 확률 50% 근처). 다만 Fed의 선제적 정책 대응, 석유 공급망 다각화, 신흥시장 채권 안정성으로 하방 충격 제한 가능.\n  자산배분: {\"국내",
       "response_preview": "```json\n{\"consensus_points\":[\"이란-미국 지정학 리스크가 유가 110달러 돌파를 촉발하며 글로벌 자산시장의 핵심 변수로 부상했다는 점에 4인 모두 동의\",\"유가 급등→인플레이션 재점화→Fed 정책 딜레마의 연쇄 전이 경로가 활성화되고 있으며, 스태그플레이션 리스크가 무시할 수 없는 수준이라는 점에 공감\",\"프라이빗 크레딧 펀드 환매 압력이 신용시장 유동성 경색의 초기 신호이며, 경기침체 확률 50% 경고와 결합 시 하방 리스크가 확대된다는 점을 4인 모두 리스크 요인으로 인식\"],\"disagreements\":[{\"topic\":\"시장 회복력 및 자정 능력 평가\",\"bull\":\"3월 말 S&P500 +2.5% 반등과 기술주 강세는 시장의 자정 능력을 입증하며 과매도 구간에서 회복 전환이 시작됨\",\"bear\":\"S&P500 -4.5%, KOSPI -5.1% 동시 낙으로 리스크 자산 광범위 조정이 진행 중이며 회복력이 약화되고 있음\",\"quant\":\"실제 펀더멘탈은 "
     }
+  ],
+  "_quota_dryruns": [
+    {
+      "event": "evidence_selection",
+      "mode": "dryrun",
+      "ran_at": "2026-04-22T13:27:03",
+      "month": "2026-03",
+      "target_count": 15,
+      "research_quota": 10,
+      "news_quota": 5,
+      "research_pool_size": 1289,
+      "news_pool_size": 2643,
+      "research_picked": 10,
+      "news_picked": 5,
+      "total_picked": 15,
+      "nr_picked_verify": 10,
+      "news_picked_verify": 5,
+      "topics_picked": [
+        "관세_무역",
+        "에너지_원자재",
+        "지정학",
+        "테크_AI_반도체",
+        "통화정책",
+        "환율_FX"
+      ],
+      "evidence_ids_count": 15
+    },
+    {
+      "event": "evidence_selection",
+      "mode": "dryrun",
+      "ran_at": "2026-04-22T14:10:14",
+      "month": "2026-03",
+      "target_count": 15,
+      "research_quota": 10,
+      "news_quota": 5,
+      "research_pool_size": 1289,
+      "news_pool_size": 2643,
+      "research_picked": 8,
+      "news_picked": 7,
+      "total_picked": 15,
+      "bew_used": true,
+      "bew_pool_size": 104,
+      "bew_picked": 15,
+      "bew_windows_consumed": 5,
+      "bew_research_picked": 8,
+      "bew_news_picked": 7,
+      "nr_picked_verify": 8,
+      "news_picked_verify": 7,
+      "topics_picked": [
+        "경기_소비",
+        "금리_채권",
+        "에너지_원자재",
+        "지정학",
+        "테크_AI_반도체",
+        "통화정책",
+        "환율_FX"
+      ],
+      "evidence_ids_count": 15
+    },
+    {
+      "event": "evidence_selection",
+      "mode": "dryrun",
+      "ran_at": "2026-04-22T14:16:30",
+      "month": "2026-03",
+      "target_count": 15,
+      "research_quota": 10,
+      "news_quota": 5,
+      "research_pool_size": 1289,
+      "news_pool_size": 2643,
+      "research_picked": 10,
+      "news_picked": 5,
+      "total_picked": 15,
+      "bew_used": true,
+      "bew_pool_size": 104,
+      "bew_picked": 15,
+      "bew_windows_consumed": 5,
+      "bew_research_picked": 10,
+      "bew_news_picked": 5,
+      "nr_picked_verify": 10,
+      "news_picked_verify": 5,
+      "topics_picked": [
+        "경기_소비",
+        "금리_채권",
+        "에너지_원자재",
+        "지정학",
+        "테크_AI_반도체",
+        "통화정책",
+        "환율_FX"
+      ],
+      "evidence_ids_count": 15
+    }
   ]
 }

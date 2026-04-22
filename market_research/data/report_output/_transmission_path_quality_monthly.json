@@ -1,24 +1,84 @@
 [
   {
+    "month": "2026-02",
+    "phase": "P1",
+    "promoted_to_canonical": false,
+    "total_paths": 4,
+    "unique_triggers": 3,
+    "unique_targets": 3,
+    "trigger_coverage": 0.333,
+    "target_coverage": 0.429,
+    "unmatched_triggers": [
+      "달러_글로벌유동성",
+      "물가_인플레이션",
+      "에너지_원자재",
+      "유동성_크레딧",
+      "지정학",
+      "테크_AI_반도체"
+    ],
+    "unmatched_targets": [
+      "금",
+      "유가",
+      "해외주식",
+      "해외채권"
+    ],
+    "avg_confidence": 0.342,
+    "node_count": 246,
+    "edge_count": 231,
+    "generated_at": "2026-04-22T12:59:35"
+  },
+  {
+    "month": "2026-03",
+    "phase": "P1",
+    "promoted_to_canonical": false,
+    "total_paths": 11,
+    "unique_triggers": 4,
+    "unique_targets": 5,
+    "trigger_coverage": 0.444,
+    "target_coverage": 0.556,
+    "unmatched_triggers": [
+      "경기_소비",
+      "관세_무역",
+      "달러_글로벌유동성",
+      "유동성_크레딧",
+      "테크_AI_반도체"
+    ],
+    "unmatched_targets": [
+      "금",
+      "크립토",
+      "해외주식",
+      "해외채권"
+    ],
+    "avg_confidence": 0.642,
+    "node_count": 258,
+    "edge_count": 233,
+    "generated_at": "2026-04-22T13:05:53"
+  },
+  {
     "month": "2026-04",
     "phase": "P1",
     "promoted_to_canonical": false,
-    "total_paths": 5,
+    "total_paths": 7,
     "unique_triggers": 4,
-    "unique_targets": 2,
-    "trigger_coverage": 0.8,
-    "target_coverage": 0.4,
+    "unique_targets": 5,
+    "trigger_coverage": 0.444,
+    "target_coverage": 0.556,
     "unmatched_triggers": [
-      "에너지_원자재"
+      "경기_소비",
+      "관세_무역",
+      "달러_글로벌유동성",
+      "유동성_크레딧",
+      "테크_AI_반도체"
     ],
     "unmatched_targets": [
-      "금리",
+      "국내채권",
+      "금",
       "해외주식",
-      "환율"
+      "해외채권"
     ],
-    "avg_confidence": 0.736,
-    "node_count": 274,
-    "edge_count": 252,
-    "generated_at": "2026-04-21T09:52:10"
+    "avg_confidence": 0.455,
+    "node_count": 263,
+    "edge_count": 241,
+    "generated_at": "2026-04-22T13:14:23"
   }
 ]

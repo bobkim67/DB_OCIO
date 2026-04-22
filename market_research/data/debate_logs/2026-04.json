@@ -268,5 +268,90 @@
       "prompt_preview": "4명의 분석가 의견을 분석하여 합의점과 쟁점을 추출하세요.\n\n## 분석가별 의견\n[낙관론자] 스탠스: bullish\n  핵심: 미·이란 2주 휴전 합의로 지정학 리스크 급격히 완화: 유가 19% 폭락(WTI 91.64달러), 코스피 5.99% 급등, 외국인 자금 복귀 시작; 반도체 슈퍼 사이클 견고: 삼성전자 '슈퍼 어닝 서프라이즈'로 코스피 시총 비중 6년 최고, AI 데이터센터 수요 지속, HBM 판매 확대; 위기 속 자산가격 재평가: KOSPI +23.2%(월간), 미국성장주 +11.2%, 신흥국채권 +3.0%, 환율 하락(원달러 -3.7%) 수출주 수익성 개선\n  리스크: 단기 유가 변동성 지속(호르무즈 해협 긴장, 사우디 공급 제약으로 프리미엄 사상 최고), 독일 성장 전망 반토막(0.5%)으로 글로벌 경기 부문 약화 우려, 부동산 심화(분양지수 3년 최저, 금리 상단 7%+), 전쟁 재개 시 유가 재급등 가능성\n  자산배분: {\"국내주식\": \"비중확대\", \"국내채권\": \"",
       "response_preview": "```json\n{\"consensus_points\":[\"미·이란 2주 휴전은 일시적 지정학 리스크 완화에 불과하며, 호르무즈 해협 봉쇄 위협과 휴전 결렬 가능성이 최대 불확실성으로 상존한다는 점에 4인 모두 동의\",\"사우디 원유 프리미엄 사상 최고(아시아향 24~30달러), IEA의 1970년대 오일쇼크 초과 경고 등 에너지 공급 구조의 취약성이 인플레이션 재점화 리스크를 내포한다는 점에 공감\",\"독일 성장률 전망 반토막(0.5%), 한국 부동산 분양전망지수 3년 최저, Fed 양방향 금리 시나리오 등 글로벌 실물경제와 정책 불확실성이 높아 단기 랠리의 지속 가능성에 대해 전원이 경계감을 표시\"],\"disagreements\":[{\"topic\":\"휴전 이후 시장 랠리의 성격과 지속성\",\"bull\":\"지정학 리스크 급감이 유가 급락→주가 급등의 선순환을 형성, 외국인 복귀와 반도체 슈퍼사이클이 추세적 상승을 뒷받침\",\"bear\":\"코스피 +23%, 미국성장주 +11%는 구조적 문제 미해결"
     }
+  ],
+  "_quota_dryruns": [
+    {
+      "event": "evidence_selection",
+      "mode": "dryrun",
+      "ran_at": "2026-04-22T13:27:03",
+      "month": "2026-04",
+      "target_count": 15,
+      "research_quota": 10,
+      "news_quota": 5,
+      "research_pool_size": 884,
+      "news_pool_size": 1581,
+      "research_picked": 10,
+      "news_picked": 5,
+      "total_picked": 15,
+      "nr_picked_verify": 10,
+      "news_picked_verify": 5,
+      "topics_picked": [
+        "경기_소비",
+        "금리_채권",
+        "에너지_원자재",
+        "지정학",
+        "테크_AI_반도체",
+        "통화정책"
+      ],
+      "evidence_ids_count": 15
+    },
+    {
+      "event": "evidence_selection",
+      "mode": "dryrun",
+      "ran_at": "2026-04-22T14:10:14",
+      "month": "2026-04",
+      "target_count": 15,
+      "research_quota": 10,
+      "news_quota": 5,
+      "research_pool_size": 884,
+      "news_pool_size": 1581,
+      "research_picked": 10,
+      "news_picked": 5,
+      "total_picked": 15,
+      "bew_used": true,
+      "bew_pool_size": 40,
+      "bew_picked": 13,
+      "bew_windows_consumed": 3,
+      "bew_research_picked": 8,
+      "bew_news_picked": 5,
+      "nr_picked_verify": 10,
+      "news_picked_verify": 5,
+      "topics_picked": [
+        "경기_소비",
+        "지정학",
+        "테크_AI_반도체",
+        "통화정책"
+      ],
+      "evidence_ids_count": 15
+    },
+    {
+      "event": "evidence_selection",
+      "mode": "dryrun",
+      "ran_at": "2026-04-22T14:16:30",
+      "month": "2026-04",
+      "target_count": 15,
+      "research_quota": 10,
+      "news_quota": 5,
+      "research_pool_size": 884,
+      "news_pool_size": 1581,
+      "research_picked": 10,
+      "news_picked": 5,
+      "total_picked": 15,
+      "bew_used": true,
+      "bew_pool_size": 40,
+      "bew_picked": 15,
+      "bew_windows_consumed": 4,
+      "bew_research_picked": 10,
+      "bew_news_picked": 5,
+      "nr_picked_verify": 10,
+      "news_picked_verify": 5,
+      "topics_picked": [
+        "에너지_원자재",
+        "지정학",
+        "테크_AI_반도체",
+        "통화정책"
+      ],
+      "evidence_ids_count": 15
+    }
   ]
 }

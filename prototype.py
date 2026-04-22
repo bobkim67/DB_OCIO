@@ -349,7 +349,7 @@ st.markdown("---")
 # ============================================================
 
 tab_names = ["Overview", "편입종목", "성과분석", "운용보고(펀드)", "운용보고(매크로)",
-             "DB ALM 적합성", "퇴직연금 DB 현황", "Peer 비교"]
+             "DB ALM 적합성", "퇴직연금 DB 현황", "Peer 비교", "BEW Viewer"]
 if st.session_state.user_role == "admin":
     tab_names += ["Admin(운용보고_매크로)", "Admin(운용보고_펀드)"]
 tabs = st.tabs(tab_names)
@@ -429,10 +429,14 @@ with tabs[7]:
     from tabs.db_peer import render as render_db_peer
     render_db_peer(ctx)
 
-if st.session_state.user_role == "admin" and len(tabs) > 8:
-    with tabs[8]:
+with tabs[8]:
+    from tabs.benchmark_event_viewer import render as render_bew_viewer
+    render_bew_viewer(ctx)
+
+if st.session_state.user_role == "admin" and len(tabs) > 9:
+    with tabs[9]:
         from tabs.admin_macro import render as render_admin_macro
         render_admin_macro(ctx)
-    with tabs[9]:
+    with tabs[10]:
         from tabs.admin_fund import render as render_admin_fund
         render_admin_fund(ctx)

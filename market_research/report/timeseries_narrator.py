@@ -39,6 +39,37 @@ MAX_SEGMENTS_PER_BM = 4      # BM당 최대 세그먼트 수
 MAX_NEWS_PER_SEGMENT = 2     # 세그먼트당 최대 뉴스 매칭 수
 
 
+# ── BEW trace (이번 호출의 BEW 사용 내역) ──
+# build_narrative_blocks 진입 시 _reset_bew_trace 가 초기화. str 반환은 유지하면서
+# 외부 디버그/test 가 마지막 호출의 BEW 통계를 읽을 수 있게 노출.
+_BEW_TRACE: dict = {
+    'year': None, 'month': None,
+    'bew_used_bms': [], 'fallback_bms': [], 'window_ids': [],
+    # P0 체크 (2026-04-22): 시각화 단계 직전 도입
+    # CORE 손실 + truncation 재배치 vs 정보 증가 감지용
+    'dropped_bms': [],          # _rank_benchmarks 슬롯 경쟁에 밀려 빠진 BM (전체 BM - selected)
+    'core_dropped_bms': [],     # 위 중 CORE_BENCHMARKS 만 (있으면 즉시 알람감)
+    'segments_total': 0,        # 모든 BM 합산 segment 수
+    'evidence_total': 0,        # 매칭된 뉴스 합산 (중복 카운트 X — seg별 매칭만)
+    'segments_via_bew': 0,      # BEW 경로에서 온 segment 수
+    'evidence_via_bew': 0,      # BEW 경로에서 매칭된 evidence 수
+}
+
+
+def _reset_bew_trace(year=None, month=None):
+    _BEW_TRACE['year'] = year
+    _BEW_TRACE['month'] = month
+    _BEW_TRACE['bew_used_bms'] = []
+    _BEW_TRACE['fallback_bms'] = []
+    _BEW_TRACE['window_ids'] = []
+    _BEW_TRACE['dropped_bms'] = []
+    _BEW_TRACE['core_dropped_bms'] = []
+    _BEW_TRACE['segments_total'] = 0
+    _BEW_TRACE['evidence_total'] = 0
+    _BEW_TRACE['segments_via_bew'] = 0
+    _BEW_TRACE['evidence_via_bew'] = 0
+
+
 # ═══════════════════════════════════════════════════════
 # 2. 데이터 로딩 — core/ 사용
 # ═══════════════════════════════════════════════════════
@@ -353,6 +384,111 @@ def _match_news(segment, bm_name, news_months):
 
 
 # ═══════════════════════════════════════════════════════
+# 5.5 BEW (Benchmark-Event Window) contract 소비
+# ═══════════════════════════════════════════════════════
+
+def _load_bew_for_period(news_months):
+    """월별 BEW visualization contract 합집합 로드.
+
+    Returns
+    -------
+    dict — {
+        'windows_by_bm': {bm_name: [window dict, ...]},  # confidence 내림차순
+        'cards_by_id': {evidence_id: card dict},          # lookup
+    }
+    contract 없거나 깨졌으면 빈 dict.
+    """
+    out = {'windows_by_bm': {}, 'cards_by_id': {}}
+    if not news_months:
+        return out
+    for ym in news_months:
+        fp = BASE_DIR / 'data' / 'benchmark_events' / f'{ym}.json'
+        if not fp.exists():
+            continue
+        try:
+            c = json.loads(fp.read_text(encoding='utf-8'))
+        except Exception:
+            continue
+        if not isinstance(c, dict):
+            continue
+        for w in c.get('windows', []) or []:
+            bm = w.get('benchmark', '')
+            if not bm:
+                continue
+            out['windows_by_bm'].setdefault(bm, []).append(w)
+        for card in c.get('evidence_cards', []) or []:
+            cid = card.get('evidence_id', '')
+            if cid:
+                out['cards_by_id'][cid] = card
+    # 정렬: confidence 내림차순, tie-breaker |zscore| 내림차순
+    for bm, ws in out['windows_by_bm'].items():
+        ws.sort(key=lambda x: (-float(x.get('confidence', 0) or 0),
+                               -abs(float(x.get('zscore', 0) or 0))))
+    return out
+
+
+def _bew_windows_for_bm(bm_name, bew_data):
+    """BEW windows → narrator-format segment list 변환.
+
+    narrator의 _detect_segments 출력과 동일 dict 키 사용:
+      start_date, end_date (pd.Timestamp), zscore (양수), return_pct (% 단위), direction
+    추가: _source='bew', _window_id, _mapped_evidence_ids
+    """
+    raw = bew_data.get('windows_by_bm', {}).get(bm_name, [])
+    if not raw:
+        return []
+    segs = []
+    for w in raw[:MAX_SEGMENTS_PER_BM]:
+        try:
+            sd = pd.Timestamp(w.get('date_from'))
+            ed = pd.Timestamp(w.get('date_to'))
+        except Exception:
+            continue
+        z = abs(float(w.get('zscore', 0) or 0))
+        ret = float(w.get('benchmark_move_pct', 0) or 0)
+        sig = w.get('signal_type', '')
+        if sig == 'rebound':
+            direction = 'up'
+        elif sig == 'drawdown':
+            direction = 'down'
+        else:
+            direction = 'up' if ret >= 0 else 'down'
+        segs.append({
+            'start_date': sd, 'end_date': ed,
+            'zscore': z, 'return_pct': ret, 'direction': direction,
+            '_source': 'bew',
+            '_window_id': w.get('window_id', ''),
+            '_mapped_evidence_ids': list(w.get('mapped_evidence_ids', []) or []),
+            '_confidence': float(w.get('confidence', 0) or 0),
+        })
+    return segs
+
+
+def _bew_news_for_bm(segment, bew_data, max_news=MAX_NEWS_PER_SEGMENT):
+    """BEW segment의 mapped_evidence_ids → cards_by_id lookup → news dict 형식.
+
+    Returns 동일 형식: [{'title','source','date','distance'}, ...]
+    distance 는 정렬용 (1.0 - card_salience proxy).
+    """
+    cards_by_id = bew_data.get('cards_by_id', {})
+    out = []
+    for eid in segment.get('_mapped_evidence_ids', []):
+        card = cards_by_id.get(eid)
+        if card is None:
+            continue
+        sal = float(card.get('salience', 0) or 0)
+        out.append({
+            'title': card.get('title', ''),
+            'source': card.get('source', ''),
+            'date': (card.get('date', '') or '')[:10],
+            'distance': max(0.0, 1.0 - sal),
+            '_source_type': card.get('source_type', ''),
+        })
+    out.sort(key=lambda r: r.get('distance', 1.0))
+    return out[:max_news]
+
+
+# ═══════════════════════════════════════════════════════
 # 6. 텍스트 포맷팅
 # ═══════════════════════════════════════════════════════
 
@@ -488,19 +624,49 @@ def build_narrative_blocks(start_int, end_int, news_months=None,
                 current = current.replace(month=current.month + 1)
         news_months = sorted(months)
 
-    # 1. 일별 시계열 로드
+    # 1. 일별 시계열 로드 (기간수익률용 — BEW 모드에서도 항상 필요)
     daily_series = _load_daily_series(start_int, end_int)
     if not daily_series:
         raise ValueError(f"BM 시계열 데이터 없음 ({start_int}~{end_int})")
 
-    # 2. BM별 세그먼트 감지
+    # 1.5. BEW contract 로딩 (월별 합집합) + trace 초기화
+    bew_data = _load_bew_for_period(news_months)
+    # trace year/month 는 단월(news_months 1개)일 때만 의미 있음
+    if news_months and len(news_months) == 1:
+        try:
+            _y, _m = news_months[0].split('-')
+            _reset_bew_trace(int(_y), int(_m))
+        except Exception:
+            _reset_bew_trace(None, None)
+    else:
+        _reset_bew_trace(None, None)
+
+    # 2. BM별 세그먼트 감지 — BEW 우선, 없는 BM은 legacy fallback
     all_segments = {}
+    seg_source = {}  # bm_name → 'bew' | 'legacy'
     for name, df in daily_series.items():
-        segs = _detect_segments(df)
-        all_segments[name] = segs
+        bew_segs = _bew_windows_for_bm(name, bew_data)
+        if bew_segs:
+            all_segments[name] = bew_segs
+            seg_source[name] = 'bew'
+            _BEW_TRACE['bew_used_bms'].append(name)
+            for s in bew_segs:
+                wid = s.get('_window_id', '')
+                if wid:
+                    _BEW_TRACE['window_ids'].append(wid)
+        else:
+            all_segments[name] = _detect_segments(df)
+            seg_source[name] = 'legacy'
+            _BEW_TRACE['fallback_bms'].append(name)
 
     # 3. BM 랭킹
     selected = _rank_benchmarks(all_segments)
+    # trace: dropped (rank 슬롯 경쟁에서 밀린 BM)
+    _selected_set = set(selected)
+    _all_bm_set = set(all_segments.keys())
+    _dropped = sorted(_all_bm_set - _selected_set)
+    _BEW_TRACE['dropped_bms'] = _dropped
+    _BEW_TRACE['core_dropped_bms'] = [b for b in _dropped if b in CORE_BENCHMARKS]
 
     # 4. 기간수익률 계산
     period_returns = {}
@@ -511,15 +677,26 @@ def build_narrative_blocks(start_int, end_int, news_months=None,
             if not period_data.empty:
                 period_returns[name] = period_data['cum_return'].iloc[-1]
 
-    # 5. 뉴스 매칭 (유의미 세그먼트만)
+    # 5. 뉴스 매칭 (유의미 세그먼트만) — BEW segment는 BEW evidence, legacy는 vectorDB
     news_matches = {}  # {bm_name: {seg_idx: [news]}}
     for name in selected:
         news_matches[name] = {}
-        for i, seg in enumerate(all_segments.get(name, [])):
+        is_bew = (seg_source.get(name) == 'bew')
+        segs_here = all_segments.get(name, [])
+        _BEW_TRACE['segments_total'] += len(segs_here)
+        if is_bew:
+            _BEW_TRACE['segments_via_bew'] += len(segs_here)
+        for i, seg in enumerate(segs_here):
             if seg['zscore'] >= 1.5:
-                matched = _match_news(seg, name, news_months)
+                if is_bew:
+                    matched = _bew_news_for_bm(seg, bew_data)
+                else:
+                    matched = _match_news(seg, name, news_months)
                 if matched:
                     news_matches[name][i] = matched
+                    _BEW_TRACE['evidence_total'] += len(matched)
+                    if is_bew:
+                        _BEW_TRACE['evidence_via_bew'] += len(matched)
 
     # 6. 텍스트 포맷
     start_str = _int_to_date(start_int)

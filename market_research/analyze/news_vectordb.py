@@ -62,17 +62,20 @@ def _get_collection(month=None):
 
 
 def build_index(month):
-    """월별 뉴스 파일 → 벡터DB 인덱싱"""
-    mfile = NEWS_DIR / f'{month}.json'
-    if not mfile.exists():
-        print(f'  {mfile} 없음')
-        return 0
+    """월별 뉴스 + naver_research adapted → 벡터DB 인덱싱 (Phase 3, 2026-04-22).
 
-    data = json.loads(mfile.read_text(encoding='utf-8'))
-    articles = data.get('articles', [])
+    단일 컬렉션 (`news_{month}`) + source_type metadata filter 방침.
+    article_stream.load_month_articles 로 두 소스 합쳐서 입력.
+    """
+    from market_research.analyze.article_stream import (
+        load_month_articles, source_of, stream_stats,
+    )
+
+    articles = load_month_articles(month)
     if not articles:
         print(f'  {month}: 기사 없음')
         return 0
+    print(f'  {month}: stream stats = {stream_stats(articles)}')
 
     model = _get_model()
     collection = _get_collection(month)
@@ -89,6 +92,7 @@ def build_index(month):
     texts = []
     ids = []
     metadatas = []
+    seen_ids: set[str] = set()
 
     for i, a in enumerate(articles):
         title = a.get('title', '')
@@ -97,7 +101,15 @@ def build_index(month):
         if not text or len(text) < 20:
             continue
 
-        doc_id = a.get('_article_id', f"{month}_{i}")
+        st = source_of(a)
+        aid = a.get('_article_id') or f"{month}_{i}"
+        # id 충돌 방지: source prefix + article_id
+        doc_id = f"{st}:{aid}"
+        # 중복 id 회피 (같은 소스 내에서 _article_id 결측 시 fallback 충돌 가능)
+        if doc_id in seen_ids:
+            doc_id = f"{doc_id}#{i}"
+        seen_ids.add(doc_id)
+
         ids.append(doc_id)
         texts.append(text)
 
@@ -114,13 +126,17 @@ def build_index(month):
             'provider': a.get('provider', 'newsapi'),
             'trusted': str(a.get('trusted', False)),
             # 신규: 분류/정제 메타
-            'article_id': a.get('_article_id', ''),
+            'article_id': aid,
             'primary_topic': primary_topic,
             'intensity': str(a.get('intensity', 0)),
             'direction': a.get('direction', ''),
             'event_salience': str(a.get('_event_salience', 0)),
             'is_primary': str(a.get('is_primary', True)),
             'fallback': str(a.get('_fallback_classified', False)),
+            # Phase 3 신규: source provenance
+            'source_type': st,
+            'category': a.get('_raw_category', '') or '',
+            'broker': a.get('_raw_broker', '') or '',
         }
         metadatas.append(meta)
 
@@ -145,8 +161,12 @@ def build_index(month):
     return len(texts)
 
 
-def search(query, month, top_k=10, asset_class=None):
-    """벡터DB 검색 — 유사도 상위 top_k건 반환"""
+def search(query, month, top_k=10, asset_class=None, source_type=None):
+    """벡터DB 검색 — 유사도 상위 top_k건 반환.
+
+    Phase 3 (2026-04-22): source_type filter 추가.
+        source_type='naver_research' | 'news' | None(전체)
+    """
     model = _get_model()
     collection = _get_collection(month)
 
@@ -155,10 +175,18 @@ def search(query, month, top_k=10, asset_class=None):
 
     query_embedding = model.encode([query])[0].tolist()
 
-    # 필터 조건
-    where = None
+    # 필터 조건 (ChromaDB: 단일 key는 평탄, 다중은 $and)
+    clauses = []
     if asset_class:
-        where = {"asset_class": asset_class}
+        clauses.append({'asset_class': asset_class})
+    if source_type:
+        clauses.append({'source_type': source_type})
+    if not clauses:
+        where = None
+    elif len(clauses) == 1:
+        where = clauses[0]
+    else:
+        where = {'$and': clauses}
 
     results = collection.query(
         query_embeddings=[query_embedding],
@@ -175,6 +203,7 @@ def search(query, month, top_k=10, asset_class=None):
         # hybrid score: cosine similarity (1-distance) + salience boost
         hybrid_score = (1.0 - distance) + salience * 0.3
         articles.append({
+            'id': results['ids'][0][i],
             'title': meta.get('title', ''),
             'date': meta.get('date', ''),
             'source': meta.get('source', ''),
@@ -182,6 +211,9 @@ def search(query, month, top_k=10, asset_class=None):
             'primary_topic': meta.get('primary_topic', ''),
             'url': meta.get('url', ''),
             'article_id': meta.get('article_id', results['ids'][0][i]),
+            'source_type': meta.get('source_type', ''),
+            'category': meta.get('category', ''),
+            'broker': meta.get('broker', ''),
             'distance': distance,
             'event_salience': salience,
             'hybrid_score': round(hybrid_score, 4),

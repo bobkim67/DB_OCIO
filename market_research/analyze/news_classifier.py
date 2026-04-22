@@ -777,6 +777,93 @@ def classify_month(month_str: str, batch_size: int = 20) -> dict:
     }
 
 
+def classify_adapted_month(month_str: str, batch_size: int = 20) -> dict:
+    """
+    월별 naver_research adapted 전체 분류.
+
+    `data/naver_research/adapted/{month}.json` 을 로드해서 `_classified_topics`
+    미부착 기사만 Haiku 분류 → adapter save 경유 (merge-on-save로 downstream
+    필드는 자동 보존됨).
+
+    news 는 건드리지 않는다. reclassify_month 경량 경로 (Phase 2.5 회귀 검증용).
+
+    Args:
+        month_str: 'YYYY-MM' 형식
+        batch_size: Haiku 배치 크기 (기본 20)
+
+    Returns:
+        {"total": N, "classified": M, "newly_classified": K, "unclassified": U}
+    """
+    try:
+        from market_research.collect.naver_research_adapter import (
+            load_adapted, save_adapted, adapted_path,
+        )
+    except Exception as exc:
+        print(f'  adapter import 실패: {exc}')
+        return {'total': 0, 'classified': 0, 'newly_classified': 0, 'unclassified': 0}
+
+    articles = load_adapted(month_str)
+    if not articles:
+        print(f'  {adapted_path(month_str)} 없음 또는 빈 파일')
+        return {'total': 0, 'classified': 0, 'newly_classified': 0, 'unclassified': 0}
+
+    print(f'\n── 리서치 분류: {month_str} ({len(articles)}건) ──')
+
+    # source_type 가 비어있으면 보정 (adapter 경계 밖 안전장치)
+    for a in articles:
+        if a.get('source_type') != 'naver_research':
+            a['source_type'] = 'naver_research'
+
+    to_classify = [a for a in articles if '_classified_topics' not in a]
+    already_done = len(articles) - len(to_classify)
+    if already_done:
+        print(f'  이미 분류됨: {already_done}건, 미분류: {len(to_classify)}건')
+
+    if not to_classify:
+        print(f'  전체 분류 완료')
+        return {
+            'total': len(articles),
+            'classified': len(articles),
+            'newly_classified': 0,
+            'unclassified': 0,
+        }
+
+    SAVE_INTERVAL = 50
+    total_batches = (len(to_classify) + batch_size - 1) // batch_size
+    newly_classified_before = sum(1 for a in articles if '_classified_topics' in a)
+    for i in range(0, len(to_classify), batch_size):
+        batch = to_classify[i:i + batch_size]
+        batch_num = i // batch_size + 1
+        print(f'  배치 {batch_num}/{total_batches} ({len(batch)}건)...', end='', flush=True)
+        classify_batch(batch)
+        print(' 완료')
+        time.sleep(0.5)
+        if batch_num % SAVE_INTERVAL == 0:
+            save_adapted(month_str, articles)
+            done_so_far = sum(1 for a in articles if '_classified_topics' in a)
+            print(f'  [중간 저장] {done_so_far}/{len(articles)}건 분류됨')
+
+    classified = sum(1 for a in articles if a.get('_classified_topics'))
+    has_topics_field = sum(1 for a in articles if '_classified_topics' in a)
+    unclassified = len(articles) - classified
+    newly = has_topics_field - newly_classified_before
+
+    print(f'  결과: 분류됨 {classified}/{len(articles)} '
+          f'({classified/len(articles)*100:.1f}%), 신규 분류 {newly}건')
+    if unclassified:
+        print(f'  미분류(빈 topics 포함): {unclassified}건')
+
+    save_adapted(month_str, articles)
+    print(f'  저장 완료: {adapted_path(month_str)}')
+
+    return {
+        'total': len(articles),
+        'classified': classified,
+        'newly_classified': newly,
+        'unclassified': unclassified,
+    }
+
+
 def classify_daily(date_str: str, batch_size: int = 20) -> dict:
     """
     일일 뉴스 분류 (Daily Incremental Mode용).
