@@ -58,7 +58,7 @@ function collapseLiquidityOthers(items: HoldingItemDTO[]): HoldingItemDTO[] {
 }
 
 export default function HoldingsTab({ fundCode }: Props) {
-  const [lookthrough, setLookthrough] = useState(false);
+  const [lookthrough, setLookthrough] = useState(true);
   const { data, isLoading, error } = useHoldings(fundCode, lookthrough);
 
   if (isLoading) return <div>loading holdings...</div>;

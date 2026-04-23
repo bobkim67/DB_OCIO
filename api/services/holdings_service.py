@@ -114,6 +114,37 @@ def _extract_as_of(df: pd.DataFrame) -> date | None:
     return None
 
 
+def _resolve_as_of_from_db(fund_code: str, hint: str | None) -> date | None:
+    """as_of hint(YYYYMMDD)가 있으면 그대로, 없으면 DWPM10530 최신 STD_DT 조회.
+
+    lookthrough 경로의 DataFrame은 STD_DT/기준일자 컬럼이 유실되므로 NAST 매칭용 as_of
+    확보를 위해 별도 경량 쿼리로 선행 resolve.
+    """
+    if hint:
+        try:
+            return pd.to_datetime(hint, format="%Y%m%d").date()
+        except Exception:
+            pass
+    try:
+        from modules.data_loader import get_connection
+        conn = get_connection("dt")
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT MAX(STD_DT) AS m FROM DWPM10530 WHERE FUND_CD = %s",
+                    (fund_code,),
+                )
+                row = cur.fetchone()
+                m = row.get("m") if isinstance(row, dict) else (row[0] if row else None)
+                if m is None:
+                    return None
+                return pd.to_datetime(str(int(m)), format="%Y%m%d").date()
+        finally:
+            conn.close()
+    except Exception:
+        return None
+
+
 def build_holdings(
     fund_code: str,
     lookthrough: bool,
@@ -157,8 +188,9 @@ def build_holdings(
 
     sources.append(SourceBreakdown(component="holdings", kind="db"))
 
-    # 2) as_of 확정
-    as_of = _extract_as_of(df)
+    # 2) as_of 확정 — df에서 우선 추출, 실패 시 DB로 fallback resolve
+    #    (lookthrough 경로는 STD_DT/기준일자 컬럼이 유실되므로 fallback 필수)
+    as_of = _extract_as_of(df) or _resolve_as_of_from_db(fund_code, as_of_param)
 
     # 3) NAST_AMT
     nast = _load_nast(fund_code, as_of)
