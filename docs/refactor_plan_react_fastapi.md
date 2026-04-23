@@ -1440,3 +1440,170 @@ _Week 3 완료: 2026-04-22_
 ---
 
 _Week 4 완료: 2026-04-22_
+
+## Week 5 회고 — Admin viewer + 선반영 확장 (2026-04-23)
+
+### 실제 실행 기록
+
+| 커밋 | 해시 | 범위 |
+|------|------|------|
+| W5.1 | 178f563 | api: Admin evidence-quality viewer (read-only JSONL 파싱, pytest 37/37) |
+| W5.2 | fbb6252 | web: AdminTab + Dashboard 4탭 스위처 (Overview/편입종목/Macro/Admin) |
+| W5.x1 (선반영) | 88b6fb5 | feat(macro+holdings): 지수 드롭다운 + ETF proxy 라벨 + FX 재분류 + USD 헷지 요약 |
+| W5.x2 (선반영) | 7843e2a | fix(overview): 긴 시계열 scattergl + 초과수익 영역 + Y2 축 겹침 해소 |
+| W5.x3 (선반영) | 52fad78 | fix(holdings): lookthrough NAST fallback + Pie 초기 크기 + lookthrough 디폴트 on |
+| W5.3 | (this) | docs: Week 5 회고 — dual-run 검증 + 선반영 작업 로그 |
+
+### 목표 vs 실제 달성
+
+| 계획 | 상태 | 비고 |
+|------|:---:|------|
+| Admin evidence-quality 백엔드 (W5.1) | ✅ | JSONL 파서 + limit/fund_code 필터 + DTO, pytest 37/37 PASS |
+| Admin 프론트 AdminTab + 4탭 스위처 (W5.2) | ✅ | read-only, 전역상태/MUI/theme 추가 없음 |
+| dual-run 검증 + 회고 (W5.3) | ✅ | 본 섹션 |
+| openapi-typescript 도입 | 보류 → Week 6+ | 수동 DTO 유지 |
+| Holdings FoF NAST 보강 | **선반영 (W5.x3)** | `_resolve_as_of_from_db` fallback, 07G04 lookthrough nast=db |
+| Macro 키 확장 | **선반영 (W5.x1)** | 지수 11종 + USDKRW 드롭다운 + ETF proxy 라벨 |
+| BM period_returns 채움 | Week 6+ 이월 | 여전히 `bm_period_returns={}` |
+
+### dual-run 실측 (2026-04-23, as_of = 2026-04-22)
+
+Streamlit 8505 + FastAPI 8000 + Vite 5173 3개 서버 모두 HTTP 200 응답 확인.
+**수치 동치성은 `modules.data_loader` 공용 구조로 보장** — Streamlit/FastAPI 양쪽 동일 함수(`load_fund_nav_with_aum`, `load_fund_holdings_lookthrough`, `load_macro_timeseries`) 직접 호출.
+
+#### A. Overview 실측
+
+| 펀드 | source | since_inception | YTD | MDD | vol | period_returns 1M/3M/6M/1Y |
+|------|:------:|---:|---:|---:|---:|---|
+| 08K88 | db | **65.02%** | 18.43% | −12.47% | 14.08% | 7.03 / 11.71 / 25.15 / 65.99 (%) |
+| 4JM12 | db | **37.72%** | 2.01% | −10.73% | 8.50% | 5.55 / 2.17 / 1.43 / 16.50 (%) |
+
+- BM 표시: 양쪽 모두 `bm_configured=true`이며 nav_series에 BM 시계열 존재 → Overview 차트에 초과수익 영역 + BM 점선 정상
+- `bm_period_returns={}`는 두 펀드 모두 공란 (W2 잔여, Week 6+로 이월)
+
+#### B. Holdings 실측
+
+| 펀드 | lookthrough | source | as_of | nast | items | 자산군 수 | fx_hedge |
+|------|:---:|:---:|---|---:|---:|---:|---|
+| 08K88 | off | db | 2026-04-22 | 59,577,405,457 | 16 | 5 (FX 없음) | usd=63.04% short=0% (요약 박스 숨김) |
+| 08K88 | on | db | 2026-04-22 | 59,577,405,457 | 16 | 5 | off와 동일 (08K88은 FoF 구조 없어 무영향) |
+| 07G04 | off | db | 2026-04-22 | 175,278,771,994 | 4 | 2 (모펀드/유동성) | n/a |
+| 07G04 | on | db | 2026-04-22 | **175,278,771,994 ✅** | **17** | 4 (국내주식/해외주식/국내채권/유동성) | usd=17.46% short=0% |
+
+- **07G04 FoF NAST 보강 검증**: lookthrough=true에서도 `nast=db 175,278,771,994` 정상 응답. W5.x3 `_resolve_as_of_from_db` fallback 효과 확인 (과거: `nast=mock NAST missing` → 현재: `nast=db`).
+- FX 헷지 요약 박스는 `usd_short_weight > 0` 조건에 의해 08K88/07G04 모두 숨김 (달러매도포지션 없음). 4JM12(dual-run 범위 외)만 노출.
+
+#### C. Macro 실측 (기본 3개 키)
+
+| public key | label | unit | points | last (2026-04-22) |
+|---|---|:---:|---:|---:|
+| PE | PE (12M Fwd, S&P 500) | ratio | 2,428 | **20.9966** |
+| EPS | EPS (12M Fwd, S&P 500) | raw | 2,428 | **33.9124** |
+| USDKRW | USD/KRW | krw | 2,428 | **1,476.20** |
+
+- `meta.source=db` / `is_fallback=false` / `warnings=[]` — 공식 경로만.
+- 선반영 W5.x1 적용으로 레거시 `PE/EPS/USDKRW` public key는 내부 alias로 유지되며, 신규 체계는 `IDX_<code>` / `PE_<code>` / `EPS_<code>` (11종 지수 + USDKRW).
+
+#### D. Admin evidence-quality 실측
+
+| 항목 | 값 |
+|---|---|
+| file_path | `market_research/data/report_output/_evidence_quality.jsonl` |
+| total_lines | **17** (이전 W5.1 기록 16 → 세션 중 1 row 추가 append) |
+| malformed | 0 |
+| fund_code 분포 | `_market=15, 07G04=1, 08P22=1` |
+
+필터 실측:
+| 쿼리 | returned |
+|---|---:|
+| `?limit=100` | 17 |
+| `?limit=5` | 5 |
+| `?limit=100&fund_code=_market` | 15 |
+| `?limit=100&fund_code=07G04` | 1 |
+| `?limit=100&fund_code=NONEXIST` | 0 |
+
+### 차이점 요약
+
+- Streamlit과 React 양쪽 **수치 일치**: 같은 `modules.data_loader` 함수를 직접 임포트하므로 DB 한 호출 → 동일 결과. Streamlit 화면의 카드/테이블과 React MetricCard/HoldingsTab 값이 구조적 동치.
+- Overview 차트 시각화: Streamlit은 Plotly + 스파크라인, React는 `scattergl` 전환 + 초과수익 영역차트 — **데이터 동일, 렌더 엔진/스타일만 다름**.
+- Holdings의 모펀드 ITEM_CD `0322800` 룰은 양쪽 모두 `_extract_fund_code_from_item_cd` 공용. 8분류 매핑도 `_classify_6class` 공용.
+- **Admin 경계 확인**:
+  - **React**: read-only viewer만. 파일 조회 외 모든 쓰기/debate 실행/승인 트리거 **없음**.
+  - **Streamlit `tabs/admin_macro.py` / `tabs/admin_fund.py`**: debate 생성·검수·승인 CLI 워크플로우 포함 (`_run_debate_and_save` / `report_store.approve_and_save_final`).
+  - 두 트랙이 같은 `_evidence_quality.jsonl` + `report_output/{period}/*.{draft,final}.json`을 대상으로 하지만 **역할 명확 분리**.
+
+### 선반영 작업 로그 (Week 5 스코프 확장)
+
+**Macro 재설계 (W5.x1 = 88b6fb5)** — Week 5 인입 5번 항목 "Macro 키 확장" 초과 달성:
+- `MACRO_DATASETS`에 MSCI EAFE/Japan + Vanguard G/V + S&P500 G/V + Russell 1000 G/V 24 엔트리 추가. `type:'index'` 전부 `currency='USD'` 명시
+- `_INDEX_BASE` 11종 (disp, etf_ticker, base) tuple + ETF proxy 라벨 ("MSCI Korea (EWY)" 등)
+- MacroTab 전면 재작성: 체크박스 6개 → 드롭다운 1개(12종, default=KR), 선택 지수의 level/PE/EPS 3선 동시 표시(주축 level, 보조축 PE/EPS), 지수·PE·EPS YoY growth 토글, 0 라인 대칭 range 정렬
+
+**Holdings FX/USD/헷지/lookthrough NAST (W5.x1 + W5.x3 = 88b6fb5, 52fad78)** — Week 5 인입 3번 "Holdings FoF NAST 보강" 달성:
+- `_classify_6class` FX 패턴 확장 (AST_CLSF_CD_NM '달러선물/통화선물/선물환' + ITEM_NM '미국달러 F') → KR4A75650007 유동성→FX 정정
+- `DWPM10530 SELECT`에 `POS_DS_CD` 추가 → `HoldingItemDTO.is_short` 플래그
+- `FxHedgeSummaryDTO` 신규 — USD 자산비중/달러매도포지션/헷지비율
+- HoldingsTab: 자산군 그룹 헤더, SHORT 뱃지, 헷지 요약 박스 조건부 표시, Pie 고정 height wrapper, lookthrough 디폴트 on
+- `_resolve_as_of_from_db` — 07G04 lookthrough FoF NAST missing 해결
+
+**NavChart 개선 (W5.x2 = 7843e2a)** — Overview UX 안정성:
+- 긴 시계열(>1000 pts) scattergl 자동 전환 (2JM23 3682 pts, 07G04 1669 pts)
+- 초과수익 영역 trace는 SVG 강제 (scattergl fill='tozeroy' 삼각형 왜곡 회피)
+- trace layering 재배치, Y2 축 standoff/automargin
+
+**AssetClassPie 초기 크기 고정 (W5.x3 = 52fad78)** — 첫 마운트 시 Plotly 기본 사이즈(700×450) 렌더 이슈 해결:
+- wrapper `div` 고정 `height: 360` → 첫 렌더부터 정상 크기
+
+### Week 6+ 인입 리스트 (업데이트)
+
+| 항목 | 우선순위 | 상태 |
+|---|:---:|---|
+| openapi-typescript (수동 DTO → `/openapi.json` 기반 자동) | P1 | 미착수 |
+| BM period_returns 채움 (`bm_period_returns={}`) | P1 | 미착수 (W2 잔여) |
+| Macro 키 확장 | ~~P2~~ | **W5.x1 완료** |
+| Holdings FoF NAST 보강 | ~~P2~~ | **W5.x3 완료** |
+| Admin debate_status viewer 확장 | P2 | 미착수 (read-only JSON viewer 추가) |
+| Brinson 이전 | P3 (조건부) | Week 6 착수 **조건 미충족** (아래 참조) |
+| Report final viewer | P3 | 미착수 |
+| 듀레이션 표기 (KIS BM 기준 또는 ETF DUR 하드코딩) | P3 | 미착수 (DB 듀레이션 소스 불가, reference_duration_db_status.md) |
+
+### Week 6 착수 전 3 조건 상태
+
+| 조건 | 상태 |
+|---|:---:|
+| Overview/Holdings/Report 사용자 "합격" 승인 | **부분 ✅** — Overview/Holdings는 이번 세션에서 사용자 실시간 QA 반영(종목 그룹핑, FX 헷지, lookthrough default, 초과수익 영역 등). Report는 미착수 |
+| `compute_brinson_attribution_v2` snapshot pytest 박힘 | ❌ 미박힘 (pytest 37/37 중 Brinson 스냅샷 없음) |
+| R Excel vs Py 대조 debug 스크립트 보존 | ✅ `debug/debug_4JM12_*.py`, `debug/debug_07g04_*.py`, `debug/debug_08P22_ace_bond.py` 등 보존 |
+
+→ **Brinson 탭 React 이전은 Week 6+에서도 보류**. snapshot pytest + Report 사용자 승인 먼저.
+
+### Week 5 금지 유지 (전 기간 불변)
+
+- auth / JWT / LoginPage / users.yaml 이식
+- Report **생성** 엔드포인트 (viewer만 허용)
+- Brinson 착수 (3조건 미충족)
+- batch/CLI 트리거 엔드포인트 (daily_update, debate 실행 등)
+- docker-compose / nginx 배포
+- 전역상태 라이브러리 (zustand 등)
+- Plotly Figure JSON 서버 조립
+- 기존 Streamlit 코드 대규모 수정
+- `async def` 라우터 핸들러
+- CORS `allow_credentials=True`
+
+### dual-run 기동 명령 (복기용)
+
+```bash
+# Streamlit (tabs 포트 8505)
+/c/Users/user/Downloads/python/.venv/Scripts/python -m streamlit run prototype.py \
+    --server.port 8505 --server.headless true
+
+# FastAPI (api venv, 포트 8000)
+api/.venv/Scripts/python -m uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload
+
+# Vite (web, 포트 5173)
+cd web && node_modules/.bin/vite --host 127.0.0.1 --port 5173
+```
+
+---
+
+_Week 5 완료: 2026-04-23_
