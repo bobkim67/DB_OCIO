@@ -152,3 +152,40 @@ export const fetchMacro = async (
   );
   return r.data;
 };
+
+// === Admin ===
+export interface AdminEvidenceQualityRowDTO {
+  period: string | null;
+  fund_code: string | null;
+  debated_at: string | null;
+  total_refs: number | null;
+  ref_mismatches: number | null;
+  tense_mismatches: number | null;
+  mismatch_rate: number | null;
+  evidence_count: number | null;
+  critical_warnings: number | null;
+  raw: Record<string, unknown>;
+}
+
+export interface AdminEvidenceQualityResponseDTO {
+  meta: BaseMeta;
+  file_path: string;
+  total_lines: number;
+  returned: number;
+  malformed: number;
+  rows: AdminEvidenceQualityRowDTO[];
+}
+
+export const fetchEvidenceQuality = async (
+  limit?: number,
+  fundCode?: string,
+): Promise<AdminEvidenceQualityResponseDTO> => {
+  const params: Record<string, string | number> = {};
+  if (limit !== undefined) params.limit = limit;
+  if (fundCode) params.fund_code = fundCode;
+  const r = await api.get<AdminEvidenceQualityResponseDTO>(
+    "/admin/evidence-quality",
+    { params },
+  );
+  return r.data;
+};

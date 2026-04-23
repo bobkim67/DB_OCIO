@@ -3,8 +3,9 @@ import { useFunds } from "../hooks/useFunds";
 import OverviewTab from "../tabs/OverviewTab";
 import HoldingsTab from "../tabs/HoldingsTab";
 import MacroTab from "../tabs/MacroTab";
+import AdminTab from "../tabs/AdminTab";
 
-type TabKey = "overview" | "holdings" | "macro";
+type TabKey = "overview" | "holdings" | "macro" | "admin";
 
 export default function DashboardPage() {
   const { data, isLoading, error } = useFunds();
@@ -73,14 +74,17 @@ export default function DashboardPage() {
         {tabBtn("overview", "Overview")}
         {tabBtn("holdings", "편입종목")}
         {tabBtn("macro", "Macro")}
+        {tabBtn("admin", "Admin")}
       </div>
 
       {tab === "overview" ? (
         <OverviewTab fundCode={selected} />
       ) : tab === "holdings" ? (
         <HoldingsTab fundCode={selected} />
-      ) : (
+      ) : tab === "macro" ? (
         <MacroTab />
+      ) : (
+        <AdminTab />
       )}
     </div>
   );
