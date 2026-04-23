@@ -328,7 +328,17 @@ def compute_coverage_metrics(comment: str, annotations: list) -> dict:
 # Evidence annotations 빌드
 # ══════════════════════════════════════════
 
-def source_tier(source: str) -> str:
+def source_tier(source: str, article: dict | None = None) -> str:
+    """매체 tier 판정.
+
+    source_type='naver_research'(증권사 리서치)는 매체 이름 매칭으로는 항상 TIER3로
+    떨어지므로, adapter가 수집 시점에 부여한 `_research_quality_band` 를 사용한다.
+    article 인자가 없거나 band 가 없으면 기존 매체 이름 매칭으로 fallback.
+    """
+    if article is not None and article.get('source_type') == 'naver_research':
+        band = article.get('_research_quality_band', '')
+        if band in ('TIER1', 'TIER2', 'TIER3'):
+            return band
     if source in TIER1_SOURCES:
         return 'TIER1'
     for t2 in TIER2_PARTIAL:
@@ -340,8 +350,9 @@ def source_tier(source: str) -> str:
 def salience_explanation(article: dict) -> str:
     parts = []
     source = article.get('source', '')
-    tier = source_tier(source)
-    parts.append(f'{tier} 매체({source})')
+    tier = source_tier(source, article)
+    label = '리서치' if article.get('source_type') == 'naver_research' else '매체'
+    parts.append(f'{tier} {label}({source})')
     intensity = 0
     for t in article.get('_classified_topics', []):
         intensity = max(intensity, t.get('intensity', 0))
@@ -356,8 +367,14 @@ def salience_explanation(article: dict) -> str:
 
 
 def build_evidence_annotations(evidence_ids: list, year: int, months: list) -> list:
-    """evidence_ids → 기사 메타 + URL + 중요도 설명 매핑."""
+    """evidence_ids → 기사 메타 + URL + 중요도 설명 매핑.
+
+    두 소스 모두 조회: data/news/{YYYY-MM}.json + naver_research adapted.
+    adapted(naver_research) 를 빠뜨리면 BEW forced 경로에서 리서치 리포트
+    evidence 가 전부 '(매핑 실패)' 로 표시됨.
+    """
     id_map = {}
+    # 1) 일반 뉴스 (data/news/)
     for m in months:
         news_file = _NEWS_DIR / f'{year}-{m:02d}.json'
         if not news_file.exists():
@@ -367,6 +384,20 @@ def build_evidence_annotations(evidence_ids: list, year: int, months: list) -> l
             aid = a.get('_article_id', '')
             if aid:
                 id_map[aid] = a
+    # 2) Naver Research adapted (debate 의 research lane 소스)
+    try:
+        from market_research.collect.naver_research_adapter import load_adapted
+        for m in months:
+            adapted = load_adapted(f'{year}-{m:02d}')
+            for a in adapted:
+                aid = a.get('_article_id', '')
+                # news 와 aid 충돌 시 기존(news) 우선 유지하지 않고 덮어써서
+                # research lane 에서 선택된 건 research 메타가 우선 표시되게.
+                # 실제로는 _article_id(MD5 12자)가 소스 독립적이라 충돌 거의 없음.
+                if aid and aid not in id_map:
+                    id_map[aid] = a
+    except Exception:
+        pass
     annotations = []
     for i, eid in enumerate(evidence_ids, 1):
         art = id_map.get(eid, {})

@@ -14,6 +14,7 @@ contract 재계산 / mapper schema 변경 / GraphRAG 호출 모두 안 함.
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -22,6 +23,9 @@ import streamlit as st
 
 _BEW_DIR = (Path(__file__).resolve().parent.parent
             / 'market_research' / 'data' / 'benchmark_events')
+_EXPORT_DIR = (Path(__file__).resolve().parent.parent
+               / 'market_research' / 'data' / 'bew_export')
+EXPORT_SCHEMA_VERSION = 1
 
 DEFAULT_MONTH = '2026-03'
 SIGNAL_COLORS = {
@@ -55,6 +59,50 @@ def _list_available_months() -> list[str]:
     if not _BEW_DIR.exists():
         return []
     return sorted([fp.stem for fp in _BEW_DIR.glob('*.json')])
+
+
+def _export_forced_windows(month: str, contract: dict,
+                           wids: list[str], focus_wid: str | None,
+                           ) -> tuple[Path | None, dict]:
+    """선택된 window_id 를 debate forced-BEW JSON 으로 저장.
+
+    Returns: (저장경로|None, 진단dict). 유효 wid 0건이면 파일 미작성.
+    """
+    year_str, month_str = month.split('-')
+    year = int(year_str)
+    month_num = int(month_str)
+
+    contract_wids = {w.get('window_id', '')
+                     for w in (contract.get('windows') or [])
+                     if w.get('window_id')}
+    requested = [w for w in (wids or []) if w]
+    valid = [w for w in requested if w in contract_wids]
+    invalid = [w for w in requested if w not in contract_wids]
+
+    diag = {
+        'requested': len(requested),
+        'valid': len(valid),
+        'invalid': invalid,
+        'contract_window_count': len(contract_wids),
+    }
+    if not valid:
+        return None, diag
+
+    payload = {
+        'schema_version': EXPORT_SCHEMA_VERSION,
+        'year': year,
+        'month': month_num,
+        'force_window_ids': sorted(valid),
+        'focus_window_id': focus_wid if (focus_wid and focus_wid in contract_wids) else None,
+        'exported_at': datetime.now().isoformat(timespec='seconds'),
+        'source': 'bew_viewer',
+    }
+    _EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+    fp = _EXPORT_DIR / f'{month}_forced.json'
+    fp.write_text(json.dumps(payload, ensure_ascii=False, indent=2),
+                  encoding='utf-8')
+    diag['path'] = str(fp)
+    return fp, diag
 
 
 # ───────────────────────────────────────────────────
@@ -372,17 +420,76 @@ def render(ctx: dict | None = None):
 
     fw, fc, mix = _apply_filters(contract, sel_ac, sel_st, sel_sig, conf_min)
 
-    # ── window 선택 ──
-    wid_options = ['(자동: 전체)'] + [
-        f"{w['window_id']}  |  {w['benchmark']} {w['signal_type']} "
-        f"({w['date_from']}~{w['date_to']}, conf {w.get('confidence',0):.2f})"
-        for w in fw
-    ]
+    # ── window 선택 (multi-select + focus) ──
+    def _wid_label(w: dict) -> str:
+        return (f"{w['window_id']}  |  {w['benchmark']} {w['signal_type']} "
+                f"({w['date_from']}~{w['date_to']}, conf {w.get('confidence',0):.2f})")
+
+    label_by_wid = {w['window_id']: _wid_label(w) for w in fw}
+    wid_by_label = {v: k for k, v in label_by_wid.items()}
+    all_labels = list(label_by_wid.values())
+
+    # multi-select: debate 로 export 할 windows
+    prev_multi = st.session_state.get(f'bew_multi_{sel_month}', [])
+    # 이전 선택 중 현재 필터/월에 없는 라벨은 제거
+    prev_multi_valid = [lbl for lbl in prev_multi if lbl in all_labels]
+    multi_labels = st.multiselect(
+        f'Debate 로 export 할 Windows (multi-select, 필터링 후 {len(fw)}건)',
+        options=all_labels,
+        default=prev_multi_valid,
+        key=f'bew_multi_{sel_month}',
+    )
+    selected_wids_multi = [wid_by_label[lbl] for lbl in multi_labels
+                           if lbl in wid_by_label]
+
+    # 단일 focus: timeline/graph/cards 하이라이트
+    focus_options = ['(자동: 전체)'] + all_labels
     sel_wid_label = st.selectbox(
-        f'Window 선택 ({len(fw)}건 필터링됨)',
-        wid_options, index=0, key='bew_wid',
+        f'Focus window (단일, 시각화/evidence 필터용)',
+        focus_options, index=0, key='bew_wid',
     )
     selected_wid = None if sel_wid_label.startswith('(자동') else sel_wid_label.split('  |')[0]
+
+    # ── export 버튼 ──
+    exp_c1, exp_c2 = st.columns([1.2, 4])
+    with exp_c1:
+        export_clicked = st.button(
+            'debate input으로 export',
+            disabled=(len(selected_wids_multi) == 0),
+            key=f'bew_export_btn_{sel_month}',
+            help='선택한 windows 를 debate forced-BEW JSON 으로 저장'
+                 ' (market_research/data/bew_export/{YYYY-MM}_forced.json)',
+        )
+    with exp_c2:
+        if selected_wids_multi:
+            st.caption(f'선택됨: {len(selected_wids_multi)}건 ({sel_month})')
+        else:
+            st.caption('windows 를 선택하면 export 버튼이 활성화됩니다.')
+
+    if export_clicked:
+        fp, diag = _export_forced_windows(sel_month, contract,
+                                          selected_wids_multi,
+                                          selected_wid)
+        if fp is None:
+            st.error(
+                f'export 실패: 유효한 window_id 가 0건 입니다. '
+                f'(요청 {diag["requested"]} / 유효 {diag["valid"]} / '
+                f'contract windows {diag["contract_window_count"]})'
+            )
+            if diag.get('invalid'):
+                st.caption(f'invalid wids: {diag["invalid"][:5]}'
+                           + (f' ... 외 {len(diag["invalid"])-5}건'
+                              if len(diag['invalid']) > 5 else ''))
+        else:
+            st.success(
+                f'Export 완료 — {diag["valid"]}건 window_id 저장됨. '
+                f'month={sel_month}, focus={selected_wid or "(없음)"}'
+            )
+            st.code(str(fp), language='text')
+            st.caption('CLI 사용 예: '
+                       f'`python -m market_research.report.cli build 07G04 '
+                       f'-q <분기> -y {sel_month.split("-")[0]} '
+                       f'--forced-bew-json "{fp}"`')
 
     st.markdown('---')
 

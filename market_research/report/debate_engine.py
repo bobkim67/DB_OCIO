@@ -221,7 +221,10 @@ def _load_bew_contract(year: int, month: int) -> dict | None:
 
 
 def _build_evidence_candidates(year: int, month: int, target_count: int,
-                               start_idx: int) -> tuple[list, list, list, dict]:
+                               start_idx: int,
+                               *,
+                               force_window_ids: set[str] | None = None,
+                               ) -> tuple[list, list, list, dict]:
     """source-aware evidence 선발.
 
     우선순위 (2026-04-22 v2):
@@ -230,6 +233,12 @@ def _build_evidence_candidates(year: int, month: int, target_count: int,
       2) BEW 가 없거나 부족하면 기존 quota lane (research/news + 당일 TIER1/2 slot)으로 보충.
       3) topic/event guardrail (MAX_PER_TOPIC=5, MAX_PER_EVENT=2) 은 전체 합산 기준 유지.
       4) 총량은 target_count 고정 — BEW 경로가 있어도 늘리지 않음.
+
+    force_window_ids (옵션):
+      - None (기본): 전체 BEW contract 동작 그대로.
+      - set[str] 제공 시, BEW lane 내부에서 해당 wid 만 evidence queue 에 남김.
+        wid 에 해당하지 않는 evidence 는 bew_nr_ordered/bew_news_ordered 에서 제외.
+        보충 lane(research_pool/news_pool) / quota / guardrail / fallback 는 불변.
 
     Returns:
         (high_impact, evidence_ids, card_lines, debug)
@@ -316,18 +325,36 @@ def _build_evidence_candidates(year: int, month: int, target_count: int,
     bew_nr_ordered: list[dict] = []
     bew_news_ordered: list[dict] = []
     bew_window_of_aid: dict[str, str] = {}
+    # forced filter 적용 추적
+    forced_set: set[str] = set(force_window_ids) if force_window_ids else set()
+    forced_applied = False
+    forced_windows_kept = 0
+    forced_all_wids: set[str] = set()
     if bew_used:
         nr_index = {a.get('_article_id', ''): a for a in research_pool if a.get('_article_id')}
         news_index = {a.get('_article_id', ''): a for a in news_pool if a.get('_article_id')}
+        _windows_raw = bew.get('windows', []) or []
+        forced_all_wids = {w.get('window_id', '') for w in _windows_raw if w.get('window_id')}
+        if forced_set:
+            _windows_filtered = [w for w in _windows_raw
+                                 if w.get('window_id', '') in forced_set]
+            forced_applied = True
+            forced_windows_kept = len(_windows_filtered)
+        else:
+            _windows_filtered = _windows_raw
         windows_sorted = sorted(
-            bew.get('windows', []),
+            _windows_filtered,
             key=lambda w: (-float(w.get('confidence', 0) or 0),
                            -abs(float(w.get('zscore', 0) or 0))),
         )
         wid_order = {w.get('window_id', ''): i for i, w in enumerate(windows_sorted)}
+        kept_wid_set = set(wid_order.keys())
         cards_by_window: dict[str, list] = {}
         for c in bew.get('evidence_cards', []):
-            cards_by_window.setdefault(c.get('window_id', ''), []).append(c)
+            _wid = c.get('window_id', '')
+            if forced_applied and _wid not in kept_wid_set:
+                continue
+            cards_by_window.setdefault(_wid, []).append(c)
         bew_pool_size = sum(len(v) for v in cards_by_window.values())
 
         # window 순회로 source별 ordered queue 생성 (dedupe)
@@ -503,6 +530,9 @@ def _build_evidence_candidates(year: int, month: int, target_count: int,
             if aid:
                 evidence_ids.append(aid)
 
+    # forced filter evidence 수 집계 (bew lane 에서 실제로 남은 개수)
+    forced_evidence_kept = len(bew_nr_ordered) + len(bew_news_ordered) if forced_applied else 0
+
     debug = {
         'target_count': target_count,
         'research_quota': research_quota,
@@ -519,6 +549,13 @@ def _build_evidence_candidates(year: int, month: int, target_count: int,
         'bew_windows_consumed': len(bew_windows_consumed),
         'bew_research_picked': research_taken_via_bew,
         'bew_news_picked': news_taken_via_bew,
+        # forced BEW filter trace (viewer → debate export 경로)
+        'bew_forced_applied': forced_applied,
+        'bew_forced_window_ids': sorted(forced_set),
+        'bew_forced_windows_kept': forced_windows_kept,
+        'bew_forced_evidence_kept': forced_evidence_kept,
+        'bew_forced_invalid_window_ids': sorted(forced_set - forced_all_wids)
+            if forced_set else [],
     }
     _log('evidence_selection', month=f'{year}-{month:02d}', **debug)
     return high_impact, evidence_ids, card_lines, debug
@@ -529,11 +566,14 @@ def _build_evidence_candidates(year: int, month: int, target_count: int,
 # ===================================================================
 
 def _build_shared_context(year: int, month: int, fund_code: str = None,
-                          start_idx: int = 1, target_count: int = 15) -> dict:
+                          start_idx: int = 1, target_count: int = 15,
+                          *,
+                          force_window_ids: set[str] | None = None) -> dict:
     """4인 에이전트 공유 컨텍스트 빌드.
 
     start_idx: evidence 번호 시작값 (분기 통번호용)
     target_count: 이 달에서 뽑을 뉴스 목표 건수 (분기 debate 시 월별 quota 적용)
+    force_window_ids: BEW lane 내부 filter (None=전체)
     """
     context = {
         'year': year,
@@ -571,7 +611,8 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
 
         # 주요 뉴스: source-aware two-lane selection (research 70% / news 30%)
         high_impact, lane_evidence_ids, card_lines, _sel_debug = \
-            _build_evidence_candidates(year, month, target_count, start_idx)
+            _build_evidence_candidates(year, month, target_count, start_idx,
+                                       force_window_ids=force_window_ids)
         lines.extend(card_lines)
         evidence_ids.extend(lane_evidence_ids)
         if high_impact:
@@ -975,17 +1016,22 @@ def _summarize_debate_narrative(agent_responses: dict) -> dict:
         except Exception:
             new_narrative = '분석 중'
 
+    _current_snap = {
+        'dominant_narrative': canonical_narr,
+        'narrative_description': canonical_current.get('narrative_description', ''),
+        'topic_tags': canonical_current.get('topic_tags', []),
+        'since': canonical_current.get('since', ''),
+        'direction': canonical_current.get('direction', 'neutral'),
+        'weeks': canonical_current.get('weeks', 0),
+    }
     return {
         'debate_narrative': new_narrative,
+        # backward-compat: nested (current.*) + flat (최상위) 양쪽 제공.
+        # 구 소비자가 `canonical_snapshot['dominant_narrative']` 로 직접 접근해도
+        # KeyError 안 나도록 방어.
         'canonical_snapshot': {
-            'current': {
-                'dominant_narrative': canonical_narr,
-                'narrative_description': canonical_current.get('narrative_description', ''),
-                'topic_tags': canonical_current.get('topic_tags', []),
-                'since': canonical_current.get('since', ''),
-                'direction': canonical_current.get('direction', 'neutral'),
-                'weeks': canonical_current.get('weeks', 0),
-            }
+            'current': _current_snap,
+            **_current_snap,
         },
         'diverges_from_canonical': bool(canonical_narr and new_narrative != canonical_narr),
     }
@@ -995,15 +1041,21 @@ def _summarize_debate_narrative(agent_responses: dict) -> dict:
 # 메인: Debate 실행
 # ===================================================================
 
-def run_market_debate(year: int, month: int) -> dict:
+def run_market_debate(year: int, month: int,
+                      *,
+                      force_window_ids: set[str] | None = None) -> dict:
     """
     시장 전체 debate (월 1회, 펀드 무관).
     4인 에이전트 병렬 실행 -> Opus 2단계 종합 -> 자산군별 분석 결과.
     펀드별 캐시에서는 이 결과를 참조하여 보유 비중에 맞는 코멘트만 사용.
+
+    force_window_ids: BEW viewer 에서 선택된 window_id set (None=전체 BEW 사용).
     """
     print(f'\n-- Market Debate: {year}-{month:02d} --')
+    if force_window_ids:
+        print(f'  [forced BEW] {len(force_window_ids)}개 window_id 만 evidence lane 에 허용')
 
-    context = _build_shared_context(year, month)
+    context = _build_shared_context(year, month, force_window_ids=force_window_ids)
     print(f'  컨텍스트 빌드 완료')
 
     # 4인 에이전트 병렬 실행
@@ -1031,7 +1083,7 @@ def run_market_debate(year: int, month: int) -> dict:
     debate_interp = _summarize_debate_narrative(agent_responses)
     if debate_interp.get('diverges_from_canonical'):
         print(f'  debate 해석: {debate_interp["debate_narrative"]} '
-              f'(canonical `{debate_interp["canonical_snapshot"]["dominant_narrative"]}`와 상이)')
+              f'(canonical `{debate_interp["canonical_snapshot"].get("current", {}).get("dominant_narrative", "")}`와 상이)')
     else:
         print(f'  debate 해석: {debate_interp["debate_narrative"]}')
 
@@ -1078,13 +1130,21 @@ def run_debate(fund_code: str, year: int, month: int) -> dict:
     return result
 
 
-def run_quarterly_debate(year: int, quarter: int) -> dict:
+def run_quarterly_debate(year: int, quarter: int,
+                         *,
+                         force_window_ids: set[str] | None = None) -> dict:
     """
     분기 통합 debate.
     해당 분기 3개월의 뉴스/지표를 종합하여 debate 실행.
+
+    force_window_ids: BEW viewer 에서 선택된 window_id set. 3개월 컨텍스트 각각에
+    동일 set 이 전달되며, 월과 실제로 매칭되는 wid 만 해당 월 BEW lane 에 적용된다
+    (다른 월의 contract 에는 매칭 안 되므로 자연스럽게 무효화 됨).
     """
     months = [(quarter - 1) * 3 + i for i in range(1, 4)]
     print(f'\n-- Quarterly Debate: {year}Q{quarter} ({months[0]}~{months[2]}월) --')
+    if force_window_ids:
+        print(f'  [forced BEW] {len(force_window_ids)}개 window_id 만 evidence lane 에 허용')
 
     # 3개월 컨텍스트 병합
     merged_context = {
@@ -1107,7 +1167,8 @@ def run_quarterly_debate(year: int, quarter: int) -> dict:
     # 월별 최소 quota: 각 월 최소 5건, 나머지는 자유 배분 (총 ~15~20건)
     MONTHLY_QUOTA = 5
     for m in months:
-        ctx = _build_shared_context(year, m, start_idx=next_idx, target_count=MONTHLY_QUOTA)
+        ctx = _build_shared_context(year, m, start_idx=next_idx, target_count=MONTHLY_QUOTA,
+                                    force_window_ids=force_window_ids)
         next_idx = ctx.get('_next_idx', next_idx)
         if ctx.get('indicators_text') and not merged_context['indicators_text']:
             merged_context['indicators_text'] = ctx['indicators_text']
@@ -1154,7 +1215,7 @@ def run_quarterly_debate(year: int, quarter: int) -> dict:
     debate_interp = _summarize_debate_narrative(agent_responses)
     if debate_interp.get('diverges_from_canonical'):
         print(f'  debate 해석: {debate_interp["debate_narrative"]} '
-              f'(canonical `{debate_interp["canonical_snapshot"]["dominant_narrative"]}`와 상이)')
+              f'(canonical `{debate_interp["canonical_snapshot"].get("current", {}).get("dominant_narrative", "")}`와 상이)')
     else:
         print(f'  debate 해석: {debate_interp["debate_narrative"]}')
 

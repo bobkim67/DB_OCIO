@@ -339,18 +339,93 @@ def _load_past_comments(fund_code):
 # Debate 연동
 # ═══════════════════════════════════════════════════════
 
-def _run_debate(year, quarter):
-    """debate 엔진 실행 → 분기 마지막 월 기준."""
+def _run_debate(year, quarter, force_window_ids: set[str] | None = None):
+    """debate 엔진 실행 → 분기 마지막 월 기준.
+
+    force_window_ids: BEW viewer 에서 export 된 forced window_id set.
+    None 이면 기존 동작(전체 BEW contract).
+    """
     _, end_month = _quarter_dates(year, quarter)
     try:
         from market_research.report.debate_engine import run_market_debate
-        print(f'\n  debate 실행 중 ({year}-{end_month:02d})...', flush=True)
-        result = run_market_debate(year, end_month)
+        if force_window_ids:
+            print(f'\n  debate 실행 중 ({year}-{end_month:02d}, '
+                  f'forced BEW: {len(force_window_ids)}개 window)...', flush=True)
+        else:
+            print(f'\n  debate 실행 중 ({year}-{end_month:02d})...', flush=True)
+        result = run_market_debate(year, end_month,
+                                   force_window_ids=force_window_ids)
         print(f'  debate 완료')
         return result
     except Exception as e:
         print(f'  [경고] debate 실행 실패: {e}')
         return None
+
+
+def _load_forced_bew_json(path_str: str, year: int, end_month: int) -> set[str]:
+    """forced-bew JSON 파일 로드 + strict validation.
+
+    실패 시 SystemExit(fatal) — CLI 는 fallback 하지 않고 즉시 종료.
+    Returns: valid window_id set (≥1 개 보장).
+    """
+    p = Path(path_str)
+    if not p.exists():
+        raise SystemExit(f'[forced-bew] 파일 없음: {p}')
+    try:
+        payload = json.loads(p.read_text(encoding='utf-8'))
+    except Exception as e:
+        raise SystemExit(f'[forced-bew] JSON 파싱 실패: {p} — {e}')
+    if not isinstance(payload, dict):
+        raise SystemExit(f'[forced-bew] JSON 최상위가 dict 가 아님: {p}')
+
+    sv = payload.get('schema_version')
+    if sv != 1:
+        raise SystemExit(f'[forced-bew] schema_version 불일치 (기대=1, 실제={sv}): {p}')
+
+    jy = payload.get('year')
+    jm = payload.get('month')
+    if not isinstance(jy, int) or not isinstance(jm, int):
+        raise SystemExit(f'[forced-bew] year/month 타입 오류 (int 필요): '
+                         f'year={jy!r} month={jm!r}')
+    if jy != year or jm != end_month:
+        raise SystemExit(
+            f'[forced-bew] period mismatch — '
+            f'build 대상 {year}-{end_month:02d} vs JSON {jy}-{jm:02d}. '
+            f'다른 월의 export 파일을 전달할 수 없습니다.')
+
+    fwids = payload.get('force_window_ids')
+    if not isinstance(fwids, list):
+        raise SystemExit(f'[forced-bew] force_window_ids 가 리스트가 아님: '
+                         f'type={type(fwids).__name__}')
+    fwids = [str(w) for w in fwids if w]
+    if not fwids:
+        raise SystemExit(f'[forced-bew] force_window_ids 가 비었습니다: {p}')
+
+    # 해당 월 contract 로드해 실제 존재 wid 만 유지
+    contract_fp = (BASE_DIR / 'data' / 'benchmark_events' / f'{year}-{end_month:02d}.json')
+    if not contract_fp.exists():
+        raise SystemExit(f'[forced-bew] contract 없음: {contract_fp} '
+                         f'(먼저 benchmark_event_mapper 를 실행하세요)')
+    try:
+        contract = json.loads(contract_fp.read_text(encoding='utf-8'))
+    except Exception as e:
+        raise SystemExit(f'[forced-bew] contract 파싱 실패: {contract_fp} — {e}')
+    contract_wids = {w.get('window_id', '')
+                     for w in (contract.get('windows') or [])
+                     if w.get('window_id')}
+    valid = [w for w in fwids if w in contract_wids]
+    invalid = [w for w in fwids if w not in contract_wids]
+    if invalid:
+        print(f'  [forced-bew] contract 에 없는 wid 제외: {invalid[:3]}'
+              + (f' ... 외 {len(invalid)-3}건' if len(invalid) > 3 else ''))
+    if not valid:
+        raise SystemExit(
+            f'[forced-bew] 유효한 window_id 가 0건 입니다 — '
+            f'요청 {len(fwids)} / contract 에 존재 0. path={p}')
+
+    print(f'  [forced-bew] {len(valid)}개 window_id 로드 완료 '
+          f'(schema v{sv}, {jy}-{jm:02d}, source={payload.get("source","?")})')
+    return set(valid)
 
 
 def _debate_to_inputs(debate_result):
@@ -614,12 +689,14 @@ def _step_select_mode():
 # ═══════════════════════════════════════════════════════
 
 def build_report(fund_code, period_info, mode='auto', detail=False,
-                 model=None, fx_split=False):
+                 model=None, fx_split=False,
+                 force_window_ids: set[str] | None = None):
     """단일 펀드 보고서 생성 → JSON 저장.
 
     period_info: dict with _start_dt, _end_dt, _label, _quarter
     mode: 'auto' | 'edit' | 'from-json'
     fx_split: True면 증권/FX 분리 (R FX_split=TRUE 동일)
+    force_window_ids: BEW viewer 에서 export 된 forced window_id set (None=기본)
     """
     start_dt = period_info['_start_dt']
     end_dt = period_info['_end_dt']
@@ -652,7 +729,8 @@ def build_report(fund_code, period_info, mode='auto', detail=False,
 
     # ── debate 실행 → inputs 생성 ──
     print('\n  debate 엔진 실행 중...')
-    debate_result = _run_debate(end_dt.year, quarter)
+    debate_result = _run_debate(end_dt.year, quarter,
+                                force_window_ids=force_window_ids)
     inputs = _debate_to_inputs(debate_result)
     if not inputs:
         inputs = {'source': 'auto'}
@@ -787,6 +865,9 @@ def main():
     build_p.add_argument('--detail', action='store_true', help='상세 양식 (과거 코멘트 few-shot)')
     build_p.add_argument('--fx-split', action='store_true', help='FX 분리 (증권/환효과 분리)')
     build_p.add_argument('--model', type=str, default=None, help='LLM 모델 (기본: claude-sonnet-4-6)')
+    build_p.add_argument('--forced-bew-json', type=str, default=None,
+                         help='BEW viewer 에서 export 된 forced-BEW JSON 경로. '
+                              '해당 월 window_id 만 debate evidence lane 에 허용.')
 
     # list
     sub.add_parser('list', help='캐시된 보고서 목록')
@@ -838,6 +919,15 @@ def main():
             s, e, lbl, q = _resolve_period(period_info)
             period_info.update({'_start_dt': s, '_end_dt': e, '_label': lbl, '_quarter': q})
 
+        # forced BEW JSON 로드 (strict validation — 실패 시 즉시 종료)
+        forced_window_ids: set[str] | None = None
+        forced_json_path = getattr(args, 'forced_bew_json', None)
+        if forced_json_path:
+            _y = period_info.get('year') or period_info['_end_dt'].year
+            _q = period_info['_quarter']
+            _, _end_m = _quarter_dates(_y, _q)
+            forced_window_ids = _load_forced_bew_json(forced_json_path, _y, _end_m)
+
         # 실행
         total_cost = 0
         for fc in fund_codes:
@@ -845,7 +935,8 @@ def main():
             print(f'  {fc} 처리 중...')
             result = build_report(fc, period_info, mode=mode,
                                   detail=args.detail, model=args.model,
-                                  fx_split=fx_split)
+                                  fx_split=fx_split,
+                                  force_window_ids=forced_window_ids)
             if result:
                 total_cost += result.get('cost', 0)
 

@@ -113,7 +113,10 @@ def render(ctx):
                 st.success(f"debate 완료 (생성: {draft.get('generated_at', '')})")
                 st.rerun()
             except Exception as exc:
+                import traceback
                 st.error(f"debate 실패: {exc}")
+                with st.expander("traceback (디버그용)", expanded=False):
+                    st.code(traceback.format_exc(), language='python')
 
     # ── Draft 검토/수정/승인 ──
     if draft and current_status != STATUS_NOT_GENERATED:
