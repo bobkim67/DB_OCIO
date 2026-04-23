@@ -167,14 +167,14 @@ export interface components {
              */
             source: "db" | "cache" | "mock" | "mixed";
             /** Sources */
-            sources?: components["schemas"]["SourceBreakdown"][];
+            sources: components["schemas"]["SourceBreakdown"][];
             /**
              * Is Fallback
              * @default false
              */
             is_fallback: boolean;
             /** Warnings */
-            warnings?: string[];
+            warnings: string[];
             /**
              * Generated At
              * Format: date-time

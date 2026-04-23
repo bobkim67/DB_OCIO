@@ -1,69 +1,46 @@
+// ----------------------------------------------------------------------
+// DTO 타입은 src/api/generated/openapi.d.ts 에서 자동 유도됨 (openapi-typescript).
+// 스키마 변경 필요 시: FastAPI 기동 상태에서 `cd web && npm run openapi:gen`.
+// 수동 타입 추가 금지 — 백엔드 Pydantic 모델에서 파생시켜야 함.
+// fetcher 함수 시그니처는 이 파일에서 유지 (hooks/tabs/pages 호환).
+// ----------------------------------------------------------------------
 import { api } from "./client";
+import type { components } from "./generated/openapi";
+
+type S = components["schemas"];
 
 // === Meta ===
-export type SourceKind = "db" | "cache" | "mock" | "mixed";
-
-export interface SourceBreakdown {
-  component: string;
-  kind: "db" | "cache" | "mock";
-  note: string | null;
-}
-
-export interface BaseMeta {
-  as_of_date: string | null;
-  source: SourceKind;
-  sources: SourceBreakdown[];
-  is_fallback: boolean;
-  warnings: string[];
-  generated_at: string;
-}
+export type SourceKind = S["BaseMeta"]["source"];
+export type SourceBreakdown = S["SourceBreakdown"];
+export type BaseMeta = S["BaseMeta"];
 
 // === Fund ===
-export interface FundMetaDTO {
-  code: string;
-  name: string;
-  group: string;
-  inception: string;
-  bm_configured: boolean;
-  default_mapping_method: string;
-}
-
-export interface FundListResponseDTO {
-  meta: BaseMeta;
-  data: FundMetaDTO[];
-}
+export type FundMetaDTO = S["FundMetaDTO"];
+export type FundListResponseDTO = S["FundListResponseDTO"];
 
 // === Overview ===
-export interface NavPointDTO {
-  date: string;
-  nav: number;
-  bm: number | null;
-  excess: number | null;
-  aum: number | null;
-}
+export type NavPointDTO = S["NavPointDTO"];
+export type MetricCardDTO = S["MetricCardDTO"];
+export type OverviewResponseDTO = S["OverviewResponseDTO"];
 
-export interface MetricCardDTO {
-  key: string;
-  label: string;
-  value: number;             // raw ratio (0.0123 = 1.23%)
-  unit: "pct" | "bp" | "currency" | "raw";
-  bm_value: number | null;
-  excess_value: number | null;
-}
+// === Holdings ===
+export type HoldingAssetClassDTO = S["HoldingAssetClassDTO"];
+export type HoldingItemDTO = S["HoldingItemDTO"];
+export type FxHedgeSummaryDTO = S["FxHedgeSummaryDTO"];
+export type HoldingsResponseDTO = S["HoldingsResponseDTO"];
 
-export interface OverviewResponseDTO {
-  meta: BaseMeta;
-  fund_code: string;
-  fund_name: string;
-  inception_date: string;
-  bm_configured: boolean;
-  cards: MetricCardDTO[];
-  nav_series: NavPointDTO[];
-  period_returns: Record<string, number>;        // Week 2: {"1M","3M","6M","YTD","1Y","SI"}
-  bm_period_returns: Record<string, number>;     // Week 2: 동일 키, BM 없으면 빈 객체
-}
+// === Macro ===
+export type MacroPointDTO = S["MacroPointDTO"];
+export type MacroSeriesDTO = S["MacroSeriesDTO"];
+export type MacroTimeseriesResponseDTO = S["MacroTimeseriesResponseDTO"];
 
-// === Fetchers ===
+// === Admin ===
+export type AdminEvidenceQualityRowDTO = S["AdminEvidenceQualityRowDTO"];
+export type AdminEvidenceQualityResponseDTO = S["AdminEvidenceQualityResponseDTO"];
+
+// ----------------------------------------------------------------------
+// Fetchers — 시그니처/구현 불변. DTO 타입만 generated alias 참조.
+// ----------------------------------------------------------------------
 export const fetchFunds = async (): Promise<FundListResponseDTO> => {
   const r = await api.get<FundListResponseDTO>("/funds");
   return r.data;
@@ -79,43 +56,6 @@ export const fetchOverview = async (
   return r.data;
 };
 
-// === Holdings ===
-export interface HoldingAssetClassDTO {
-  asset_class: string;
-  weight: number;              // raw ratio
-  evl_amt: number;
-  item_count: number;
-  color: string | null;
-}
-
-export interface HoldingItemDTO {
-  item_cd: string;
-  item_nm: string;
-  asset_class: string;
-  weight: number;              // raw ratio
-  evl_amt: number;
-  sub_fund_cd: string | null;
-  is_short?: boolean;          // 매도 포지션 (DWPM10530 POS_DS_CD='매도')
-}
-
-export interface FxHedgeSummaryDTO {
-  usd_asset_weight: number;    // USD 노출 자산 합 (raw ratio)
-  usd_short_weight: number;    // 달러매도포지션 합 (raw ratio, 절대값)
-  hedge_ratio: number | null;  // = short / asset
-}
-
-export interface HoldingsResponseDTO {
-  meta: BaseMeta;
-  fund_code: string;
-  fund_name: string;
-  as_of_date: string | null;
-  lookthrough_applied: boolean;
-  nast_amt: number | null;
-  asset_class_weights: HoldingAssetClassDTO[];
-  holdings_items: HoldingItemDTO[];
-  fx_hedge?: FxHedgeSummaryDTO | null;
-}
-
 export const fetchHoldings = async (
   code: string,
   lookthrough: boolean,
@@ -130,24 +70,6 @@ export const fetchHoldings = async (
   return r.data;
 };
 
-// === Macro ===
-export interface MacroPointDTO {
-  date: string;
-  value: number;
-}
-
-export interface MacroSeriesDTO {
-  key: string;
-  label: string;
-  unit: "pct" | "bp" | "idx" | "ratio" | "krw" | "usd" | "raw";
-  points: MacroPointDTO[];
-}
-
-export interface MacroTimeseriesResponseDTO {
-  meta: BaseMeta;
-  series: MacroSeriesDTO[];
-}
-
 export const fetchMacro = async (
   keys: string[],
   start?: string,
@@ -160,29 +82,6 @@ export const fetchMacro = async (
   );
   return r.data;
 };
-
-// === Admin ===
-export interface AdminEvidenceQualityRowDTO {
-  period: string | null;
-  fund_code: string | null;
-  debated_at: string | null;
-  total_refs: number | null;
-  ref_mismatches: number | null;
-  tense_mismatches: number | null;
-  mismatch_rate: number | null;
-  evidence_count: number | null;
-  critical_warnings: number | null;
-  raw: Record<string, unknown>;
-}
-
-export interface AdminEvidenceQualityResponseDTO {
-  meta: BaseMeta;
-  file_path: string;
-  total_lines: number;
-  returned: number;
-  malformed: number;
-  rows: AdminEvidenceQualityRowDTO[];
-}
 
 export const fetchEvidenceQuality = async (
   limit?: number,

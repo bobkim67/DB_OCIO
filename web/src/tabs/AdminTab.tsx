@@ -5,17 +5,17 @@ import type { AdminEvidenceQualityRowDTO } from "../api/endpoints";
 
 const LIMIT_OPTIONS = [20, 50, 100] as const;
 
-function fmtPct(v: number | null): string {
+function fmtPct(v: number | null | undefined): string {
   if (v === null || v === undefined) return "—";
   return `${(v * 100).toFixed(1)}%`;
 }
 
-function fmtInt(v: number | null): string {
+function fmtInt(v: number | null | undefined): string {
   if (v === null || v === undefined) return "—";
   return String(v);
 }
 
-function fmtDt(v: string | null): string {
+function fmtDt(v: string | null | undefined): string {
   if (!v) return "—";
   return v.replace("T", " ").slice(0, 19);
 }
