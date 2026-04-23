@@ -180,7 +180,7 @@ def load_fund_holdings(fund_code: str, date: str = None) -> pd.DataFrame:
     try:
         sql = """
             SELECT STD_DT, FUND_CD, FUND_NM, ITEM_CD, ITEM_NM,
-                   AST_CLSF_CD_NM, CURR_DS_CD,
+                   AST_CLSF_CD_NM, CURR_DS_CD, POS_DS_CD,
                    EVL_AMT, NAST_TAMT_AGNST_WGH, AST_AGNST_WGH,
                    EVL_ERN_RT, QTY, ACQ_AMT, DUR, MOD_DUR
             FROM DWPM10530
@@ -863,7 +863,10 @@ def _classify_6class(row) -> str:
     if item_cd.startswith('0322800'):
         return '모펀드'
     # FX: 달러선물, 통화선물, NDF 등
-    if any(kw in item_nm for kw in ['달러선물', '달러 선물', 'USD선물', 'NDF', '통화선물', 'FX FORWARD']):
+    # AST_CLSF_CD_NM 기준 우선 (예: '달러선물', '통화선물', '선물환')
+    if any(kw in ast for kw in ['달러선물', '통화선물', '선물환', 'FX FORWARD']):
+        return 'FX'
+    if any(kw in item_nm for kw in ['달러선물', '달러 선물', '미국달러 F', 'USD F', 'USD선물', 'NDF', '통화선물', 'FX FORWARD']):
         return 'FX'
 
     is_kr = item_cd.startswith('KR') or (len(item_cd) == 6 and item_cd.isdigit())
@@ -3150,12 +3153,20 @@ def compute_single_port_pa(fund_code: str, start_date: str, end_date: str,
 
 # 매크로 지표 dataset_id 매핑
 MACRO_DATASETS = {
-    # 주식 지수 (TR)
-    'MSCI ACWI': {'dataset_id': 57, 'dataseries_id': 9, 'type': 'index'},
-    'S&P 500': {'dataset_id': 24, 'dataseries_id': 6, 'type': 'index'},
-    'MSCI Korea': {'dataset_id': 144, 'dataseries_id': 6, 'type': 'index'},
-    'MSCI EM': {'dataset_id': 37, 'dataseries_id': 6, 'type': 'index'},
-    'MSCI World ex US': {'dataset_id': 36, 'dataseries_id': 6, 'type': 'index'},
+    # 주식 지수 (TR) — 모두 USD 기준 (blob dict에서 USD 키 선택)
+    'MSCI ACWI': {'dataset_id': 57, 'dataseries_id': 9, 'type': 'index', 'currency': 'USD'},
+    'S&P 500': {'dataset_id': 24, 'dataseries_id': 6, 'type': 'index', 'currency': 'USD'},
+    'MSCI Korea': {'dataset_id': 144, 'dataseries_id': 6, 'type': 'index', 'currency': 'USD'},
+    'MSCI EM': {'dataset_id': 37, 'dataseries_id': 6, 'type': 'index', 'currency': 'USD'},
+    'MSCI World ex US': {'dataset_id': 36, 'dataseries_id': 6, 'type': 'index', 'currency': 'USD'},
+    'MSCI EAFE': {'dataset_id': 63, 'dataseries_id': 6, 'type': 'index', 'currency': 'USD'},
+    'MSCI Japan': {'dataset_id': 66, 'dataseries_id': 6, 'type': 'index', 'currency': 'USD'},
+    'Vanguard Growth': {'dataset_id': 11, 'dataseries_id': 6, 'type': 'index', 'currency': 'USD'},
+    'Vanguard Value': {'dataset_id': 12, 'dataseries_id': 6, 'type': 'index', 'currency': 'USD'},
+    'S&P 500 Growth': {'dataset_id': 114, 'dataseries_id': 6, 'type': 'index', 'currency': 'USD'},
+    'S&P 500 Value': {'dataset_id': 116, 'dataseries_id': 6, 'type': 'index', 'currency': 'USD'},
+    'Russell 1000 Growth': {'dataset_id': 115, 'dataseries_id': 6, 'type': 'index', 'currency': 'USD'},
+    'Russell 1000 Value': {'dataset_id': 117, 'dataseries_id': 6, 'type': 'index', 'currency': 'USD'},
     # PE/EPS
     'MSCI ACWI_PE': {'dataset_id': 57, 'dataseries_id': 24, 'type': 'valuation'},
     'MSCI ACWI_EPS': {'dataset_id': 57, 'dataseries_id': 31, 'type': 'valuation'},
@@ -3165,6 +3176,22 @@ MACRO_DATASETS = {
     'MSCI Korea_EPS': {'dataset_id': 144, 'dataseries_id': 31, 'type': 'valuation'},
     'MSCI EM_PE': {'dataset_id': 37, 'dataseries_id': 24, 'type': 'valuation'},
     'MSCI EM_EPS': {'dataset_id': 37, 'dataseries_id': 31, 'type': 'valuation'},
+    'MSCI EAFE_PE': {'dataset_id': 63, 'dataseries_id': 24, 'type': 'valuation'},
+    'MSCI EAFE_EPS': {'dataset_id': 63, 'dataseries_id': 31, 'type': 'valuation'},
+    'MSCI Japan_PE': {'dataset_id': 66, 'dataseries_id': 24, 'type': 'valuation'},
+    'MSCI Japan_EPS': {'dataset_id': 66, 'dataseries_id': 31, 'type': 'valuation'},
+    'Vanguard Growth_PE': {'dataset_id': 11, 'dataseries_id': 24, 'type': 'valuation'},
+    'Vanguard Growth_EPS': {'dataset_id': 11, 'dataseries_id': 31, 'type': 'valuation'},
+    'Vanguard Value_PE': {'dataset_id': 12, 'dataseries_id': 24, 'type': 'valuation'},
+    'Vanguard Value_EPS': {'dataset_id': 12, 'dataseries_id': 31, 'type': 'valuation'},
+    'S&P 500 Growth_PE': {'dataset_id': 114, 'dataseries_id': 24, 'type': 'valuation'},
+    'S&P 500 Growth_EPS': {'dataset_id': 114, 'dataseries_id': 31, 'type': 'valuation'},
+    'S&P 500 Value_PE': {'dataset_id': 116, 'dataseries_id': 24, 'type': 'valuation'},
+    'S&P 500 Value_EPS': {'dataset_id': 116, 'dataseries_id': 31, 'type': 'valuation'},
+    'Russell 1000 Growth_PE': {'dataset_id': 115, 'dataseries_id': 24, 'type': 'valuation'},
+    'Russell 1000 Growth_EPS': {'dataset_id': 115, 'dataseries_id': 31, 'type': 'valuation'},
+    'Russell 1000 Value_PE': {'dataset_id': 117, 'dataseries_id': 24, 'type': 'valuation'},
+    'Russell 1000 Value_EPS': {'dataset_id': 117, 'dataseries_id': 31, 'type': 'valuation'},
     # FX
     'USD/KRW': {'dataset_id': 31, 'dataseries_id': 6, 'type': 'fx', 'currency': 'USD'},
     # 변동성/스프레드

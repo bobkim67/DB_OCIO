@@ -7,6 +7,7 @@ import pandas as pd
 from config.funds import FUND_LIST, FUND_META
 
 from ..schemas.holdings import (
+    FxHedgeSummaryDTO,
     HoldingAssetClassDTO,
     HoldingItemDTO,
     HoldingsResponseDTO,
@@ -29,6 +30,21 @@ _ASSET_COLORS = {
     "모펀드": "#FF6692",
     "유동성": "#B6E880",
 }
+
+
+def _reclassify_fx_deposit(item_cd: str, item_nm: str, ac: str) -> str:
+    """FX 자산군에 포획된 외화예치금(USD DEPOSIT/CALL 등)을 유동성으로 되돌림.
+
+    data_loader의 FX 오버레이가 '외화' 키워드로 예치금을 끌어가는 문제 우회.
+    재분류 대상: FX 자산군 + (ITEM_CD='USMUSD022001' OR ITEM_NM에 DEPOSIT/CALL).
+    """
+    if ac != "FX":
+        return ac
+    nm = (item_nm or "").upper()
+    cd = (item_cd or "").upper()
+    if cd == "USMUSD022001" or "DEPOSIT" in nm or nm.endswith(" CALL"):
+        return "유동성"
+    return ac
 
 
 def _iso_to_yyyymmdd(s: str) -> str:
@@ -173,10 +189,15 @@ def build_holdings(
             continue
         weight = (evl_f / denom) if (denom and denom > 0) else 0.0
         ac_raw = _val(row, "자산군", "AST_CLSF_CD_NM", default="기타")
+        item_cd_s = str(_val(row, "ITEM_CD", default=""))
+        item_nm_s = str(_val(row, "ITEM_NM", default=""))
+        ac_final = _reclassify_fx_deposit(item_cd_s, item_nm_s, str(ac_raw))
+        pos_raw = _val(row, "POS_DS_CD", "pos_ds_cd", default="")
+        is_short = "매도" in str(pos_raw)
         items.append(HoldingItemDTO(
-            item_cd=str(_val(row, "ITEM_CD", default="")),
-            item_nm=str(_val(row, "ITEM_NM", default="")),
-            asset_class=str(ac_raw),
+            item_cd=item_cd_s,
+            item_nm=item_nm_s,
+            asset_class=ac_final,
             weight=weight,
             evl_amt=evl_f,
             sub_fund_cd=(
@@ -184,6 +205,7 @@ def build_holdings(
                 if _val(row, "SUB_FUND_CD", "sub_fund_cd") is not None
                 else None
             ),
+            is_short=is_short,
         ))
 
     # 5) 자산군 집계
@@ -218,6 +240,32 @@ def build_holdings(
     order_idx = {ac: i for i, ac in enumerate(_ASSET_CLASS_ORDER)}
     items.sort(key=lambda it: (order_idx.get(it.asset_class, 99), -it.weight))
 
+    # 7) USD 노출 요약 (USD 자산비중 / 달러매도포지션 / 헷지비율)
+    usd_asset_ac = {"해외주식", "해외채권", "대체투자"}
+    usd_asset_w = sum(
+        it.weight for it in items if it.asset_class in usd_asset_ac
+    )
+    # USD 예치금 (유동성으로 재분류된 USMUSD022001 / USD DEPOSIT류) 도 USD 노출에 포함
+    usd_asset_w += sum(
+        it.weight for it in items
+        if it.asset_class == "유동성"
+        and (
+            it.item_cd.upper() == "USMUSD022001"
+            or "DEPOSIT" in it.item_nm.upper()
+        )
+    )
+    usd_short_w = sum(
+        it.weight for it in items if it.asset_class == "FX" and it.is_short
+    )
+    hedge = None
+    if usd_asset_w > 0:
+        hedge = usd_short_w / usd_asset_w
+    fx_hedge = FxHedgeSummaryDTO(
+        usd_asset_weight=usd_asset_w,
+        usd_short_weight=usd_short_w,
+        hedge_ratio=hedge,
+    )
+
     return HoldingsResponseDTO(
         meta=BaseMeta(
             as_of_date=as_of,
@@ -234,4 +282,5 @@ def build_holdings(
         nast_amt=nast,
         asset_class_weights=asset_class_weights,
         holdings_items=items,
+        fx_hedge=fx_hedge,
     )

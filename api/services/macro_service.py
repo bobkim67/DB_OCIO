@@ -12,29 +12,57 @@ from ..schemas.macro import (
 from ..schemas.meta import BaseMeta, SourceBreakdown
 
 
-# Week 4 MVP 기본 public key 3개
-DEFAULT_KEYS: list[str] = ["PE", "EPS", "USDKRW"]
+# Week 5 재설계: 지수 드롭다운 1개 = IDX_<code> / PE_<code> / EPS_<code> 3개 키
+# USDKRW는 지수 드롭다운 옵션 중 하나 (PE/EPS 없음 — 단독 시리즈).
+#
+# MSCI Korea를 기본 선택으로 제공하기 위해 DEFAULT_KEYS는 KR 3종.
+DEFAULT_KEYS: list[str] = ["IDX_KR", "PE_KR", "EPS_KR"]
 
-# public key (UI용) → modules.data_loader.MACRO_DATASETS 내부 키 매핑
-# PE/EPS는 MSCI ACWI (dataseries_id=24/31)가 SCIP에서 empty이므로 S&P 500으로 교체
-# (조사: 2026-04-22, S&P 500_PE/EPS 각 2427 points, last=2026-04-21)
-_PUBLIC_TO_INTERNAL: dict[str, str] = {
+# index code → (지수명, ETF proxy 티커, MACRO_DATASETS base key)
+# SCIP의 PE/EPS(dataseries 24/31)가 지수 자체가 아닌 대응 US-listed ETF 레벨에서만
+# 제공되므로, 모든 지수는 사실상 해당 ETF를 proxy로 사용 (업계 표준).
+_INDEX_BASE: dict[str, tuple[str, str, str]] = {
+    "SP500": ("S&P 500", "SPY", "S&P 500"),
+    "KR": ("MSCI Korea", "EWY", "MSCI Korea"),
+    "EM": ("MSCI EM", "VWO", "MSCI EM"),
+    "EAFE": ("MSCI EAFE", "EFA", "MSCI EAFE"),
+    "JP": ("MSCI Japan", "EWJ", "MSCI Japan"),
+    "VG": ("Vanguard Growth", "VUG", "Vanguard Growth"),
+    "VV": ("Vanguard Value", "VTV", "Vanguard Value"),
+    "SPG": ("S&P 500 Growth", "SPYG", "S&P 500 Growth"),
+    "SPV": ("S&P 500 Value", "SPYV", "S&P 500 Value"),
+    "RG": ("Russell 1000 Growth", "IWF", "Russell 1000 Growth"),
+    "RV": ("Russell 1000 Value", "IWD", "Russell 1000 Value"),
+}
+
+_PUBLIC_TO_INTERNAL: dict[str, str] = {"USDKRW": "USD/KRW"}
+_LABEL: dict[str, str] = {"USDKRW": "USD/KRW"}
+_UNIT: dict[str, str] = {"USDKRW": "krw"}
+
+for _code, (_disp, _etf, _base) in _INDEX_BASE.items():
+    _PUBLIC_TO_INTERNAL[f"IDX_{_code}"] = _base
+    _PUBLIC_TO_INTERNAL[f"PE_{_code}"] = f"{_base}_PE"
+    _PUBLIC_TO_INTERNAL[f"EPS_{_code}"] = f"{_base}_EPS"
+    _LABEL[f"IDX_{_code}"] = f"{_disp} ({_etf})"
+    _LABEL[f"PE_{_code}"] = f"PE 12M Fwd ({_etf})"
+    _LABEL[f"EPS_{_code}"] = f"EPS 12M Fwd ({_etf})"
+    _UNIT[f"IDX_{_code}"] = "idx"
+    _UNIT[f"PE_{_code}"] = "ratio"
+    _UNIT[f"EPS_{_code}"] = "raw"
+
+# 레거시 alias (Week 4 호환) — 이전 키로 호출하면 S&P 500 IDX_SP500으로 라우트
+_PUBLIC_TO_INTERNAL.update({
     "PE": "S&P 500_PE",
     "EPS": "S&P 500_EPS",
-    "USDKRW": "USD/KRW",
-}
-
-# UI 라벨/단위 (MACRO_DATASETS에 없는 부가 정보만 유지)
-_LABEL: dict[str, str] = {
+})
+_LABEL.update({
     "PE": "PE (12M Fwd, S&P 500)",
     "EPS": "EPS (12M Fwd, S&P 500)",
-    "USDKRW": "USD/KRW",
-}
-_UNIT: dict[str, str] = {
+})
+_UNIT.update({
     "PE": "ratio",
     "EPS": "raw",
-    "USDKRW": "krw",
-}
+})
 
 
 def _iso_to_yyyymmdd(s: str) -> str:

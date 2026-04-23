@@ -95,6 +95,13 @@ export interface HoldingItemDTO {
   weight: number;              // raw ratio
   evl_amt: number;
   sub_fund_cd: string | null;
+  is_short?: boolean;          // 매도 포지션 (DWPM10530 POS_DS_CD='매도')
+}
+
+export interface FxHedgeSummaryDTO {
+  usd_asset_weight: number;    // USD 노출 자산 합 (raw ratio)
+  usd_short_weight: number;    // 달러매도포지션 합 (raw ratio, 절대값)
+  hedge_ratio: number | null;  // = short / asset
 }
 
 export interface HoldingsResponseDTO {
@@ -106,6 +113,7 @@ export interface HoldingsResponseDTO {
   nast_amt: number | null;
   asset_class_weights: HoldingAssetClassDTO[];
   holdings_items: HoldingItemDTO[];
+  fx_hedge?: FxHedgeSummaryDTO | null;
 }
 
 export const fetchHoldings = async (
