@@ -1607,3 +1607,112 @@ cd web && node_modules/.bin/vite --host 127.0.0.1 --port 5173
 ---
 
 _Week 5 완료: 2026-04-23_
+
+## Week 6 회고 — openapi-typescript 도입 (2026-04-23)
+
+### 실제 실행 기록
+
+| 커밋 | 해시 | 범위 |
+|------|------|------|
+| W6 커밋 1 | 68faf10 | chore(web): openapi-typescript 도입 + generated/openapi.d.ts 최초 생성 |
+| W6 커밋 2 | d227c96 | refactor(web): endpoints.ts DTO를 openapi generated 타입으로 교체 |
+| W6 커밋 3 | 9b62827 | docs: openapi-typescript regenerate 명령 안내 |
+
+### 목표 vs 실제 달성
+
+| 계획 | 상태 | 비고 |
+|------|:---:|------|
+| FastAPI `/openapi.json` 기반 TypeScript 타입 자동 생성 | ✅ | 18 schemas (BaseMeta/FundMetaDTO/...) 전부 generated에 반영 |
+| 기존 수동 endpoints.ts 점진 대체 (B안) | ✅ | interface 블록 → `components["schemas"]["..."]` alias |
+| fetcher 함수 시그니처 불변 | ✅ | `fetchFunds`/`fetchOverview`/`fetchHoldings`/`fetchMacro`/`fetchEvidenceQuality` 5개 모두 이름/인자/반환 타입 동일 |
+| hooks/tabs/pages/components 무변경 | 부분 ✅ | AdminTab의 fmt 헬퍼 시그니처 3줄 `| undefined` 수용 확장 (Pydantic default gotcha 대응), 외 전부 무변경 |
+| README 재생성 안내 | ✅ | `web/README.md` 타입 섹션 갱신 (FastAPI 기동 필수 + 수동 수정 금지) |
+
+### 정량 효과
+
+| 지표 | 이전 | 이후 |
+|---|---:|---:|
+| `web/src/api/endpoints.ts` 라인수 | 199 | **98** (−51%) |
+| 수동 DTO interface | 12개 | 0 (모두 generated alias) |
+| `web/src/api/generated/openapi.d.ts` | — | 576 lines / 16.7KB / 18 schemas |
+| tsc exit | 0 | **0** (generated 전환 후에도 통과) |
+
+### Pydantic default gotcha (학습된 중요 이슈)
+
+**증상**: 커밋 2 초기 typecheck에서 8건 에러:
+```
+MetaBadge.tsx: 'meta.sources' is possibly 'undefined'
+MetaBadge.tsx: 'meta.warnings' is possibly 'undefined'
+AdminTab.tsx: Argument of type 'number | null | undefined' is not assignable ...
+```
+
+**원인**: Pydantic v2에서 `default_factory=list` 또는 `default=None` 필드는 JSON Schema `required` 배열에서 빠짐 → OpenAPI optional → openapi-typescript가 `?:`로 생성.
+
+**해결 패턴 2종 (원칙 "DTO 대규모 재설계 금지" 준수)**:
+
+1. **항상 존재해야 할 필드 → 백엔드 Pydantic default 제거 + required** (이번 `BaseMeta.sources/warnings`):
+   - 모든 서비스 호출부가 이미 `sources=[]`, `warnings=[]` 명시 전달 중인지 사전 검증 (4개 서비스 9개 호출부 확인)
+   - Pydantic: `sources: list[SourceBreakdown]` (default 제거)
+   - 재생성 후 generated에서 non-optional로 잡힘 → MetaBadge 에러 해소
+
+2. **실제 null-able 필드 → 프론트 fmt 헬퍼 `| undefined` 수용** (이번 `AdminEvidenceQualityRowDTO.*`):
+   - JSONL 파일에 실제로 키 누락 가능한 필드 → optional 유지가 계약상 정확
+   - `AdminTab.tsx`: `fmtPct(v: number | null | undefined)` 3줄만 확장
+   - 로직 동일, 타입 시그니처 정합
+
+상세 교훈: `memory/reference_openapi_typescript.md`.
+
+### dual-run 스모크 (커밋 2 후, 2026-04-23)
+
+| 엔드포인트 | 결과 |
+|---|---|
+| `GET /api/funds/08K88/overview` | source=db, cards=4, nav_series=570, sources=2, warnings=[] |
+| `GET /api/funds/07G04/holdings?lookthrough=true` | source=db, nast=175,278,771,994, items=17, fx_hedge=present |
+| `GET /api/macro/timeseries?keys=PE,EPS,USDKRW` | source=db, series=3 |
+| `GET /api/admin/evidence-quality?limit=5` | total_lines=19, returned=5, malformed=0 |
+| `git diff --stat web/src/hooks web/src/tabs web/src/components web/src/pages` | AdminTab.tsx 6줄만 (fmt 시그니처) |
+
+### 재생성 플로우
+
+```bash
+# FastAPI가 127.0.0.1:8000 에서 기동 중일 때만 실행 가능
+cd web && npm run openapi:gen
+```
+산출물: `web/src/api/generated/openapi.d.ts` (수동 수정 금지 — 파일 상단 자동 생성 배너).
+백엔드 스키마(`api/schemas/*.py`) 변경 시 반드시 재생성 후 endpoints.ts의 alias 키 이름 확인하여 커밋.
+
+### 이번 턴 의도적 미착수
+
+- `openapi.json` 정적 스냅샷 커밋 — 단일 진실 원천(FastAPI runtime) 유지
+- axios 대체 generated client — 수동 fetcher 유지, 위험 최소화
+- runtime 스키마 검증 (zod 등) — 별도 인프라 작업이라 Week 7+로 보류
+- FastAPI `response_model` 누락 보강 — 이번 turn에서 모든 라우터 이미 지정되어 있어 수정 0 파일
+
+### Week 6+ 인입 리스트 (업데이트)
+
+| 항목 | 우선순위 | 상태 |
+|---|:---:|---|
+| **openapi-typescript 도입** | ~~P1~~ | **W6 완료** |
+| BM period_returns 채움 (`bm_period_returns={}`) | P1 | 미착수 (W2 잔여) |
+| Admin debate_status viewer 확장 | P2 | 미착수 |
+| Report final viewer | P3 | 미착수 |
+| 듀레이션 표기 방향 결정 (A 보류 / B BM만 / C ETF 매핑) | P3 | 사용자 결정 대기 |
+| Brinson 이전 | P4 (조건부) | 3조건 미충족 유지 |
+
+### Week 6+ 금지 유지 (전 기간 불변)
+
+- auth / JWT / LoginPage / users.yaml 이식
+- Report **생성** 엔드포인트 (viewer만 허용)
+- Brinson 착수 (3조건 미충족 시)
+- batch/CLI 트리거 엔드포인트
+- docker-compose / nginx 배포
+- 전역상태 라이브러리 (zustand 등)
+- Plotly Figure JSON 서버 조립
+- 기존 Streamlit 코드 대규모 수정
+- `async def` 라우터 핸들러
+- CORS `allow_credentials=True`
+- **정적 openapi.json 스냅샷 커밋** (신규 금지 — 단일 진실 원천 유지)
+
+---
+
+_Week 6 완료: 2026-04-23_
