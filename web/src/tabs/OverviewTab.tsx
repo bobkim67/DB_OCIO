@@ -116,6 +116,7 @@ export default function OverviewTab({ fundCode }: Props) {
       <NavChart
         points={data.nav_series}
         title="수정기준가 / BM / 초과수익"
+        instanceKey={`${fundCode}-${data.nav_series.length}`}
       />
     </section>
   );
