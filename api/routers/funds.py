@@ -14,6 +14,8 @@ def get_funds() -> FundListResponseDTO:
     return FundListResponseDTO(
         meta=BaseMeta(
             source="db",
+            sources=[],
+            warnings=[],
             is_fallback=False,
             generated_at=datetime.now(timezone.utc),
         ),
