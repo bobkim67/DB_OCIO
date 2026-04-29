@@ -4,20 +4,20 @@ status: base
 entity_id: graphnode__이란
 label: "이란"
 taxonomy_topic: 지정학
-node_importance: 2.8053
+node_importance: 0.5277
 importance_basis: edge_effective_score_sum
-support_count_sum: 6
+support_count_sum: 2
 path_count: 0
 path_role_hit: false
-unique_article_count: 3135
+unique_article_count: 3030
 first_seen: 2026-02-27
-last_seen: 2026-04-21
+last_seen: 2026-04-29
 primary_articles: [2cf2c509f7fe, 5755e363a895, 924a92741d29, 0797a6ff20b6, 8d3309ff913e]
 graph_node_id: 이란
 period: 2026-04
 has_graph_signal: true
 source_of_truth: pipeline_refine+graphrag
-updated_at: 2026-04-21T09:51:14
+updated_at: 2026-04-29T10:39:40
 ---
 
 # Entity — 이란
@@ -27,24 +27,24 @@ updated_at: 2026-04-21T09:51:14
 
 ## Confirmed facts
 
-- Mention summary: 2026-02-27 ~ 2026-04-21 · 3135 articles
-- Linked events: `event_2482`, `event_3119`, `event_4005`, `event_2413`, `event_3599`
+- Mention summary: 2026-02-27 ~ 2026-04-29 · 3030 articles
+- Linked events: `event_2319`, `event_2956`, `event_3842`, `event_2250`, `event_3436`
 - Related asset classes (derived): —
 
 ### Recent articles
-- 뉴욕증시, 미국과 이란간 종전협상 타결 기대감에 소폭 하락세 그쳐⋯애... (ref:`2cf2c509f7fe`)
-- 미·이란 2차 협상 기대 속 코스피 장중 사상 최고치 '6350'선 돌파 (ref:`5755e363a895`)
-- 호르무즈 개폐에 시장 출렁…월가 "투자자들, 뉴스 잘못 읽어" (ref:`924a92741d29`)
-- 세계국채지수 편입 2주… 외국인, 국고채 8조 순매수 (ref:`0797a6ff20b6`)
-- [AI의 종목 이야기] BofA "국채만 전쟁 공포에 갇혀...美 5년물 사라" (ref:`8d3309ff913e`)
-- [오늘 금시세]이란 긴장 재고조·금리 상승에 금값, 약보합
-- 코스피, 반도체주 강세에 6,340선…장중 사상 최고치 돌파(종합)
-- [뉴욕마켓워치] 美·이란, 협상 재개 두고 샅바 싸움…주식·달러↓채권...
+- [금시세] 금값 1돈 96만 원 (ref:`2cf2c509f7fe`)
+- 뉴욕증시, 오픈AI 성장 둔화 우려에 하락…나스닥 0.9%↓ (ref:`5755e363a895`)
+- 삼성전기·무라타, AI 서버 MLCC 수주잔고 비율 1 이상 유지… 하반기 가... (ref:`924a92741d29`)
+- [국제금융 브리핑] 트럼프 이란 협상안 거부·UAE OPEC 탈퇴 선언…WTI 9... (ref:`0797a6ff20b6`)
+- 美-이란 '영원한 갈등' 우려…브렌트유 110달러선 재돌파(종합) (ref:`8d3309ff913e`)
+- 트럼프 “만족 못 한다”…이란은 호르무즈 통행료 계좌 열었다
+- [뉴욕증시] 오픈AI 성장 우려에 기술주 약세…나스닥 0.9% 하락
+- 150만 b/d 추가 증산 여력 있는 UAE, 5월 OPEC 탈퇴 선언
 
 ## Graph provenance
 
-- `node_importance`: 2.8053 (edge_effective_score_sum)
-- `support_count_sum`: 6
+- `node_importance`: 0.5277 (edge_effective_score_sum)
+- `support_count_sum`: 2
 - `path_count`: 0
 - `path_role_hit`: false
 

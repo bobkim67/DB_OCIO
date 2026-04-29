@@ -1,6 +1,6 @@
 ---
 type: wiki_index
-updated_at: 2026-04-21T09:51:14
+updated_at: 2026-04-29T10:39:40
 ---
 
 # Wiki Index
@@ -20,7 +20,7 @@ Latest period: **2026-04**
 
 ## Latest batch counts (base pages)
 - Events: 5
-- Entities: 7
+- Entities: 12
 - Assets: 6
 - Funds: 2
 

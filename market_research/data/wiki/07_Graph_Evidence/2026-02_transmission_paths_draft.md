@@ -2,16 +2,16 @@
 type: graph_evidence
 status: draft
 promoted_to_canonical: false
-period: 2026-04
+period: 2026-02
 total_paths: 4
-node_count: 263
-edge_count: 241
+node_count: 246
+edge_count: 231
 source_of_truth: graph_rag.precompute_transmission_paths
 phase: P0
-updated_at: 2026-04-29T10:40:40
+updated_at: 2026-04-22T12:59:35
 ---
 
-# Transmission Paths (DRAFT) — 2026-04
+# Transmission Paths (DRAFT) — 2026-02
 
 > Draft evidence only. **Do not reference from canonical asset/regime pages.**
 > Promotion to canonical is gated on Phase 4+.
@@ -19,16 +19,16 @@ updated_at: 2026-04-29T10:40:40
 ## Summary
 
 - Total paths: 4
-- Graph nodes: 263 · edges: 241
+- Graph nodes: 246 · edges: 231
 
 ## Paths
 
 | # | Trigger | Target | Confidence | Path |
 |---|---------|--------|------------|------|
-| 1 | `물가_인플레이션` | `금리` | 0.184 | 전쟁으로_인한_인플레이션_압력 → 중앙은행_금리_정책_변화_검토 |
-| 2 | `지정학` | `유가` | 0.227 | 트럼프_대이란_제재_정책_발표 → 이란_원유_수출_제한 |
-| 3 | `지정학` | `금리` | 0.184 | 전쟁으로_인한_인플레이션_압력 → 중앙은행_금리_정책_변화_검토 |
-| 4 | `테크_AI_반도체` | `해외주식` | 0.840 | 빅테크·AI_관련주_주가_상승 → 나스닥_지수_반응 |
+| 1 | `통화정책` | `환율` | 0.422 | 기준금리_결정 → 외환시장_개입 → 시장_기대_변화 → 환율 |
+| 2 | `통화정책` | `크립토` | 0.107 | Fed_금리정책_발표 → 위험자산_선호도_변화 → 비트코인 |
+| 3 | `관세_무역` | `크립토` | 0.360 | 무역_불확실성_증가 → 위험자산_선호도_변화 → 비트코인 |
+| 4 | `경기_소비` | `금리` | 0.480 | 한은_경기_판단_수정 → 통화정책_방향_재검토 → 한은 → 기준금리_결정 |
 
 ## Usage guardrails
 
