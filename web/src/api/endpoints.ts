@@ -37,6 +37,9 @@ export type MacroTimeseriesResponseDTO = S["MacroTimeseriesResponseDTO"];
 // === Admin ===
 export type AdminEvidenceQualityRowDTO = S["AdminEvidenceQualityRowDTO"];
 export type AdminEvidenceQualityResponseDTO = S["AdminEvidenceQualityResponseDTO"];
+export type AdminDebateStatusResponseDTO = S["AdminDebateStatusResponseDTO"];
+export type AdminDebatePeriodsResponseDTO = S["AdminDebatePeriodsResponseDTO"];
+export type DebateStatus = AdminDebateStatusResponseDTO["status"];
 
 // ----------------------------------------------------------------------
 // Fetchers — 시그니처/구현 불변. DTO 타입만 generated alias 참조.
@@ -96,3 +99,22 @@ export const fetchEvidenceQuality = async (
   );
   return r.data;
 };
+
+export const fetchAdminDebateStatus = async (
+  period: string,
+  fund: string,
+): Promise<AdminDebateStatusResponseDTO> => {
+  const r = await api.get<AdminDebateStatusResponseDTO>(
+    "/admin/debate-status",
+    { params: { period, fund } },
+  );
+  return r.data;
+};
+
+export const fetchAdminDebatePeriods =
+  async (): Promise<AdminDebatePeriodsResponseDTO> => {
+    const r = await api.get<AdminDebatePeriodsResponseDTO>(
+      "/admin/debate-periods",
+    );
+    return r.data;
+  };

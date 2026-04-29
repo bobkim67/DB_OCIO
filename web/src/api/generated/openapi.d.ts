@@ -106,10 +106,89 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/debate-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Debate Status */
+        get: operations["get_debate_status_api_admin_debate_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/debate-periods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Debate Periods */
+        get: operations["get_debate_periods_api_admin_debate_periods_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AdminDebatePeriodsResponseDTO
+         * @description report_output/ 하위 기간 디렉토리 목록 (read-only 스캔).
+         */
+        AdminDebatePeriodsResponseDTO: {
+            meta: components["schemas"]["BaseMeta"];
+            /** Periods */
+            periods: string[];
+        };
+        /**
+         * AdminDebateStatusResponseDTO
+         * @description report_output/{period}/{fund}.{input,draft,final}.json 상태 + 본문.
+         *
+         *     Read-only. input은 summary만, draft/final은 본문 dict 그대로 노출.
+         */
+        AdminDebateStatusResponseDTO: {
+            meta: components["schemas"]["BaseMeta"];
+            /** Period */
+            period: string;
+            /** Fund Code */
+            fund_code: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "not_generated" | "draft_generated" | "edited" | "approved";
+            /** Has Input */
+            has_input: boolean;
+            /** Has Draft */
+            has_draft: boolean;
+            /** Has Final */
+            has_final: boolean;
+            /** Input Summary */
+            input_summary?: {
+                [key: string]: unknown;
+            } | null;
+            /** Draft Body */
+            draft_body?: {
+                [key: string]: unknown;
+            } | null;
+            /** Final Body */
+            final_body?: {
+                [key: string]: unknown;
+            } | null;
+        };
         /** AdminEvidenceQualityResponseDTO */
         AdminEvidenceQualityResponseDTO: {
             meta: components["schemas"]["BaseMeta"];
@@ -569,6 +648,58 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_debate_status_api_admin_debate_status_get: {
+        parameters: {
+            query: {
+                period: string;
+                fund: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminDebateStatusResponseDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_debate_periods_api_admin_debate_periods_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminDebatePeriodsResponseDTO"];
                 };
             };
         };
