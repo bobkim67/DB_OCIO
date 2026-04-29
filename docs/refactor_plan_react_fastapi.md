@@ -1821,3 +1821,68 @@ _W2 잔여 마감: 2026-04-29 (커밋 6776da3)_
 - indicator 차트(코멘트 키워드 detect → indicators.csv chart)는 보류. `indicators.csv` 가 daily_update 산출물이라 환경 종속
 
 _Report final viewer 완료: 2026-04-29_
+
+---
+
+## Duration·YTM Fetcher + Holdings 통합 (2026-04-29)
+
+### 범위
+- 9 OCIO 펀드 채권성 종목 11건의 듀레이션·YTM 자동 수집 + 시계열 누적 archive
+- API/Streamlit/React 모두에 채권 한정 + 전체 비중 두 가중평균 노출 + 종목별 dur/ytm 컬럼
+
+### 자료원 매핑 (11종)
+- ACE papi `papi.aceetf.co.kr/api/funds/{fundCd}/ytmcalc` — 4종 (ACE 종합채권 / 국고채10년 / 머니마켓 / 단기채권알파)
+- KIM 한투운용 `papi.kitmc.com/api/funds/{fundCd}/performance` — `priceList[0]` (TMF26-12 / TMF28-12)
+- Samsung KODEX `samsungfund.com/api/v1/kodex/product/{fid}.do` — KODEX 국고채30년 / KODEX iShares 미국HY
+- RISE 정적 HTML `riseetf.co.kr/prod/finderDetail/{code}` — h3 sub_page_title 정규식
+- TIGER 정적 HTML `investments.miraeasset.com/.../detail/index.do?ksdFund={isin}` — `<div class="title">` next sibling amount
+- Vanguard `investor.vanguard.com/vmf/api/{ticker}/characteristic` — `fixedIncomeCharacteristic.fund.averageDuration` (월말 갱신)
+- SPDR JNK proxy `ssga.com/.../jnk` — iShares USHY 본 ETF의 자료원 대체 (운영 차이 0.1~0.2)
+- Manual — 월넛 사모 (비공시, 사용자 입력 dur=10/ytm=3.1)
+
+### 구현 핵심
+- `modules/duration_fetcher.py`:
+  - `DURATION_SOURCES: dict[ITEM_CD, (source_type, source_id)]`
+  - `fetch_duration(item_cd, force_refresh=False)` — 디스패처 + 캐시 hit 검사 + 외부 호출 + 저장
+  - `fetch_all()` / `list_archive()` / `compute_weighted_duration()`
+  - 8 fetcher (ace_papi/kim_papi/samsung_kodex/rise_html/tiger_html/vanguard/jnk_proxy/manual) — 응답 정규화 `{duration, ytm, as_of_date, raw}`
+  - 캐시: `market_research/data/duration_archive/{ITEM_CD}/{fetch_date}.json` (gitignored). 같은 날 재호출 hit, 매일 첫 호출이 시계열에 누적
+- `compute_weighted_duration` 두 가중평균:
+  - bond: `Σ(w·dur) / Σ(w_매핑)` (분모 = covered_weight)
+  - overall: `Σ(w·dur) / Σ(w_전체)` (분모 = total_weight, 미매핑 종목 dur=0 효과)
+
+### API 통합
+- `api/schemas/holdings.py`:
+  - `HoldingItemDTO`에 `duration: float | None`, `ytm: float | None` 추가
+  - 신규 `WeightedDurationDTO` (duration_bond / ytm_bond / duration_overall / ytm_overall / covered_weight / total_weight / coverage_ratio)
+  - `HoldingsResponseDTO`에 `duration_summary: WeightedDurationDTO | None`
+- `api/services/holdings_service.py`:
+  - items 만든 후 `compute_weighted_duration([(item_cd, weight) for it in items])` 호출
+  - components map으로 종목별 dur/ytm join
+  - duration source가 활성화되면 `SourceBreakdown(component="duration", kind="db")` 추가
+  - 의존성 미설치 등으로 실패 시 warning에만 기록, response 구조 보존
+
+### Streamlit 통합
+- `tabs/holdings.py`: 상단 5-카드 (Duration 채권만 / YTM 채권만 / Duration 전체 / YTM 전체 / 채권성 비중)
+- 종목 테이블에 Duration / YTM(%) 컬럼 join
+
+### React 통합
+- `web/src/api/endpoints.ts`: `WeightedDurationDTO` alias 추가
+- `web/src/tabs/HoldingsTab.tsx`: 상단 5-카드 grid + 종목 테이블 Dur/YTM 컬럼
+
+### 검증
+- pytest 72/72 PASS — 신규 1건 (duration_summary 두 가중평균 키 + bond_dur ≥ overall_dur 일관성 + 매핑 종목 dur 비-None)
+- tsc 0 errors
+- 실측 (08K88 lookthrough on, 2026-04-29 fetch):
+  - duration_bond=7.19 / ytm_bond=5.48
+  - duration_overall=1.17 / ytm_overall=0.89
+  - covered=16.24% / total=100.03% (채권성 5종)
+- 11/11 종목 캐시 파일 생성 + 2회차 호출 cache hit 확인
+- api/.venv에 requests + beautifulsoup4 설치 (duration_fetcher 의존성)
+
+### 알려진 한계
+- USHY 본 ETF (US46435U8532)는 BlackRock iShares 직접 endpoint 추적 미해결 → SPDR JNK 페이지 데이터 proxy 사용. 운영 의미상 dur 차이 0.1~0.2 수준이므로 허용
+- Vanguard `characteristic` 응답은 월말 1회 갱신 (asOfDate 월말). 다른 운용사는 일별 갱신
+- ACE 단기채권알파 / 머니마켓은 9펀드 현 보유 없음 (옛 매도 잔여) — fundCd 매핑은 보존 (향후 재편입 대비)
+
+_Duration fetcher + Holdings 통합 완료: 2026-04-29_
