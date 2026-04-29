@@ -1753,6 +1753,71 @@ _Week 6 완료: 2026-04-23_
 | Brinson 이전 | P4 (조건부) | 3조건 미충족 유지 |
 
 ### 알려진 회귀 (이번 작업 범위 밖, 별도 처리 필요)
-- `api/routers/funds.py::get_funds` — `BaseMeta(sources=..., warnings=...)` 명시 누락으로 ValidationError. W6 BaseMeta required 전환 시 누락된 라우터 1건. 해당 테스트 (`test_overview_smoke.py::test_funds_list`) 1건 fail. 본 W7 작업 무관.
+- `api/routers/funds.py::get_funds` — `BaseMeta(sources=..., warnings=...)` 명시 누락으로 ValidationError. W6 BaseMeta required 전환 시 누락된 라우터 1건. 해당 테스트 (`test_overview_smoke.py::test_funds_list`) 1건 fail. 본 W7 작업 무관 → 후속 hotfix 787c69d로 해결.
 
 _Week 7 완료: 2026-04-29_
+
+---
+
+## W2 잔여 마감 — BM period_returns 채움 (2026-04-29)
+
+### 범위
+- `OverviewResponseDTO.bm_period_returns`이 W2부터 빈 dict였던 것을 채움.
+- BM 미설정 6펀드(07G02/03, 08N33/81, 08P22, 2JM23)는 `bm_configured=False` guard로 `{}` 유지.
+
+### 구현 핵심
+- `api/services/overview_service.py::_compute_bm_period_returns`:
+  - Streamlit `tabs/overview.py:165-195` 미러
+  - `relativedelta(months=1/3/6)` + `relativedelta(years=1)` + 당해년 1/1 YTD + bm[0] SI
+  - 각 기간은 target 이전(<=) 마지막 영업일 값을 ref로 사용
+  - `bm_aligned`(NAV dates에 ffill 정렬된 BM 시계열) 재사용 — 추가 DB 호출 없음
+
+### 검증
+- pytest 16/16 PASS — 신규 4건 (keys subset / empty when BMless / empty when BM 실패 / SI=chart raw 동치)
+- 실측 (2026-04-29):
+  - 08K88: SI=48.49% / YTD=15.42% / 1Y=43.32%
+  - 4JM12: SI=35.01% / YTD= 2.43% / 1Y=11.67%
+  - 07G02: bm_configured=false → `{}`
+
+_W2 잔여 마감: 2026-04-29 (커밋 6776da3)_
+
+---
+
+## Report final viewer (Client-facing, 2026-04-29)
+
+### 범위
+- approved=true 인 `final.json` 만 client에 노출 (시장 `_market` + 9 펀드)
+- 시장과 펀드는 의미적으로 다른 산출물이라 **URL 분리**:
+  - `GET /api/market-report?period=` (시장 전용)
+  - `GET /api/funds/{fund}/report?period=` (펀드 전용, `_market` 차단)
+- W7 admin 라우터(`/admin/debate-status`)는 검수용으로 fund 파라미터에 `_market`을 끼워넣는 절충을 채택했지만, client viewer는 다른 맥락이라 분리
+
+### 구현 핵심
+- `api/schemas/report.py`:
+  - `ReportFinalDTO` — period / fund_code / final_comment / generated_at / approved_at / approved_by / model / consensus_points / tail_risks (cost_usd / status 미노출)
+  - `ReportFinalResponseDTO` (data: ReportFinalDTO + meta)
+  - `ReportApprovedPeriodsResponseDTO` (fund_code + periods desc)
+- `api/services/report_service.py`:
+  - `_validate_period` + `_validate_fund` (regex + 화이트리스트 9 펀드)
+  - `_build_report` 공통 빌더: `load_final → approved 검증 → DTO`. approved=false면 `404 REPORT_NOT_APPROVED`
+  - `build_market_report` / `build_fund_report` / `build_market_approved_periods` / `build_fund_approved_periods`
+- `api/routers/report.py`: 4개 GET 엔드포인트 + period regex Query pattern
+- `report_store_gateway.list_period_dirs` 재활용 + load_final 결과 approved=true 필터링
+
+### 프론트
+- 5탭 등록: Overview / 편입종목 / Macro / **운용보고** / Admin
+- `ReportTab` — 시장/펀드 sub-view 토글 (W7 AdminTab 패턴 동일)
+- `MarketReportPanel` / `FundReportPanel` — approved-periods 자동선택 + 펀드 변경 시 기간 reset
+- `ReportFinalView` 공통: 메타 + final_comment + consensus_points + tail_risks (빈 list는 섹션 숨김)
+
+### 검증
+- pytest 71/71 PASS — 신규 15건 (approved/unapproved/missing/invalid period/quarter/`_market` block via funds route/path traversal/approved-periods filter)
+- tsc 0 errors
+- openapi 재생성 (4개 신규 엔드포인트 반영)
+- 실데이터 smoke: `_market@2026-04` 200, `08K88@2026-Q1` 200
+
+### 알려진 한계
+- 현재 final.json 데이터는 `evidence_annotations` / `related_news` / `evidence_quality` / `validation_summary` 가 비어 있음 (스키마는 있으나 미생성). 본 viewer 1차 스코프에서 제외 — 향후 prep 시 자동 채워지면 별도 enhancement
+- indicator 차트(코멘트 키워드 detect → indicators.csv chart)는 보류. `indicators.csv` 가 daily_update 산출물이라 환경 종속
+
+_Report final viewer 완료: 2026-04-29_
