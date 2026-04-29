@@ -480,3 +480,95 @@ def list_archive(item_cd: str) -> list[str]:
     if not d.is_dir():
         return []
     return sorted([p.stem for p in d.glob("*.json")], reverse=True)
+
+
+# ============================================================
+# 가중평균 헬퍼
+# ============================================================
+
+def compute_weighted_duration(
+    holdings: list[tuple[str, float]],
+    force_refresh: bool = False,
+) -> dict:
+    """ITEM_CD별 (dur, ytm)을 비중 가중평균.
+
+    Parameters
+    ----------
+    holdings : list[(item_cd, weight)]
+        weight는 % 또는 0~1 fraction 모두 OK (단위는 호출자 일관 유지).
+        매핑 안 된 ITEM_CD는 covered에서 제외.
+    force_refresh : bool
+        True 시 캐시 우회.
+
+    Returns
+    -------
+    dict
+        {
+          "duration": float | None,         # 가중평균 (covered 종목만)
+          "ytm": float | None,
+          "covered_weight": float,          # dur 매핑된 종목 합산 비중
+          "total_weight": float,            # 입력 전체 합산 비중
+          "coverage_ratio": float,          # covered / total (0~1)
+          "components": [
+            {item_cd, weight, duration, ytm, source, source_id, as_of_date},
+            ...
+          ],
+          "missing": [item_cd, ...],        # 매핑 dict에 없는 ITEM_CD
+        }
+    """
+    components: list[dict] = []
+    missing: list[str] = []
+    total_weight = 0.0
+    covered_weight = 0.0
+    sum_dur_w = 0.0
+    sum_ytm_w = 0.0
+    sum_w_with_dur = 0.0
+    sum_w_with_ytm = 0.0
+
+    for item_cd, weight in holdings:
+        try:
+            w = float(weight)
+        except (TypeError, ValueError):
+            continue
+        if w == 0:
+            continue
+        total_weight += w
+        if item_cd not in DURATION_SOURCES:
+            missing.append(item_cd)
+            continue
+        data = fetch_duration(item_cd, force_refresh=force_refresh)
+        if data is None:
+            missing.append(item_cd)
+            continue
+        dur = data.get("duration")
+        ytm = data.get("ytm")
+        components.append({
+            "item_cd": item_cd,
+            "weight": w,
+            "duration": dur,
+            "ytm": ytm,
+            "source": data.get("source"),
+            "source_id": data.get("source_id"),
+            "as_of_date": data.get("as_of_date"),
+        })
+        covered_weight += w
+        if dur is not None:
+            sum_dur_w += w * dur
+            sum_w_with_dur += w
+        if ytm is not None:
+            sum_ytm_w += w * ytm
+            sum_w_with_ytm += w
+
+    weighted_dur = (sum_dur_w / sum_w_with_dur) if sum_w_with_dur > 0 else None
+    weighted_ytm = (sum_ytm_w / sum_w_with_ytm) if sum_w_with_ytm > 0 else None
+    cov_ratio = (covered_weight / total_weight) if total_weight > 0 else 0.0
+
+    return {
+        "duration": weighted_dur,
+        "ytm": weighted_ytm,
+        "covered_weight": covered_weight,
+        "total_weight": total_weight,
+        "coverage_ratio": cov_ratio,
+        "components": components,
+        "missing": missing,
+    }

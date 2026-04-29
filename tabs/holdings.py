@@ -7,6 +7,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 
 from modules.charts import hex_to_rgba, make_nav
+from modules.duration_fetcher import compute_weighted_duration, DURATION_SOURCES
 from config.funds import FUND_MP_MAPPING, FUND_MP_DIRECT
 
 
@@ -44,6 +45,35 @@ def render(ctx):
         _t1_date = _tab1_hold['기준일자'].iloc[0].strftime('%Y-%m-%d') if '기준일자' in _tab1_hold.columns else '최근'
         st.caption(f"{_t1_date} 기준")
 
+    # ── 채권성 가중평균 듀레이션·YTM 카드 ──
+    _dur_summary = None
+    if _tab1_db and 'ITEM_CD' in _tab1_hold.columns:
+        try:
+            _dur_summary = compute_weighted_duration(
+                list(zip(_tab1_hold['ITEM_CD'], _tab1_hold['비중(%)']))
+            )
+        except Exception as _e:
+            st.toast(f"듀레이션 fetch 실패: {_e}", icon="⚠️")
+    if _dur_summary and _dur_summary['covered_weight'] > 0:
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric(
+                "가중 듀레이션 (채권성)",
+                f"{_dur_summary['duration']:.2f}년" if _dur_summary['duration'] is not None else "—",
+                help=f"매핑 종목 {len(_dur_summary['components'])}건의 비중 가중평균",
+            )
+        with c2:
+            st.metric(
+                "가중 YTM (채권성)",
+                f"{_dur_summary['ytm']:.2f}%" if _dur_summary['ytm'] is not None else "—",
+            )
+        with c3:
+            st.metric(
+                "채권성 비중",
+                f"{_dur_summary['covered_weight']:.1f}%",
+                help=f"매핑된 종목 합산 비중 / 전체 {_dur_summary['total_weight']:.1f}%",
+            )
+
     # 좌=자산군별, 우=종목별
     col_asset, col_item = st.columns(2)
 
@@ -77,7 +107,10 @@ def render(ctx):
     with col_item:
         st.markdown("#### 종목별")
         if _tab1_db:
-            _sec_df = _tab1_hold[['자산군', 'ITEM_NM', '비중(%)', '평가금액(억)']].copy()
+            _cols = ['자산군', 'ITEM_NM', '비중(%)', '평가금액(억)']
+            if 'ITEM_CD' in _tab1_hold.columns:
+                _cols.insert(0, 'ITEM_CD')
+            _sec_df = _tab1_hold[_cols].copy()
             _sec_df = _sec_df.rename(columns={'ITEM_NM': '종목명'})
         else:
             _sec_df = SAMPLE_HOLDINGS_DETAIL.copy()
@@ -105,8 +138,27 @@ def render(ctx):
             _sec_df['_sort'] = _sec_df['자산군'].map(ASSET_CLASS_ORDER).fillna(99)
             _sec_sorted = _sec_df.sort_values(['_sort', '비중(%)'], ascending=[True, False]).drop(columns='_sort')
             _sec_sorted = _sec_sorted[_sec_sorted['비중(%)'] > 0.01]
+
+            # 듀레이션·YTM 컬럼 join (매핑된 종목만 값 채움)
+            if _dur_summary and 'ITEM_CD' in _sec_sorted.columns:
+                _comp_map = {c['item_cd']: c for c in _dur_summary['components']}
+                _sec_sorted['Duration'] = _sec_sorted['ITEM_CD'].map(
+                    lambda ic: _comp_map.get(ic, {}).get('duration')
+                )
+                _sec_sorted['YTM(%)'] = _sec_sorted['ITEM_CD'].map(
+                    lambda ic: _comp_map.get(ic, {}).get('ytm')
+                )
+                # ITEM_CD 컬럼은 표시 시 숨김
+                _sec_sorted = _sec_sorted.drop(columns=['ITEM_CD'])
+
             _h = max(200, 35 * len(_sec_sorted) + 40)
-            st.dataframe(_sec_sorted, hide_index=True, width="stretch", height=_h)
+            _col_cfg = {}
+            if 'Duration' in _sec_sorted.columns:
+                _col_cfg['Duration'] = st.column_config.NumberColumn('Duration', format='%.2f')
+            if 'YTM(%)' in _sec_sorted.columns:
+                _col_cfg['YTM(%)'] = st.column_config.NumberColumn('YTM(%)', format='%.2f')
+            st.dataframe(_sec_sorted, hide_index=True, width="stretch", height=_h,
+                         column_config=_col_cfg if _col_cfg else None)
 
     # 비중 추이
     st.markdown("---")
