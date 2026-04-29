@@ -11,6 +11,7 @@ from ..schemas.holdings import (
     HoldingAssetClassDTO,
     HoldingItemDTO,
     HoldingsResponseDTO,
+    WeightedDurationDTO,
 )
 from ..schemas.meta import BaseMeta, SourceBreakdown
 
@@ -298,6 +299,37 @@ def build_holdings(
         hedge_ratio=hedge,
     )
 
+    # 8) 가중평균 듀레이션 + 종목별 dur/ytm join
+    duration_summary: WeightedDurationDTO | None = None
+    try:
+        from modules.duration_fetcher import (
+            DURATION_SOURCES,
+            compute_weighted_duration,
+        )
+        wd = compute_weighted_duration(
+            [(it.item_cd, it.weight) for it in items]
+        )
+        comp_map = {c["item_cd"]: c for c in wd["components"]}
+        for it in items:
+            c = comp_map.get(it.item_cd)
+            if c is not None:
+                it.duration = c.get("duration")
+                it.ytm = c.get("ytm")
+        duration_summary = WeightedDurationDTO(
+            duration_bond=wd["duration_bond"],
+            ytm_bond=wd["ytm_bond"],
+            duration_overall=wd["duration_overall"],
+            ytm_overall=wd["ytm_overall"],
+            covered_weight=wd["covered_weight"],
+            total_weight=wd["total_weight"],
+            coverage_ratio=wd["coverage_ratio"],
+        )
+        # source 추가 (외부 fetch라서 mixed 표기는 과한 듯 — 별도 component로만 기록)
+        if wd["covered_weight"] > 0:
+            sources.append(SourceBreakdown(component="duration", kind="db"))
+    except Exception as exc:
+        warnings.append(f"듀레이션 fetch 실패: {type(exc).__name__}")
+
     return HoldingsResponseDTO(
         meta=BaseMeta(
             as_of_date=as_of,
@@ -315,4 +347,5 @@ def build_holdings(
         asset_class_weights=asset_class_weights,
         holdings_items=items,
         fx_hedge=fx_hedge,
+        duration_summary=duration_summary,
     )

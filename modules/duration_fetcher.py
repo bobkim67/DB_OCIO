@@ -504,17 +504,18 @@ def compute_weighted_duration(
     -------
     dict
         {
-          "duration": float | None,         # 가중평균 (covered 종목만)
-          "ytm": float | None,
-          "covered_weight": float,          # dur 매핑된 종목 합산 비중
+          "duration_bond": float | None,    # 매핑된(채권성) 종목만 가중평균
+          "ytm_bond": float | None,
+          "duration_overall": float | None, # 전체 비중 분모 가중평균 (미매핑 종목은 dur=0 효과)
+          "ytm_overall": float | None,
+          "covered_weight": float,          # 매핑된 종목 합산 비중
           "total_weight": float,            # 입력 전체 합산 비중
           "coverage_ratio": float,          # covered / total (0~1)
-          "components": [
-            {item_cd, weight, duration, ytm, source, source_id, as_of_date},
-            ...
-          ],
+          "components": [...],              # {item_cd, weight, duration, ytm, source, source_id, as_of_date}
           "missing": [item_cd, ...],        # 매핑 dict에 없는 ITEM_CD
         }
+
+    Backward compat: 'duration'/'ytm' 키도 'duration_bond'/'ytm_bond' 값으로 함께 반환.
     """
     components: list[dict] = []
     missing: list[str] = []
@@ -559,13 +560,20 @@ def compute_weighted_duration(
             sum_ytm_w += w * ytm
             sum_w_with_ytm += w
 
-    weighted_dur = (sum_dur_w / sum_w_with_dur) if sum_w_with_dur > 0 else None
-    weighted_ytm = (sum_ytm_w / sum_w_with_ytm) if sum_w_with_ytm > 0 else None
+    dur_bond = (sum_dur_w / sum_w_with_dur) if sum_w_with_dur > 0 else None
+    ytm_bond = (sum_ytm_w / sum_w_with_ytm) if sum_w_with_ytm > 0 else None
+    dur_overall = (sum_dur_w / total_weight) if total_weight > 0 else None
+    ytm_overall = (sum_ytm_w / total_weight) if total_weight > 0 else None
     cov_ratio = (covered_weight / total_weight) if total_weight > 0 else 0.0
 
     return {
-        "duration": weighted_dur,
-        "ytm": weighted_ytm,
+        "duration_bond": dur_bond,
+        "ytm_bond": ytm_bond,
+        "duration_overall": dur_overall,
+        "ytm_overall": ytm_overall,
+        # backward compat
+        "duration": dur_bond,
+        "ytm": ytm_bond,
         "covered_weight": covered_weight,
         "total_weight": total_weight,
         "coverage_ratio": cov_ratio,

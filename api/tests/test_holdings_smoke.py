@@ -12,6 +12,38 @@ def test_holdings_08K88_basic(client):
         first = body["holdings_items"][0]
         for k in ("item_cd", "item_nm", "asset_class", "weight", "evl_amt"):
             assert k in first
+        # duration/ytm 키 존재 (값은 매핑 종목만 채워짐)
+        assert "duration" in first
+        assert "ytm" in first
+
+
+def test_holdings_duration_summary_lookthrough(client):
+    """lookthrough on 시 채권성 종목이 잡혀 duration_summary 비어있지 않아야 함."""
+    r = client.get(
+        "/api/funds/08K88/holdings",
+        params={"lookthrough": "true"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    if body["meta"]["is_fallback"]:
+        return
+    ds = body.get("duration_summary")
+    assert ds is not None
+    # 두 가중평균 키
+    for k in ("duration_bond", "ytm_bond", "duration_overall", "ytm_overall",
+              "covered_weight", "total_weight", "coverage_ratio"):
+        assert k in ds
+    # covered > 0이면 dur_bond / ytm_bond 비-None
+    if ds["covered_weight"] > 0:
+        assert ds["duration_bond"] is not None
+        assert ds["ytm_bond"] is not None
+        # bond 분모 ≤ overall 분모이므로 |bond| ≥ |overall|
+        # (단 dur 부호 + → bond ≥ overall)
+        assert ds["duration_bond"] >= ds["duration_overall"] - 1e-9
+    # 매핑된 종목은 duration/ytm non-null
+    mapped = [it for it in body["holdings_items"] if it.get("duration") is not None]
+    if ds["covered_weight"] > 0:
+        assert len(mapped) >= 1
 
 
 def test_holdings_08K88_lookthrough(client):

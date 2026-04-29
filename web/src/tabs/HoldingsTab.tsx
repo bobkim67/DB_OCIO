@@ -23,6 +23,11 @@ function fmtKrw(v: number): string {
   );
 }
 
+function fmtNum(v: number | null | undefined, digits = 2, suffix = ""): string {
+  if (v === null || v === undefined) return "—";
+  return v.toFixed(digits) + suffix;
+}
+
 // 유동성 자산군 내부에서 예금/USD Deposit 외 종목은 "기타 (N종목)" 1행으로 병합.
 function _isCashKeep(it: HoldingItemDTO): boolean {
   const nm = (it.item_nm || "").toUpperCase();
@@ -109,6 +114,79 @@ export default function HoldingsTab({ fundCode }: Props) {
           )}
         </label>
       </div>
+
+      {/* 듀레이션·YTM 요약 카드 (5개) */}
+      {!isEmpty && data.duration_summary &&
+        data.duration_summary.covered_weight > 0 && (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(5, 1fr)",
+              gap: 8,
+              marginBottom: 16,
+            }}
+          >
+            {[
+              {
+                label: "Duration (채권만)",
+                value: fmtNum(data.duration_summary.duration_bond, 2, "년"),
+                hint: "매핑 종목만 분모",
+              },
+              {
+                label: "YTM (채권만)",
+                value: fmtNum(data.duration_summary.ytm_bond, 2, "%"),
+                hint: "",
+              },
+              {
+                label: "Duration (전체)",
+                value: fmtNum(data.duration_summary.duration_overall, 2, "년"),
+                hint: "전체 보유비중 분모",
+              },
+              {
+                label: "YTM (전체)",
+                value: fmtNum(data.duration_summary.ytm_overall, 2, "%"),
+                hint: "",
+              },
+              {
+                label: "채권성 비중",
+                value: fmtPct(data.duration_summary.covered_weight),
+                hint: `전체 ${fmtPct(data.duration_summary.total_weight)}`,
+              },
+            ].map((card) => (
+              <div
+                key={card.label}
+                style={{
+                  padding: "10px 12px",
+                  background: "#f9fafb",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 6,
+                }}
+              >
+                <div
+                  style={{ fontSize: 11, color: "#6b7280", marginBottom: 4 }}
+                >
+                  {card.label}
+                </div>
+                <div
+                  style={{
+                    fontSize: 18,
+                    fontWeight: 600,
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
+                  {card.value}
+                </div>
+                {card.hint && (
+                  <div
+                    style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}
+                  >
+                    {card.hint}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
 
       {isEmpty ? (
         <div style={{ color: "#6b7280", padding: 16 }}>
@@ -276,6 +354,8 @@ export default function HoldingsTab({ fundCode }: Props) {
                       <th style={th}>종목명</th>
                       <th style={thr}>비중</th>
                       <th style={thr}>평가금액</th>
+                      <th style={thr}>Dur</th>
+                      <th style={thr}>YTM</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -300,7 +380,7 @@ export default function HoldingsTab({ fundCode }: Props) {
                         );
                         rows.push(
                           <tr key={`grp-${ac}`} style={groupHeaderRow}>
-                            <td colSpan={4} style={groupHeaderCell}>
+                            <td colSpan={6} style={groupHeaderCell}>
                               <span
                                 style={{
                                   display: "inline-block",
@@ -357,6 +437,8 @@ export default function HoldingsTab({ fundCode }: Props) {
                                 {fmtPct(it.weight)}
                               </td>
                               <td style={tdr}>{fmtKrw(it.evl_amt)}</td>
+                              <td style={tdr}>{fmtNum(it.duration, 2)}</td>
+                              <td style={tdr}>{fmtNum(it.ytm, 2)}</td>
                             </tr>,
                           ),
                         );

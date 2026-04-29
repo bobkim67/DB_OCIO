@@ -404,6 +404,10 @@ export interface components {
              * @default false
              */
             is_short: boolean;
+            /** Duration */
+            duration?: number | null;
+            /** Ytm */
+            ytm?: number | null;
         };
         /** HoldingsResponseDTO */
         HoldingsResponseDTO: {
@@ -423,6 +427,7 @@ export interface components {
             /** Holdings Items */
             holdings_items: components["schemas"]["HoldingItemDTO"][];
             fx_hedge?: components["schemas"]["FxHedgeSummaryDTO"] | null;
+            duration_summary?: components["schemas"]["WeightedDurationDTO"] | null;
         };
         /** MacroPointDTO */
         MacroPointDTO: {
@@ -593,6 +598,41 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /**
+         * WeightedDurationDTO
+         * @description 모듈 duration_fetcher.compute_weighted_duration 결과를 client용으로 노출.
+         *
+         *     Raw ratio 단위 일관 (weight). dur/ytm 단위는 fetcher 그대로 (년/%).
+         *
+         *     두 가지 가중평균:
+         *       - bond: 매핑된 채권성 종목만으로 산출 (분모 = covered_weight)
+         *       - overall: 전체 보유 비중 분모 (미매핑 종목 dur=0 가정 효과)
+         */
+        WeightedDurationDTO: {
+            /** Duration Bond */
+            duration_bond?: number | null;
+            /** Ytm Bond */
+            ytm_bond?: number | null;
+            /** Duration Overall */
+            duration_overall?: number | null;
+            /** Ytm Overall */
+            ytm_overall?: number | null;
+            /**
+             * Covered Weight
+             * @default 0
+             */
+            covered_weight: number;
+            /**
+             * Total Weight
+             * @default 0
+             */
+            total_weight: number;
+            /**
+             * Coverage Ratio
+             * @default 0
+             */
+            coverage_ratio: number;
         };
     };
     responses: never;

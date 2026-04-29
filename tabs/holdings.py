@@ -55,23 +55,34 @@ def render(ctx):
         except Exception as _e:
             st.toast(f"듀레이션 fetch 실패: {_e}", icon="⚠️")
     if _dur_summary and _dur_summary['covered_weight'] > 0:
-        c1, c2, c3 = st.columns(3)
+        c1, c2, c3, c4, c5 = st.columns(5)
         with c1:
             st.metric(
-                "가중 듀레이션 (채권성)",
-                f"{_dur_summary['duration']:.2f}년" if _dur_summary['duration'] is not None else "—",
-                help=f"매핑 종목 {len(_dur_summary['components'])}건의 비중 가중평균",
+                "Duration (채권만)",
+                f"{_dur_summary['duration_bond']:.2f}년" if _dur_summary['duration_bond'] is not None else "—",
+                help=f"매핑 종목 {len(_dur_summary['components'])}건 (분모=채권 비중)",
             )
         with c2:
             st.metric(
-                "가중 YTM (채권성)",
-                f"{_dur_summary['ytm']:.2f}%" if _dur_summary['ytm'] is not None else "—",
+                "YTM (채권만)",
+                f"{_dur_summary['ytm_bond']:.2f}%" if _dur_summary['ytm_bond'] is not None else "—",
             )
         with c3:
             st.metric(
+                "Duration (전체)",
+                f"{_dur_summary['duration_overall']:.2f}년" if _dur_summary['duration_overall'] is not None else "—",
+                help="전체 보유비중 분모 (미매핑 종목 dur=0 가정)",
+            )
+        with c4:
+            st.metric(
+                "YTM (전체)",
+                f"{_dur_summary['ytm_overall']:.2f}%" if _dur_summary['ytm_overall'] is not None else "—",
+            )
+        with c5:
+            st.metric(
                 "채권성 비중",
                 f"{_dur_summary['covered_weight']:.1f}%",
-                help=f"매핑된 종목 합산 비중 / 전체 {_dur_summary['total_weight']:.1f}%",
+                help=f"매핑된 종목 합산 / 전체 {_dur_summary['total_weight']:.1f}%",
             )
 
     # 좌=자산군별, 우=종목별
