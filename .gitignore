@@ -21,6 +21,7 @@ market_research/data/news/
 market_research/data/monygeek/
 market_research/data/report_cache/
 market_research/data/.last_collect_date
+market_research/data/duration_archive/
 market_research/data/regime_memory.json
 market_research/data/blog_insight/
 market_research/data/debate_logs/
