@@ -41,6 +41,11 @@ export type AdminDebateStatusResponseDTO = S["AdminDebateStatusResponseDTO"];
 export type AdminDebatePeriodsResponseDTO = S["AdminDebatePeriodsResponseDTO"];
 export type DebateStatus = AdminDebateStatusResponseDTO["status"];
 
+// === Report (client-facing approved-only) ===
+export type ReportFinalDTO = S["ReportFinalDTO"];
+export type ReportFinalResponseDTO = S["ReportFinalResponseDTO"];
+export type ReportApprovedPeriodsResponseDTO = S["ReportApprovedPeriodsResponseDTO"];
+
 // ----------------------------------------------------------------------
 // Fetchers — 시그니처/구현 불변. DTO 타입만 generated alias 참조.
 // ----------------------------------------------------------------------
@@ -118,3 +123,44 @@ export const fetchAdminDebatePeriods =
     );
     return r.data;
   };
+
+// ----------------------------------------------------------------------
+// Report (client-facing) — approved-only viewer.
+// 시장(`_market`)과 펀드 코멘트는 의미적으로 다른 산출물이라 URL 분리.
+// ----------------------------------------------------------------------
+export const fetchMarketReport = async (
+  period: string,
+): Promise<ReportFinalResponseDTO> => {
+  const r = await api.get<ReportFinalResponseDTO>("/market-report", {
+    params: { period },
+  });
+  return r.data;
+};
+
+export const fetchMarketReportApprovedPeriods =
+  async (): Promise<ReportApprovedPeriodsResponseDTO> => {
+    const r = await api.get<ReportApprovedPeriodsResponseDTO>(
+      "/market-report/approved-periods",
+    );
+    return r.data;
+  };
+
+export const fetchFundReport = async (
+  code: string,
+  period: string,
+): Promise<ReportFinalResponseDTO> => {
+  const r = await api.get<ReportFinalResponseDTO>(
+    `/funds/${code}/report`,
+    { params: { period } },
+  );
+  return r.data;
+};
+
+export const fetchFundReportApprovedPeriods = async (
+  code: string,
+): Promise<ReportApprovedPeriodsResponseDTO> => {
+  const r = await api.get<ReportApprovedPeriodsResponseDTO>(
+    `/funds/${code}/report/approved-periods`,
+  );
+  return r.data;
+};

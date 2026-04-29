@@ -140,6 +140,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/market-report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Market Report */
+        get: operations["get_market_report_api_market_report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/market-report/approved-periods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Market Approved Periods */
+        get: operations["list_market_approved_periods_api_market_report_approved_periods_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/funds/{fund}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Fund Report */
+        get: operations["get_fund_report_api_funds__fund__report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/funds/{fund}/report/approved-periods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Fund Approved Periods */
+        get: operations["list_fund_approved_periods_api_funds__fund__report_approved_periods_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -449,6 +517,62 @@ export interface components {
                 [key: string]: number;
             };
         };
+        /**
+         * ReportApprovedPeriodsResponseDTO
+         * @description approved=true 인 final.json 이 존재하는 기간 목록 (정렬: 내림차순).
+         */
+        ReportApprovedPeriodsResponseDTO: {
+            meta: components["schemas"]["BaseMeta"];
+            /** Fund Code */
+            fund_code: string;
+            /** Periods */
+            periods: string[];
+        };
+        /**
+         * ReportFinalDTO
+         * @description report_output/{period}/{fund}.final.json 의 client-노출 필드.
+         *
+         *     실파일 필드 (2026-04-29 조사):
+         *       approved, approved_at, approved_by, consensus_points, tail_risks,
+         *       cost_usd, final_comment, fund_code, generated_at, model, period, status
+         *
+         *     Client에 미노출:
+         *       - cost_usd (운영원가)
+         *       - status (approved 필터링 후 의미 없음)
+         *
+         *     빈 list 가능: consensus_points / tail_risks (펀드 코멘트는 보통 비어 있음).
+         */
+        ReportFinalDTO: {
+            /** Period */
+            period: string;
+            /** Fund Code */
+            fund_code: string;
+            /** Final Comment */
+            final_comment: string;
+            /** Generated At */
+            generated_at?: string | null;
+            /** Approved At */
+            approved_at?: string | null;
+            /** Approved By */
+            approved_by?: string | null;
+            /** Model */
+            model?: string | null;
+            /**
+             * Consensus Points
+             * @default []
+             */
+            consensus_points: string[];
+            /**
+             * Tail Risks
+             * @default []
+             */
+            tail_risks: string[];
+        };
+        /** ReportFinalResponseDTO */
+        ReportFinalResponseDTO: {
+            meta: components["schemas"]["BaseMeta"];
+            data: components["schemas"]["ReportFinalDTO"];
+        };
         /** SourceBreakdown */
         SourceBreakdown: {
             /** Component */
@@ -700,6 +824,121 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminDebatePeriodsResponseDTO"];
+                };
+            };
+        };
+    };
+    get_market_report_api_market_report_get: {
+        parameters: {
+            query: {
+                period: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportFinalResponseDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_market_approved_periods_api_market_report_approved_periods_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportApprovedPeriodsResponseDTO"];
+                };
+            };
+        };
+    };
+    get_fund_report_api_funds__fund__report_get: {
+        parameters: {
+            query: {
+                period: string;
+            };
+            header?: never;
+            path: {
+                fund: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportFinalResponseDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_fund_approved_periods_api_funds__fund__report_approved_periods_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fund: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportApprovedPeriodsResponseDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
