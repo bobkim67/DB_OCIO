@@ -1716,3 +1716,43 @@ cd web && npm run openapi:gen
 ---
 
 _Week 6 완료: 2026-04-23_
+
+---
+
+## Week 7 — Admin Debate Status Read-only Viewer
+
+### 범위
+- AdminTab에 sub-view 토글 추가 (Evidence Quality / Debate Status). 기존 evidence-quality 화면은 보존.
+- 신규 read-only 엔드포인트 2개:
+  - `GET /api/admin/debate-status?period={YYYY-MM|YYYY-Q[1-4]}&fund={...}`
+  - `GET /api/admin/debate-periods`
+- `report_output/{period}/{fund}.{input,draft,final}.json` 의 상태/본문 조회. write 계열 없음.
+
+### 구현 핵심
+- `api/services/report_store_gateway.py` 신설 — `report_store`에 강결합 회피 + lazy import + read-only.
+  - `report_store._period_dir`가 `mkdir` 부작용을 가지므로 게이트웨이는 직접 path 조립 + `is_dir` 체크로 우회 (비존재 period 조회로 빈 디렉토리 생기지 않음).
+- fund 2중 방어: regex `^[A-Za-z0-9_]+$` + 화이트리스트 (9개 펀드 + `_market`). 위반 시 422.
+- period 형식: `^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4])$` — router Query pattern + service에서도 보강.
+- `input.json`은 전체 노출 금지 — `_summarize_input`이 `top_level_keys`/`evidence_count`/`top_evidence_sample` 등 메타만 추출. `draft_body`/`final_body`는 본문 dict 그대로 노출 (검수 목적).
+- 프론트는 `<pre>` + `maxHeight: 360 / overflow: auto`로 read-only 표시.
+
+### 검증
+- `pytest api/tests/test_admin_debate_status.py` — 15/15 PASS (정상 / draft-only / quarter / 비허용 fund / path traversal 4종 / period regex 위반 / corrupt input / debate-periods 정렬 + empty)
+- `pytest api/tests/test_admin_smoke.py` — 6/6 회귀 PASS
+- `tsc --noEmit` 0 errors
+- 신규 엔드포인트는 기존 `/admin/evidence-quality`와 분리 — 기존 viewer 동작 불변
+
+### 인입 리스트 업데이트
+
+| 항목 | 우선순위 | 상태 |
+|---|:---:|---|
+| **Admin debate_status viewer 확장** | ~~P2~~ | **W7 완료** |
+| BM period_returns 채움 (`bm_period_returns={}`) | P1 | 미착수 (W2 잔여) |
+| Report final viewer | P3 | 미착수 |
+| 듀레이션 표기 방향 결정 | P3 | 사용자 결정 대기 |
+| Brinson 이전 | P4 (조건부) | 3조건 미충족 유지 |
+
+### 알려진 회귀 (이번 작업 범위 밖, 별도 처리 필요)
+- `api/routers/funds.py::get_funds` — `BaseMeta(sources=..., warnings=...)` 명시 누락으로 ValidationError. W6 BaseMeta required 전환 시 누락된 라우터 1건. 해당 테스트 (`test_overview_smoke.py::test_funds_list`) 1건 fail. 본 W7 작업 무관.
+
+_Week 7 완료: 2026-04-29_
