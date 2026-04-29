@@ -1,9 +1,17 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
 from .meta import BaseMeta
+
+
+DebateStatus = Literal[
+    "not_generated",
+    "draft_generated",
+    "edited",
+    "approved",
+]
 
 
 class AdminEvidenceQualityRowDTO(BaseModel):
@@ -34,3 +42,26 @@ class AdminEvidenceQualityResponseDTO(BaseModel):
     returned: int
     malformed: int
     rows: list[AdminEvidenceQualityRowDTO]
+
+
+class AdminDebateStatusResponseDTO(BaseModel):
+    """report_output/{period}/{fund}.{input,draft,final}.json 상태 + 본문.
+
+    Read-only. input은 summary만, draft/final은 본문 dict 그대로 노출.
+    """
+    meta: BaseMeta
+    period: str
+    fund_code: str
+    status: DebateStatus
+    has_input: bool
+    has_draft: bool
+    has_final: bool
+    input_summary: dict[str, Any] | None = None
+    draft_body: dict[str, Any] | None = None
+    final_body: dict[str, Any] | None = None
+
+
+class AdminDebatePeriodsResponseDTO(BaseModel):
+    """report_output/ 하위 기간 디렉토리 목록 (read-only 스캔)."""
+    meta: BaseMeta
+    periods: list[str]
