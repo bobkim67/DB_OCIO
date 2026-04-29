@@ -20,6 +20,24 @@ market_research/devlog/
 market_research/data/news/
 market_research/data/monygeek/
 market_research/data/report_cache/
+market_research/data/.last_collect_date
+market_research/data/regime_memory.json
+market_research/data/blog_insight/
+market_research/data/debate_logs/
+market_research/data/insight_graph/
+market_research/data/macro/
+market_research/data/bew_export/
+
+# market_research — debate/report 산출물 (admin 검수 후 휘발, 재생성 가능)
+market_research/data/report_output/
+
+# 실행 로그
+logs/
+
+# Web build artifacts (Vite/TypeScript)
+web/dist-types/
+web/tsconfig.tsbuildinfo
+web/tsconfig.node.tsbuildinfo
 
 # Backup files (수동 백업용, 커밋 금지)
 *.bak
@@ -34,3 +52,7 @@ debug/*.csv
 debug/*.xlsx
 debug/*.tmp
 debug/*.log
+
+# Debug 신규 ad-hoc py (이미 commit된 것은 그대로 유지됨 — gitignore는 untracked만 제어)
+debug/*.py
+debug/*.R
