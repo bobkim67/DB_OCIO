@@ -3,6 +3,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from dateutil.relativedelta import relativedelta
 
 from config.funds import FUND_BM, FUND_LIST, FUND_META
 
@@ -115,6 +116,43 @@ def _stats_value(
     if v is None or (isinstance(v, float) and np.isnan(v)):
         return None
     return float(v)
+
+
+def _compute_bm_period_returns(bm_aligned: pd.Series) -> PeriodReturnsDTO:
+    """Streamlit tabs/overview.py:165-195 BM 기간수익률 로직 미러.
+
+    bm_aligned: NAV dates에 ffill로 정렬된 BM 시계열 (DatetimeIndex).
+    기간 = {1M, 3M, 6M, 1Y}는 relativedelta, YTD는 당해년 1/1, SI는 첫 값 기준.
+    각 기간은 target 이전(<=) 마지막 영업일 값을 ref로 사용.
+    """
+    if bm_aligned is None or len(bm_aligned) == 0:
+        return {}
+    b0 = bm_aligned.iloc[0]
+    end_v = bm_aligned.iloc[-1]
+    if pd.isna(b0) or pd.isna(end_v) or float(b0) == 0:
+        return {}
+    end_dt = pd.Timestamp(bm_aligned.index[-1])
+    targets = {
+        "1M": end_dt - relativedelta(months=1),
+        "3M": end_dt - relativedelta(months=3),
+        "6M": end_dt - relativedelta(months=6),
+        "1Y": end_dt - relativedelta(years=1),
+        "YTD": pd.Timestamp(f"{end_dt.year}-01-01"),
+    }
+    idx = bm_aligned.index
+    arr = bm_aligned.to_numpy(dtype=float)
+    out: PeriodReturnsDTO = {}
+    for key, target in targets.items():
+        mask = idx <= target
+        if not mask.any():
+            continue
+        pos = int(np.where(mask)[0][-1])
+        ref_v = arr[pos]
+        if np.isnan(ref_v) or ref_v == 0:
+            continue
+        out[key] = float(end_v) / float(ref_v) - 1.0
+    out["SI"] = float(end_v) / float(b0) - 1.0
+    return out
 
 
 def _compute_mdd_from_nav(nav_series: pd.Series) -> float | None:
@@ -280,6 +318,10 @@ def build_overview(
 
     # --- 5) period_returns (포트) ---
     period_returns = _period_returns_from_stats(stats)
+
+    # --- 5-bis) bm_period_returns (BM 설정 + 정렬 성공 시) ---
+    if bm_aligned is not None and bm_first_val is not None:
+        bm_period_returns = _compute_bm_period_returns(bm_aligned)
 
     # --- 6) meta.source 결정 ---
     bm_mock_present = any(
