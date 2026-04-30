@@ -634,18 +634,106 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
         context['news_summary_text'] = '\n'.join(lines)
     context['_evidence_ids'] = evidence_ids
 
-    # GraphRAG 전이경로
+    # GraphRAG 전이경로 (P3 보강 — 포맷 강화 + 밀도 보강 + debug trace)
+    graph_trace = {
+        'candidate_path_count': 0,
+        'selected_path_count': 0,
+        'dropped_low_confidence_count': 0,
+        'avg_selected_confidence': 0.0,
+        'min_selected_confidence': 0.0,
+        'max_selected_confidence': 0.0,
+        'selected_path_labels': [],
+    }
     graph_file = BASE_DIR / 'data' / 'insight_graph' / f'{year}-{month:02d}.json'
     if graph_file.exists():
         graph = json.loads(graph_file.read_text(encoding='utf-8'))
-        paths = graph.get('transmission_paths', [])
-        if paths:
-            lines = ['주요 전이경로:']
-            for p in paths[:10]:
-                labels = p.get('path_labels', p.get('path', []))
-                conf = p.get('confidence', 0)
-                lines.append(f'  {" -> ".join(labels[:5])} (신뢰도 {conf})')
+        all_paths = graph.get('transmission_paths', []) or []
+        graph_trace['candidate_path_count'] = len(all_paths)
+        # confidence 0.3 이상 우선, 부족하면 보조로 채워 최소 6개까지
+        confident = [p for p in all_paths if (p.get('confidence') or 0) >= 0.3]
+        weak = [p for p in all_paths if 0 < (p.get('confidence') or 0) < 0.3]
+        graph_trace['dropped_low_confidence_count'] = len(weak)
+        confident.sort(key=lambda p: -(p.get('confidence') or 0))
+        weak.sort(key=lambda p: -(p.get('confidence') or 0))
+        # 최소 6 ~ 최대 10 개 안정화
+        TARGET_MIN, TARGET_MAX = 6, 10
+        selected = list(confident[:TARGET_MAX])
+        if len(selected) < TARGET_MIN:
+            need = TARGET_MIN - len(selected)
+            selected.extend(weak[:need])
+        if selected:
+            confs = [p.get('confidence', 0) or 0 for p in selected]
+            graph_trace['selected_path_count'] = len(selected)
+            graph_trace['avg_selected_confidence'] = round(sum(confs) / len(confs), 3)
+            graph_trace['min_selected_confidence'] = round(min(confs), 3)
+            graph_trace['max_selected_confidence'] = round(max(confs), 3)
+            lines = [
+                '## 주요 인과 경로 (GraphRAG transmission paths)',
+                '아래는 본 월의 사건/요인이 자산군에 전파되는 인과 경로 후보입니다. '
+                'confidence 가 낮은 경로는 단정 대신 "가능성/리스크"로 기술하세요.',
+            ]
+            for i, p in enumerate(selected, 1):
+                labels = p.get('path_labels') or p.get('path') or []
+                conf = p.get('confidence') or 0
+                target = p.get('target') or '?'
+                trigger = p.get('trigger') or (labels[0] if labels else '?')
+                # 노드 라벨을 prose 친화 형태로 (underscore -> 공백)
+                pretty = ' → '.join(
+                    str(x).replace('_', ' ').replace('·', ' ') for x in labels[:6]
+                ) if labels else f'{trigger} → {target}'
+                tier = '핵심' if conf >= 0.5 else ('보조' if conf >= 0.3 else '약함')
+                lines.append(f'[인과경로 {i} | confidence {conf:.2f} | {tier} | target={target}]')
+                lines.append(f'  {pretty}')
+                graph_trace['selected_path_labels'].append({
+                    'idx': i, 'confidence': round(conf, 3),
+                    'tier': tier, 'target': target,
+                    'labels': [str(x) for x in labels[:6]],
+                })
             context['graph_paths_text'] = '\n'.join(lines)
+    context['_graph_trace'] = graph_trace
+
+    # WikiTree retrieval (P3 보강 — 01_Events / 02_Entities / 05_Regime_Canonical)
+    wiki_trace = {
+        'wiki_candidate_pages': 0,
+        'wiki_selected_pages': [],
+        'wiki_context_chars': 0,
+        'wiki_retrieval_keywords': [],
+        'wiki_skipped_short_pages': 0,
+    }
+    try:
+        from market_research.report.wiki_retriever import (
+            retrieve_wiki_context, format_wiki_context_for_prompt,
+        )
+        # 키워드 소스: graph path 노드 라벨 + canonical regime tags + 상위 토픽
+        kw_sources: list[str] = []
+        for entry in graph_trace.get('selected_path_labels') or []:
+            kw_sources.extend(entry.get('labels') or [])
+        # canonical regime tags
+        try:
+            from market_research.wiki.canonical import load_canonical_regime
+            regime = load_canonical_regime()
+            for t in (regime or {}).get('topic_tags') or []:
+                kw_sources.append(str(t))
+        except Exception:
+            pass
+        # primary news 상위 토픽 (news block 미실행 시 topic_counts 부재)
+        try:
+            for t, _ in topic_counts.most_common(5):  # noqa: F821
+                if t:
+                    kw_sources.append(t)
+        except NameError:
+            pass
+        retrieval = retrieve_wiki_context(kw_sources)
+        wiki_trace['wiki_candidate_pages'] = retrieval.get('candidate_count', 0)
+        wiki_trace['wiki_selected_pages'] = retrieval.get('selected_pages', []) or []
+        wiki_trace['wiki_context_chars'] = retrieval.get('context_chars', 0)
+        wiki_trace['wiki_retrieval_keywords'] = retrieval.get('keywords', []) or []
+        wiki_trace['wiki_skipped_short_pages'] = retrieval.get('skipped_short_pages', 0)
+        context['wiki_context_text'] = format_wiki_context_for_prompt(retrieval)
+    except Exception as e:
+        context['wiki_context_text'] = ''
+        print(f'[wiki_retriever] 오류: {e}')
+    context['_wiki_trace'] = wiki_trace
 
     # Blog insight (monygeek 전용)
     try:
@@ -699,6 +787,39 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
             pass
     context['_guard_data_ctx'] = guard_ctx
 
+    # P3-3: Asset coverage guardrail — guard_ctx + timeseries 모두 채워진 시점에 합성
+    coverage: dict = {}
+    try:
+        from market_research.report.asset_coverage import (
+            build_asset_coverage_map, format_asset_coverage_for_prompt,
+        )
+        primary: list[dict] = []
+        if news_file.exists():
+            try:
+                primary = [
+                    a for a in (json.loads(news_file.read_text(encoding='utf-8'))
+                                .get('articles') or [])
+                    if a.get('_classified_topics') and a.get('is_primary', True)
+                ]
+            except Exception:
+                primary = []
+        # selected evidence: news block 의 high_impact 후보 (debate 가 실제 선정)
+        selected_for_cov = locals().get('high_impact') or []
+        coverage = build_asset_coverage_map(
+            primary_news=primary,
+            graph_paths=graph_trace.get('selected_path_labels') or [],
+            wiki_selected_pages=wiki_trace.get('wiki_selected_pages') or [],
+            timeseries_narrative_text=context.get('timeseries_narrative_text') or '',
+            asset_returns=guard_ctx.get('bm_returns') if isinstance(guard_ctx, dict) else None,
+            topic_counts=locals().get('topic_counts'),
+            selected_evidence=selected_for_cov,
+        )
+        context['asset_coverage_text'] = format_asset_coverage_for_prompt(coverage)
+    except Exception as e:
+        context['asset_coverage_text'] = ''
+        print(f'[asset_coverage] 오류: {e}')
+    context['_asset_coverage'] = coverage
+
     return context
 
 
@@ -709,7 +830,9 @@ def _build_agent_prompt(agent_type: str, context: dict) -> str:
         f'{context.get("news_summary_text", "(뉴스 데이터 없음)")}\n\n'
         f'{context.get("indicators_text", "(지표 데이터 없음)")}\n\n'
         f'{context.get("timeseries_narrative_text", "")}\n\n'
-        f'{context.get("graph_paths_text", "")}\n'
+        f'{context.get("graph_paths_text", "")}\n\n'
+        f'{context.get("wiki_context_text", "")}\n\n'
+        f'{context.get("asset_coverage_text", "")}\n'
     )
 
     if agent_type == 'monygeek':
@@ -717,6 +840,16 @@ def _build_agent_prompt(agent_type: str, context: dict) -> str:
             f'\n## 블로거 분석 프레임워크\n'
             f'{context.get("blog_context_text", "(블로그 데이터 없음)")}\n'
         )
+
+    # P3: 주요 인과 경로 / WikiTree 메모 활용 강제 (소량, JSON 응답 지시 직전에 삽입)
+    shared += (
+        '\n## 분석 지시 (필수)\n'
+        '- 단순한 뉴스 요약을 넘어, 위에 제시된 "주요 인과 경로"와 "관련 WikiTree 메모"를 활용해 '
+        '이벤트가 자산군에 전파되는 경로를 해석하세요.\n'
+        '- key_points 또는 reasoning 에 최소 1개 이상의 전파경로 (예: "A → B → C" 또는 자연어 인과 chain)를 '
+        '명시적으로 언급하세요.\n'
+        '- confidence 가 낮은 경로는 "가능성/리스크"로 표현하고, 단정 표현은 피하세요.\n'
+    )
 
     shared += (
         f'\n위 데이터를 바탕으로 {context["year"]}년 {context["month"]}월 시장을 분석하세요.\n\n'
@@ -835,11 +968,18 @@ def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> 
             '4문단: 향후 체크포인트 — 확인해야 할 변수 나열로 마무리 (투자 액션 금지)\n\n'
         )
 
+    # P3: synthesis 단계에도 graph/wiki context 주입
+    graph_block = context.get("graph_paths_text", "") or ""
+    wiki_block = context.get("wiki_context_text", "") or ""
+    coverage_block = context.get("asset_coverage_text", "") or ""
     comment_prompt = (
         '4명의 분석가가 각각 다른 시각에서 시장을 분석했습니다.\n\n'
         f'## 분석가별 의견\n{debate_text}\n\n'
         f'## 뉴스 evidence\n{context.get("news_summary_text", "")}\n\n'
-        f'## 문서 성격\n{period_instruction}\n'
+        + (f'{graph_block}\n\n' if graph_block else '')
+        + (f'{wiki_block}\n\n' if wiki_block else '')
+        + (f'{coverage_block}\n\n' if coverage_block else '')
+        + f'## 문서 성격\n{period_instruction}\n'
         f'{structure_instruction}'
         '## 작성 규칙\n'
         '1. 기관 고객용 전문적이고 절제된 톤, 경어체.\n'
@@ -847,7 +987,17 @@ def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> 
         '3. 숫자 사용 시 반드시 단위와 의미를 명확히 (%, 달러, 원, bp 등).\n'
         '4. 분석가 의견이 상충하면 한쪽을 채택하지 말고 조건부 문장으로 서술.\n'
         '   예: "단기 안도와 중기 불확실성이 병존하는 구도"\n'
-        '5. 마지막 문단은 반드시 "향후 관찰 변수"로 끝낼 것. 투자 액션으로 끝내지 말 것.\n\n'
+        '5. 마지막 문단은 반드시 "향후 관찰 변수"로 끝낼 것. 투자 액션으로 끝내지 말 것.\n'
+        '6. (P3) 위에 제시된 "주요 인과 경로"가 있으면, 본문에 최소 1개 이상의 '
+        '이벤트 → 지표 → 자산군 연결을 자연어로 반영하세요. 예: "유가 상승이 인플레이션 기대를 '
+        '자극하면서 장기금리 부담으로 이어졌고, 이는 성장주 밸류에이션에 압박 요인으로 작용하였습니다." '
+        '단, 노골적인 arrow 표기 (A → B)는 피하고 자연스러운 문장으로 풀어 쓰세요. '
+        'confidence 가 낮은 경로는 "가능성"/"리스크" 로 표현하세요.\n'
+        '7. (P3-3) 핵심 지배 이슈를 중심으로 작성하되, 위 "자산군별 필수 점검" 목록을 활용해 '
+        '최소 3개 이상의 주요 자산군 (예: 주식·채권·환율·금/대체) 영향을 자연스럽게 반영하세요. '
+        '근거가 약한 자산군은 단정 표현을 피하고 "영향 제한" / "관찰 필요" / "직접 근거 부족" 으로 '
+        '짧게만 점검하세요. 중동/지정학 이슈가 지배적이라도 유가→금리→환율→주식→채권→금 등으로 '
+        '전파되는 경로를 구분해 한 문단 이상에 분산 배치하세요.\n\n'
         '## 절대 금지: 내부 지표\n'
         '아래는 분석 파이프라인 내부 지표이므로 절대 언급 금지:\n'
         '- 살리언스(salience), 중요도 점수, confidence, 신뢰도 수치\n'
@@ -1093,6 +1243,48 @@ def run_market_debate(year: int, month: int,
     synthesis = _synthesize_debate(agent_responses, None, context)
     print(f'  종합 완료')
 
+    # P3: graph/wiki retrieval debug trace (admin/debug 전용 — client DTO 미포함)
+    graph_trace = context.get('_graph_trace') or {}
+    wiki_trace = context.get('_wiki_trace') or {}
+    coverage = context.get('_asset_coverage') or {}
+    final_comment_text = (synthesis.get('customer_comment') if isinstance(synthesis, dict) else '') or ''
+    # final_comment 에 자산군 키워드가 등장하는지 카운트 (P3-3 검증)
+    from market_research.report.asset_coverage import (
+        REQUIRED_ASSET_CLASSES as _REQ, _scan_text_for_asset as _scan,
+    )
+    asset_mentions: dict[str, int] = {
+        ac: _scan(final_comment_text, ac) for ac in _REQ
+    }
+    asset_pass = sum(1 for v in asset_mentions.values() if v > 0) >= 3
+
+    debug_trace = {
+        'graph_paths_used_count': graph_trace.get('selected_path_count', 0),
+        'graph_paths_used': graph_trace.get('selected_path_labels', []),
+        'graph_paths_candidate_count': graph_trace.get('candidate_path_count', 0),
+        'graph_paths_dropped_low_confidence': graph_trace.get(
+            'dropped_low_confidence_count', 0),
+        'graph_paths_avg_confidence': graph_trace.get('avg_selected_confidence', 0.0),
+        'wiki_context_used_count': wiki_trace.get('wiki_selected_pages')
+            and len(wiki_trace['wiki_selected_pages']) or 0,
+        'wiki_context_pages': wiki_trace.get('wiki_selected_pages', []),
+        'wiki_context_chars': wiki_trace.get('wiki_context_chars', 0),
+        'wiki_retrieval_keywords': wiki_trace.get('wiki_retrieval_keywords', []),
+        'wiki_skipped_short_pages': wiki_trace.get('wiki_skipped_short_pages', 0),
+        'prompt_graph_context_chars': len(context.get('graph_paths_text') or ''),
+        'prompt_wiki_context_chars': len(context.get('wiki_context_text') or ''),
+        # P3-3 asset coverage
+        'dominant_topic': coverage.get('dominant_topic'),
+        'dominant_topic_share': coverage.get('dominant_topic_share', 0.0),
+        'asset_coverage_map': coverage.get('asset_coverage_map', []),
+        'covered_asset_classes': coverage.get('covered_asset_classes', []),
+        'weak_asset_classes': coverage.get('weak_asset_classes', []),
+        'missing_asset_classes': coverage.get('missing_asset_classes', []),
+        'fallback_used_by_asset': coverage.get('fallback_used_by_asset', {}),
+        'prompt_asset_coverage_chars': len(context.get('asset_coverage_text') or ''),
+        'final_comment_asset_mentions': asset_mentions,
+        'asset_coverage_pass': asset_pass,
+    }
+
     result = {
         'year': year,
         'month': month,
@@ -1102,6 +1294,7 @@ def run_market_debate(year: int, month: int,
         'synthesis': synthesis,
         'debate_narrative': debate_interp,
         '_evidence_ids': context.get('_evidence_ids', []),
+        '_debug_trace': debug_trace,  # admin/debug 전용 — client DTO 에 미노출
     }
 
     # ── 디버그 로그 저장 ──
