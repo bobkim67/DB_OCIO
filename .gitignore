@@ -53,6 +53,7 @@ debug/*.csv
 debug/*.xlsx
 debug/*.tmp
 debug/*.log
+debug/*.json
 
 # Debug 신규 ad-hoc py (이미 commit된 것은 그대로 유지됨 — gitignore는 untracked만 제어)
 debug/*.py
