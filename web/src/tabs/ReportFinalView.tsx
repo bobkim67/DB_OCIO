@@ -423,6 +423,60 @@ export default function ReportFinalView({
           <IndicatorChartSection chart={enr.indicator_chart} />
         </>
       )}
+
+      {/* P3: 펀드 viewer 전용 — 동일 기간 시장 debate 의 evidence/news fan-out.
+          시장 코멘트(_market) 자체 응답에는 market_enrichment 가 없으므로 표시 안 됨.
+          indicator_chart 는 펀드 enrichment 에서 이미 표시되므로 여기서는 생략(중복 회피). */}
+      {d.fund_code !== "_market" && d.market_enrichment && (
+        <LinkedMarketSection linked={d.market_enrichment} />
+      )}
     </section>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Linked Market Evidence section (P3 — 펀드 report 전용)
+// ──────────────────────────────────────────────────────────────────────
+
+function LinkedMarketSection({
+  linked,
+}: {
+  linked: NonNullable<ReportFinalResponseDTO["data"]["market_enrichment"]>;
+}) {
+  const ev = linked.evidence_annotations ?? [];
+  const rn = linked.related_news ?? [];
+  const hasContent = ev.length > 0 || rn.length > 0;
+
+  // 시장 evidence 가 모두 비어 있으면 섹션 자체를 hide
+  if (!hasContent) return null;
+
+  return (
+    <>
+      <div style={SECTION_TITLE}>참고 시장 판단 근거</div>
+      <div
+        style={{
+          background: "#eff6ff",
+          border: "1px solid #bfdbfe",
+          borderRadius: 6,
+          padding: "8px 12px",
+          fontSize: 12,
+          color: "#1e40af",
+          marginBottom: 8,
+        }}
+      >
+        이 섹션은 펀드 코멘트 작성 시 참조한 동일 기간의 시장 debate 근거입니다.
+        펀드 자체 보유 종목 근거가 아니라 시장 판단 근거입니다.
+      </div>
+      <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 6 }}>
+        시장 기간: {linked.market_period}
+        {linked.market_period_fallback && (
+          <span style={{ color: "#92400e", marginLeft: 6 }}>
+            (fund period fallback)
+          </span>
+        )}
+      </div>
+      {ev.length > 0 && <EvidenceSection items={ev} />}
+      {rn.length > 0 && <RelatedNewsSection items={rn} />}
+    </>
   );
 }

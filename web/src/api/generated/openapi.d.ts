@@ -848,6 +848,74 @@ export interface components {
             /** Source Consistency Reason */
             source_consistency_reason?: string | null;
         };
+        /**
+         * LinkedMarketEnrichmentDTO
+         * @description 펀드 viewer 가 참조하는 동일 기간 시장 debate 의 enrichment fan-out (P3).
+         *
+         *     펀드 코멘트는 시장 debate 결과를 input 텍스트로만 사용하고, 자체
+         *     `evidence_annotations` / `related_news` 는 저장하지 않는다. 사용자가 펀드
+         *     코멘트의 [ref:N] 근거를 확인할 수 있도록 같은 기간의 `_market` 승인본
+         *     enrichment 를 fan-out 해 client 에 함께 노출한다.
+         *
+         *     중요 (must):
+         *       - 펀드 lineage 와 시장 lineage 는 **분리해서 검증**한다.
+         *       - 시장 lineage 가 `matched_by_id` 또는 legacy safe 일 때만 evidence/news
+         *         가 채워진다 (그 외 unavailable).
+         *       - 시장 final 이 부재/미승인이면 모든 source 가 `unavailable` + 빈 list.
+         *       - **internal_source / source_consistency_reason / debate_run_id 등
+         *         lineage internal 메타는 절대 포함되지 않는다.**
+         *
+         *     Fallback 메타:
+         *       - `market_period`: 실제로 lookup 한 기간 (펀드 draft 의
+         *         `market_debate_period` → 부재 시 펀드 report period).
+         *       - `market_period_fallback`: True 면 fund period 를 그대로 fallback 으로 사용.
+         */
+        LinkedMarketEnrichmentDTO: {
+            /** Market Period */
+            market_period: string;
+            /**
+             * Market Period Fallback
+             * @default false
+             */
+            market_period_fallback: boolean;
+            /**
+             * Evidence Annotations
+             * @default []
+             */
+            evidence_annotations: components["schemas"]["EvidenceAnnotationDTO"][];
+            /**
+             * Evidence Annotations Source
+             * @default unavailable
+             * @enum {string}
+             */
+            evidence_annotations_source: "approved" | "unavailable";
+            /**
+             * Related News
+             * @default []
+             */
+            related_news: components["schemas"]["RelatedNewsDTO"][];
+            /**
+             * Related News Source
+             * @default unavailable
+             * @enum {string}
+             */
+            related_news_source: "approved" | "unavailable";
+            indicator_chart?: components["schemas"]["IndicatorChartDTO"] | null;
+            /**
+             * Indicator Chart Source
+             * @default unavailable
+             * @enum {string}
+             */
+            indicator_chart_source: "macro_timeseries" | "unavailable";
+            /**
+             * Source Consistency Status
+             * @default unavailable
+             * @enum {string}
+             */
+            source_consistency_status: "matched_by_id" | "id_mismatch" | "matched" | "older_than_or_equal_final" | "newer_than_final" | "unverifiable" | "unavailable";
+            /** Source Consistency Note */
+            source_consistency_note?: string | null;
+        };
         /** MacroPointDTO */
         MacroPointDTO: {
             /**
@@ -998,6 +1066,10 @@ export interface components {
          *
          *     enrichment: 읽기 시점에 draft.json + _evidence_quality.jsonl 에서 결합.
          *     final.json 원본은 patch하지 않음. 모든 enrichment 섹션은 빈 값 허용.
+         *
+         *     market_enrichment (P3, 펀드 report 전용): 펀드 코멘트 작성 시 참조한 동일
+         *     기간 시장 debate 의 enrichment fan-out. 시장 코멘트(`_market`) 본 응답에는
+         *     채우지 않는다 (자체 enrichment 가 본체).
          */
         ReportFinalDTO: {
             /** Period */
@@ -1037,6 +1109,7 @@ export interface components {
              *     }
              */
             enrichment: components["schemas"]["ClientReportEnrichmentDTO"];
+            market_enrichment?: components["schemas"]["LinkedMarketEnrichmentDTO"] | null;
         };
         /** ReportFinalResponseDTO */
         ReportFinalResponseDTO: {

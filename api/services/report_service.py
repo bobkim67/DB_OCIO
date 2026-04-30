@@ -28,6 +28,7 @@ from ..schemas.report import (
     IndicatorSeriesDTO,
     InternalEnrichmentSource,
     InternalReportEnrichmentDTO,
+    LinkedMarketEnrichmentDTO,
     RelatedNewsDTO,
     ReportApprovedPeriodsResponseDTO,
     ReportFinalDTO,
@@ -1008,8 +1009,74 @@ def _make_meta(approved_at: datetime | None) -> BaseMeta:
 # Build entry points
 # ──────────────────────────────────────────────────────────────────────────
 
+def _resolve_market_period(
+    fund_period: str,
+    fund_final_payload: dict,
+) -> tuple[str, bool]:
+    """펀드 final 이 참조할 시장 debate period 결정.
+
+    우선순위:
+      1) fund draft 의 `market_debate_period` 키 (정상 매칭 키)
+      2) fund final 의 `market_debate_period` 키 (있을 경우)
+      3) fund report period (fallback)
+
+    반환: (market_period, fallback_used).
+    """
+    draft_payload = rsg.load_draft(fund_period, fund_final_payload.get("fund_code") or "") or {}
+    for src in (draft_payload, fund_final_payload):
+        v = src.get("market_debate_period")
+        if isinstance(v, str) and v.strip() and rsg.is_valid_period(v.strip()):
+            # 명시 키 사용 → fallback=False (실제로 다른 기간을 가리킬 수도 있음)
+            return v.strip(), False
+    # 명시 키 없음 → fund period 를 그대로 fallback 사용
+    return fund_period, True
+
+
+def _build_linked_market_enrichment(
+    fund_period: str,
+    fund_final_payload: dict,
+) -> LinkedMarketEnrichmentDTO:
+    """펀드 report 응답에 결합할 시장 enrichment fan-out (P3).
+
+    펀드 lineage 와 분리된 시장 lineage 만으로 검증한다. 시장 final 이
+    부재/미승인이거나 lineage 가 unsafe 면 unavailable + 빈 list.
+
+    indicator_chart 는 시장 final 이 승인된 경우에 한해 합성한다 (lineage
+    독립이지만 노출 게이트는 시장 final 승인 여부).
+    """
+    market_period, fallback_used = _resolve_market_period(fund_period, fund_final_payload)
+
+    market_payload = rsg.load_final(market_period, _MARKET_FUND_CODE)
+    if not market_payload or not market_payload.get("approved"):
+        return LinkedMarketEnrichmentDTO(
+            market_period=market_period,
+            market_period_fallback=fallback_used,
+            source_consistency_status="unavailable",
+            source_consistency_note="참조할 시장 승인본이 없습니다.",
+        )
+
+    internal = _build_enrichment(market_payload, market_period, _MARKET_FUND_CODE)
+    note = _CLIENT_NOTE_BY_STATUS.get(internal.source_consistency_status)
+    return LinkedMarketEnrichmentDTO(
+        market_period=market_period,
+        market_period_fallback=fallback_used,
+        evidence_annotations=internal.evidence_annotations,
+        evidence_annotations_source=internal.evidence_annotations_source,
+        related_news=internal.related_news,
+        related_news_source=internal.related_news_source,
+        indicator_chart=internal.indicator_chart,
+        indicator_chart_source=internal.indicator_chart_source,
+        source_consistency_status=internal.source_consistency_status,
+        source_consistency_note=note,
+    )
+
+
 def _build_report(period: str, fund_code: str) -> ReportFinalResponseDTO:
-    """공통 빌더: load_final → approved 검증 → DTO."""
+    """공통 빌더: load_final → approved 검증 → DTO.
+
+    펀드 report 는 추가로 동일 기간 시장 debate enrichment 를 fan-out 결합한다
+    (P3, market_enrichment). 시장 코멘트 자체 응답에는 채우지 않는다.
+    """
     payload = rsg.load_final(period, fund_code)
     if not payload:
         raise HTTPException(
@@ -1028,6 +1095,8 @@ def _build_report(period: str, fund_code: str) -> ReportFinalResponseDTO:
     dto = _to_dto(payload, period, fund_code)
     internal_enrichment = _build_enrichment(payload, period, fund_code)
     dto.enrichment = _to_client_enrichment(internal_enrichment)
+    if fund_code != _MARKET_FUND_CODE:
+        dto.market_enrichment = _build_linked_market_enrichment(period, payload)
     return ReportFinalResponseDTO(
         meta=_make_meta(payload.get("approved_at")),
         data=dto,
