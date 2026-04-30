@@ -24,6 +24,7 @@ import os
 import re
 import sys
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -1095,6 +1096,7 @@ def run_market_debate(year: int, month: int,
     result = {
         'year': year,
         'month': month,
+        'debate_run_id': uuid.uuid4().hex,  # P1-① lineage ID (run당 1회 발급)
         'debated_at': time.strftime('%Y-%m-%dT%H:%M:%S'),
         'agents': agent_responses,
         'synthesis': synthesis,
@@ -1227,6 +1229,7 @@ def run_quarterly_debate(year: int, quarter: int,
         'year': year,
         'quarter': quarter,
         'months': months,
+        'debate_run_id': uuid.uuid4().hex,  # P1-① lineage ID (run당 1회 발급)
         'debated_at': time.strftime('%Y-%m-%dT%H:%M:%S'),
         'agents': agent_responses,
         'synthesis': synthesis,

@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import time
+import uuid
 from datetime import date
 
 from market_research.report.report_store import (
@@ -294,12 +295,14 @@ def generate_fund_comment_and_save(
     cost = result.get('cost', 0)
     token_usage = result.get('token_usage', {})
 
-    # 10. fund draft 저장
+    # 10. fund draft 저장 (P1-① — 펀드 코멘트도 자체 run ID 1회 발급)
+    debate_run_id = uuid.uuid4().hex
     draft_data = {
         'fund_code': fund_code,
         'period': period_key,
         'report_type': FUND_REPORT_TYPE,
         'status': STATUS_DRAFT,
+        'debate_run_id': debate_run_id,
         'draft_comment': comment_text,
         'market_debate_period': period_key,
         'generated_at': time.strftime('%Y-%m-%dT%H:%M:%S'),

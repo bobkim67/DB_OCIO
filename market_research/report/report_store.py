@@ -103,6 +103,11 @@ def approve_and_save_final(period: str, fund_code: str,
     if not draft:
         return None
 
+    # P1-① lineage: 승인 대상 draft 의 debate_run_id 를 final 에 복사.
+    # (디스크의 다른 draft 가 아닌, 방금 load_draft 로 읽은 payload 의 ID).
+    # legacy draft (ID 부재) 는 None 으로 복사 — final 에도 None 기록.
+    approved_debate_run_id = draft.get('debate_run_id')
+
     final = {
         'fund_code': fund_code,
         'period': period,
@@ -111,6 +116,7 @@ def approve_and_save_final(period: str, fund_code: str,
         'approved': True,
         'approved_at': time.strftime('%Y-%m-%dT%H:%M:%S'),
         'approved_by': approved_by,
+        'approved_debate_run_id': approved_debate_run_id,
         'generated_at': draft.get('generated_at', ''),
         'model': draft.get('model', ''),
         'cost_usd': draft.get('cost_usd', 0),

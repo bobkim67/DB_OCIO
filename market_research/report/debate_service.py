@@ -515,11 +515,15 @@ def run_debate_and_save(mode: str, year: int, period_num: int,
     }
 
     debate_interp = result.get('debate_narrative', {}) or {}
+    # P1-① lineage ID: debate_engine 이 발급한 ID 를 그대로 보존.
+    # 중복 발급 금지 — debate_engine 에서 이미 발급된 값을 신뢰.
+    debate_run_id = result.get('debate_run_id')
 
     draft_data = {
         'fund_code': fund_code,
         'period': period_key,
         'status': STATUS_DRAFT,
+        'debate_run_id': debate_run_id,
         'draft_comment': clean_comment,
         'admin_comment_raw': raw_comment,
         'admin_summary': synthesis.get('admin_summary', ''),
@@ -549,6 +553,7 @@ def run_debate_and_save(mode: str, year: int, period_num: int,
     eq_record = {
         'period': period_key,
         'fund_code': fund_code,
+        'debate_run_id': debate_run_id,  # P1-① 동일 run ID 부착
         'debated_at': draft_data['generated_at'],
         **evidence_quality,
         'critical_warnings': warning_counts['critical'],
