@@ -9,10 +9,14 @@ from fastapi import HTTPException
 from ..schemas.admin import (
     AdminDebatePeriodsResponseDTO,
     AdminDebateStatusResponseDTO,
+    AdminEnrichmentJsonlRowDTO,
     AdminEvidenceQualityResponseDTO,
     AdminEvidenceQualityRowDTO,
+    AdminReportEnrichmentResponseDTO,
+    ReportEnrichmentFinalStatus,
 )
 from ..schemas.meta import BaseMeta, SourceBreakdown
+from . import report_service as report_svc
 from . import report_store_gateway as rsg
 
 
@@ -286,4 +290,152 @@ def build_debate_periods() -> AdminDebatePeriodsResponseDTO:
             generated_at=datetime.now(timezone.utc),
         ),
         periods=periods,
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Admin / Debug Report Enrichment Diagnosis
+# ──────────────────────────────────────────────────────────────────────────
+# 운영 주의: 이 endpoint 는 인증 없는 환경에서는 보안 경계가 아니다.
+# 외부 노출 운영환경에서는 인증/권한 가드를 별도로 적용해야 한다.
+
+_REPORT_ENRICHMENT_DEFAULT_LIMIT = 100
+_REPORT_ENRICHMENT_MAX_LIMIT = 500
+
+
+def _classify_final_status(
+    final_payload: dict | None,
+    draft_payload: dict | None,
+) -> ReportEnrichmentFinalStatus:
+    if final_payload:
+        return "approved" if final_payload.get("approved") else "final_unapproved"
+    if draft_payload:
+        return "draft_only"
+    return "not_generated"
+
+
+def _make_jsonl_row(obj: dict[str, Any]) -> AdminEnrichmentJsonlRowDTO:
+    """jsonl row → DTO. count alias 는 의미 분리:
+      cited = total_refs / selected = evidence_count / uncited = max(0, selected-cited)
+    """
+    cited = obj.get("total_refs")
+    selected = obj.get("evidence_count")
+    uncited = None
+    try:
+        c = int(cited) if cited is not None else None
+        s = int(selected) if selected is not None else None
+        if c is not None and s is not None:
+            uncited = max(0, s - c)
+    except (TypeError, ValueError):
+        uncited = None
+    return AdminEnrichmentJsonlRowDTO(
+        debate_run_id=obj.get("debate_run_id"),
+        debated_at=obj.get("debated_at"),
+        total_refs=cited,
+        cited_ref_count=cited,
+        selected_evidence_count=selected,
+        uncited_evidence_count=uncited,
+        evidence_count=selected,
+        ref_mismatches=obj.get("ref_mismatches"),
+        tense_mismatches=obj.get("tense_mismatches"),
+        mismatch_rate=obj.get("mismatch_rate"),
+        critical_warnings=obj.get("critical_warnings"),
+    )
+
+
+def _select_jsonl_rows(
+    period: str,
+    fund_code: str,
+    limit: int,
+) -> tuple[list[AdminEnrichmentJsonlRowDTO], int]:
+    """period+fund 정확 매칭 + debated_at desc 정렬 + limit 적용.
+
+    정렬 키: debated_at → created_at fallback. 둘 다 없으면 빈 문자열로 마지막에.
+    """
+    rows = rsg.read_evidence_quality_rows(period=period, fund_code=fund_code)
+
+    def _key(r: dict[str, Any]) -> str:
+        v = r.get("debated_at") or r.get("created_at")
+        return str(v) if v is not None else ""
+
+    rows_sorted = sorted(rows, key=_key, reverse=True)
+    total = len(rows_sorted)
+    capped = rows_sorted[:max(0, limit)]
+    return [_make_jsonl_row(r) for r in capped], total
+
+
+def build_report_enrichment_diagnosis(
+    period: str,
+    fund_code: str,
+    limit: int | None = None,
+) -> AdminReportEnrichmentResponseDTO:
+    """admin/debug 전용 enrichment 진단.
+
+    - approved=false 인 final 도 read-only 노출 (final_unapproved 상태)
+    - InternalReportEnrichmentDTO 그대로 반환 (internal_source + raw reason)
+    - jsonl_rows 는 period+fund 정확 매칭 + debated_at desc + limit
+    """
+    p = _validate_period(period)
+    fc = _validate_fund(fund_code)
+
+    # limit 정규화
+    if limit is None:
+        eff_limit = _REPORT_ENRICHMENT_DEFAULT_LIMIT
+    else:
+        eff_limit = min(max(1, int(limit)), _REPORT_ENRICHMENT_MAX_LIMIT)
+
+    final_payload = rsg.load_final(p, fc)
+    draft_payload = rsg.load_draft(p, fc)
+    final_status = _classify_final_status(final_payload, draft_payload)
+
+    # 응답 메타 추출
+    approved_at = None
+    approved_debate_run_id = None
+    if final_payload:
+        approved_at = final_payload.get("approved_at")
+        v = final_payload.get("approved_debate_run_id")
+        approved_debate_run_id = (
+            str(v).strip() if v is not None and str(v).strip() else None
+        )
+
+    draft_run_id = None
+    draft_generated_at = None
+    if draft_payload:
+        v = draft_payload.get("debate_run_id")
+        draft_run_id = (
+            str(v).strip() if v is not None and str(v).strip() else None
+        )
+        draft_generated_at = draft_payload.get("generated_at")
+
+    # jsonl rows
+    jsonl_rows, jsonl_total = _select_jsonl_rows(p, fc, eff_limit)
+
+    # internal enrichment — final 부재 시 None.
+    # final 이 있으면 approved 여부와 무관하게 lineage 진단 (final_unapproved 도 포함).
+    internal_enrichment = None
+    if final_payload is not None:
+        internal_enrichment = report_svc.build_internal_report_enrichment(
+            final_payload, p, fc,
+        )
+
+    return AdminReportEnrichmentResponseDTO(
+        meta=BaseMeta(
+            as_of_date=None,
+            source="db",
+            sources=[SourceBreakdown(component="report_store", kind="db")],
+            is_fallback=False,
+            warnings=[],
+            generated_at=datetime.now(timezone.utc),
+        ),
+        period=p,
+        fund_code=fc,
+        final_status=final_status,
+        approved_at=approved_at,
+        approved_debate_run_id=approved_debate_run_id,
+        draft_run_id=draft_run_id,
+        draft_generated_at=draft_generated_at,
+        jsonl_rows=jsonl_rows,
+        jsonl_returned=len(jsonl_rows),
+        jsonl_total_matched=jsonl_total,
+        enrichment=internal_enrichment,
     )

@@ -121,3 +121,39 @@ def list_period_dirs() -> list[str]:
             continue
         out.append(name)
     return sorted(out, reverse=True)
+
+
+def read_evidence_quality_rows(
+    period: str | None = None,
+    fund_code: str | None = None,
+) -> list[dict]:
+    """`_evidence_quality.jsonl` 의 row를 dict list로 반환.
+
+    파일 미존재/파싱 실패 row는 조용히 skip. 항상 list 반환 (200 보장).
+    period/fund_code 필터는 부분 매칭이 아닌 정확 매칭.
+    """
+    base = _output_dir()
+    path = base / "_evidence_quality.jsonl"
+    if not path.is_file():
+        return []
+    out: list[dict] = []
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(row, dict):
+            continue
+        if period is not None and row.get("period") != period:
+            continue
+        if fund_code is not None and row.get("fund_code") != fund_code:
+            continue
+        out.append(row)
+    return out

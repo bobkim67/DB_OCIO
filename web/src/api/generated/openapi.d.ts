@@ -140,6 +140,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/report-enrichment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin/debug enrichment 진단 (read-only)
+         * @description 관리자/개발자 진단용 read-only endpoint. client endpoint(`/api/market-report`, `/api/funds/{fund}/report`) 와 달리 approved=false 인 final 도 `final_unapproved` 상태로 노출하며, InternalReportEnrichmentDTO (internal_source + raw reason 포함) 와 debate_run_id / approved_debate_run_id / draft_run_id 를 노출한다. 이 endpoint 는 인증 없는 환경에서는 보안 경계가 아니다 — 외부 노출 운영환경에서는 인증/권한 가드를 별도로 적용해야 한다.
+         */
+        get: operations["get_report_enrichment_diagnosis_api_admin_report_enrichment_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/market-report": {
         parameters: {
             query?: never;
@@ -257,6 +277,40 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /**
+         * AdminEnrichmentJsonlRowDTO
+         * @description `_evidence_quality.jsonl` row — admin 진단용 명시 필드 + count alias.
+         *
+         *     카운트 alias 는 evidence_quality DTO 와 동일한 의미 분리:
+         *       - cited_ref_count       = total_refs (본문 인용 ref 수)
+         *       - selected_evidence_count = evidence_count (선정 evidence 수)
+         *       - uncited_evidence_count  = max(0, selected − cited)
+         *       - ref_mismatches          = ref 오매핑 (alias 없이 그대로)
+         */
+        AdminEnrichmentJsonlRowDTO: {
+            /** Debate Run Id */
+            debate_run_id?: string | null;
+            /** Debated At */
+            debated_at?: string | null;
+            /** Total Refs */
+            total_refs?: number | null;
+            /** Cited Ref Count */
+            cited_ref_count?: number | null;
+            /** Selected Evidence Count */
+            selected_evidence_count?: number | null;
+            /** Uncited Evidence Count */
+            uncited_evidence_count?: number | null;
+            /** Evidence Count */
+            evidence_count?: number | null;
+            /** Ref Mismatches */
+            ref_mismatches?: number | null;
+            /** Tense Mismatches */
+            tense_mismatches?: number | null;
+            /** Mismatch Rate */
+            mismatch_rate?: number | null;
+            /** Critical Warnings */
+            critical_warnings?: number | null;
+        };
         /** AdminEvidenceQualityResponseDTO */
         AdminEvidenceQualityResponseDTO: {
             meta: components["schemas"]["BaseMeta"];
@@ -303,6 +357,56 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /**
+         * AdminReportEnrichmentResponseDTO
+         * @description admin/debug 전용 enrichment 진단 응답.
+         *
+         *     Client endpoint (`/api/market-report`, `/api/funds/{fund}/report`) 와의 차이:
+         *       - client: approved=true 인 final 만 노출, internal_source / raw reason / debate_run_id
+         *                 미노출, ClientReportEnrichmentDTO 반환.
+         *       - admin/debug: approved=false 인 final 도 `final_unapproved` 상태로 read-only 노출.
+         *                     InternalReportEnrichmentDTO (internal_source + raw reason 포함) 반환.
+         *                     debate_run_id / approved_debate_run_id / draft_run_id 모두 노출.
+         *
+         *     운영 주의: 이 endpoint 는 내부망/개발자용 read-only 진단 endpoint 이며,
+         *     외부 노출 운영환경에서는 인증/권한 가드가 필요하다.
+         */
+        AdminReportEnrichmentResponseDTO: {
+            meta: components["schemas"]["BaseMeta"];
+            /** Period */
+            period: string;
+            /** Fund Code */
+            fund_code: string;
+            /**
+             * Final Status
+             * @enum {string}
+             */
+            final_status: "approved" | "final_unapproved" | "draft_only" | "not_generated";
+            /** Approved At */
+            approved_at?: string | null;
+            /** Approved Debate Run Id */
+            approved_debate_run_id?: string | null;
+            /** Draft Run Id */
+            draft_run_id?: string | null;
+            /** Draft Generated At */
+            draft_generated_at?: string | null;
+            /**
+             * Jsonl Rows
+             * @default []
+             */
+            jsonl_rows: components["schemas"]["AdminEnrichmentJsonlRowDTO"][];
+            /**
+             * Jsonl Returned
+             * @default 0
+             */
+            jsonl_returned: number;
+            /**
+             * Jsonl Total Matched
+             * @default 0
+             */
+            jsonl_total_matched: number;
+            enrichment?: components["schemas"]["InternalReportEnrichmentDTO"] | null;
+        };
         /** BaseMeta */
         BaseMeta: {
             /** As Of Date */
@@ -327,6 +431,158 @@ export interface components {
              * Format: date-time
              */
             generated_at: string;
+        };
+        /**
+         * ClientReportEnrichmentDTO
+         * @description Client viewer (`/api/market-report`, `/api/funds/{fund}/report`) 응답에 들어가는
+         *     enrichment 모델. **내부 source 라벨과 raw reason 메시지는 절대 포함되지 않는다.**
+         *
+         *     노출 필드:
+         *       - evidence_annotations / related_news / evidence_quality / validation_summary
+         *         / indicator_chart
+         *       - 각 섹션의 `*_source` 는 `"approved" | "unavailable"` 두 값만
+         *       - source_consistency_status: 전체 lineage 진단 (enum)
+         *       - source_consistency_note: client 안전 살균된 한 줄 안내
+         *         (내부 파일명 / draft / jsonl 같은 용어 미포함)
+         *
+         *     빈 list/null이면 React 측에서 섹션 hide.
+         */
+        ClientReportEnrichmentDTO: {
+            /**
+             * Evidence Annotations
+             * @default []
+             */
+            evidence_annotations: components["schemas"]["EvidenceAnnotationDTO"][];
+            /**
+             * Evidence Annotations Source
+             * @default unavailable
+             * @enum {string}
+             */
+            evidence_annotations_source: "approved" | "unavailable";
+            /**
+             * Related News
+             * @default []
+             */
+            related_news: components["schemas"]["RelatedNewsDTO"][];
+            /**
+             * Related News Source
+             * @default unavailable
+             * @enum {string}
+             */
+            related_news_source: "approved" | "unavailable";
+            evidence_quality?: components["schemas"]["EvidenceQualitySummaryDTO"] | null;
+            /**
+             * Evidence Quality Source
+             * @default unavailable
+             * @enum {string}
+             */
+            evidence_quality_source: "approved" | "unavailable";
+            validation_summary?: components["schemas"]["ValidationSummaryDTO"] | null;
+            /**
+             * Validation Summary Source
+             * @default unavailable
+             * @enum {string}
+             */
+            validation_summary_source: "approved" | "unavailable";
+            indicator_chart?: components["schemas"]["IndicatorChartDTO"] | null;
+            /**
+             * Indicator Chart Source
+             * @default unavailable
+             * @enum {string}
+             */
+            indicator_chart_source: "macro_timeseries" | "unavailable";
+            /**
+             * Source Consistency Status
+             * @default unavailable
+             * @enum {string}
+             */
+            source_consistency_status: "matched_by_id" | "id_mismatch" | "matched" | "older_than_or_equal_final" | "newer_than_final" | "unverifiable" | "unavailable";
+            /** Source Consistency Note */
+            source_consistency_note?: string | null;
+        };
+        /**
+         * EvidenceAnnotationDTO
+         * @description draft.json `evidence_annotations` 항목 1건.
+         *
+         *     원본: market_research debate_engine 산출.
+         *     값이 없는 필드는 None 허용 (예: salience_explanation 누락 시).
+         */
+        EvidenceAnnotationDTO: {
+            /** Ref */
+            ref: number;
+            /** Article Id */
+            article_id?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Url */
+            url?: string | null;
+            /** Source */
+            source?: string | null;
+            /** Date */
+            date?: string | null;
+            /** Topic */
+            topic?: string | null;
+            /**
+             * All Topics
+             * @default []
+             */
+            all_topics: string[];
+            /** Salience */
+            salience?: number | null;
+            /** Salience Explanation */
+            salience_explanation?: string | null;
+        };
+        /**
+         * EvidenceQualitySummaryDTO
+         * @description draft.json `evidence_quality` 또는 _evidence_quality.jsonl 집계.
+         *
+         *     카운트 의미 분리 (의미 혼동을 막기 위해 명시적 alias 제공):
+         *       - cited_ref_count       = 본문에서 [ref:N] 으로 인용된 ref 개수 (= 기존 total_refs)
+         *       - selected_evidence_count = debate에 선정된 evidence article 개수
+         *                                   (= 기존 evidence_count, 인용되지 않은 보조 기사 포함 가능)
+         *       - uncited_evidence_count  = selected_evidence_count − cited_ref_count
+         *                                   (음수 방지를 위해 max(0, ...) 적용)
+         *       - ref_mismatch_count    = ref 오매핑 건수 (= 기존 ref_mismatches)
+         *
+         *     mismatch_rate 정의: `ref_mismatch_count / cited_ref_count`
+         *                         (selected evidence 기준이 아닌 인용된 ref 기준)
+         */
+        EvidenceQualitySummaryDTO: {
+            /** Cited Ref Count */
+            cited_ref_count?: number | null;
+            /** Selected Evidence Count */
+            selected_evidence_count?: number | null;
+            /** Uncited Evidence Count */
+            uncited_evidence_count?: number | null;
+            /** Ref Mismatch Count */
+            ref_mismatch_count?: number | null;
+            /** Total Refs */
+            total_refs?: number | null;
+            /** Ref Mismatches */
+            ref_mismatches?: number | null;
+            /** Tense Mismatches */
+            tense_mismatches?: number | null;
+            /** Mismatch Rate */
+            mismatch_rate?: number | null;
+            /** Evidence Count */
+            evidence_count?: number | null;
+            /** Critical Warnings */
+            critical_warnings?: number | null;
+            /** Debated At */
+            debated_at?: string | null;
+            /** Coverage Available Topics */
+            coverage_available_topics?: number | null;
+            /** Coverage Referenced Topics */
+            coverage_referenced_topics?: number | null;
+            /**
+             * Coverage Unreferenced Topics
+             * @default []
+             */
+            coverage_unreferenced_topics: string[];
+            /** Numeric Sentences Total */
+            numeric_sentences_total?: number | null;
+            /** Uncited Numeric Count */
+            uncited_numeric_count?: number | null;
         };
         /**
          * FundListResponseDTO
@@ -429,6 +685,169 @@ export interface components {
             fx_hedge?: components["schemas"]["FxHedgeSummaryDTO"] | null;
             duration_summary?: components["schemas"]["WeightedDurationDTO"] | null;
         };
+        /**
+         * IndicatorChartDTO
+         * @description report 기간에 맞춰 read-time 합성된 macro context 차트.
+         *
+         *     **중요**: indicator_chart 는 approved final 에 저장된 근거 데이터가 아니라,
+         *     승인된 보고서 기간에 맞춰 조회 시점에 합성한 참고용 macro timeseries 다.
+         *     lineage guard (matched_by_id / id_mismatch / newer_than_final 등) 와 독립적으로
+         *     생성되며, client 에는 approved final 이 확인된 경우에만 노출된다.
+         *
+         *     source 라벨도 다른 enrichment 와 분리:
+         *       - "macro_timeseries": 합성 성공 (approved 가 아닌 별도 source)
+         *       - "unavailable": 합성 실패 또는 series 부재
+         */
+        IndicatorChartDTO: {
+            /**
+             * Series
+             * @default []
+             */
+            series: components["schemas"]["IndicatorSeriesDTO"][];
+            /** Unavailable Reason */
+            unavailable_reason?: string | null;
+            /** Period Start */
+            period_start?: string | null;
+            /** Period End */
+            period_end?: string | null;
+        };
+        /**
+         * IndicatorPointDTO
+         * @description 단일 시점.
+         *
+         *     - `value`: 첫 유효 시점을 100 으로 한 normalized index (시각화 기본값).
+         *     - `raw_value`: 원 macro 값 (tooltip / 디버그용).
+         */
+        IndicatorPointDTO: {
+            /** Date */
+            date: string;
+            /** Value */
+            value: number;
+            /** Raw Value */
+            raw_value: number;
+        };
+        /**
+         * IndicatorSeriesDTO
+         * @description report 기간 범위로 잘라 합성한 단일 series.
+         *
+         *     base_date / base_value 는 normalization 의 기준점:
+         *       `value(t) = raw_value(t) / base_value * 100.0`
+         */
+        IndicatorSeriesDTO: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Unit */
+            unit?: string | null;
+            /**
+             * Points
+             * @default []
+             */
+            points: components["schemas"]["IndicatorPointDTO"][];
+            /** Base Date */
+            base_date?: string | null;
+            /** Base Value */
+            base_value?: number | null;
+        };
+        /**
+         * InternalReportEnrichmentDTO
+         * @description Service 내부에서만 사용하는 full enrichment (admin/debug 진단용).
+         *
+         *     Client 응답에는 절대 그대로 직렬화되지 않는다. 향후 admin endpoint를 만들 때
+         *     이 모델을 base 로 사용 (internal_source / raw reason 노출 가능).
+         *
+         *     Lineage 정합성:
+         *       - 각 섹션의 raw 데이터(draft/jsonl)는 final.approved_at 보다 timestamp가
+         *         같거나 이른 경우에만 client에 노출 (`source="approved"`).
+         *       - timestamp가 newer_than_final 이거나 unverifiable 인 경우, client viewer는
+         *         해당 섹션을 unavailable 로 처리한다 (보수적 차단).
+         *       - 내부 source 라벨 (draft_json / evidence_quality_jsonl 등)은 admin/debug용
+         *         `internal_source` 필드에 격리. client UI는 `*_source` 만 본다.
+         */
+        InternalReportEnrichmentDTO: {
+            /**
+             * Evidence Annotations
+             * @default []
+             */
+            evidence_annotations: components["schemas"]["EvidenceAnnotationDTO"][];
+            /**
+             * Evidence Annotations Source
+             * @default unavailable
+             * @enum {string}
+             */
+            evidence_annotations_source: "approved" | "unavailable";
+            /**
+             * Evidence Annotations Internal Source
+             * @default unavailable
+             * @enum {string}
+             */
+            evidence_annotations_internal_source: "final_json" | "draft_json" | "evidence_quality_jsonl" | "macro_timeseries" | "unavailable";
+            /**
+             * Related News
+             * @default []
+             */
+            related_news: components["schemas"]["RelatedNewsDTO"][];
+            /**
+             * Related News Source
+             * @default unavailable
+             * @enum {string}
+             */
+            related_news_source: "approved" | "unavailable";
+            /**
+             * Related News Internal Source
+             * @default unavailable
+             * @enum {string}
+             */
+            related_news_internal_source: "final_json" | "draft_json" | "evidence_quality_jsonl" | "macro_timeseries" | "unavailable";
+            evidence_quality?: components["schemas"]["EvidenceQualitySummaryDTO"] | null;
+            /**
+             * Evidence Quality Source
+             * @default unavailable
+             * @enum {string}
+             */
+            evidence_quality_source: "approved" | "unavailable";
+            /**
+             * Evidence Quality Internal Source
+             * @default unavailable
+             * @enum {string}
+             */
+            evidence_quality_internal_source: "final_json" | "draft_json" | "evidence_quality_jsonl" | "macro_timeseries" | "unavailable";
+            validation_summary?: components["schemas"]["ValidationSummaryDTO"] | null;
+            /**
+             * Validation Summary Source
+             * @default unavailable
+             * @enum {string}
+             */
+            validation_summary_source: "approved" | "unavailable";
+            /**
+             * Validation Summary Internal Source
+             * @default unavailable
+             * @enum {string}
+             */
+            validation_summary_internal_source: "final_json" | "draft_json" | "evidence_quality_jsonl" | "macro_timeseries" | "unavailable";
+            indicator_chart?: components["schemas"]["IndicatorChartDTO"] | null;
+            /**
+             * Indicator Chart Source
+             * @default unavailable
+             * @enum {string}
+             */
+            indicator_chart_source: "macro_timeseries" | "unavailable";
+            /**
+             * Indicator Chart Internal Source
+             * @default unavailable
+             * @enum {string}
+             */
+            indicator_chart_internal_source: "final_json" | "draft_json" | "evidence_quality_jsonl" | "macro_timeseries" | "unavailable";
+            /**
+             * Source Consistency Status
+             * @default unavailable
+             * @enum {string}
+             */
+            source_consistency_status: "matched_by_id" | "id_mismatch" | "matched" | "older_than_or_equal_final" | "newer_than_final" | "unverifiable" | "unavailable";
+            /** Source Consistency Reason */
+            source_consistency_reason?: string | null;
+        };
         /** MacroPointDTO */
         MacroPointDTO: {
             /**
@@ -523,6 +942,36 @@ export interface components {
             };
         };
         /**
+         * RelatedNewsDTO
+         * @description draft.json `related_news` 항목. evidence_annotations와 같은 shape이지만
+         *     debate에 직접 인용되지 않은 보조 기사들.
+         */
+        RelatedNewsDTO: {
+            /** Ref */
+            ref?: number | null;
+            /** Article Id */
+            article_id?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Url */
+            url?: string | null;
+            /** Source */
+            source?: string | null;
+            /** Date */
+            date?: string | null;
+            /** Topic */
+            topic?: string | null;
+            /**
+             * All Topics
+             * @default []
+             */
+            all_topics: string[];
+            /** Salience */
+            salience?: number | null;
+            /** Salience Explanation */
+            salience_explanation?: string | null;
+        };
+        /**
          * ReportApprovedPeriodsResponseDTO
          * @description approved=true 인 final.json 이 존재하는 기간 목록 (정렬: 내림차순).
          */
@@ -546,6 +995,9 @@ export interface components {
          *       - status (approved 필터링 후 의미 없음)
          *
          *     빈 list 가능: consensus_points / tail_risks (펀드 코멘트는 보통 비어 있음).
+         *
+         *     enrichment: 읽기 시점에 draft.json + _evidence_quality.jsonl 에서 결합.
+         *     final.json 원본은 patch하지 않음. 모든 enrichment 섹션은 빈 값 허용.
          */
         ReportFinalDTO: {
             /** Period */
@@ -572,6 +1024,19 @@ export interface components {
              * @default []
              */
             tail_risks: string[];
+            /**
+             * @default {
+             *       "evidence_annotations": [],
+             *       "evidence_annotations_source": "unavailable",
+             *       "related_news": [],
+             *       "related_news_source": "unavailable",
+             *       "evidence_quality_source": "unavailable",
+             *       "validation_summary_source": "unavailable",
+             *       "indicator_chart_source": "unavailable",
+             *       "source_consistency_status": "unavailable"
+             *     }
+             */
+            enrichment: components["schemas"]["ClientReportEnrichmentDTO"];
         };
         /** ReportFinalResponseDTO */
         ReportFinalResponseDTO: {
@@ -598,6 +1063,35 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /**
+         * ValidationSummaryDTO
+         * @description draft.json `validation_summary`.
+         */
+        ValidationSummaryDTO: {
+            /**
+             * Sanitize Warnings
+             * @default []
+             */
+            sanitize_warnings: components["schemas"]["ValidationWarningDTO"][];
+            /**
+             * Warning Counts
+             * @default {}
+             */
+            warning_counts: {
+                [key: string]: number;
+            };
+        };
+        /** ValidationWarningDTO */
+        ValidationWarningDTO: {
+            /** Type */
+            type: string;
+            /** Message */
+            message: string;
+            /** Severity */
+            severity: string;
+            /** Ref No */
+            ref_no?: number | null;
         };
         /**
          * WeightedDurationDTO
@@ -864,6 +1358,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminDebatePeriodsResponseDTO"];
+                };
+            };
+        };
+    };
+    get_report_enrichment_diagnosis_api_admin_report_enrichment_get: {
+        parameters: {
+            query: {
+                period: string;
+                fund: string;
+                limit?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminReportEnrichmentResponseDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

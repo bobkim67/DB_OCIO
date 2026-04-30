@@ -42,10 +42,29 @@ export type AdminDebateStatusResponseDTO = S["AdminDebateStatusResponseDTO"];
 export type AdminDebatePeriodsResponseDTO = S["AdminDebatePeriodsResponseDTO"];
 export type DebateStatus = AdminDebateStatusResponseDTO["status"];
 
+// === Admin Report Enrichment Diagnosis (P1-②, admin/debug 전용) ===
+export type AdminReportEnrichmentResponseDTO = S["AdminReportEnrichmentResponseDTO"];
+export type AdminEnrichmentJsonlRowDTO = S["AdminEnrichmentJsonlRowDTO"];
+export type ReportEnrichmentFinalStatus =
+  AdminReportEnrichmentResponseDTO["final_status"];
+export type InternalReportEnrichmentDTO = S["InternalReportEnrichmentDTO"];
+
 // === Report (client-facing approved-only) ===
 export type ReportFinalDTO = S["ReportFinalDTO"];
 export type ReportFinalResponseDTO = S["ReportFinalResponseDTO"];
 export type ReportApprovedPeriodsResponseDTO = S["ReportApprovedPeriodsResponseDTO"];
+// Client viewer 응답에 들어가는 enrichment (internal_source / raw reason 미포함).
+export type ClientReportEnrichmentDTO = S["ClientReportEnrichmentDTO"];
+// 기존 alias 유지 (호환). client 응답 타입이 ClientReportEnrichmentDTO 로 변경됨.
+export type ReportEnrichmentDTO = S["ClientReportEnrichmentDTO"];
+export type EvidenceAnnotationDTO = S["EvidenceAnnotationDTO"];
+export type RelatedNewsDTO = S["RelatedNewsDTO"];
+export type EvidenceQualitySummaryDTO = S["EvidenceQualitySummaryDTO"];
+export type ValidationSummaryDTO = S["ValidationSummaryDTO"];
+export type ValidationWarningDTO = S["ValidationWarningDTO"];
+export type IndicatorChartDTO = S["IndicatorChartDTO"];
+export type IndicatorSeriesDTO = S["IndicatorSeriesDTO"];
+export type IndicatorPointDTO = S["IndicatorPointDTO"];
 
 // ----------------------------------------------------------------------
 // Fetchers — 시그니처/구현 불변. DTO 타입만 generated alias 참조.
@@ -124,6 +143,20 @@ export const fetchAdminDebatePeriods =
     );
     return r.data;
   };
+
+export const fetchAdminReportEnrichmentDiagnosis = async (
+  period: string,
+  fund: string,
+  limit?: number,
+): Promise<AdminReportEnrichmentResponseDTO> => {
+  const params: Record<string, string | number> = { period, fund };
+  if (limit !== undefined) params.limit = limit;
+  const r = await api.get<AdminReportEnrichmentResponseDTO>(
+    "/admin/report-enrichment",
+    { params },
+  );
+  return r.data;
+};
 
 // ----------------------------------------------------------------------
 // Report (client-facing) — approved-only viewer.

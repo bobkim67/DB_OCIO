@@ -1,8 +1,9 @@
 import { useState, type CSSProperties } from "react";
 import AdminEvidenceQualityPanel from "./AdminEvidenceQualityPanel";
 import AdminDebateStatusPanel from "./AdminDebateStatusPanel";
+import AdminReportEnrichmentPanel from "./AdminReportEnrichmentPanel";
 
-type SubView = "evidence" | "debate";
+type SubView = "evidence" | "debate" | "report-enrichment";
 
 const TAB_BTN_BASE: CSSProperties = {
   padding: "6px 14px",
@@ -46,10 +47,17 @@ export default function AdminTab() {
         >
           Debate Status
         </button>
+        <button
+          style={view === "report-enrichment" ? TAB_BTN_ACTIVE : TAB_BTN_BASE}
+          onClick={() => setView("report-enrichment")}
+        >
+          Report Enrichment
+        </button>
       </div>
 
       {view === "evidence" && <AdminEvidenceQualityPanel />}
       {view === "debate" && <AdminDebateStatusPanel />}
+      {view === "report-enrichment" && <AdminReportEnrichmentPanel />}
     </section>
   );
 }
