@@ -137,20 +137,27 @@ def _to_float(v) -> float | None:
 # ============================================================
 
 def _fetch_ace_papi(fund_cd: str) -> dict:
-    """https://papi.aceetf.co.kr/api/funds/{fundCd}/ytmcalc
+    """https://papi.aceetf.co.kr/api/funds/{fundCd}/performance
 
-    응답: {"fundPrice": ..., "duration": 5.249, "ytm": 3.728,
-           "totalPee": ..., "fundName": "...", "std_DT": "20260428"}
+    priceList[0] 응답: {"fundPrice":..., "duration": 7.7127, "ytm": 3.7643,
+                        "trackingError":..., "us_STPR":..., "std_DT":"20260430", ...}
+
+    duration 은 KIS BMM 기반 펀드 평균 듀레이션 (사이트 상단 카드 7.71 과 일치).
+    /ytmcalc 의 duration 은 YTM 역산 modified duration (6.62) 으로 사이트 카드와 다름.
     """
-    url = f"https://papi.aceetf.co.kr/api/funds/{fund_cd}/ytmcalc"
+    url = f"https://papi.aceetf.co.kr/api/funds/{fund_cd}/performance"
     r = _http_get(url)
     r.raise_for_status()
     d = r.json()
+    pl = d.get("priceList") or []
+    if not pl:
+        return {"duration": None, "ytm": None, "as_of_date": None, "raw": d}
+    head = pl[0]
     return {
-        "duration": _to_float(d.get("duration")),
-        "ytm": _to_float(d.get("ytm")),
-        "as_of_date": _norm_yyyymmdd(d.get("std_DT", "")),
-        "raw": d,
+        "duration": _to_float(head.get("duration")),
+        "ytm": _to_float(head.get("ytm")),
+        "as_of_date": _norm_yyyymmdd(head.get("std_DT", "")),
+        "raw": head,
     }
 
 

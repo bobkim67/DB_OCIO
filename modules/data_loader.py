@@ -1911,11 +1911,22 @@ def compute_brinson_attribution_v2(fund_code: str,
     total_select = result_df['Selection'].sum()
     total_cross = result_df['Cross'].sum()
 
-    # ── 10) 종목별 기여도 ──
-    sec_contrib_data = single_pa['sec_summary'][['자산군', '종목명', '개별수익률', '기여수익률']].copy()
+    # ── 10) 종목별 기여도 (전체 종목, 비중 포함) ──
+    _sec_cols_in = ['자산군', '종목명', '개별수익률', '기여수익률']
+    if '순자산비중' in single_pa['sec_summary'].columns:
+        _sec_cols_in.append('순자산비중')
+    sec_contrib_data = single_pa['sec_summary'][_sec_cols_in].copy()
     sec_contrib_data['수익률(%)'] = sec_contrib_data['개별수익률'] * 100
     sec_contrib_data['기여수익률(%)'] = sec_contrib_data['기여수익률'] * 100
-    sec_contrib_data = sec_contrib_data[['자산군', '종목명', '수익률(%)', '기여수익률(%)']].round(4)
+    if '순자산비중' in sec_contrib_data.columns:
+        sec_contrib_data['비중(%)'] = sec_contrib_data['순자산비중'] * 100
+        sec_contrib_data = sec_contrib_data[
+            ['자산군', '종목명', '비중(%)', '수익률(%)', '기여수익률(%)']
+        ].round(4)
+    else:
+        sec_contrib_data = sec_contrib_data[
+            ['자산군', '종목명', '수익률(%)', '기여수익률(%)']
+        ].round(4)
     sec_contrib_data = sec_contrib_data.sort_values('기여수익률(%)', ascending=False)
 
     # ── 11) 일별 누적 Brinson (차트용) ──
@@ -1941,7 +1952,7 @@ def compute_brinson_attribution_v2(fund_code: str,
         'total_excess_relative': period_excess_relative,
         'period_ap_return': period_ap_return,
         'period_bm_return': period_bm_return,
-        'sec_contrib': sec_contrib_data.head(20) if not sec_contrib_data.empty else pd.DataFrame(),
+        'sec_contrib': sec_contrib_data if not sec_contrib_data.empty else pd.DataFrame(),
         'daily_brinson': daily_sum_chart,
         'fx_contrib': ap_period_contribs.get('FX', 0) * 100,
         'residual': 0,
@@ -2965,6 +2976,9 @@ def compute_single_port_pa(fund_code: str, start_date: str, end_date: str,
     # ── 12) 개별수익률 (누적) ──
     # 일별 수익률로부터 누적수익률 계산
     # 증권/FX: cumprod(1+daily_return)-1
+    # placeholder=0(int) 으로 만든 컬럼이 strict pandas(>=2.2 raise_on_upcast=True)
+    # 환경에서 float 대입 거부되므로 사전 캐스팅.
+    result_df['개별수익률'] = result_df['개별수익률'].astype(float)
     for sid in result_df['종목코드'].unique():
         mask = result_df['종목코드'] == sid
         daily_rets = result_df.loc[mask, '종목별수익률_daily'].values
