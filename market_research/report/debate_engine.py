@@ -933,7 +933,12 @@ def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> 
         )
 
     debate_text = '\n\n'.join(debate_summary)
-    system_msg = '당신은 기관 투자자를 위한 글로벌 매크로 시장 분석 전문가입니다.'
+    system_msg = (
+        '당신은 기관 투자자를 위한 글로벌 매크로 시장 분석 전문가입니다. '
+        '응답은 반드시 마침표(.)로 끝나는 완결된 문장으로 마무리하세요. '
+        '문장이 미완성된 채로 출력이 끊기지 않도록, 마지막 문단을 자연스럽게 종결한 뒤 응답을 마치세요. '
+        '체크포인트를 나열할 때는 항목 수를 사전에 결정해 (예: "셋째,"로 시작했으면 반드시 그 항목까지 마치고 종료) 미완 나열 상태로 끊지 마세요.'
+    )
 
     # ── Step 1: 고객용 매크로 코멘트 (Opus) ──
     # 분기 vs 월별 판단
@@ -1041,7 +1046,11 @@ def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> 
     )
 
     customer_comment = ''
-    comment_max_tokens = 4000 if is_quarterly else 2000
+    # 글자수 제한 사실상 무제한 (Opus output cap 까지 허용).
+    # 본 코멘트가 잘리면 펀드 fan-out 컨텍스트로 전파되어 펀드 코멘트 표현이 오염됨 (관측 사례:
+    # 2026-04 _market 의 "인플레이션 전망 수정 폭" 미완 종료 → 4JM12 펀드 코멘트가 동일 어구 인용).
+    # 분기 32K / 월별 16K 로 상향. 자연 종료(마침표)는 system message 에서 강제.
+    comment_max_tokens = 32000 if is_quarterly else 16000
     try:
         customer_comment = _call_llm(
             model='claude-opus-4-6',
