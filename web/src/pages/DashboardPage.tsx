@@ -1,19 +1,21 @@
 import { useState } from "react";
 import { useFunds } from "../hooks/useFunds";
+import LoadingBar from "../components/common/LoadingBar";
 import OverviewTab from "../tabs/OverviewTab";
 import HoldingsTab from "../tabs/HoldingsTab";
+import BrinsonTab from "../tabs/BrinsonTab";
 import MacroTab from "../tabs/MacroTab";
 import ReportTab from "../tabs/ReportTab";
 import AdminTab from "../tabs/AdminTab";
 
-type TabKey = "overview" | "holdings" | "macro" | "report" | "admin";
+type TabKey = "overview" | "holdings" | "brinson" | "macro" | "report" | "admin";
 
 export default function DashboardPage() {
   const { data, isLoading, error } = useFunds();
   const [selected, setSelected] = useState<string>("08K88");
   const [tab, setTab] = useState<TabKey>("overview");
 
-  if (isLoading) return <div style={{ padding: 16 }}>loading funds...</div>;
+  if (isLoading) return <LoadingBar label="loading funds..." />;
   if (error || !data) {
     return (
       <div style={{ padding: 16, color: "#dc2626" }}>
@@ -74,6 +76,7 @@ export default function DashboardPage() {
       <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
         {tabBtn("overview", "Overview")}
         {tabBtn("holdings", "편입종목")}
+        {tabBtn("brinson", "성과분석")}
         {tabBtn("macro", "Macro")}
         {tabBtn("report", "운용보고")}
         {tabBtn("admin", "Admin")}
@@ -83,6 +86,8 @@ export default function DashboardPage() {
         <OverviewTab fundCode={selected} />
       ) : tab === "holdings" ? (
         <HoldingsTab fundCode={selected} />
+      ) : tab === "brinson" ? (
+        <BrinsonTab fundCode={selected} />
       ) : tab === "macro" ? (
         <MacroTab />
       ) : tab === "report" ? (

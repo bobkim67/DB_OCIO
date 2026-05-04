@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import Plot from "react-plotly.js";
 import { useMacro } from "../hooks/useMacro";
 import MetaBadge from "../components/common/MetaBadge";
+import LoadingBar from "../components/common/LoadingBar";
 import type { MacroSeriesDTO, MacroPointDTO } from "../api/endpoints";
 
 // 드롭다운 옵션 — 지수 11개 + FX 1개 (USDKRW).
@@ -254,7 +255,7 @@ export default function MacroTab() {
       </div>
 
       {isLoading ? (
-        <div>loading macro...</div>
+        <LoadingBar label="loading macro..." />
       ) : error || !data ? (
         <div style={{ color: "#dc2626" }}>failed to load macro</div>
       ) : idxSeries === null ? (

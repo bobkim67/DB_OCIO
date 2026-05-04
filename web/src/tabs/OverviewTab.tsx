@@ -2,6 +2,7 @@ import { useOverview } from "../hooks/useOverview";
 import MetaBadge from "../components/common/MetaBadge";
 import MetricCard from "../components/common/MetricCard";
 import NavChart from "../components/charts/NavChart";
+import LoadingBar from "../components/common/LoadingBar";
 
 interface Props {
   fundCode: string;
@@ -24,7 +25,7 @@ function fmtPct(v: number): string {
 export default function OverviewTab({ fundCode }: Props) {
   const { data, isLoading, error } = useOverview(fundCode);
 
-  if (isLoading) return <div>loading overview...</div>;
+  if (isLoading) return <LoadingBar label="loading overview..." />;
   if (error || !data) {
     return (
       <div style={{ color: "#dc2626" }}>failed to load overview</div>

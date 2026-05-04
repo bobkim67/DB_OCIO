@@ -2,6 +2,7 @@ import { useState, type CSSProperties } from "react";
 import { useHoldings } from "../hooks/useHoldings";
 import MetaBadge from "../components/common/MetaBadge";
 import AssetClassPie from "../components/charts/AssetClassPie";
+import LoadingBar from "../components/common/LoadingBar";
 import type { HoldingItemDTO } from "../api/endpoints";
 
 const ASSET_CLASS_ORDER = [
@@ -66,7 +67,7 @@ export default function HoldingsTab({ fundCode }: Props) {
   const [lookthrough, setLookthrough] = useState(true);
   const { data, isLoading, error } = useHoldings(fundCode, lookthrough);
 
-  if (isLoading) return <div>loading holdings...</div>;
+  if (isLoading) return <LoadingBar label="loading holdings..." />;
   if (error || !data) {
     return (
       <div style={{ color: "#dc2626" }}>failed to load holdings</div>
