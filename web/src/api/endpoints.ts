@@ -66,6 +66,14 @@ export type IndicatorChartDTO = S["IndicatorChartDTO"];
 export type IndicatorSeriesDTO = S["IndicatorSeriesDTO"];
 export type IndicatorPointDTO = S["IndicatorPointDTO"];
 
+// === Brinson ===
+export type BrinsonAssetRowDTO = S["BrinsonAssetRowDTO"];
+export type BrinsonSecContribDTO = S["BrinsonSecContribDTO"];
+export type BrinsonDailyPointDTO = S["BrinsonDailyPointDTO"];
+export type BrinsonResponseDTO = S["BrinsonResponseDTO"];
+export type BrinsonMappingMethod = "방법1" | "방법2" | "방법3" | "방법4";
+export type BrinsonPaMethod = "8" | "5";
+
 // ----------------------------------------------------------------------
 // Fetchers — 시그니처/구현 불변. DTO 타입만 generated alias 참조.
 // ----------------------------------------------------------------------
@@ -195,6 +203,34 @@ export const fetchFundReportApprovedPeriods = async (
 ): Promise<ReportApprovedPeriodsResponseDTO> => {
   const r = await api.get<ReportApprovedPeriodsResponseDTO>(
     `/funds/${code}/report/approved-periods`,
+  );
+  return r.data;
+};
+
+// ----------------------------------------------------------------------
+// Brinson 3-Factor Attribution
+// ----------------------------------------------------------------------
+export interface FetchBrinsonOptions {
+  startDate?: string;
+  endDate?: string;
+  mappingMethod?: BrinsonMappingMethod;
+  paMethod?: BrinsonPaMethod;
+  fxSplit?: boolean;
+}
+
+export const fetchBrinson = async (
+  code: string,
+  opts: FetchBrinsonOptions = {},
+): Promise<BrinsonResponseDTO> => {
+  const params: Record<string, string | boolean> = {};
+  if (opts.startDate) params.start_date = opts.startDate;
+  if (opts.endDate) params.end_date = opts.endDate;
+  if (opts.mappingMethod) params.mapping_method = opts.mappingMethod;
+  if (opts.paMethod) params.pa_method = opts.paMethod;
+  if (opts.fxSplit !== undefined) params.fx_split = opts.fxSplit;
+  const r = await api.get<BrinsonResponseDTO>(
+    `/funds/${code}/brinson`,
+    { params },
   );
   return r.data;
 };

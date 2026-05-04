@@ -1,0 +1,133 @@
+{
+  "fund_code": "08K88",
+  "mapping_method": "방법3",
+  "start_date": "2026-01-08",
+  "end_date": "2026-03-12",
+  "totals": {
+    "period_ap_return": 5.223587805234575,
+    "period_bm_return": 5.543408946113515,
+    "total_alloc": 1.2433,
+    "total_select": -1.2631999999999999,
+    "total_cross": -0.2999,
+    "total_excess": -0.31982114087893976,
+    "total_excess_relative": -0.3030233190991827,
+    "fx_contrib": 1.4194333700942399,
+    "residual": 0.0
+  },
+  "asset_rows": [
+    {
+      "asset_class": "국내주식",
+      "ap_weight": 30.77,
+      "bm_weight": 21.6,
+      "ap_return": 24.21,
+      "bm_return": 22.68,
+      "alloc_effect": 0.8582,
+      "select_effect": 0.2958,
+      "cross_effect": -0.0439,
+      "contrib_return": 6.0655
+    },
+    {
+      "asset_class": "국내채권",
+      "ap_weight": 8.6,
+      "bm_weight": 10.0,
+      "ap_return": -0.81,
+      "bm_return": -1.28,
+      "alloc_effect": 0.0228,
+      "select_effect": 0.0489,
+      "cross_effect": -0.0136,
+      "contrib_return": -0.0765
+    },
+    {
+      "asset_class": "해외주식",
+      "ap_weight": 52.1,
+      "bm_weight": 50.4,
+      "ap_return": -3.76,
+      "bm_return": -1.21,
+      "alloc_effect": 0.0833,
+      "select_effect": -1.3632,
+      "cross_effect": -0.1545,
+      "contrib_return": -2.0769
+    },
+    {
+      "asset_class": "해외채권",
+      "ap_weight": 8.48,
+      "bm_weight": 10.0,
+      "ap_return": -0.42,
+      "bm_return": 0.08,
+      "alloc_effect": -0.0042,
+      "select_effect": -0.055,
+      "cross_effect": 0.015,
+      "contrib_return": -0.0382
+    },
+    {
+      "asset_class": "대체",
+      "ap_weight": 0.0,
+      "bm_weight": 0.0,
+      "ap_return": 0.0,
+      "bm_return": 0.0,
+      "alloc_effect": 0.0,
+      "select_effect": 0.0,
+      "cross_effect": 0.0,
+      "contrib_return": 0.0
+    },
+    {
+      "asset_class": "FX",
+      "ap_weight": 60.63,
+      "bm_weight": 50.4,
+      "ap_return": 2.0,
+      "bm_return": 2.36,
+      "alloc_effect": 0.2832,
+      "select_effect": -0.1897,
+      "cross_effect": -0.0566,
+      "contrib_return": 1.4194
+    },
+    {
+      "asset_class": "유동성및기타",
+      "ap_weight": 0.0,
+      "bm_weight": 8.0,
+      "ap_return": 0.0,
+      "bm_return": 0.45,
+      "alloc_effect": 0.0,
+      "select_effect": 0.0,
+      "cross_effect": -0.0463,
+      "contrib_return": -0.0696
+    }
+  ],
+  "sec_top5": [
+    {
+      "asset_class": "국내주식",
+      "item_nm": "ACE 200TR",
+      "weight_pct": 26.9698,
+      "return_pct": 22.3292,
+      "contrib_pct": 5.8145
+    },
+    {
+      "asset_class": "FX",
+      "item_nm": "USD",
+      "weight_pct": 60.6327,
+      "return_pct": 1.9971,
+      "contrib_pct": 1.4194
+    },
+    {
+      "asset_class": "국내주식",
+      "item_nm": "ACE 200",
+      "weight_pct": 3.7968,
+      "return_pct": 6.7049,
+      "contrib_pct": 0.251
+    },
+    {
+      "asset_class": "해외주식",
+      "item_nm": "ACE 미국대형가치주액티브",
+      "weight_pct": 14.4509,
+      "return_pct": -0.5554,
+      "contrib_pct": 0.079
+    },
+    {
+      "asset_class": "해외주식",
+      "item_nm": "VANGUARD FTSE EMERGING MARKETS",
+      "weight_pct": 5.5829,
+      "return_pct": -0.1416,
+      "contrib_pct": 0.0353
+    }
+  ]
+}

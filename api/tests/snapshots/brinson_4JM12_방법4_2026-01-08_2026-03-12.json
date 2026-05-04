@@ -1,0 +1,122 @@
+{
+  "fund_code": "4JM12",
+  "mapping_method": "방법4",
+  "start_date": "2026-01-08",
+  "end_date": "2026-03-12",
+  "totals": {
+    "period_ap_return": -1.6255881356604163,
+    "period_bm_return": -0.5682940261578895,
+    "total_alloc": 1.6606,
+    "total_select": -0.8999999999999999,
+    "total_cross": -1.8178,
+    "total_excess": -1.0572941095025268,
+    "total_excess_relative": -1.063336990095165,
+    "fx_contrib": 0.02998583818697296,
+    "residual": 0.0
+  },
+  "asset_rows": [
+    {
+      "asset_class": "국내주식",
+      "ap_weight": 0.0,
+      "bm_weight": 0.0,
+      "ap_return": 0.0,
+      "bm_return": 0.0,
+      "alloc_effect": 0.0,
+      "select_effect": 0.0,
+      "cross_effect": 0.0,
+      "contrib_return": 0.0
+    },
+    {
+      "asset_class": "국내채권",
+      "ap_weight": 47.51,
+      "bm_weight": 49.5,
+      "ap_return": -1.78,
+      "bm_return": -1.28,
+      "alloc_effect": 0.0345,
+      "select_effect": -0.243,
+      "cross_effect": 0.011,
+      "contrib_return": -0.8349
+    },
+    {
+      "asset_class": "해외주식",
+      "ap_weight": 46.51,
+      "bm_weight": 45.0,
+      "ap_return": -1.64,
+      "bm_return": -1.21,
+      "alloc_effect": -0.0384,
+      "select_effect": -0.1265,
+      "cross_effect": -0.051,
+      "contrib_return": -0.7428
+    },
+    {
+      "asset_class": "해외채권",
+      "ap_weight": 0.0,
+      "bm_weight": 0.0,
+      "ap_return": 0.0,
+      "bm_return": 0.0,
+      "alloc_effect": 0.0,
+      "select_effect": 0.0,
+      "cross_effect": 0.0,
+      "contrib_return": 0.0
+    },
+    {
+      "asset_class": "FX",
+      "ap_weight": -4.6,
+      "bm_weight": 22.5,
+      "ap_return": 0.17,
+      "bm_return": 2.36,
+      "alloc_effect": 1.6645,
+      "select_effect": -0.5305,
+      "cross_effect": -1.6757,
+      "contrib_return": 0.03
+    },
+    {
+      "asset_class": "유동성및기타",
+      "ap_weight": 0.0,
+      "bm_weight": 5.5,
+      "ap_return": 0.0,
+      "bm_return": 0.45,
+      "alloc_effect": 0.0,
+      "select_effect": 0.0,
+      "cross_effect": -0.1021,
+      "contrib_return": -0.0779
+    }
+  ],
+  "sec_top5": [
+    {
+      "asset_class": "해외주식",
+      "item_nm": "VANGUARD VALUE ETF",
+      "weight_pct": 9.4635,
+      "return_pct": 1.522,
+      "contrib_pct": 0.1745
+    },
+    {
+      "asset_class": "해외주식",
+      "item_nm": "VANGUARD FTSE DEVELOPED ETF",
+      "weight_pct": 2.5746,
+      "return_pct": 2.6816,
+      "contrib_pct": 0.0559
+    },
+    {
+      "asset_class": "FX",
+      "item_nm": "USD",
+      "weight_pct": -4.604,
+      "return_pct": 0.1682,
+      "contrib_pct": 0.03
+    },
+    {
+      "asset_class": "해외주식",
+      "item_nm": "VANGUARD FTSE EMERGING MARKETS",
+      "weight_pct": 5.6506,
+      "return_pct": -0.054,
+      "contrib_pct": -0.0077
+    },
+    {
+      "asset_class": "국내채권",
+      "item_nm": "한국투자TMF28-12만기형증권투자신탁(채권)",
+      "weight_pct": 6.777,
+      "return_pct": -0.3077,
+      "contrib_pct": -0.0192
+    }
+  ]
+}

@@ -228,6 +228,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/funds/{code}/brinson": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Brinson */
+        get: operations["get_brinson_api_funds__code__brinson_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -431,6 +448,113 @@ export interface components {
              * Format: date-time
              */
             generated_at: string;
+        };
+        /**
+         * BrinsonAssetRowDTO
+         * @description compute_brinson_attribution_v2['pa_df'] 한 행.
+         */
+        BrinsonAssetRowDTO: {
+            /** Asset Class */
+            asset_class: string;
+            /** Ap Weight */
+            ap_weight: number;
+            /** Bm Weight */
+            bm_weight: number;
+            /** Ap Return */
+            ap_return: number;
+            /** Bm Return */
+            bm_return: number;
+            /** Alloc Effect */
+            alloc_effect: number;
+            /** Select Effect */
+            select_effect: number;
+            /** Cross Effect */
+            cross_effect: number;
+            /** Contrib Return */
+            contrib_return: number;
+        };
+        /**
+         * BrinsonDailyPointDTO
+         * @description compute_brinson_attribution_v2['daily_brinson'] 한 행.
+         */
+        BrinsonDailyPointDTO: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Alloc Cum */
+            alloc_cum: number;
+            /** Select Cum */
+            select_cum: number;
+            /** Cross Cum */
+            cross_cum: number;
+            /** Excess Cum */
+            excess_cum: number;
+        };
+        /** BrinsonResponseDTO */
+        BrinsonResponseDTO: {
+            meta: components["schemas"]["BaseMeta"];
+            /** Fund Code */
+            fund_code: string;
+            /** Fund Name */
+            fund_name: string;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /** Mapping Method */
+            mapping_method: string;
+            /** Pa Method */
+            pa_method: string;
+            /** Fx Split */
+            fx_split: boolean;
+            /** Period Ap Return */
+            period_ap_return: number;
+            /** Period Bm Return */
+            period_bm_return: number;
+            /** Total Alloc */
+            total_alloc: number;
+            /** Total Select */
+            total_select: number;
+            /** Total Cross */
+            total_cross: number;
+            /** Total Excess */
+            total_excess: number;
+            /** Total Excess Relative */
+            total_excess_relative: number;
+            /** Fx Contrib */
+            fx_contrib: number;
+            /** Residual */
+            residual: number;
+            /** Asset Rows */
+            asset_rows: components["schemas"]["BrinsonAssetRowDTO"][];
+            /** Sec Contrib */
+            sec_contrib: components["schemas"]["BrinsonSecContribDTO"][];
+            /** Daily Brinson */
+            daily_brinson: components["schemas"]["BrinsonDailyPointDTO"][];
+        };
+        /**
+         * BrinsonSecContribDTO
+         * @description compute_brinson_attribution_v2['sec_contrib'] 한 행 (전체 종목).
+         */
+        BrinsonSecContribDTO: {
+            /** Asset Class */
+            asset_class: string;
+            /** Item Nm */
+            item_nm: string;
+            /** Weight Pct */
+            weight_pct: number;
+            /** Return Pct */
+            return_pct: number;
+            /** Contrib Pct */
+            contrib_pct: number;
         };
         /**
          * ClientReportEnrichmentDTO
@@ -1570,6 +1694,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReportApprovedPeriodsResponseDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_brinson_api_funds__code__brinson_get: {
+        parameters: {
+            query?: {
+                start_date?: string | null;
+                end_date?: string | null;
+                mapping_method?: string | null;
+                pa_method?: string;
+                fx_split?: boolean;
+            };
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrinsonResponseDTO"];
                 };
             };
             /** @description Validation Error */
