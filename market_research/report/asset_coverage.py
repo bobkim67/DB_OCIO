@@ -85,10 +85,17 @@ _KOREAN_INCLUDE: dict[str, tuple[str, ...]] = {
         "credit spread", "신용스프레드", "신용 스프레드",
         "회사채", "회사채 스프레드", "investment grade", "IG 스프레드",
         "CDS", "회사채 발행",
+        # 2026-05-06 hotfix: 코멘트가 "크레딧 시장/이벤트", "투자등급 크레딧"
+        # 형태로 자주 표현하지만 매처 누락 → 추가
+        "크레딧 시장", "크레딧 이벤트", "크레딧 스프레드", "투자등급 크레딧",
+        "투자등급",
     ),
     "현금성": (
         "MMF", "단기금리", "콜금리", "RP 금리", "CD 금리",
         "현금성 자산", "단기 금리", "초단기",
+        # 2026-05-06 hotfix: "유동성 관리/유동성 자산" phrase 만 (단독 "유동성"은
+        # 너무 광범위 — 글로벌유동성/유동성 위기 등과 충돌)
+        "유동성 관리", "유동성 자산",
     ),
 }
 
@@ -102,12 +109,20 @@ _ENGLISH_INCLUDE: dict[str, tuple[str, ...]] = {
     "현금성": ("MMF",),
 }
 
-# Exclude keyword — 한국어 substring 으로 잡혔을 때 강제 차감
+# Exclude keyword — 한국어 substring 으로 잡혔을 때 강제 차감.
+#
+# 주의: include 가 모두 specific phrase 일 때 짧은 단어 exclude 를 추가하면
+# specific hit 까지 깎아 false-negative 가 발생한다 (2026-05-06 hotfix 사례).
+# 따라서 exclude 는 *include 의 짧은/모호한 키워드가 false-positive 를 일으킬 때*
+# 만 의미가 있다. include 가 phrase only 인 자산군에는 exclude 를 두지 않는다.
 _KOREAN_EXCLUDE: dict[str, tuple[str, ...]] = {
     "금/대체": (
+        # 영문 word-boundary 매칭은 "Goldman" / "GLD" 등 짧은 약어와 충돌
+        # 가능하므로 보존. 한국어 짧은 단어 ("금리"/"금융"/...) 는
+        # include 가 phrase only 라 false-positive 보호 효과 없이
+        # specific phrase hit ("금 가격" 등) 만 깎아 false-negative 유발 →
+        # 2026-05-06 hotfix 로 제거.
         "Goldman", "골드만", "Goldman Sachs",
-        "금리", "금융", "금요일", "금투", "예금", "자금",
-        "기준금리", "현금", "벌금", "장기금", "단기금",
     ),
     "크레딧": (
         "신용카드", "credit card", "신용 카드",
@@ -131,8 +146,10 @@ def _norm(s: str) -> str:
 def _english_word_count(text: str, word: str) -> int:
     if not text or not word:
         return 0
+    # re.ASCII: 한글/한자가 \w 에 포함되지 않도록 강제 → 한국어 조사가 붙은
+    # 영문 토큰 ("WTI가", "Fed의" 등) 도 정상 매칭. 2026-05-06 hotfix.
     pattern = r"\b" + re.escape(word) + r"\b"
-    return len(re.findall(pattern, text, flags=re.IGNORECASE))
+    return len(re.findall(pattern, text, flags=re.IGNORECASE | re.ASCII))
 
 
 def _korean_count(text: str, phrase: str) -> int:
