@@ -1,14 +1,20 @@
 """WikiTree retrieval helper for debate prompt enrichment.
 
-01_Events / 02_Entities / 05_Regime_Canonical 페이지를 keyword 매칭으로 검색
-하여 debate prompt 의 "관련 WikiTree 메모" 섹션에 발췌를 삽입한다.
+01_Events / 02_Entities / 03_Assets / 04_Funds / 05_Regime_Canonical 페이지를
+keyword 매칭으로 검색하여 debate prompt 의 "관련 WikiTree 메모" 섹션에
+발췌를 삽입한다.
 
-규칙 (사용자 지시):
-  - 03_Assets / 04_Funds 는 빈약하므로 이번 retrieval 대상에서 제외
-  - 500자 미만 page 는 낮은 우선순위
+규칙:
+  - 500자 미만 page 는 낮은 우선순위 (length_bucket=0 으로 강등)
   - source/ref 가 있는 page 우선
   - max wiki_context_chars 기본 1500~2000 (debug trace 노출)
   - 본문 발췌는 page 당 200~400자
+
+이력:
+  - 초기: 03_Assets / 04_Funds 는 빈약하여 retrieval 대상에서 제외
+  - 2026-05-04 (P3-4/5 enrichment 이후): 03/04 도 평균 1200~1500ch 로 성숙
+    → TARGET_DIRS 에 포함. 짧은 base page 는 MIN_GOOD_LENGTH 강등 보호로 자연스럽게
+       후순위로 밀림
 """
 from __future__ import annotations
 
@@ -16,7 +22,13 @@ import re
 from pathlib import Path
 
 WIKI_ROOT = Path(__file__).resolve().parent.parent / "data" / "wiki"
-TARGET_DIRS: tuple[str, ...] = ("01_Events", "02_Entities", "05_Regime_Canonical")
+TARGET_DIRS: tuple[str, ...] = (
+    "01_Events",
+    "02_Entities",
+    "03_Assets",
+    "04_Funds",
+    "05_Regime_Canonical",
+)
 MIN_GOOD_LENGTH = 500
 MAX_PAGES = 5
 PER_PAGE_EXCERPT_CHARS = 380
