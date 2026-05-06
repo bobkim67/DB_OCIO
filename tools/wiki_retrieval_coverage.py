@@ -548,12 +548,39 @@ def _stale_month_fund_leakage(rfc: dict) -> list[dict]:
     return leaked
 
 
+def _emit(all_results: list[dict], failures: list[dict], warnings: list[dict],
+          *, gate_id: str, severity: str, status: str, period: str,
+          fund_code: str | None, message: str, details: dict | None = None) -> None:
+    """gate 결과 1건을 누적. status='PASS' 면 all_results 에만 추가, FAIL/WARNING 은
+    failures/warnings 에도 분기 추가."""
+    entry = {
+        "gate_id": gate_id,
+        "severity": severity,
+        "status": status,
+        "period": period,
+        "fund_code": fund_code,
+        "message": message,
+        "details": details or {},
+    }
+    all_results.append(entry)
+    if status == "FAIL":
+        failures.append(entry)
+    elif status in ("WARNING", "WARNING_SKIP"):
+        warnings.append(entry)
+
+
 def evaluate_gates(periods: list[str], funds: list[str], *,
                     skip_report_periods: set[str],
-                    expected_enriched_periods: set[str]) -> tuple[list[dict], list[dict]]:
-    """gate 검사. Returns (failures, warnings)."""
+                    expected_enriched_periods: set[str]
+                    ) -> tuple[list[dict], list[dict], list[dict]]:
+    """gate 검사. Returns (failures, warnings, all_results).
+
+    all_results: 모든 gate 평가 결과 (PASS 포함). JSON 출력용.
+    failures / warnings: all_results 의 status='FAIL'/'WARNING' 만 필터된 view.
+    """
     failures: list[dict] = []
     warnings: list[dict] = []
+    all_results: list[dict] = []
 
     for period in periods:
         is_skip = period in skip_report_periods
@@ -562,91 +589,111 @@ def evaluate_gates(periods: list[str], funds: list[str], *,
         inv = inventory_report(period)
 
         # G1. duplicate primary_url
-        if inv["duplicate_url_groups"]:
-            failures.append({
-                "gate": "G1_duplicate_url",
-                "period": period,
-                "level": "FAIL",
-                "detail": f"{len(inv['duplicate_url_groups'])} groups",
-            })
+        dup_url_n = len(inv["duplicate_url_groups"])
+        _emit(all_results, failures, warnings,
+              gate_id="G1_duplicate_url", severity="FAIL",
+              status="FAIL" if dup_url_n else "PASS",
+              period=period, fund_code=None,
+              message=(f"{dup_url_n} duplicate URL groups" if dup_url_n
+                       else "no duplicate primary_url"),
+              details={"count": dup_url_n,
+                       "groups": list(inv["duplicate_url_groups"].keys())[:5]})
 
         # G2. duplicate primary_headline
-        if inv["duplicate_headline_groups"]:
-            failures.append({
-                "gate": "G2_duplicate_headline",
-                "period": period,
-                "level": "FAIL",
-                "detail": f"{len(inv['duplicate_headline_groups'])} groups",
-            })
+        dup_head_n = len(inv["duplicate_headline_groups"])
+        _emit(all_results, failures, warnings,
+              gate_id="G2_duplicate_headline", severity="FAIL",
+              status="FAIL" if dup_head_n else "PASS",
+              period=period, fund_code=None,
+              message=(f"{dup_head_n} duplicate headline groups" if dup_head_n
+                       else "no duplicate primary_headline"),
+              details={"count": dup_head_n})
 
-        # G3 + G4: asset coverage
+        # G3 + G4 + G6: asset coverage + market_debate
         rmd = retrieval_debug(period, "market_debate")
         cov = asset_coverage_report(period, retrieval_market=rmd)
         missing_assets = [r["asset_class"] for r in cov if not r["exists"]]
         unenriched_assets = [r["asset_class"] for r in cov
                               if r["exists"] and not r["is_enriched"]]
 
+        # G3
         if missing_assets:
-            level = "WARNING_SKIP" if is_skip else "FAIL"
-            (warnings if level == "WARNING_SKIP" else failures).append({
-                "gate": "G3_missing_required_asset",
-                "period": period,
-                "level": level,
-                "detail": f"{missing_assets}",
-            })
+            severity_g3 = "WARNING" if is_skip else "FAIL"
+            status_g3 = "WARNING_SKIP" if is_skip else "FAIL"
+            _emit(all_results, failures, warnings,
+                  gate_id="G3_missing_required_asset",
+                  severity=severity_g3, status=status_g3,
+                  period=period, fund_code=None,
+                  message=f"missing assets: {missing_assets}",
+                  details={"missing": missing_assets, "skip_report": is_skip})
+        else:
+            _emit(all_results, failures, warnings,
+                  gate_id="G3_missing_required_asset", severity="FAIL",
+                  status="PASS", period=period, fund_code=None,
+                  message="all required assets present",
+                  details={"missing": []})
 
-        if is_enriched_expected and unenriched_assets:
-            failures.append({
-                "gate": "G4_enrichment_expected_but_none",
-                "period": period,
-                "level": "FAIL",
-                "detail": f"{unenriched_assets} (source_type=none)",
-            })
+        # G4
+        if is_enriched_expected:
+            if unenriched_assets:
+                _emit(all_results, failures, warnings,
+                      gate_id="G4_enrichment_expected_but_none",
+                      severity="FAIL", status="FAIL",
+                      period=period, fund_code=None,
+                      message=f"unenriched: {unenriched_assets}",
+                      details={"unenriched": unenriched_assets})
+            else:
+                _emit(all_results, failures, warnings,
+                      gate_id="G4_enrichment_expected_but_none",
+                      severity="FAIL", status="PASS",
+                      period=period, fund_code=None,
+                      message="all assets enriched (source_type set)",
+                      details={"unenriched": []})
 
         # G6. market_debate selected URL 중복
-        if rmd["selected_url_duplicates"]:
-            failures.append({
-                "gate": "G6_market_debate_dup_url",
-                "period": period,
-                "level": "FAIL",
-                "detail": f"{[u for u, _ in rmd['selected_url_duplicates']]}",
-            })
+        dup_sel_urls = rmd["selected_url_duplicates"]
+        _emit(all_results, failures, warnings,
+              gate_id="G6_market_debate_dup_url", severity="FAIL",
+              status="FAIL" if dup_sel_urls else "PASS",
+              period=period, fund_code=None,
+              message=(f"{len(dup_sel_urls)} duplicate URL in selected"
+                       if dup_sel_urls else "no duplicate URL in selected"),
+              details={"duplicates": [u for u, _ in dup_sel_urls]})
 
         # G5 + G7: fund_comment 별
         for fund in funds:
             rfc = retrieval_debug(period, "fund_comment", fund_code=fund)
             pinned = rfc.get("pinned") or {}
-            # G5: pinned 가 있는데 dedup 안 됨 (selected 에 pinned path 등장)
+            # G5
             if pinned.get("page_path"):
                 pinned_in_sel = any(
                     d["path"] == pinned["page_path"]
                     for d in rfc["selected_detail"]
                 )
-                if pinned_in_sel:
-                    failures.append({
-                        "gate": "G5_pinned_retrieved_dup",
-                        "period": period,
-                        "level": "FAIL",
-                        "detail": f"fund={fund}, pinned={pinned['page_path']} also in selected",
-                    })
-            # G7 (R2 G7 fix 2026-05-06): fund_comment retrieve 에 04_Funds 가
-            # 1건이라도 등장하면 정책 위반 → FAIL.
-            # (이전: stale month leakage WARNING — STAGE_ALLOWED_DIRS 변경 후
-            #  retrieve 단계에서 04_Funds 자체가 candidate 에 안 들어와 자연 0)
+                _emit(all_results, failures, warnings,
+                      gate_id="G5_pinned_retrieved_dup", severity="FAIL",
+                      status="FAIL" if pinned_in_sel else "PASS",
+                      period=period, fund_code=fund,
+                      message=(f"pinned {pinned['page_path']} also in selected"
+                               if pinned_in_sel
+                               else "pinned ↔ retrieved dedup OK"),
+                      details={"pinned_path": pinned["page_path"],
+                               "in_selected": pinned_in_sel})
+            # G7
             retrieved_04 = [d for d in rfc["selected_detail"]
                              if d["dir"] == "04_Funds"]
-            if retrieved_04:
-                failures.append({
-                    "gate": "G7_fund_comment_04_funds_in_retrieved",
-                    "period": period,
-                    "level": "FAIL",
-                    "detail": (
-                        f"fund={fund}, retrieved_04_funds={[d['path'] for d in retrieved_04]} "
-                        f"(정책: 04_Funds 는 pinned 전용)"
-                    ),
-                })
+            _emit(all_results, failures, warnings,
+                  gate_id="G7_fund_comment_04_funds_in_retrieved",
+                  severity="FAIL",
+                  status="FAIL" if retrieved_04 else "PASS",
+                  period=period, fund_code=fund,
+                  message=(f"04_Funds in retrieved: {[d['path'] for d in retrieved_04]}"
+                           if retrieved_04
+                           else "04_Funds excluded from retrieved (정책 준수)"),
+                  details={"retrieved_04_funds_count": len(retrieved_04),
+                           "retrieved_04_funds": [d["path"] for d in retrieved_04]})
 
-    return failures, warnings
+    return failures, warnings, all_results
 
 
 def render_gate_summary(failures: list[dict], warnings: list[dict],
@@ -660,8 +707,9 @@ def render_gate_summary(failures: list[dict], warnings: list[dict],
     if failures:
         lines.append("### ❌ FAIL")
         for f in failures:
+            fund = f.get("fund_code") or "-"
             lines.append(
-                f"  - `{f['gate']}` / period=`{f['period']}` — {f['detail']}"
+                f"  - `{f['gate_id']}` period=`{f['period']}` fund=`{fund}` — {f['message']}"
             )
         lines.append("")
     else:
@@ -671,8 +719,9 @@ def render_gate_summary(failures: list[dict], warnings: list[dict],
     if warnings:
         lines.append("### ⚠️ WARNING")
         for w in warnings:
+            fund = w.get("fund_code") or "-"
             lines.append(
-                f"  - `{w['gate']}` / period=`{w['period']}` — {w['detail']}"
+                f"  - `{w['gate_id']}` period=`{w['period']}` fund=`{fund}` — {w['message']}"
             )
         lines.append("")
     else:
@@ -680,6 +729,67 @@ def render_gate_summary(failures: list[dict], warnings: list[dict],
         lines.append("")
 
     return "\n".join(lines)
+
+
+# R3-a: JSON output schema
+SCHEMA_VERSION = "1.0.0"
+TOOL_VERSION = "wiki_retrieval_coverage v2 (R3, 2026-05-06)"
+
+
+def build_json_report(periods: list[str], funds: list[str], *,
+                       skip_report_periods: set[str] | None = None,
+                       expected_enriched_periods: set[str] | None = None,
+                       fail_on_gate: bool = False) -> dict:
+    """JSON output 산출 (markdown 과 동일 source-of-truth, gate count 일관)."""
+    from datetime import datetime, timezone
+    skip_set = skip_report_periods or set()
+    enriched_set = expected_enriched_periods or set()
+
+    # period 별 데이터
+    inv_by_period = {p: inventory_report(p) for p in periods}
+    rmd_by_period = {p: retrieval_debug(p, "market_debate") for p in periods}
+    cov_by_period = {p: asset_coverage_report(p, retrieval_market=rmd_by_period[p])
+                      for p in periods}
+    fc_by_period: dict[str, dict] = {}
+    for p in periods:
+        fc_by_period[p] = {}
+        for fund in funds:
+            fc_by_period[p][fund] = retrieval_debug(p, "fund_comment", fund_code=fund)
+
+    # gate 평가 (fail_on_gate 와 무관 — JSON 에는 항상 평가 포함)
+    failures, warns, all_results = evaluate_gates(
+        periods, funds,
+        skip_report_periods=skip_set,
+        expected_enriched_periods=enriched_set,
+    )
+    pass_n = sum(1 for r in all_results if r["status"] == "PASS")
+    exit_code_expected = 1 if (fail_on_gate and failures) else 0
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "tool_version": TOOL_VERSION,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "periods": list(periods),
+        "funds": list(funds),
+        "skip_report_periods": sorted(skip_set),
+        "expected_enriched_periods": sorted(enriched_set),
+        "fail_on_gate": fail_on_gate,
+        "inventory_summary": inv_by_period,
+        "retrieval_debug": rmd_by_period,
+        "fund_comment_debug": fc_by_period,
+        "asset_coverage": cov_by_period,
+        "gate_summary": {
+            "total": len(all_results),
+            "pass": pass_n,
+            "fail": len(failures),
+            "warning": len(warns),
+            "exit_code_expected": exit_code_expected,
+            "fail_on_gate": fail_on_gate,
+        },
+        "gate_results": all_results,
+        "warnings": [],   # 도구 자체의 비-gate warning (현재 미사용)
+        "errors": [],     # 도구 자체의 error (현재 미사용)
+    }
 
 
 def render_report(periods: list[str], funds: list[str], *,
@@ -754,7 +864,7 @@ def render_report(periods: list[str], funds: list[str], *,
     failures: list[dict] = []
     warnings_list: list[dict] = []
     if fail_on_gate:
-        failures, warnings_list = evaluate_gates(
+        failures, warnings_list, _all = evaluate_gates(
             periods, funds,
             skip_report_periods=skip_set,
             expected_enriched_periods=enriched_set,
@@ -782,6 +892,10 @@ def main():
     parser.add_argument("--expected-enriched-period", action="append", default=[],
                         help="enrichment 기대 period — base only (source_type=none) "
                              "이면 G4 FAIL (R2)")
+    parser.add_argument("--json-out", default=None,
+                        help="JSON 출력 path (R3). 미지정 시 markdown 만. "
+                             "schema_version 과 gate_results 포함 — Admin API "
+                             "에서 그대로 read 가능.")
     args = parser.parse_args()
 
     if not args.period:
@@ -812,9 +926,28 @@ def main():
     )
     out_path.write_text(text, encoding="utf-8")
 
-    print(f"[ok] report written to {out_path}")
+    print(f"[ok] markdown report → {out_path}")
     print(f"     periods={args.period} funds={args.fund}")
     print(f"     {len(text):,} chars / {len(text.splitlines())} lines")
+
+    # R3-a: JSON output
+    if args.json_out:
+        json_path = Path(args.json_out)
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+        json_data = build_json_report(
+            args.period, args.fund,
+            skip_report_periods=set(args.skip_report_period),
+            expected_enriched_periods=set(args.expected_enriched_period),
+            fail_on_gate=args.fail_on_gate,
+        )
+        json_path.write_text(
+            json.dumps(json_data, ensure_ascii=False, indent=2, default=str),
+            encoding="utf-8",
+        )
+        gs = json_data["gate_summary"]
+        print(f"[ok] json report     → {json_path}")
+        print(f"     gate: total={gs['total']} pass={gs['pass']} "
+              f"fail={gs['fail']} warning={gs['warning']}")
 
     if args.fail_on_gate:
         print(f"     gate: FAIL={len(failures)} / WARNING={len(warnings_list)}")
