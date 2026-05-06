@@ -284,6 +284,7 @@ def retrieve_wiki_context(
     max_pages: int = MAX_PAGES,
     max_context_chars: int = DEFAULT_MAX_CONTEXT_CHARS,
     cluster_cap: int | None = DEFAULT_CLUSTER_CAP,
+    exclude_paths: set[str] | None = None,
 ) -> dict:
     """keywords 기반 wiki page 검색 → 발췌 결합.
 
@@ -297,6 +298,9 @@ def retrieve_wiki_context(
                 방지). None 이면 filter off (legacy compat).
         cluster_cap: 동일 cluster (event_group_id 또는 top_topics[0]) 의 페이지
                      최대 N. None 이면 cap 없음. 기본 2.
+        exclude_paths: 이 set 에 포함된 (WIKI_ROOT 상대) 경로의 페이지는 후보
+                       단계에서 제외. F2 dedup — pinned_fund_context 와 retrieved
+                       의 중복 주입 회피용 (None 또는 빈 set 이면 영향 없음).
 
     Returns:
         {
@@ -339,8 +343,10 @@ def retrieve_wiki_context(
     skipped_fund_mismatch = 0
     skipped_future = 0
     skipped_cluster_cap = 0
+    skipped_excluded = 0
     cluster_count: dict[str, int] = {}
     total_chars = 0
+    excl_set = set(exclude_paths or ())
 
     raw_candidates = _list_candidate_pages(allowed)
 
@@ -355,17 +361,22 @@ def retrieve_wiki_context(
             "skipped_fund_mismatch": 0,
             "skipped_future_pages": 0,
             "skipped_cluster_cap": 0,
+            "skipped_excluded": 0,
             "stage_used": resolved_stage,
             "period_used": period,
             "cluster_cap_used": cluster_cap,
             "keywords": keyword_tokens,
         }
 
-    # 04_Funds fund_code 게이팅 (P0-1)
+    # 04_Funds fund_code 게이팅 (P0-1) + exclude_paths (F2 dedup)
     candidates: list[Path] = []
     for fp in raw_candidates:
         if not _fund_match(fp, fund_code):
             skipped_fund_mismatch += 1
+            continue
+        rel = str(fp.relative_to(WIKI_ROOT)).replace("\\", "/")
+        if rel in excl_set:
+            skipped_excluded += 1
             continue
         candidates.append(fp)
 
@@ -432,6 +443,7 @@ def retrieve_wiki_context(
         "skipped_fund_mismatch": skipped_fund_mismatch,
         "skipped_future_pages": skipped_future,
         "skipped_cluster_cap": skipped_cluster_cap,
+        "skipped_excluded": skipped_excluded,
         "stage_used": resolved_stage,
         "period_used": period,
         "cluster_cap_used": cluster_cap,

@@ -769,11 +769,15 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
         wiki_trace['pinned_fund_context_chars'] = pinned.get('chars', 0)
         wiki_trace['pinned_fund_context_reason'] = pinned.get('reason')
 
+        # F2 follow-up dedup: pinned 가 있으면 retrieved 에서 동일 path 제외 →
+        # prompt 중복 주입 방지 (LLM 의 over-anchor 회피).
+        excl_paths = {pinned['page_path']} if pinned.get('page_path') else None
         retrieval = retrieve_wiki_context(
             kw_sources,
             stage=wiki_stage,
             fund_code=fund_code,
             period=wiki_period,
+            exclude_paths=excl_paths,
         )
         wiki_trace['wiki_candidate_pages'] = retrieval.get('candidate_count', 0)
         wiki_trace['wiki_selected_pages'] = retrieval.get('selected_pages', []) or []
@@ -781,6 +785,7 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
         wiki_trace['wiki_skipped_fund_mismatch'] = retrieval.get('skipped_fund_mismatch', 0)
         wiki_trace['wiki_skipped_future_pages'] = retrieval.get('skipped_future_pages', 0)
         wiki_trace['wiki_skipped_cluster_cap'] = retrieval.get('skipped_cluster_cap', 0)
+        wiki_trace['wiki_skipped_excluded'] = retrieval.get('skipped_excluded', 0)
         wiki_trace['wiki_stage_used'] = retrieval.get('stage_used')
         wiki_trace['wiki_period_used'] = retrieval.get('period_used')
         wiki_trace['wiki_cluster_cap_used'] = retrieval.get('cluster_cap_used')
