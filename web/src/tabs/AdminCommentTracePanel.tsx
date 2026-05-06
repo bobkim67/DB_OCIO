@@ -1,10 +1,13 @@
-// R5-A: Comment Trace Viewer (read-only, no graph viz).
-// 우선 table/tree 기반 + JSON preview. graph layout 은 다음 단계.
+// R5-A: Comment Trace Viewer (read-only).
+// R5-B: graph_seed Obsidian-like force-directed view 추가 (AdminCommentTraceGraph).
+//   - 기존 table/raw JSON viewer 그대로 유지
+//   - Graph Seed Summary 아래에 Graph View 섹션 추가
 import { useMemo, useState, type CSSProperties } from "react";
 import {
   useCommentTraceList,
   useCommentTraceLatest,
 } from "../hooks/useCommentTrace";
+import AdminCommentTraceGraph from "./AdminCommentTraceGraph";
 
 type TraceListItem = {
   trace_id: string;
@@ -297,7 +300,7 @@ function TraceDetail({
       {/* Graph seed summary */}
       <div style={CARD}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
-          Graph Seed Summary (visualization 다음 단계)
+          Graph Seed Summary
         </div>
         <div style={{ display: "flex", gap: 24, flexWrap: "wrap", fontSize: 12 }}>
           <div>
@@ -324,6 +327,9 @@ function TraceDetail({
           </pre>
         </div>
       </div>
+
+      {/* R5-B Graph View (cytoscape) */}
+      <AdminCommentTraceGraph graph={graph} />
 
       {/* Raw JSON */}
       <div style={CARD}>
