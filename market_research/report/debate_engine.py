@@ -1402,6 +1402,41 @@ def run_debate(fund_code: str, year: int, month: int) -> dict:
     return result
 
 
+def _evidence_month_distribution(evidence_ids: list, year: int,
+                                   months: list[int]) -> dict[str, int]:
+    """evidence_id (article_id) 의 month 별 분포. Q-FIX-1.
+
+    LLM 호출 없이 디스크 read 만 — news json + naver research adapted 두 소스에서
+    article_id → month 매핑 후 Counter. 매핑 실패는 'unknown' 으로 집계.
+    """
+    from collections import Counter
+    id_to_month: dict[str, str] = {}
+    for m in months:
+        news_file = BASE_DIR / 'data' / 'news' / f'{year}-{m:02d}.json'
+        if not news_file.exists():
+            continue
+        try:
+            data = json.loads(news_file.read_text(encoding='utf-8'))
+        except Exception:
+            continue
+        for a in data.get('articles', []):
+            aid = a.get('_article_id')
+            if aid and aid not in id_to_month:
+                id_to_month[aid] = f'{year}-{m:02d}'
+    # naver research adapted
+    try:
+        from market_research.collect.naver_research_adapter import load_adapted
+        for m in months:
+            for a in load_adapted(f'{year}-{m:02d}'):
+                aid = a.get('_article_id')
+                if aid and aid not in id_to_month:
+                    id_to_month[aid] = f'{year}-{m:02d}'
+    except Exception:
+        pass
+    counter = Counter(id_to_month.get(eid, 'unknown') for eid in evidence_ids)
+    return dict(counter)
+
+
 def run_quarterly_debate(year: int, quarter: int,
                          *,
                          force_window_ids: set[str] | None = None) -> dict:
@@ -1435,6 +1470,7 @@ def run_quarterly_debate(year: int, quarter: int,
     all_blog_lines = []
     all_evidence_ids = []
     next_idx = 1  # 분기 통번호
+    last_ctx = None  # Q-FIX-1: 마지막 월 ctx 의 trace 보존
 
     # 월별 최소 quota: 각 월 최소 5건, 나머지는 자유 배분 (총 ~15~20건)
     MONTHLY_QUOTA = 5
@@ -1452,6 +1488,7 @@ def run_quarterly_debate(year: int, quarter: int,
         if ctx.get('blog_context_text'):
             all_blog_lines.append(ctx['blog_context_text'])
         all_evidence_ids.extend(ctx.get('_evidence_ids', []))
+        last_ctx = ctx
 
     merged_context['indicators_text'] = merged_context['indicators_text']
     merged_context['news_summary_text'] = '\n'.join(all_news_lines)
@@ -1461,6 +1498,19 @@ def run_quarterly_debate(year: int, quarter: int,
     merged_context['_quarterly'] = True
     merged_context['_quarter'] = quarter
     merged_context['_quarterly_months'] = months
+
+    # Q-FIX-1 (2026-05-06): monthly run_market_debate 와 동일하게 wiki/graph/asset
+    # trace + prompt text 를 merged_context 로 복사. wiki retrieval 은 _build_shared_context
+    # 가 월별 1회씩 수행 — 마지막 월 (분기 end_month) 의 결과를 사용.
+    # period filter 가 *분기 end_month + 1 월 이후* 를 자동 차단 (P1.5 적용).
+    # 예: q=1 → 마지막 월=3 → wiki_period='2026-03' → 4/5월 page 제외, 1/2월 page 는
+    # 과거 page 로 통과 (의도된 동작).
+    if last_ctx is not None:
+        merged_context['_wiki_trace'] = last_ctx.get('_wiki_trace', {})
+        merged_context['_graph_trace'] = last_ctx.get('_graph_trace', {})
+        merged_context['_asset_coverage'] = last_ctx.get('_asset_coverage', {})
+        merged_context['wiki_context_text'] = last_ctx.get('wiki_context_text', '')
+        merged_context['asset_coverage_text'] = last_ctx.get('asset_coverage_text', '')
 
     print(f'  컨텍스트 빌드 완료 (3개월 병합)')
 
@@ -1495,6 +1545,66 @@ def run_quarterly_debate(year: int, quarter: int,
     synthesis = _synthesize_debate(agent_responses, None, merged_context)
     print(f'  종합 완료')
 
+    # Q-FIX-1 (2026-05-06): monthly 와 동일한 _debug_trace + evidence_annotations 생성
+    graph_trace = merged_context.get('_graph_trace') or {}
+    wiki_trace = merged_context.get('_wiki_trace') or {}
+    coverage = merged_context.get('_asset_coverage') or {}
+    final_comment_text = (synthesis.get('customer_comment')
+                          if isinstance(synthesis, dict) else '') or ''
+    from market_research.report.asset_coverage import (
+        REQUIRED_ASSET_CLASSES as _REQ, _scan_text_for_asset as _scan,
+    )
+    asset_mentions: dict[str, int] = {ac: _scan(final_comment_text, ac) for ac in _REQ}
+    asset_pass = sum(1 for v in asset_mentions.values() if v > 0) >= 3
+    ev_month_dist = _evidence_month_distribution(all_evidence_ids, year, months)
+
+    debug_trace = {
+        # quarterly 전용 metadata
+        'debate_mode': 'quarterly',
+        'period': f'{year}-Q{quarter}',
+        'months': months,
+        'evidence_ids_count': len(all_evidence_ids),
+        'evidence_month_distribution': ev_month_dist,
+        # monthly parity — graph
+        'graph_paths_used_count': graph_trace.get('selected_path_count', 0),
+        'graph_paths_used': graph_trace.get('selected_path_labels', []),
+        'graph_paths_candidate_count': graph_trace.get('candidate_path_count', 0),
+        # monthly parity — wiki
+        'wiki_context_used_count': len(wiki_trace.get('wiki_selected_pages') or []),
+        'wiki_context_pages': wiki_trace.get('wiki_selected_pages', []),
+        'wiki_context_chars': wiki_trace.get('wiki_context_chars', 0),
+        'wiki_retrieval_keywords': wiki_trace.get('wiki_retrieval_keywords', []),
+        'wiki_skipped_short_pages': wiki_trace.get('wiki_skipped_short_pages', 0),
+        'wiki_skipped_future_pages': wiki_trace.get('wiki_skipped_future_pages', 0),
+        'wiki_skipped_cluster_cap': wiki_trace.get('wiki_skipped_cluster_cap', 0),
+        'wiki_skipped_excluded': wiki_trace.get('wiki_skipped_excluded', 0),
+        'wiki_excluded_dirs': wiki_trace.get('wiki_excluded_dirs', []),
+        'wiki_excluded_dir_page_count': wiki_trace.get('wiki_excluded_dir_page_count', 0),
+        'wiki_stage_used': wiki_trace.get('wiki_stage_used'),
+        'wiki_period_used': wiki_trace.get('wiki_period_used'),
+        # prompt 통계
+        'prompt_graph_context_chars': len(merged_context.get('graph_paths_text') or ''),
+        'prompt_wiki_context_chars': len(merged_context.get('wiki_context_text') or ''),
+        'prompt_asset_coverage_chars': len(merged_context.get('asset_coverage_text') or ''),
+        # asset coverage
+        'dominant_topic': coverage.get('dominant_topic'),
+        'covered_asset_classes': coverage.get('covered_asset_classes', []),
+        'weak_asset_classes': coverage.get('weak_asset_classes', []),
+        'missing_asset_classes': coverage.get('missing_asset_classes', []),
+        'final_comment_asset_mentions': asset_mentions,
+        'asset_coverage_pass': asset_pass,
+    }
+
+    # evidence_annotations — debate_service 의 함수 재사용 (지연 import 로 circular 회피)
+    try:
+        from market_research.report.debate_service import build_evidence_annotations
+        evidence_annotations = build_evidence_annotations(
+            all_evidence_ids, year, months,
+        )
+    except Exception as exc:
+        evidence_annotations = []
+        print(f'  [경고] evidence_annotations 생성 실패: {exc}')
+
     result = {
         'year': year,
         'quarter': quarter,
@@ -1505,6 +1615,8 @@ def run_quarterly_debate(year: int, quarter: int,
         'synthesis': synthesis,
         'debate_narrative': debate_interp,
         '_evidence_ids': all_evidence_ids,
+        'evidence_annotations': evidence_annotations,  # Q-FIX-1
+        '_debug_trace': debug_trace,                    # Q-FIX-1
     }
 
     log_file = DEBATE_LOG_DIR / f'{year}-Q{quarter}.json'
