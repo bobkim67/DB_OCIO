@@ -278,6 +278,26 @@ def write_entity_page(candidate: dict, month_str: str) -> Path:
 # Asset page
 # ══════════════════════════════════════════
 
+def _is_enrichment_page(fp: Path) -> bool:
+    """기존 wiki 파일이 enrichment_builder 산출물이면 True (덮어쓰기 보호).
+
+    base draft 작성 함수 (write_asset_page / write_fund_page) 가 호출되어도,
+    이미 더 풍부한 enrichment 페이지가 있으면 보존. P3-4/P3-5 enrichment 결과가
+    daily_update 마다 base 로 덮어써지는 사고 방지 (2026-05-06 incident).
+    """
+    if not fp.exists():
+        return False
+    try:
+        head = fp.read_text(encoding='utf-8', errors='ignore')[:500]
+    except OSError:
+        return False
+    return (
+        'source_type: asset_wiki' in head
+        or 'source_type: fund_wiki' in head
+        or 'generated_by: asset_fund_enrichment_builder' in head
+    )
+
+
 def write_asset_page(asset_name: str, linked_topics: list[str],
                      topic_counts: dict, month_str: str) -> Path:
     top_articles = topic_counts.get(asset_name, [])
@@ -312,6 +332,9 @@ def write_asset_page(asset_name: str, linked_topics: list[str],
         '> Base asset page — transmission paths 반영 금지 (Phase 4+ 이후 승격).',
     ]
     out = ASSETS_DIR / f'{month_str}_{_safe_filename(asset_name)}.md'
+    if _is_enrichment_page(out):
+        # P3-4 enrichment 산출물 보호 — base draft 가 덮어쓰지 않음.
+        return out
     out.write_text('\n'.join(lines) + '\n', encoding='utf-8')
     return out
 
@@ -344,6 +367,9 @@ def write_fund_page(fund_code: str, fund_meta: dict, month_str: str) -> Path:
         '> Base fund page — debate commentary는 `06_Debate_Memory/` 경유.',
     ]
     out = FUNDS_DIR / f'{month_str}_{_safe_filename(fund_code)}.md'
+    if _is_enrichment_page(out):
+        # P3-5 enrichment 산출물 보호 — base draft 가 덮어쓰지 않음.
+        return out
     out.write_text('\n'.join(lines) + '\n', encoding='utf-8')
     return out
 

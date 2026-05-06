@@ -163,6 +163,77 @@ def test_refresh_does_not_touch_other_dirs(tmp_path, monkeypatch):
             assert fp.exists(), f'wipe 가 잘못 삭제함 — 보호 대상: {rel}'
 
 
+def test_enrichment_pages_preserved(tmp_path, monkeypatch):
+    """write_asset_page / write_fund_page 가 enrichment 페이지를 덮어쓰지 않음.
+
+    P3-4/5 enrichment_builder 가 만든 페이지 (frontmatter source_type=asset_wiki
+    or fund_wiki, generated_by=asset_fund_enrichment_builder) 는 base draft 가
+    덮어쓰지 않아야 함. 2026-05-06 incident 회귀.
+    """
+    from market_research.wiki import draft_pages
+
+    month_str = '2026-04'
+    tmp_root = _setup_temp_wiki(tmp_path, month_str, [])
+    wiki_root = tmp_root / 'data' / 'wiki'
+
+    # enrichment 페이지 셋업 (source_type=fund_wiki frontmatter)
+    enriched_07g04 = wiki_root / '04_Funds' / f'{month_str}_07G04.md'
+    enriched_07g04.write_text(
+        '---\n'
+        'period: 2026-04\n'
+        'fund_code: 07G04\n'
+        'source_type: fund_wiki\n'
+        'generated_by: asset_fund_enrichment_builder\n'
+        '---\n'
+        '\n# Enriched 07G04\n\n자산군 노출 / look-through 구조 풍부 본문 …\n',
+        encoding='utf-8',
+    )
+    enriched_size = enriched_07g04.stat().st_size
+
+    # enrichment 페이지 (asset_wiki)
+    enriched_kr_eq = wiki_root / '03_Assets' / f'{month_str}_국내주식.md'
+    enriched_kr_eq.write_text(
+        '---\n'
+        'period: 2026-04\n'
+        'asset_class: 국내주식\n'
+        'source_type: asset_wiki\n'
+        'generated_by: asset_fund_enrichment_builder\n'
+        '---\n'
+        '\n# Enriched 국내주식\n\n풍부 본문 …\n',
+        encoding='utf-8',
+    )
+    enriched_kr_size = enriched_kr_eq.stat().st_size
+
+    monkeypatch.setattr(draft_pages, 'BASE_DIR', tmp_root)
+    monkeypatch.setattr(draft_pages, 'NEWS_DIR', tmp_root / 'data' / 'news')
+    monkeypatch.setattr(draft_pages, 'EVENTS_DIR', wiki_root / '01_Events')
+    monkeypatch.setattr(draft_pages, 'INDEX_DIR', wiki_root / '00_Index')
+    monkeypatch.setattr(draft_pages, 'ENTITIES_DIR', wiki_root / '02_Entities')
+    monkeypatch.setattr(draft_pages, 'ASSETS_DIR', wiki_root / '03_Assets')
+    monkeypatch.setattr(draft_pages, 'FUNDS_DIR', wiki_root / '04_Funds')
+
+    # base 작성 직접 호출 — enrichment 보존되어야 함
+    draft_pages.write_fund_page('07G04', {'name': 'Test Fund'}, month_str)
+    assert enriched_07g04.stat().st_size == enriched_size, (
+        f'enrichment fund page 가 덮어써짐 — {enriched_size} → '
+        f'{enriched_07g04.stat().st_size}'
+    )
+
+    draft_pages.write_asset_page('국내주식', ['주식'], {'주식': []}, month_str)
+    assert enriched_kr_eq.stat().st_size == enriched_kr_size, (
+        f'enrichment asset page 가 덮어써짐 — {enriched_kr_size} → '
+        f'{enriched_kr_eq.stat().st_size}'
+    )
+
+    # 반대로, enrichment 가 없는 파일에는 base 작성 정상 동작
+    draft_pages.write_fund_page('99X99', {'name': 'New'}, month_str)
+    new_fp = wiki_root / '04_Funds' / f'{month_str}_99X99.md'
+    assert new_fp.exists(), 'base draft 가 신규 파일 작성에는 정상 동작해야 함'
+    assert 'Base fund page' in new_fp.read_text(encoding='utf-8'), (
+        'base draft 본문 포맷 확인'
+    )
+
+
 if __name__ == '__main__':
     import tempfile
     import shutil
@@ -180,7 +251,8 @@ if __name__ == '__main__':
             for p in self._patches:
                 p.stop()
 
-    for fn in [test_refresh_idempotent_event_pages, test_refresh_does_not_touch_other_dirs]:
+    for fn in [test_refresh_idempotent_event_pages, test_refresh_does_not_touch_other_dirs,
+               test_enrichment_pages_preserved]:
         tmp = Path(tempfile.mkdtemp(prefix='wikitest_'))
         try:
             mp = FakeMonkey()
