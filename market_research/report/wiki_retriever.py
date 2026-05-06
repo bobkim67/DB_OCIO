@@ -5,9 +5,16 @@ stage 별 retrieval contract:
 | stage              | allowed dirs                                                        | 비고                              |
 |--------------------|---------------------------------------------------------------------|----------------------------------|
 | market_debate      | 01_Events, 02_Entities, 03_Assets, 05_Regime_Canonical              | _market debate 전용              |
-| fund_comment       | + 04_Funds (fund_code exact match 만 허용)                          | 펀드 코멘트 단계                  |
+| fund_comment       | 01_Events, 02_Entities, 03_Assets, 05_Regime_Canonical              | 04_Funds 는 pinned 전용 (R2 G7 fix) |
 | quarterly_debate   | market_debate 와 동일                                               | 분기 시장 debate                 |
 | admin_preview      | 모든 디렉토리                                                       | 디버그/관리자 검수용              |
+
+R2 G7 fix (2026-05-06): fund_comment 의 retrieve 에서도 04_Funds 디렉토리
+자체를 제외. 04_Funds 페이지는 `get_pinned_fund_context()` 의 period exact +
+fund_code exact match 로만 prompt 에 진입. 이전 정책 (fund_code 만 매칭) 은
+다른 month 의 자기 fund 페이지를 candidate 로 통과시켜 *stale month leakage*
+가 발생함 (예: period=2026-05 fund=07G04 retrieve 에 04_Funds/2026-04_07G04.md
+hit=55 등장).
 
 stage 미명시 시 fund_code 로 추론:
   - fund_code in (None, '', '_market') → market_debate
@@ -81,7 +88,9 @@ ALL_DIRS: tuple[str, ...] = (
 # Stage 별 allowed dirs (P0-1)
 STAGE_ALLOWED_DIRS: dict[str, tuple[str, ...]] = {
     "market_debate": ("01_Events", "02_Entities", "03_Assets", "05_Regime_Canonical"),
-    "fund_comment": ("01_Events", "02_Entities", "03_Assets", "04_Funds", "05_Regime_Canonical"),
+    # R2 G7 fix: fund_comment retrieve 에서도 04_Funds 제외. pinned_fund_context
+    # 가 단일 진입 경로 — period exact + fund_code exact 만 통과.
+    "fund_comment": ("01_Events", "02_Entities", "03_Assets", "05_Regime_Canonical"),
     "quarterly_debate": ("01_Events", "02_Entities", "03_Assets", "05_Regime_Canonical"),
     "admin_preview": ALL_DIRS,
 }
@@ -323,6 +332,14 @@ def retrieve_wiki_context(
     allowed = _allowed_dirs(resolved_stage)
     target_period = _parse_target_period(period)
 
+    # R2 G7 fix: stage 에서 차단된 dir + 그 안의 page count 카운트 (trace 용)
+    excluded_dirs = tuple(d for d in ALL_DIRS if d not in allowed)
+    excluded_dir_page_count = 0
+    for d in excluded_dirs:
+        dp = WIKI_ROOT / d
+        if dp.exists():
+            excluded_dir_page_count += sum(1 for _ in dp.glob("*.md"))
+
     # tokenize + dedupe
     keyword_tokens: list[str] = []
     for kw in keywords or []:
@@ -362,6 +379,8 @@ def retrieve_wiki_context(
             "skipped_future_pages": 0,
             "skipped_cluster_cap": 0,
             "skipped_excluded": 0,
+            "excluded_dirs": list(excluded_dirs),
+            "excluded_dir_page_count": excluded_dir_page_count,
             "stage_used": resolved_stage,
             "period_used": period,
             "cluster_cap_used": cluster_cap,
@@ -444,6 +463,8 @@ def retrieve_wiki_context(
         "skipped_future_pages": skipped_future,
         "skipped_cluster_cap": skipped_cluster_cap,
         "skipped_excluded": skipped_excluded,
+        "excluded_dirs": list(excluded_dirs),
+        "excluded_dir_page_count": excluded_dir_page_count,
         "stage_used": resolved_stage,
         "period_used": period,
         "cluster_cap_used": cluster_cap,

@@ -326,6 +326,8 @@ def retrieval_debug(period: str, stage: str,
         "skipped_future_pages": r["skipped_future_pages"],
         "skipped_cluster_cap": r["skipped_cluster_cap"],
         "skipped_excluded": r.get("skipped_excluded", 0),
+        "excluded_dirs": r.get("excluded_dirs", []),
+        "excluded_dir_page_count": r.get("excluded_dir_page_count", 0),
         "stage_used": r["stage_used"],
         "cluster_cap_used": r["cluster_cap_used"],
         "selected_detail": selected_detail,
@@ -461,10 +463,13 @@ def render_retrieval(r: dict, label: str) -> str:
 
 def render_fund_comment(rfc: dict) -> str:
     pinned = rfc.get("pinned") or {}
-    own_in_sel = [d for d in rfc["selected_detail"]
-                  if d["dir"] == "04_Funds" and rfc["fund_code"] in d["path"]]
-    other_in_sel = [d for d in rfc["selected_detail"]
-                    if d["dir"] == "04_Funds" and rfc["fund_code"] not in d["path"]]
+    retrieved_04_funds = [d for d in rfc["selected_detail"]
+                           if d["dir"] == "04_Funds"]
+    own_in_sel = [d for d in retrieved_04_funds
+                  if rfc["fund_code"] in d["path"]]
+    other_in_sel = [d for d in retrieved_04_funds
+                    if rfc["fund_code"] not in d["path"]]
+    leaked = _stale_month_fund_leakage(rfc)
     lines = [
         f"### Fund-Comment Debug — `{rfc['fund_code']}` / `{rfc['period']}`",
         f"- pinned_fund_context_path: `{pinned.get('page_path')}`",
@@ -475,13 +480,19 @@ def render_fund_comment(rfc: dict) -> str:
     for d in rfc["selected_detail"]:
         lines.append(f"  - `{d['path']}` (dir={d['dir']}, hit={d['hit_count']})")
     lines += [
+        # R2 G7 fix metrics
+        f"- **retrieved_04_funds_count**: {len(retrieved_04_funds)} "
+        f"({'PASS — pinned 전용 정책 준수' if not retrieved_04_funds else 'FAIL — 정책 위반'})",
+        f"- **stale_fund_page_leakage_count**: {len(leaked)} "
+        f"({'PASS' if not leaked else 'FAIL'})",
+        f"- **skipped_fund_stale_month** (stage 차단 04_Funds page 수): "
+        f"{rfc.get('excluded_dir_page_count', 0)} (excluded_dirs="
+        f"{rfc.get('excluded_dirs', [])})",
         f"- pinned ↔ retrieved 중복 제거: skipped_excluded=**{rfc['skipped_excluded']}** "
-        f"({'PASS' if rfc['skipped_excluded'] >= (1 if pinned.get('page_path') else 0) else 'NA'})",
-        f"- 자기 04_Funds (`{rfc['fund_code']}`) selected 등장: {len(own_in_sel)}",
-        f"- 타 fund 04_Funds selected 등장: {len(other_in_sel)} "
-        f"(타 fund block 효과: skipped_fund_mismatch={rfc['skipped_fund_mismatch']})",
-        f"- 검증: 타 fund 04_Funds 등장 0건 → "
-        f"{'PASS' if not other_in_sel else 'FAIL'}",
+        f"(04_Funds dir 자체 차단되어 0 정상)",
+        f"- 자기 04_Funds (`{rfc['fund_code']}`) selected 등장: {len(own_in_sel)} "
+        f"(pinned 전용 정책 — selected 0 정상)",
+        f"- 타 fund 04_Funds selected 등장: {len(other_in_sel)} (정책상 0 보장)",
     ]
     return "\n".join(lines)
 
@@ -618,16 +629,20 @@ def evaluate_gates(periods: list[str], funds: list[str], *,
                         "level": "FAIL",
                         "detail": f"fund={fund}, pinned={pinned['page_path']} also in selected",
                     })
-            # G7: stale month fund leakage (warning)
-            leaked = _stale_month_fund_leakage(rfc)
-            if leaked:
-                warnings.append({
-                    "gate": "G7_stale_month_fund_leakage",
+            # G7 (R2 G7 fix 2026-05-06): fund_comment retrieve 에 04_Funds 가
+            # 1건이라도 등장하면 정책 위반 → FAIL.
+            # (이전: stale month leakage WARNING — STAGE_ALLOWED_DIRS 변경 후
+            #  retrieve 단계에서 04_Funds 자체가 candidate 에 안 들어와 자연 0)
+            retrieved_04 = [d for d in rfc["selected_detail"]
+                             if d["dir"] == "04_Funds"]
+            if retrieved_04:
+                failures.append({
+                    "gate": "G7_fund_comment_04_funds_in_retrieved",
                     "period": period,
-                    "level": "WARNING",
+                    "level": "FAIL",
                     "detail": (
-                        f"fund={fund}, leaked={[d['path'] for d in leaked]} "
-                        f"(target_period={period}, 다른 month 의 자기 fund 페이지)"
+                        f"fund={fund}, retrieved_04_funds={[d['path'] for d in retrieved_04]} "
+                        f"(정책: 04_Funds 는 pinned 전용)"
                     ),
                 })
 
