@@ -3,12 +3,12 @@ type: graph_evidence
 status: draft
 promoted_to_canonical: false
 period: 2026-05
-total_paths: 1
+total_paths: 2
 node_count: ?
 edge_count: ?
 source_of_truth: graph_rag.precompute_transmission_paths
 phase: P0
-updated_at: 2026-05-04T09:34:30
+updated_at: 2026-05-06T08:54:38
 ---
 
 # Transmission Paths (DRAFT) — 2026-05
@@ -18,14 +18,15 @@ updated_at: 2026-05-04T09:34:30
 
 ## Summary
 
-- Total paths: 1
+- Total paths: 2
 - Graph nodes: ? · edges: ?
 
 ## Paths
 
 | # | Trigger | Target | Confidence | Path |
 |---|---------|--------|------------|------|
-| 1 | `테크_AI_반도체` | `국내주식` | 0.938 | 삼성전자·SK하이닉스_등_반도체_대형주_주가_변동 → 코스피_시가총액_비중_상위_종목_등락 |
+| 1 | `테크_AI_반도체` | `국내주식` | 0.857 | 삼성전자·SK하이닉스_등_반도체_대형주_주가_변동 → 코스피_시가총액_비중_상위_종목_등락 |
+| 2 | `테크_AI_반도체` | `해외주식` | 0.910 | 빅테크·제조업_실적_영향 → S&P500_구성_종목_주가_반영 |
 
 ## Usage guardrails
 
