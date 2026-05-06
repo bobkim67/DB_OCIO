@@ -80,6 +80,93 @@ def _market_comment_to_inputs(market_payload: dict) -> dict:
 # 펀드 데이터 요약 (프롬프트용)
 # ══════════════════════════════════════════
 
+def _adapt_compute_single_port_pa(pa_result: dict) -> dict:
+    """compute_single_port_pa 의 새 schema (asset_summary DataFrame) 를
+    fund_comment_service 가 사용하는 구버전 형태로 변환 (Q-FIX-2, 2026-05-06).
+
+    배경:
+      compute_single_port_pa 는 asset_summary / port_daily_returns / sec_summary
+      등 DataFrame 중심 schema 로 진화했으나, generate_fund_comment_and_save 는
+      구버전 키 (pa_by_class / fund_return / holdings_end / holdings_diff) 를
+      dict.get() 함 → 모두 빈 dict / None 반환. 08K88 / 4JM12 / 08N81 등
+      production 의 data_snapshot.fund_return=None 의 근본 원인.
+
+    단위 변환:
+      compute_single_port_pa : decimal (-0.0271 = -2.71%, 0.1199 = 11.99%)
+      _summarize_fund_data_for_prompt : % 단위 (':+.2f%' 포매팅)
+      → adapter 가 × 100 으로 % 단위 통일. round 4 자릿수.
+
+    Returns:
+        {
+          'fund_return'  : float | None     # 포트폴리오 row 의 개별수익률 (%)
+          'pa_by_class'  : dict[str, float] # 자산군 → 기여수익률 (%)
+          'holdings_end' : dict[str, float] # 자산군 → 순자산비중 (%)
+          'holdings_diff': list             # 미산출 (별도 task — sec 변동 비교 필요)
+          'warnings'     : list[str]
+        }
+
+    asset_summary 가 None / DataFrame 아님 / 빈 결과 시 warning 기록 후 빈 dict 반환.
+    """
+    out = {
+        'fund_return': None,
+        'pa_by_class': {},
+        'holdings_end': {},
+        'holdings_diff': [],
+        'warnings': [],
+    }
+    if not isinstance(pa_result, dict):
+        out['warnings'].append('pa_result not a dict')
+        return out
+    asset_summary = pa_result.get('asset_summary')
+    if asset_summary is None:
+        out['warnings'].append('asset_summary missing in pa_result')
+        return out
+    if not hasattr(asset_summary, 'iterrows'):
+        out['warnings'].append(
+            f'asset_summary not DataFrame: type={type(asset_summary).__name__}'
+        )
+        return out
+    if len(asset_summary) == 0:
+        out['warnings'].append('asset_summary empty')
+        return out
+
+    PORT_LABEL = '포트폴리오'
+    for _, row in asset_summary.iterrows():
+        try:
+            ac = row.get('자산군') if hasattr(row, 'get') else row['자산군']
+        except Exception:
+            continue
+        if not ac:
+            continue
+        if ac == PORT_LABEL:
+            try:
+                ret = row.get('개별수익률') if hasattr(row, 'get') else row['개별수익률']
+                if ret is not None:
+                    out['fund_return'] = round(float(ret) * 100, 4)
+            except (TypeError, ValueError, KeyError):
+                pass
+            continue
+        # 자산군 row
+        try:
+            contrib = row.get('기여수익률') if hasattr(row, 'get') else row['기여수익률']
+            if contrib is not None:
+                out['pa_by_class'][ac] = round(float(contrib) * 100, 4)
+        except (TypeError, ValueError, KeyError):
+            pass
+        try:
+            wgh = row.get('순자산비중') if hasattr(row, 'get') else row['순자산비중']
+            if wgh is not None:
+                wgh_pct = round(float(wgh) * 100, 4)
+                if wgh_pct > 0:  # 0 이상만 — 빈 자산군 제거
+                    out['holdings_end'][ac] = wgh_pct
+        except (TypeError, ValueError, KeyError):
+            pass
+
+    # holdings_diff 는 별도 task — sec_summary 또는 holdings_start vs end 비교 필요
+    out['warnings'].append('holdings_diff not yet computed (Q-FIX-2 후속 task)')
+    return out
+
+
 def _summarize_fund_data_for_prompt(pa: dict, holdings: dict,
                                      trades: dict, bm: dict) -> dict:
     """원자료를 프롬프트에 넣기 좋은 요약본으로 축약.
@@ -216,10 +303,14 @@ def generate_fund_comment_and_save(
                 end_date=end_dt.strftime('%Y%m%d'),
             )
             if pa_result:
-                pa = pa_result.get('pa_by_class', {})
-                fund_ret = pa_result.get('fund_return')
-                holdings_end = pa_result.get('holdings_end', {})
-                holdings_diff = pa_result.get('holdings_diff', [])
+                # Q-FIX-2 (2026-05-06): asset_summary DataFrame 새 schema → 구버전 키 변환
+                adapted = _adapt_compute_single_port_pa(pa_result)
+                pa = adapted['pa_by_class']
+                fund_ret = adapted['fund_return']
+                holdings_end = adapted['holdings_end']
+                holdings_diff = adapted['holdings_diff']
+                for w in adapted.get('warnings', []):
+                    data_warnings.append(f'PA adapter: {w}')
         except Exception as e:
             data_warnings.append(f'PA 데이터 로드 실패: {e}')
 
