@@ -1,24 +1,47 @@
-"""R1: Wiki Retrieval / Evidence Coverage Viewer (CLI report).
+"""R1 + R2: Wiki Retrieval / Evidence Coverage Viewer + Gate (CLI).
 
 운영 관측용 read-only 도구. debate / fund_comment prompt 에 어떤 Wiki page 가
-왜 들어가는지 markdown report 로 추적 가능하게 한다.
+왜 들어가는지 markdown report 로 추적 가능하게 하고, 운영 품질 gate 로 회귀
+검출.
 
-Use:
+Use (R1 — report 만):
     python tools/wiki_retrieval_coverage.py
     python tools/wiki_retrieval_coverage.py --period 2026-04 --period 2026-05
-    python tools/wiki_retrieval_coverage.py --period 2026-04 --fund 07G04 --fund 08K88
-    python tools/wiki_retrieval_coverage.py --output debug/coverage_custom.md
+    python tools/wiki_retrieval_coverage.py --period 2026-04 --fund 07G04
+
+Use (R2 — gate 모드, fail 시 exit 1):
+    python tools/wiki_retrieval_coverage.py --fail-on-gate \
+        --period 2026-04 --period 2026-05 \
+        --skip-report-period 2026-05
 
 기본:
   --period: 자동 검출 (wiki/01_Events 의 모든 YYYY-MM)
   --fund: 07G04, 08K88
   --output: debug/wiki_retrieval_coverage_{YYYYMMDD}.md
 
+R2 gate 정책 (5+ 조건):
+  G1. duplicate primary_url > 0 → FAIL
+  G2. duplicate primary_headline > 0 → FAIL
+  G3. required asset page missing (active period) → FAIL
+      skip-report-period 면 WARNING (skip-policy 적용)
+  G4. enrichment expected (해당 period) 인데 source_type=none → FAIL
+  G5. pinned/retrieved 동일 fund page 중복 → FAIL
+      (skipped_excluded < 1 인데 pinned 가 있으면 dedup 미작동)
+  G6. market_debate selected 동일 URL 중복 → FAIL
+  G7. fund_comment 04_Funds 페이지 중 target period 와 다른 month leakage → WARNING
+      (stale month leakage 검출, R2 신규)
+
+skip period policy:
+  --skip-report-period 로 명시된 period 는 운용보고 사이클이 skip 이라도
+  Wiki coverage 검증 자체는 수행. G3 가 FAIL → WARNING 으로 강등.
+  G1/G2/G4/G5/G6 은 그대로 FAIL (운영 데이터 무결성은 동일하게 요구).
+
 출력 섹션:
   1. period 별 Wiki inventory (page count, dup, source_type, char dist, stale/future)
   2. retrieval debug (stage=market_debate / fund_comment, period, selected with reason)
   3. fund_comment 전용 (pinned/retrieved 분리, 자기 fund / 타 fund 차단)
   4. asset coverage (자산군별 03_Assets 존재 + enrichment 보존)
+  5. (--fail-on-gate 시) gate 결과 + summary
 """
 from __future__ import annotations
 
@@ -494,8 +517,164 @@ def render_asset_coverage(rows: list[dict], period: str) -> str:
     return "\n".join(lines)
 
 
-def render_report(periods: list[str], funds: list[str]) -> str:
+# ──────────────────────────────────────────────────────────────────
+# 5. R2 — Gate evaluation
+# ──────────────────────────────────────────────────────────────────
+
+def _stale_month_fund_leakage(rfc: dict) -> list[dict]:
+    """fund_comment retrieve 결과에 *target period 와 다른 month* 의 자기
+    04_Funds 페이지 등장 검출 (R2 신규 발견)."""
+    target = _split_period(rfc["period"])
+    fund = rfc["fund_code"]
+    leaked = []
+    for d in rfc["selected_detail"]:
+        if d["dir"] != "04_Funds":
+            continue
+        if not fund or fund not in d["path"]:
+            continue
+        if d["page_period"] and d["page_period"] != target:
+            leaked.append(d)
+    return leaked
+
+
+def evaluate_gates(periods: list[str], funds: list[str], *,
+                    skip_report_periods: set[str],
+                    expected_enriched_periods: set[str]) -> tuple[list[dict], list[dict]]:
+    """gate 검사. Returns (failures, warnings)."""
+    failures: list[dict] = []
+    warnings: list[dict] = []
+
+    for period in periods:
+        is_skip = period in skip_report_periods
+        is_enriched_expected = period in expected_enriched_periods
+
+        inv = inventory_report(period)
+
+        # G1. duplicate primary_url
+        if inv["duplicate_url_groups"]:
+            failures.append({
+                "gate": "G1_duplicate_url",
+                "period": period,
+                "level": "FAIL",
+                "detail": f"{len(inv['duplicate_url_groups'])} groups",
+            })
+
+        # G2. duplicate primary_headline
+        if inv["duplicate_headline_groups"]:
+            failures.append({
+                "gate": "G2_duplicate_headline",
+                "period": period,
+                "level": "FAIL",
+                "detail": f"{len(inv['duplicate_headline_groups'])} groups",
+            })
+
+        # G3 + G4: asset coverage
+        rmd = retrieval_debug(period, "market_debate")
+        cov = asset_coverage_report(period, retrieval_market=rmd)
+        missing_assets = [r["asset_class"] for r in cov if not r["exists"]]
+        unenriched_assets = [r["asset_class"] for r in cov
+                              if r["exists"] and not r["is_enriched"]]
+
+        if missing_assets:
+            level = "WARNING_SKIP" if is_skip else "FAIL"
+            (warnings if level == "WARNING_SKIP" else failures).append({
+                "gate": "G3_missing_required_asset",
+                "period": period,
+                "level": level,
+                "detail": f"{missing_assets}",
+            })
+
+        if is_enriched_expected and unenriched_assets:
+            failures.append({
+                "gate": "G4_enrichment_expected_but_none",
+                "period": period,
+                "level": "FAIL",
+                "detail": f"{unenriched_assets} (source_type=none)",
+            })
+
+        # G6. market_debate selected URL 중복
+        if rmd["selected_url_duplicates"]:
+            failures.append({
+                "gate": "G6_market_debate_dup_url",
+                "period": period,
+                "level": "FAIL",
+                "detail": f"{[u for u, _ in rmd['selected_url_duplicates']]}",
+            })
+
+        # G5 + G7: fund_comment 별
+        for fund in funds:
+            rfc = retrieval_debug(period, "fund_comment", fund_code=fund)
+            pinned = rfc.get("pinned") or {}
+            # G5: pinned 가 있는데 dedup 안 됨 (selected 에 pinned path 등장)
+            if pinned.get("page_path"):
+                pinned_in_sel = any(
+                    d["path"] == pinned["page_path"]
+                    for d in rfc["selected_detail"]
+                )
+                if pinned_in_sel:
+                    failures.append({
+                        "gate": "G5_pinned_retrieved_dup",
+                        "period": period,
+                        "level": "FAIL",
+                        "detail": f"fund={fund}, pinned={pinned['page_path']} also in selected",
+                    })
+            # G7: stale month fund leakage (warning)
+            leaked = _stale_month_fund_leakage(rfc)
+            if leaked:
+                warnings.append({
+                    "gate": "G7_stale_month_fund_leakage",
+                    "period": period,
+                    "level": "WARNING",
+                    "detail": (
+                        f"fund={fund}, leaked={[d['path'] for d in leaked]} "
+                        f"(target_period={period}, 다른 month 의 자기 fund 페이지)"
+                    ),
+                })
+
+    return failures, warnings
+
+
+def render_gate_summary(failures: list[dict], warnings: list[dict],
+                          periods: list[str], skip_report_periods: set[str]) -> str:
+    lines = ["", "---", "", "## 5. Gate Evaluation (`--fail-on-gate`)", ""]
+    lines.append(f"- periods evaluated: {periods}")
+    lines.append(f"- skip-report-periods (warning 강등): {sorted(skip_report_periods)}")
+    lines.append(f"- **FAIL: {len(failures)} / WARNING: {len(warnings)}**")
+    lines.append("")
+
+    if failures:
+        lines.append("### ❌ FAIL")
+        for f in failures:
+            lines.append(
+                f"  - `{f['gate']}` / period=`{f['period']}` — {f['detail']}"
+            )
+        lines.append("")
+    else:
+        lines.append("### ✅ FAIL: 0건")
+        lines.append("")
+
+    if warnings:
+        lines.append("### ⚠️ WARNING")
+        for w in warnings:
+            lines.append(
+                f"  - `{w['gate']}` / period=`{w['period']}` — {w['detail']}"
+            )
+        lines.append("")
+    else:
+        lines.append("### ⚠️ WARNING: 0건")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def render_report(periods: list[str], funds: list[str], *,
+                    skip_report_periods: set[str] | None = None,
+                    expected_enriched_periods: set[str] | None = None,
+                    fail_on_gate: bool = False) -> tuple[str, list[dict], list[dict]]:
+    """Returns (markdown_text, failures, warnings)."""
     today = date.today().isoformat()
+    skip_set = skip_report_periods or set()
+    enriched_set = expected_enriched_periods or set()
     lines = [
         f"# Wiki Retrieval / Coverage Report",
         f"",
@@ -503,9 +682,14 @@ def render_report(periods: list[str], funds: list[str]) -> str:
         f"**Periods**: {periods}  ",
         f"**Funds**: {funds}  ",
         f"**Tool**: `tools/wiki_retrieval_coverage.py`  ",
+        f"**Mode**: {'gate (fail-on-gate)' if fail_on_gate else 'report only'}  ",
         f"**Reproducer**: `python tools/wiki_retrieval_coverage.py "
         f"--period {' --period '.join(periods)} "
-        f"--fund {' --fund '.join(funds)}`",
+        f"--fund {' --fund '.join(funds)}"
+        + (f" --fail-on-gate" if fail_on_gate else "")
+        + ("".join(f" --skip-report-period {p}" for p in sorted(skip_set)))
+        + ("".join(f" --expected-enriched-period {p}" for p in sorted(enriched_set)))
+        + "`",
         "",
         "---",
         "",
@@ -552,17 +736,37 @@ def render_report(periods: list[str], funds: list[str]) -> str:
         "page_period 컬럼이 selected page 별로 노출",
     ]
 
-    return "\n".join(lines)
+    failures: list[dict] = []
+    warnings_list: list[dict] = []
+    if fail_on_gate:
+        failures, warnings_list = evaluate_gates(
+            periods, funds,
+            skip_report_periods=skip_set,
+            expected_enriched_periods=enriched_set,
+        )
+        lines.append(render_gate_summary(
+            failures, warnings_list, periods, skip_set,
+        ))
+
+    return "\n".join(lines), failures, warnings_list
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Wiki retrieval coverage report (R1)")
+    parser = argparse.ArgumentParser(description="Wiki retrieval coverage report + gate (R1+R2)")
     parser.add_argument("--period", action="append",
                         help="period (YYYY-MM). 다중 지정 가능. 미지정 시 자동 검출.")
     parser.add_argument("--fund", action="append",
                         help="fund_code. 다중 지정 가능. 기본 [07G04, 08K88]")
     parser.add_argument("--output", "-o", default=None,
                         help="output markdown path. 기본 debug/wiki_retrieval_coverage_{YYYYMMDD}.md")
+    parser.add_argument("--fail-on-gate", action="store_true",
+                        help="gate 검사 후 fail 있으면 exit 1 (R2)")
+    parser.add_argument("--skip-report-period", action="append", default=[],
+                        help="운용보고 skip period — wiki coverage 검증은 함, "
+                             "missing asset 은 WARNING 으로 강등 (R2)")
+    parser.add_argument("--expected-enriched-period", action="append", default=[],
+                        help="enrichment 기대 period — base only (source_type=none) "
+                             "이면 G4 FAIL (R2)")
     args = parser.parse_args()
 
     if not args.period:
@@ -585,12 +789,32 @@ def main():
     out_path = Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    text = render_report(args.period, args.fund)
+    text, failures, warnings_list = render_report(
+        args.period, args.fund,
+        skip_report_periods=set(args.skip_report_period),
+        expected_enriched_periods=set(args.expected_enriched_period),
+        fail_on_gate=args.fail_on_gate,
+    )
     out_path.write_text(text, encoding="utf-8")
 
     print(f"[ok] report written to {out_path}")
     print(f"     periods={args.period} funds={args.fund}")
     print(f"     {len(text):,} chars / {len(text.splitlines())} lines")
+
+    if args.fail_on_gate:
+        print(f"     gate: FAIL={len(failures)} / WARNING={len(warnings_list)}")
+        for f in failures:
+            print(f"     ❌ {f['gate']} period={f['period']}: {f['detail']}")
+        for w in warnings_list:
+            print(f"     ⚠️  {w['gate']} period={w['period']}: {w['detail']}")
+        if failures:
+            sys.exit(1)
+
+
+# 회귀 호출 호환 — 기존 외부 import 가 render_report() text 만 받던 경우.
+def render_report_text_only(*args, **kwargs) -> str:
+    text, _, _ = render_report(*args, **kwargs)
+    return text
 
 
 if __name__ == "__main__":
