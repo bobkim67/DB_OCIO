@@ -66,6 +66,16 @@ export type IndicatorChartDTO = S["IndicatorChartDTO"];
 export type IndicatorSeriesDTO = S["IndicatorSeriesDTO"];
 export type IndicatorPointDTO = S["IndicatorPointDTO"];
 
+// === Wiki Coverage (R3) ===
+export type WikiCoverageReportListItemDTO = S["WikiCoverageReportListItemDTO"];
+export type WikiCoverageReportListResponseDTO = S["WikiCoverageReportListResponseDTO"];
+export type WikiCoverageReportFullResponseDTO = S["WikiCoverageReportFullResponseDTO"];
+
+// === Comment Trace (R4) ===
+export type CommentTraceListItemDTO = S["CommentTraceListItemDTO"];
+export type CommentTraceListResponseDTO = S["CommentTraceListResponseDTO"];
+export type CommentTraceFullResponseDTO = S["CommentTraceFullResponseDTO"];
+
 // === Brinson ===
 export type BrinsonAssetRowDTO = S["BrinsonAssetRowDTO"];
 export type BrinsonSecContribDTO = S["BrinsonSecContribDTO"];
@@ -203,6 +213,73 @@ export const fetchFundReportApprovedPeriods = async (
 ): Promise<ReportApprovedPeriodsResponseDTO> => {
   const r = await api.get<ReportApprovedPeriodsResponseDTO>(
     `/funds/${code}/report/approved-periods`,
+  );
+  return r.data;
+};
+
+// ----------------------------------------------------------------------
+// R3 — Wiki coverage report (read-only viewer)
+// ----------------------------------------------------------------------
+export const fetchWikiCoverageReports =
+  async (): Promise<WikiCoverageReportListResponseDTO> => {
+    const r = await api.get<WikiCoverageReportListResponseDTO>(
+      "/admin/wiki-coverage/reports",
+    );
+    return r.data;
+  };
+
+export const fetchWikiCoverageLatest =
+  async (): Promise<WikiCoverageReportFullResponseDTO> => {
+    const r = await api.get<WikiCoverageReportFullResponseDTO>(
+      "/admin/wiki-coverage/latest",
+    );
+    return r.data;
+  };
+
+export const fetchWikiCoverageById = async (
+  reportId: string,
+): Promise<WikiCoverageReportFullResponseDTO> => {
+  const r = await api.get<WikiCoverageReportFullResponseDTO>(
+    `/admin/wiki-coverage/${reportId}`,
+  );
+  return r.data;
+};
+
+// ----------------------------------------------------------------------
+// R4 — Comment trace viewer (read-only)
+// ----------------------------------------------------------------------
+export const fetchCommentTraces = async (
+  period?: string,
+  fund?: string,
+): Promise<CommentTraceListResponseDTO> => {
+  const params: Record<string, string> = {};
+  if (period) params.period = period;
+  if (fund) params.fund = fund;
+  const r = await api.get<CommentTraceListResponseDTO>("/admin/comment-trace", {
+    params,
+  });
+  return r.data;
+};
+
+export const fetchCommentTraceLatest = async (
+  period?: string,
+  fund?: string,
+): Promise<CommentTraceFullResponseDTO> => {
+  const params: Record<string, string> = {};
+  if (period) params.period = period;
+  if (fund) params.fund = fund;
+  const r = await api.get<CommentTraceFullResponseDTO>(
+    "/admin/comment-trace/latest",
+    { params },
+  );
+  return r.data;
+};
+
+export const fetchCommentTraceById = async (
+  traceId: string,
+): Promise<CommentTraceFullResponseDTO> => {
+  const r = await api.get<CommentTraceFullResponseDTO>(
+    `/admin/comment-trace/${traceId}`,
   );
   return r.data;
 };

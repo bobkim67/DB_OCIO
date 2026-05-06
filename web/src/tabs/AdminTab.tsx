@@ -2,8 +2,9 @@ import { useState, type CSSProperties } from "react";
 import AdminEvidenceQualityPanel from "./AdminEvidenceQualityPanel";
 import AdminDebateStatusPanel from "./AdminDebateStatusPanel";
 import AdminReportEnrichmentPanel from "./AdminReportEnrichmentPanel";
+import AdminCommentTracePanel from "./AdminCommentTracePanel";
 
-type SubView = "evidence" | "debate" | "report-enrichment";
+type SubView = "evidence" | "debate" | "report-enrichment" | "comment-trace";
 
 const TAB_BTN_BASE: CSSProperties = {
   padding: "6px 14px",
@@ -53,11 +54,18 @@ export default function AdminTab() {
         >
           Report Enrichment
         </button>
+        <button
+          style={view === "comment-trace" ? TAB_BTN_ACTIVE : TAB_BTN_BASE}
+          onClick={() => setView("comment-trace")}
+        >
+          Comment Trace
+        </button>
       </div>
 
       {view === "evidence" && <AdminEvidenceQualityPanel />}
       {view === "debate" && <AdminDebateStatusPanel />}
       {view === "report-enrichment" && <AdminReportEnrichmentPanel />}
+      {view === "comment-trace" && <AdminCommentTracePanel />}
     </section>
   );
 }

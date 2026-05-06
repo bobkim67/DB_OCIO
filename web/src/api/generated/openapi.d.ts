@@ -160,6 +160,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/wiki-coverage/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Wiki coverage report 목록 (R3, read-only) */
+        get: operations["list_wiki_coverage_reports_api_admin_wiki_coverage_reports_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/wiki-coverage/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 가장 최근 wiki coverage report (R3) */
+        get: operations["get_latest_wiki_coverage_api_admin_wiki_coverage_latest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/comment-trace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Comment trace 목록 (R4, read-only) */
+        get: operations["list_comment_traces_api_admin_comment_trace_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/comment-trace/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 가장 최근 comment trace (R4) */
+        get: operations["get_latest_comment_trace_api_admin_comment_trace_latest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/comment-trace/{trace_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 특정 comment trace by ID (R4) */
+        get: operations["get_comment_trace_by_id_api_admin_comment_trace__trace_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/wiki-coverage/{report_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 특정 wiki coverage report (R3) */
+        get: operations["get_wiki_coverage_report_api_admin_wiki_coverage__report_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/market-report": {
         parameters: {
             query?: never;
@@ -623,6 +725,63 @@ export interface components {
             source_consistency_status: "matched_by_id" | "id_mismatch" | "matched" | "older_than_or_equal_final" | "newer_than_final" | "unverifiable" | "unavailable";
             /** Source Consistency Note */
             source_consistency_note?: string | null;
+        };
+        /**
+         * CommentTraceFullResponseDTO
+         * @description Full payload — schema 진화 호환 위해 dict[str, Any] 그대로.
+         */
+        CommentTraceFullResponseDTO: {
+            meta: components["schemas"]["BaseMeta"];
+            /** Trace Id */
+            trace_id: string;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+        };
+        /** CommentTraceListItemDTO */
+        CommentTraceListItemDTO: {
+            /** Trace Id */
+            trace_id: string;
+            /** Fund Code */
+            fund_code: string;
+            /** Period */
+            period: string;
+            /** Generated At */
+            generated_at?: string | null;
+            /** Schema Version */
+            schema_version?: string | null;
+            /**
+             * Graph Node Count
+             * @default 0
+             */
+            graph_node_count: number;
+            /**
+             * Graph Edge Count
+             * @default 0
+             */
+            graph_edge_count: number;
+            /**
+             * Warning Count
+             * @default 0
+             */
+            warning_count: number;
+            /**
+             * Error Count
+             * @default 0
+             */
+            error_count: number;
+            /**
+             * Size Bytes
+             * @default 0
+             */
+            size_bytes: number;
+        };
+        /** CommentTraceListResponseDTO */
+        CommentTraceListResponseDTO: {
+            meta: components["schemas"]["BaseMeta"];
+            /** Traces */
+            traces: components["schemas"]["CommentTraceListItemDTO"][];
         };
         /**
          * EvidenceAnnotationDTO
@@ -1325,6 +1484,54 @@ export interface components {
              */
             coverage_ratio: number;
         };
+        /**
+         * WikiCoverageReportFullResponseDTO
+         * @description Full report — payload 는 도구 생성 JSON 그대로 (schema 진화 호환).
+         *
+         *     DTO 는 wrapping 만. payload 의 schema_version / gate_summary / gate_results
+         *     등은 Any 로 통과.
+         */
+        WikiCoverageReportFullResponseDTO: {
+            meta: components["schemas"]["BaseMeta"];
+            /** Report Id */
+            report_id: string;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+        };
+        /** WikiCoverageReportListItemDTO */
+        WikiCoverageReportListItemDTO: {
+            /** Id */
+            id: string;
+            /** Generated At */
+            generated_at?: string | null;
+            /**
+             * Periods
+             * @default []
+             */
+            periods: string[];
+            /**
+             * Funds
+             * @default []
+             */
+            funds: string[];
+            /**
+             * Gate Summary
+             * @default {}
+             */
+            gate_summary: {
+                [key: string]: unknown;
+            };
+            /** Size Bytes */
+            size_bytes: number;
+        };
+        /** WikiCoverageReportListResponseDTO */
+        WikiCoverageReportListResponseDTO: {
+            meta: components["schemas"]["BaseMeta"];
+            /** Reports */
+            reports: components["schemas"]["WikiCoverageReportListItemDTO"][];
+        };
     };
     responses: never;
     parameters: never;
@@ -1579,6 +1786,172 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminReportEnrichmentResponseDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_wiki_coverage_reports_api_admin_wiki_coverage_reports_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiCoverageReportListResponseDTO"];
+                };
+            };
+        };
+    };
+    get_latest_wiki_coverage_api_admin_wiki_coverage_latest_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiCoverageReportFullResponseDTO"];
+                };
+            };
+        };
+    };
+    list_comment_traces_api_admin_comment_trace_get: {
+        parameters: {
+            query?: {
+                period?: string | null;
+                fund?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentTraceListResponseDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_latest_comment_trace_api_admin_comment_trace_latest_get: {
+        parameters: {
+            query?: {
+                period?: string | null;
+                fund?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentTraceFullResponseDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_comment_trace_by_id_api_admin_comment_trace__trace_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                trace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentTraceFullResponseDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_wiki_coverage_report_api_admin_wiki_coverage__report_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiCoverageReportFullResponseDTO"];
                 };
             };
             /** @description Validation Error */
