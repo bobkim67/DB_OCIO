@@ -478,8 +478,10 @@ def build_trace(period: str, fund_code: str,
     if not evidence_annotations:
         top_warnings.append("evidence_annotations 부재 (fund + market_source 모두)")
 
-    # comment 본문
-    comment_text = fund_draft.get("draft_comment") or ""
+    # comment 본문 — R6-A: draft_comment_raw 우선 ([ref:N] 보존),
+    # 없으면 legacy draft_comment (이미 sanitized 일 수도 / 원문일 수도)
+    comment_text = (fund_draft.get("draft_comment_raw")
+                    or fund_draft.get("draft_comment") or "")
 
     # section split + attribution
     sections = split_sections(comment_text)
@@ -494,6 +496,9 @@ def build_trace(period: str, fund_code: str,
         method_summary[a["attribution_method"]] = (
             method_summary.get(a["attribution_method"], 0) + 1
         )
+
+    # R6-A: draft 에 citation_validation 이 있으면 trace 에 surface (관측용)
+    citation_validation = fund_draft.get("citation_validation") or None
 
     graph_seed = build_graph_seed(
         fund_code, period, attributions, evidence_annotations,
@@ -513,6 +518,7 @@ def build_trace(period: str, fund_code: str,
         "market_source": market_source_meta,
         "attribution_level": "section",
         "attribution_method_summary": method_summary,
+        "citation_validation": citation_validation,
         "sources": {
             "evidence_annotations": evidence_annotations,
             "pinned_fund_context": (fund_draft.get("inputs_used") or {}).get(

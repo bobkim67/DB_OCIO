@@ -2721,6 +2721,34 @@ def build_report_prompt(fund_code, year, quarter, data_ctx, inputs,
     if cfg.get('philosophy'):
         fund_info += f'\n운용철학: {cfg["philosophy"]}'
 
+    # evidence list ([ref:N] 인용용, R6-A) — inputs.evidence_annotations 우선,
+    # 없으면 빈 섹션. ref 번호는 ann 의 'ref' 필드 값을 그대로 사용 (시장 debate
+    # 가 부여한 번호를 펀드 코멘트에서도 재사용 → comment_trace 매핑 일관)
+    evidence_lines = []
+    evidence_annotations = inputs.get('evidence_annotations') or []
+    for ann in evidence_annotations:
+        ref = ann.get('ref')
+        if ref is None:
+            continue
+        title = (ann.get('title') or '')[:80]
+        source = ann.get('source') or ''
+        date = ann.get('date') or ''
+        meta_parts = [p for p in (source, date) if p]
+        meta = f' ({", ".join(meta_parts)})' if meta_parts else ''
+        evidence_lines.append(f'- [ref:{ref}] {title}{meta}')
+    evidence_block = ''
+    if evidence_lines:
+        evidence_block = (
+            '\n\n## 인용 가능한 증거 자료 (시장 debate 의 evidence)\n'
+            + '\n'.join(evidence_lines)
+            + '\n\n## 증거 인용 규칙\n'
+            '- 시장 동향/외부 사실(가격 움직임, 정책, 사건)을 서술할 때 문장 끝에 [ref:N] 을 붙이세요.\n'
+            '- 펀드 데이터(수익률/PA/보유/거래)에는 [ref:N] 을 붙이지 마세요.\n'
+            '- 운용역 의견 / 전망 / 일반론에는 붙이지 마세요.\n'
+            '- N 은 위 목록의 번호만 사용하세요 (목록에 없는 번호 금지).\n'
+            '- 문장당 최대 2개까지만 인용하세요.'
+        )
+
     # inputs 섹션 (운용역 판단 / debate 결과)
     input_sections = []
     if inputs.get('market_view'):
@@ -2828,7 +2856,7 @@ def build_report_prompt(fund_code, year, quarter, data_ctx, inputs,
 {hold_table}
 
 ## 운용역 판단 (반드시 반영)
-{input_text}{constraint_text}{past_sample}{narrative_text}{pattern_text}
+{input_text}{constraint_text}{past_sample}{narrative_text}{pattern_text}{evidence_block}
 
 위 포맷과 동일한 구조, 톤, 분량으로 {fund_code} ({period_desc}) 보고서를 작성하세요.
 수치는 반드시 제공된 데이터만 사용하세요."""

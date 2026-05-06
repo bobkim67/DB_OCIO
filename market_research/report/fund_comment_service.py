@@ -73,6 +73,12 @@ def _market_comment_to_inputs(market_payload: dict) -> dict:
     if risk_parts:
         inputs['risk'] = '\n'.join(risk_parts)
 
+    # evidence_annotations 전달 (R6-A) — build_report_prompt 가 [ref:N] 인용 가능한
+    # evidence 목록으로 변환. ref 번호는 시장 debate 가 부여한 값 그대로 사용.
+    ann = market_payload.get('evidence_annotations') or []
+    if ann:
+        inputs['evidence_annotations'] = ann
+
     return inputs
 
 
@@ -382,9 +388,29 @@ def generate_fund_comment_and_save(
         start_date=start_dt, end_date=end_dt,
     )
 
-    comment_text = result.get('comment', '')
+    comment_text_raw = result.get('comment', '')
     cost = result.get('cost', 0)
     token_usage = result.get('token_usage', {})
+
+    # 9.5. R6-A — [ref:N] 검증 + raw / customer 분리
+    # 시장 debate 의 evidence_annotations 를 그대로 재사용 (ref 번호 일관)
+    fund_evidence_annotations = inputs.get('evidence_annotations') or []
+    from market_research.report.evidence_trace import (
+        validate_citations, strip_refs,
+    )
+    citation_result = validate_citations(comment_text_raw,
+                                            fund_evidence_annotations)
+    comment_citations = citation_result['comment_citations']
+    citation_validation = citation_result['citation_validation']
+    customer_comment = strip_refs(comment_text_raw)
+
+    # inputs_used 에는 evidence_annotations 풀더미 저장 금지 (200자 트렁크 적용 안됨)
+    # — 원자료는 별도 top-level evidence_annotations 필드로
+    inputs_used = {}
+    for k, v in inputs.items():
+        if k == 'evidence_annotations':
+            continue
+        inputs_used[k] = v[:200] if isinstance(v, str) else v
 
     # 10. fund draft 저장 (P1-① — 펀드 코멘트도 자체 run ID 1회 발급)
     debate_run_id = uuid.uuid4().hex
@@ -394,7 +420,12 @@ def generate_fund_comment_and_save(
         'report_type': FUND_REPORT_TYPE,
         'status': STATUS_DRAFT,
         'debate_run_id': debate_run_id,
-        'draft_comment': comment_text,
+        # R6-A: client 노출은 customer 만, raw 는 admin 전용
+        'draft_comment': customer_comment,
+        'draft_comment_raw': comment_text_raw,
+        'comment_citations': comment_citations,
+        'citation_validation': citation_validation,
+        'evidence_annotations': fund_evidence_annotations,
         'market_debate_period': period_key,
         'generated_at': time.strftime('%Y-%m-%dT%H:%M:%S'),
         'model': 'claude-opus-4-6',
@@ -408,7 +439,7 @@ def generate_fund_comment_and_save(
             'fund_return': fund_ret,
             'trades': trades,
         },
-        'inputs_used': {k: v[:200] if isinstance(v, str) else v for k, v in inputs.items()},
+        'inputs_used': inputs_used,
         'edit_history': [],
     }
 
