@@ -449,3 +449,126 @@ def format_wiki_context_for_prompt(retrieval: dict) -> str:
         "사실 인용 시 이 내용을 활용하되, 원문 그대로 옮겨 적지 말고 해석으로 사용하세요.\n\n"
         + retrieval["text"]
     )
+
+
+# ──────────────────────────────────────────────────────────────────
+# F2 (P1-a, 2026-05-06): fund_comment stage 의 pinned_fund_context
+#
+# fund_comment 단계에서 자기 펀드의 04_Funds/{period}_{fund_code}.md 는
+# 일반 retrieval 경쟁 후보가 아니라 **stage contract 상 필수 컨텍스트**.
+# top_topics 키워드 hit 가 낮아 retrieval 에서 누락되는 문제를 해결하기 위해
+# pinned 별도 role 로 직접 주입한다 (silent quota 가 아니라 명시 contract).
+#
+# - market_debate / quarterly_debate: pinned 없음 (fund 없음)
+# - fund_comment + fund_code 매칭 04_Funds 페이지 존재: pinned (matched)
+# - fund_code 명시했지만 매칭 페이지 없음: page_not_found (debug 만, prompt 미주입)
+# ──────────────────────────────────────────────────────────────────
+
+PINNED_FUND_CONTEXT_MAX_CHARS = 1500
+
+
+def get_pinned_fund_context(
+    *,
+    fund_code: str | None,
+    period: str | None,
+    max_chars: int = PINNED_FUND_CONTEXT_MAX_CHARS,
+) -> dict:
+    """fund_comment stage 의 pinned 펀드 wiki 컨텍스트.
+
+    04_Funds/{period}_{fund_code}.md exact match 페이지를 별도 role 로 반환.
+    retrieved_wiki_context (top-N keyword retrieval) 와 의미적으로 분리.
+
+    Returns:
+        {
+          "text": str,                  # 본문 (frontmatter 제거 + max_chars 컷)
+          "page_path": str | None,      # 매칭된 상대경로
+          "chars": int,
+          "reason": str,                # matched / fund_code_missing /
+                                          period_missing / page_not_found:<filename>
+        }
+    """
+    if not fund_code or fund_code == "_market":
+        return {
+            "text": "",
+            "page_path": None,
+            "chars": 0,
+            "reason": "fund_code_missing",
+        }
+    if not period:
+        return {
+            "text": "",
+            "page_path": None,
+            "chars": 0,
+            "reason": "period_missing",
+        }
+    candidate = WIKI_ROOT / "04_Funds" / f"{period}_{fund_code}.md"
+    if not candidate.exists():
+        return {
+            "text": "",
+            "page_path": None,
+            "chars": 0,
+            "reason": f"page_not_found:{period}_{fund_code}.md",
+        }
+    txt = candidate.read_text(encoding="utf-8", errors="ignore")
+    body = _strip_frontmatter(txt).strip()
+    if len(body) > max_chars:
+        body = body[:max_chars].rstrip() + " …"
+    rel = str(candidate.relative_to(WIKI_ROOT)).replace("\\", "/")
+    return {
+        "text": body,
+        "page_path": rel,
+        "chars": len(body),
+        "reason": "matched",
+    }
+
+
+def format_pinned_fund_context_for_prompt(pinned: dict) -> str:
+    """pinned dict → prompt 삽입용 한국어 섹션 (펀드별 운용 메모).
+
+    빈 결과면 빈 문자열 (graceful)."""
+    if not pinned or not pinned.get("text"):
+        return ""
+    return (
+        "## 펀드별 Wiki 메모 (pinned)\n"
+        "본 코멘트 대상 펀드의 운용 wiki 페이지입니다. 자산군 노출, 모펀드 구조, "
+        "주요 holdings/look-through 정보를 코멘트 작성에 직접 활용하세요. "
+        "하단의 '관련 WikiTree 메모' (시장 retrieval) 와는 별도 컨텍스트입니다.\n\n"
+        f"### [{pinned['page_path']}]\n"
+        + pinned["text"]
+        + "\n\n"
+    )
+
+
+# 자산군 키워드 추출용 — fund-specific keyword 보강 (F2)
+_FUND_KEYWORD_PROBE_TERMS: tuple[str, ...] = (
+    "국내주식", "해외주식", "국내채권", "해외채권",
+    "환율", "금", "대체투자", "리츠", "크레딧", "현금성",
+    "look-through", "모펀드", "look_through",
+)
+
+
+def extract_fund_keywords_from_pinned(pinned: dict, fund_code: str) -> list[str]:
+    """pinned page 본문에서 fund-specific 키워드 추출 (F2).
+
+    추출 항목:
+      - fund_code 자체 (1순위)
+      - 자산군 substring (8 분류 + 대체/크레딧/리츠)
+      - look-through 모펀드 코드 (5자리 alphanumeric, fund_code 자체 제외)
+
+    기존 _market 키워드 + 이 키워드들이 retrieve_wiki_context 에 함께 전달되어
+    04_Funds 외에도 관련 자산군 페이지의 hit 가 자연스럽게 상승.
+    """
+    out: list[str] = [fund_code]
+    text = pinned.get("text") or ""
+    if not text:
+        return out
+    for term in _FUND_KEYWORD_PROBE_TERMS:
+        if term in text:
+            out.append(term)
+    # 모펀드 코드 후보 추출 (5자리, fund_code 와 다른 것만)
+    # 예: 07G02, 07G03 같은 alphanumeric 5자리 코드
+    for m in re.finditer(r"\b(\d[A-Z0-9]{4})\b", text):
+        code = m.group(1)
+        if code != fund_code and code not in out:
+            out.append(code)
+    return out

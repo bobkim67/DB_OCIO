@@ -693,6 +693,7 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
     context['_graph_trace'] = graph_trace
 
     # WikiTree retrieval (P3 보강 — stage 별 dir 분리, P0-1+3 2026-05-06)
+    # F2 (P1-a, 2026-05-06): fund_comment 시 pinned_fund_context 별도 주입
     wiki_trace = {
         'wiki_candidate_pages': 0,
         'wiki_selected_pages': [],
@@ -701,10 +702,16 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
         'wiki_skipped_short_pages': 0,
         'wiki_skipped_fund_mismatch': 0,
         'wiki_stage_used': None,
+        'pinned_fund_context_path': None,
+        'pinned_fund_context_chars': 0,
+        'pinned_fund_context_reason': None,
+        'fund_specific_keywords_added': [],
     }
     try:
         from market_research.report.wiki_retriever import (
             retrieve_wiki_context, format_wiki_context_for_prompt,
+            get_pinned_fund_context, format_pinned_fund_context_for_prompt,
+            extract_fund_keywords_from_pinned,
         )
         # 키워드 소스: graph path 노드 라벨 + canonical regime tags + 상위 토픽
         kw_sources: list[str] = []
@@ -735,6 +742,33 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
             else 'market_debate'
         )
         wiki_period = f'{year}-{month:02d}'
+
+        # F2 (P1-a): fund_comment stage 시 pinned_fund_context 별도 처리.
+        # 04_Funds/{period}_{fund_code}.md 를 직접 read 해 prompt 에 별도 섹션
+        # 으로 주입 (silent quota 가 아니라 stage contract). 동시에 그 페이지
+        # 본문에서 fund-specific 키워드 (자산군/모펀드 코드 등) 추출해 retrieve
+        # 키워드 풀에 합쳐 자연스러운 hit 보강.
+        pinned: dict = {'text': '', 'page_path': None, 'chars': 0,
+                        'reason': 'stage_not_fund_comment'}
+        if wiki_stage == 'fund_comment':
+            pinned = get_pinned_fund_context(
+                fund_code=fund_code, period=wiki_period,
+            )
+            if pinned.get('text'):
+                fund_kws = extract_fund_keywords_from_pinned(pinned, fund_code)
+                # 중복 제거 후 추가
+                already = {k.lower() for k in kw_sources}
+                added = []
+                for k in fund_kws:
+                    if k.lower() not in already:
+                        kw_sources.append(k)
+                        already.add(k.lower())
+                        added.append(k)
+                wiki_trace['fund_specific_keywords_added'] = added
+        wiki_trace['pinned_fund_context_path'] = pinned.get('page_path')
+        wiki_trace['pinned_fund_context_chars'] = pinned.get('chars', 0)
+        wiki_trace['pinned_fund_context_reason'] = pinned.get('reason')
+
         retrieval = retrieve_wiki_context(
             kw_sources,
             stage=wiki_stage,
@@ -752,7 +786,11 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
         wiki_trace['wiki_cluster_cap_used'] = retrieval.get('cluster_cap_used')
         wiki_trace['wiki_retrieval_keywords'] = retrieval.get('keywords', []) or []
         wiki_trace['wiki_skipped_short_pages'] = retrieval.get('skipped_short_pages', 0)
-        context['wiki_context_text'] = format_wiki_context_for_prompt(retrieval)
+        # F2: pinned 가 먼저 (LLM 입장에서 우선순위 명확화), 그 다음 retrieved
+        context['wiki_context_text'] = (
+            format_pinned_fund_context_for_prompt(pinned)
+            + format_wiki_context_for_prompt(retrieval)
+        )
     except Exception as e:
         context['wiki_context_text'] = ''
         print(f'[wiki_retriever] 오류: {e}')
