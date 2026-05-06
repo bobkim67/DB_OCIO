@@ -380,17 +380,35 @@ def cluster_events(articles: list[dict]) -> list[dict]:
                                     title_word_cache, uf, compared,
                                     jaccard_threshold=0.20 if is_cross_topic else 0.15)
 
-    # Union-Find → event_group_id
-    group_counter = 0
+    # Union-Find → event_group_id (P1.5-b, F3 fix 2026-05-06)
+    # 기존: f'event_{group_counter}' — 순회 순서 의존 sequential counter (비-deterministic).
+    #       articles 입력 순서 / Union-Find root 가 달라지면 매번 다른 ID → 같은
+    #       cluster 가 매 daily_update 마다 다른 wiki page 로 누적 (배율: 실행 횟수).
+    # 변경: cluster 내 모든 article 의 _article_id (sorted) hash → deterministic.
+    #       동일 cluster 는 daily_update 재실행 횟수와 무관하게 동일 ID 보장.
+    import hashlib as _hashlib
+
+    def _stable_event_group_id(indices: list[int]) -> str:
+        """cluster 의 stable hash. _article_id 정렬 후 MD5 10자."""
+        aids = sorted(
+            (articles[i].get('_article_id')
+             or f"{articles[i].get('url', '')}|{articles[i].get('title', '')[:60]}")
+            for i in indices
+        )
+        h = _hashlib.md5('|'.join(aids).encode('utf-8')).hexdigest()
+        return f'event_{h[:10]}'
+
+    group_to_indices: dict[int, list[int]] = defaultdict(list)
+    for i, _ in primaries:
+        group_to_indices[uf.find(i)].append(i)
+
     root_to_gid = {}
     event_groups = {}
-
-    for i, _ in primaries:
-        root = uf.find(i)
-        if root not in root_to_gid:
-            root_to_gid[root] = f'event_{group_counter}'
-            group_counter += 1
-        event_groups[i] = root_to_gid[root]
+    for root, indices in group_to_indices.items():
+        gid = _stable_event_group_id(indices)
+        root_to_gid[root] = gid
+        for i in indices:
+            event_groups[i] = gid
 
     # event_group_id + source_count 부여
     group_sources = defaultdict(set)
