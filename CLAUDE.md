@@ -18,6 +18,38 @@ python -m streamlit run prototype.py --server.port 8505 &
 
 Streamlit은 `session_state`에 이전 위젯 값을 유지하므로 **코드만 수정하고 브라우저 새로고침하면 반영 안 됨**. 반드시 프로세스 kill 후 새 브라우저 탭으로 접속.
 
+## Wiki commit 주기 체크 (세션 시작 시)
+
+`market_research/data/wiki/` 는 daily_update / debate / enrichment 가 자동으로
+산출물을 쓰는 디렉토리. 매일 commit 하면 노이즈가 커서 **주간 batch** 정책을
+운영한다. 자동 스케줄러는 두지 않고, 세션 시작 때 Claude 가 누적 상태를
+체크해 **사용자에게 commit 진행 여부를 묻는다**.
+
+세션 시작 시 다음을 점검:
+
+```bash
+git log -1 --format=%cs -- market_research/data/wiki/    # 마지막 wiki commit 일자
+git -c core.quotePath=false status --porcelain -- market_research/data/wiki/ | wc -l  # 미커밋 변경 수
+```
+
+**질문 조건 (둘 다 참)**:
+- 마지막 wiki commit 이 **7일 이상 전** (또는 wiki commit 이력 자체가 없음)
+- 미커밋 변경분 **≥ 1**
+
+**질문 양식 예**:
+> "wiki 변경분 N건이 마지막 commit 이후 Md 누적되었습니다. weekly batch commit 진행할까요?"
+
+**사용자 GO 시**:
+```bash
+python tools/weekly_wiki_commit.py
+```
+
+스크립트는 idempotent — 변경 없으면 no-op, 있으면 `git add market_research/data/wiki/`
+명시 후 `chore(wiki): weekly batch (catchup={N}d, files={F})` 메시지로 commit.
+다른 변경분(코드/설정 등)은 건드리지 않는다.
+
+**침묵 조건**: 7일 이내거나 미커밋 변경 0이면 조용히 건너뛰기 (세션 노이즈 금지).
+
 ## 2026-04-14 Status Update
 
 ### 탭 구조
