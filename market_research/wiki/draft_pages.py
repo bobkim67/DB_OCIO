@@ -365,6 +365,28 @@ def refresh_base_pages_after_refine(month_str: str,
     if not articles:
         return {'events': 0, 'entities': 0, 'assets': 0, 'funds': 0}
 
+    # F3 P1.5-a (2026-05-06): 월별 event page wipe.
+    # 기존 동작은 wipe 없이 write_event_page → 매 daily_update 마다 누적.
+    # P1.5-b (deterministic event_group_id) 와 결합되어 동일 cluster 는 동일
+    # 파일명 → wipe 후 재생성 시 자동 덮어쓰기 효과 + 사라진 cluster 정리.
+    #
+    # 삭제 범위는 반드시 좁게: 01_Events/{month_str}_event_*.md 만.
+    # 02_Entities / 03_Assets / 04_Funds / 05_Regime_Canonical / 수동 보강 페이지
+    # 절대 건드리지 않음 (사용자 명시 정책).
+    deleted_event_pages = 0
+    deleted_samples: list[str] = []
+    for fp in sorted(EVENTS_DIR.glob(f'{month_str}_event_*.md')):
+        try:
+            fp.unlink()
+            deleted_event_pages += 1
+            if len(deleted_samples) < 5:
+                deleted_samples.append(fp.name)
+        except OSError as exc:
+            print(f'  [wipe warn] failed to delete {fp.name}: {exc}')
+    if deleted_event_pages:
+        print(f'  [wipe] deleted_event_pages={deleted_event_pages} '
+              f'samples={deleted_samples}')
+
     # Event pages (top salience event groups)
     by_event = defaultdict(list)
     for a in articles:
