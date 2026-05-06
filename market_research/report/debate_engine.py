@@ -729,20 +729,25 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
         # market_debate stage 는 04_Funds 디렉토리 자체가 allowed 에서 제외됨
         # (시장 causal graph 와 fund-specific commentary graph 분리 — 5/6 commit
         # b6eec0d 의 over-permissive 변경을 stage 게이팅으로 보완).
+        # P0-2: period 전달 — 미래 wiki page 제외 (future leakage 방지).
         wiki_stage = (
             'fund_comment' if (fund_code and fund_code != '_market')
             else 'market_debate'
         )
+        wiki_period = f'{year}-{month:02d}'
         retrieval = retrieve_wiki_context(
             kw_sources,
             stage=wiki_stage,
             fund_code=fund_code,
+            period=wiki_period,
         )
         wiki_trace['wiki_candidate_pages'] = retrieval.get('candidate_count', 0)
         wiki_trace['wiki_selected_pages'] = retrieval.get('selected_pages', []) or []
         wiki_trace['wiki_context_chars'] = retrieval.get('context_chars', 0)
         wiki_trace['wiki_skipped_fund_mismatch'] = retrieval.get('skipped_fund_mismatch', 0)
+        wiki_trace['wiki_skipped_future_pages'] = retrieval.get('skipped_future_pages', 0)
         wiki_trace['wiki_stage_used'] = retrieval.get('stage_used')
+        wiki_trace['wiki_period_used'] = retrieval.get('period_used')
         wiki_trace['wiki_retrieval_keywords'] = retrieval.get('keywords', []) or []
         wiki_trace['wiki_skipped_short_pages'] = retrieval.get('skipped_short_pages', 0)
         context['wiki_context_text'] = format_wiki_context_for_prompt(retrieval)

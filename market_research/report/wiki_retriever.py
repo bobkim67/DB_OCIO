@@ -29,6 +29,10 @@ fund_code 게이팅 (04_Funds):
   - 2026-05-06: stage / period / fund_code 시그니처 도입.
                 _market debate 에서 04_Funds 제외 (stage contamination 방지 — 시장
                 causal graph 와 fund-specific commentary graph 분리). P0-1 + P0-3.
+  - 2026-05-06: period filter 추가. target period 이후의 페이지는 제외 (future
+                leakage 방지). frontmatter as_of_date / period 우선, filename
+                YYYY-MM fallback, period_agnostic dir (05_Regime_Canonical 등) 은
+                allowlist. P0-2.
 """
 from __future__ import annotations
 
@@ -36,6 +40,21 @@ import re
 from pathlib import Path
 
 WIKI_ROOT = Path(__file__).resolve().parent.parent / "data" / "wiki"
+
+# Period 메타가 없어도 항상 통과 (current/global 문서) — P0-2
+PERIOD_AGNOSTIC_DIRS: frozenset[str] = frozenset({
+    "05_Regime_Canonical",
+    "00_Index",
+})
+
+# Period 추출 정규식 (P0-2)
+_PERIOD_FILENAME_RE = re.compile(r"(\d{4})-(\d{2})")
+_FRONTMATTER_PERIOD_RE = re.compile(
+    r"^period:\s*[\"']?(\d{4})-(\d{2})", re.MULTILINE
+)
+_FRONTMATTER_AS_OF_RE = re.compile(
+    r"^as_of_date:\s*[\"']?(\d{4})-(\d{2})", re.MULTILINE
+)
 
 # 모든 가용 디렉토리 (admin_preview / 후보 superset)
 ALL_DIRS: tuple[str, ...] = (
@@ -70,6 +89,66 @@ def _strip_frontmatter(text: str) -> str:
         if end > 0:
             return text[end + 4 :].lstrip("\n")
     return text
+
+
+def _extract_frontmatter(text: str) -> str:
+    """YAML frontmatter 블록 추출 (없으면 빈 문자열). P0-2."""
+    if not text.startswith("---"):
+        return ""
+    end = text.find("\n---", 4)
+    if end < 0:
+        return ""
+    return text[4:end]
+
+
+def _page_period(fp: Path, frontmatter: str) -> tuple[int, int] | None:
+    """페이지의 (year, month) 반환. 없으면 None. P0-2.
+
+    우선순위:
+      1. frontmatter as_of_date (YYYY-MM-DD)
+      2. frontmatter period (YYYY-MM)
+      3. filename 의 첫 YYYY-MM 패턴
+    """
+    m = _FRONTMATTER_AS_OF_RE.search(frontmatter)
+    if m:
+        return int(m.group(1)), int(m.group(2))
+    m = _FRONTMATTER_PERIOD_RE.search(frontmatter)
+    if m:
+        return int(m.group(1)), int(m.group(2))
+    m = _PERIOD_FILENAME_RE.search(fp.name)
+    if m:
+        return int(m.group(1)), int(m.group(2))
+    return None
+
+
+def _parse_target_period(period: str | None) -> tuple[int, int] | None:
+    """'2026-04' → (2026, 4). 파싱 실패/None 이면 None. P0-2."""
+    if not period:
+        return None
+    m = _PERIOD_FILENAME_RE.match(period.strip())
+    if not m:
+        return None
+    return int(m.group(1)), int(m.group(2))
+
+
+def _is_future_page(
+    fp: Path,
+    frontmatter: str,
+    target_period: tuple[int, int] | None,
+) -> bool:
+    """target_period 보다 페이지 period 가 미래면 True. P0-2.
+
+    - target_period None → 항상 False (filter off)
+    - 페이지 period 부재 + period_agnostic dir → False (allowlist)
+    - 페이지 period 부재 + 그 외 dir → False (관대 — debug trace 만)
+    - 페이지 period > target_period → True (제외)
+    """
+    if target_period is None:
+        return False
+    page_period = _page_period(fp, frontmatter)
+    if page_period is None:
+        return False
+    return page_period > target_period
 
 
 def _excerpt(text: str, n: int = PER_PAGE_EXCERPT_CHARS) -> str:
@@ -167,6 +246,7 @@ def retrieve_wiki_context(
     *,
     stage: str | None = None,
     fund_code: str | None = None,
+    period: str | None = None,
     max_pages: int = MAX_PAGES,
     max_context_chars: int = DEFAULT_MAX_CONTEXT_CHARS,
 ) -> dict:
@@ -178,22 +258,27 @@ def retrieve_wiki_context(
                None 이면 fund_code 로 추론 (legacy compat).
         fund_code: fund_comment stage 에서 04_Funds 게이팅. _market/None 이면
                    04_Funds 전체 차단.
+        period: 'YYYY-MM' 형식. 명시되면 그 이후의 페이지 제외 (future leakage
+                방지). None 이면 filter off (legacy compat).
 
     Returns:
         {
           "text": str,
           "selected_pages": list[str],
-          "candidate_count": int,                # allowed dir 내 page 수 (gating 후)
+          "candidate_count": int,                # gating 후 page 수
           "selected_count": int,
           "context_chars": int,
           "skipped_short_pages": int,
-          "skipped_fund_mismatch": int,          # P0-1: 04_Funds 게이팅으로 제외
+          "skipped_fund_mismatch": int,          # P0-1
+          "skipped_future_pages": int,           # P0-2
           "stage_used": str,
+          "period_used": str | None,
           "keywords": list[str],
         }
     """
     resolved_stage = _resolve_stage(stage, fund_code)
     allowed = _allowed_dirs(resolved_stage)
+    target_period = _parse_target_period(period)
 
     # tokenize + dedupe
     keyword_tokens: list[str] = []
@@ -213,6 +298,7 @@ def retrieve_wiki_context(
     selected_pages: list[str] = []
     skipped_short = 0
     skipped_fund_mismatch = 0
+    skipped_future = 0
     total_chars = 0
 
     raw_candidates = _list_candidate_pages(allowed)
@@ -226,7 +312,9 @@ def retrieve_wiki_context(
             "context_chars": 0,
             "skipped_short_pages": 0,
             "skipped_fund_mismatch": 0,
+            "skipped_future_pages": 0,
             "stage_used": resolved_stage,
+            "period_used": period,
             "keywords": keyword_tokens,
         }
 
@@ -243,6 +331,11 @@ def retrieve_wiki_context(
         try:
             txt = fp.read_text(encoding="utf-8", errors="ignore")
         except OSError:
+            continue
+        # period filter (P0-2): future page 제외
+        fm = _extract_frontmatter(txt)
+        if _is_future_page(fp, fm, target_period):
+            skipped_future += 1
             continue
         sc = _score_page(txt, fp.name, keyword_tokens)
         if sc[0] == 0:
@@ -284,7 +377,9 @@ def retrieve_wiki_context(
         "context_chars": total_chars,
         "skipped_short_pages": skipped_short,
         "skipped_fund_mismatch": skipped_fund_mismatch,
+        "skipped_future_pages": skipped_future,
         "stage_used": resolved_stage,
+        "period_used": period,
         "keywords": keyword_tokens,
     }
 
