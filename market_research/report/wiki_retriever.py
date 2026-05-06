@@ -33,6 +33,10 @@ fund_code 게이팅 (04_Funds):
                 leakage 방지). frontmatter as_of_date / period 우선, filename
                 YYYY-MM fallback, period_agnostic dir (05_Regime_Canonical 등) 은
                 allowlist. P0-2.
+  - 2026-05-06: cluster cap 추가. 동일 dominant topic (또는 frontmatter
+                event_group_id) 의 페이지가 N 개 초과로 선정되지 않도록 제한.
+                01_Events 의 동일 테마 (Iran/oil 등) 페이지가 top-N 을 과점하는
+                현상 완화. P0-4.
 """
 from __future__ import annotations
 
@@ -55,6 +59,15 @@ _FRONTMATTER_PERIOD_RE = re.compile(
 _FRONTMATTER_AS_OF_RE = re.compile(
     r"^as_of_date:\s*[\"']?(\d{4})-(\d{2})", re.MULTILINE
 )
+
+# Cluster cap (P0-4) — frontmatter event_group_id 우선, top_topics[0] fallback
+_FRONTMATTER_EVENT_GROUP_RE = re.compile(
+    r"^event_group_id:\s*[\"']?([^\"'\n]+)", re.MULTILINE
+)
+_FRONTMATTER_TOP_TOPICS_RE = re.compile(
+    r"^top_topics:\s*\[\s*[\"']([^\"',\]]+)", re.MULTILINE
+)
+DEFAULT_CLUSTER_CAP = 2
 
 # 모든 가용 디렉토리 (admin_preview / 후보 superset)
 ALL_DIRS: tuple[str, ...] = (
@@ -129,6 +142,27 @@ def _parse_target_period(period: str | None) -> tuple[int, int] | None:
     if not m:
         return None
     return int(m.group(1)), int(m.group(2))
+
+
+def _extract_cluster_id(frontmatter: str) -> str | None:
+    """페이지 cluster id 추출. P0-4.
+
+    우선순위:
+      1. frontmatter event_group_id (정식 — daily_update 가 미래에 노출 예정)
+      2. frontmatter top_topics 의 첫 번째 토픽 (현재 fallback)
+      3. None (cluster cap 영향 없음)
+
+    01_Events 페이지에는 top_topics 가 있어 cluster grouping 가능,
+    02_Entities / 03_Assets / 04_Funds / 05_Regime_Canonical 페이지에는
+    top_topics 가 없어 cluster id None — cap 무관 (자유 통과).
+    """
+    m = _FRONTMATTER_EVENT_GROUP_RE.search(frontmatter)
+    if m:
+        return m.group(1).strip()
+    m = _FRONTMATTER_TOP_TOPICS_RE.search(frontmatter)
+    if m:
+        return m.group(1).strip()
+    return None
 
 
 def _is_future_page(
@@ -249,6 +283,7 @@ def retrieve_wiki_context(
     period: str | None = None,
     max_pages: int = MAX_PAGES,
     max_context_chars: int = DEFAULT_MAX_CONTEXT_CHARS,
+    cluster_cap: int | None = DEFAULT_CLUSTER_CAP,
 ) -> dict:
     """keywords 기반 wiki page 검색 → 발췌 결합.
 
@@ -260,6 +295,8 @@ def retrieve_wiki_context(
                    04_Funds 전체 차단.
         period: 'YYYY-MM' 형식. 명시되면 그 이후의 페이지 제외 (future leakage
                 방지). None 이면 filter off (legacy compat).
+        cluster_cap: 동일 cluster (event_group_id 또는 top_topics[0]) 의 페이지
+                     최대 N. None 이면 cap 없음. 기본 2.
 
     Returns:
         {
@@ -271,8 +308,10 @@ def retrieve_wiki_context(
           "skipped_short_pages": int,
           "skipped_fund_mismatch": int,          # P0-1
           "skipped_future_pages": int,           # P0-2
+          "skipped_cluster_cap": int,            # P0-4
           "stage_used": str,
           "period_used": str | None,
+          "cluster_cap_used": int | None,        # P0-4
           "keywords": list[str],
         }
     """
@@ -299,6 +338,8 @@ def retrieve_wiki_context(
     skipped_short = 0
     skipped_fund_mismatch = 0
     skipped_future = 0
+    skipped_cluster_cap = 0
+    cluster_count: dict[str, int] = {}
     total_chars = 0
 
     raw_candidates = _list_candidate_pages(allowed)
@@ -313,8 +354,10 @@ def retrieve_wiki_context(
             "skipped_short_pages": 0,
             "skipped_fund_mismatch": 0,
             "skipped_future_pages": 0,
+            "skipped_cluster_cap": 0,
             "stage_used": resolved_stage,
             "period_used": period,
+            "cluster_cap_used": cluster_cap,
             "keywords": keyword_tokens,
         }
 
@@ -326,7 +369,8 @@ def retrieve_wiki_context(
             continue
         candidates.append(fp)
 
-    scored: list[tuple[tuple[int, int, int], Path, str]] = []
+    # scored entries: (score_tuple, fp, txt, frontmatter)
+    scored: list[tuple[tuple[int, int, int], Path, str, str]] = []
     for fp in candidates:
         try:
             txt = fp.read_text(encoding="utf-8", errors="ignore")
@@ -340,11 +384,11 @@ def retrieve_wiki_context(
         sc = _score_page(txt, fp.name, keyword_tokens)
         if sc[0] == 0:
             continue
-        scored.append((sc, fp, txt))
+        scored.append((sc, fp, txt, fm))
 
     scored.sort(key=lambda x: (-x[0][0], -x[0][1], -x[0][2]))
 
-    for sc, fp, txt in scored:
+    for sc, fp, txt, fm in scored:
         if len(selected_pages) >= max_pages:
             break
         if total_chars >= max_context_chars:
@@ -352,6 +396,15 @@ def retrieve_wiki_context(
         if sc[1] == 0:
             skipped_short += 1
             continue
+        # cluster cap (P0-4): 동일 cluster id 가 N 개 이상 선정되지 않도록
+        if cluster_cap is not None:
+            cid = _extract_cluster_id(fm)
+            if cid:
+                if cluster_count.get(cid, 0) >= cluster_cap:
+                    skipped_cluster_cap += 1
+                    continue
+                # 선정 확정 시점에 카운트 (skip 된 경우는 카운트 안 함)
+                cluster_count[cid] = cluster_count.get(cid, 0) + 1
         excerpt = _excerpt(txt, PER_PAGE_EXCERPT_CHARS)
         rel = str(fp.relative_to(WIKI_ROOT)).replace("\\", "/")
         block = f"### [{rel}]\n{excerpt}"
@@ -378,8 +431,10 @@ def retrieve_wiki_context(
         "skipped_short_pages": skipped_short,
         "skipped_fund_mismatch": skipped_fund_mismatch,
         "skipped_future_pages": skipped_future,
+        "skipped_cluster_cap": skipped_cluster_cap,
         "stage_used": resolved_stage,
         "period_used": period,
+        "cluster_cap_used": cluster_cap,
         "keywords": keyword_tokens,
     }
 
