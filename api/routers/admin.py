@@ -135,6 +135,103 @@ def get_latest_wiki_coverage() -> WikiCoverageReportFullResponseDTO:
     )
 
 
+# ──────────────────────────────────────────────────────────────────
+# R4: Comment trace endpoints (read-only)
+# ──────────────────────────────────────────────────────────────────
+
+from ..schemas.comment_trace import (
+    CommentTraceListItemDTO,
+    CommentTraceListResponseDTO,
+    CommentTraceFullResponseDTO,
+)
+from ..services import comment_trace_gateway as _ctg
+
+
+@router.get(
+    "/admin/comment-trace",
+    response_model=CommentTraceListResponseDTO,
+    tags=["admin"],
+    summary="Comment trace 목록 (R4, read-only)",
+)
+def list_comment_traces(
+    period: str | None = Query(default=None,
+                                pattern=r"^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4])$"),
+    fund: str | None = Query(default=None, min_length=1, max_length=32,
+                              pattern=r"^[A-Za-z0-9_]+$"),
+) -> CommentTraceListResponseDTO:
+    raw = _ctg.list_traces(period=period, fund=fund)
+    items = [
+        CommentTraceListItemDTO(
+            trace_id=r["trace_id"],
+            fund_code=r["fund_code"],
+            period=r["period"],
+            generated_at=r.get("generated_at"),
+            schema_version=r.get("schema_version"),
+            graph_node_count=r.get("graph_node_count", 0),
+            graph_edge_count=r.get("graph_edge_count", 0),
+            warning_count=r.get("warning_count", 0),
+            error_count=r.get("error_count", 0),
+            size_bytes=r.get("size_bytes", 0),
+        )
+        for r in raw
+    ]
+    return CommentTraceListResponseDTO(meta=_wc_meta(), traces=items)
+
+
+@router.get(
+    "/admin/comment-trace/latest",
+    response_model=CommentTraceFullResponseDTO,
+    tags=["admin"],
+    summary="가장 최근 comment trace (R4)",
+)
+def get_latest_comment_trace(
+    period: str | None = Query(default=None,
+                                pattern=r"^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4])$"),
+    fund: str | None = Query(default=None, min_length=1, max_length=32,
+                              pattern=r"^[A-Za-z0-9_]+$"),
+) -> CommentTraceFullResponseDTO:
+    payload = _ctg.load_latest_trace(period=period, fund=fund)
+    if payload is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "COMMENT_TRACE_NOT_FOUND",
+                     "message": "no comment trace found"},
+        )
+    tid = payload.get("trace_id") or "unknown"
+    return CommentTraceFullResponseDTO(
+        meta=_wc_meta(), trace_id=tid, payload=payload,
+    )
+
+
+@router.get(
+    "/admin/comment-trace/{trace_id}",
+    response_model=CommentTraceFullResponseDTO,
+    tags=["admin"],
+    summary="특정 comment trace by ID (R4)",
+)
+def get_comment_trace_by_id(
+    trace_id: str = FastAPIPath(...,
+                                  pattern=r"^[A-Za-z0-9_]+@\d{4}-(?:0[1-9]|1[0-2]|Q[1-4])$",
+                                  min_length=1, max_length=64),
+) -> CommentTraceFullResponseDTO:
+    try:
+        payload = _ctg.load_trace_by_id(trace_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "COMMENT_TRACE_INVALID_ID", "message": str(exc)},
+        )
+    if payload is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "COMMENT_TRACE_NOT_FOUND",
+                     "message": f"trace {trace_id!r} not found"},
+        )
+    return CommentTraceFullResponseDTO(
+        meta=_wc_meta(), trace_id=trace_id, payload=payload,
+    )
+
+
 @router.get(
     "/admin/wiki-coverage/{report_id}",
     response_model=WikiCoverageReportFullResponseDTO,
