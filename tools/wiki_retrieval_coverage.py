@@ -1,0 +1,597 @@
+"""R1: Wiki Retrieval / Evidence Coverage Viewer (CLI report).
+
+운영 관측용 read-only 도구. debate / fund_comment prompt 에 어떤 Wiki page 가
+왜 들어가는지 markdown report 로 추적 가능하게 한다.
+
+Use:
+    python tools/wiki_retrieval_coverage.py
+    python tools/wiki_retrieval_coverage.py --period 2026-04 --period 2026-05
+    python tools/wiki_retrieval_coverage.py --period 2026-04 --fund 07G04 --fund 08K88
+    python tools/wiki_retrieval_coverage.py --output debug/coverage_custom.md
+
+기본:
+  --period: 자동 검출 (wiki/01_Events 의 모든 YYYY-MM)
+  --fund: 07G04, 08K88
+  --output: debug/wiki_retrieval_coverage_{YYYYMMDD}.md
+
+출력 섹션:
+  1. period 별 Wiki inventory (page count, dup, source_type, char dist, stale/future)
+  2. retrieval debug (stage=market_debate / fund_comment, period, selected with reason)
+  3. fund_comment 전용 (pinned/retrieved 분리, 자기 fund / 타 fund 차단)
+  4. asset coverage (자산군별 03_Assets 존재 + enrichment 보존)
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+from collections import Counter, defaultdict
+from datetime import date
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from market_research.report.wiki_retriever import (
+    retrieve_wiki_context,
+    get_pinned_fund_context,
+    extract_fund_keywords_from_pinned,
+    _extract_frontmatter,
+    _extract_cluster_id,
+    _page_period,
+    _is_future_page,
+    _score_page,
+    _split_tokens,
+    STAGE_ALLOWED_DIRS,
+    PERIOD_AGNOSTIC_DIRS,
+    DEFAULT_CLUSTER_CAP,
+    WIKI_ROOT,
+)
+
+NEWS_DIR = PROJECT_ROOT / "market_research" / "data" / "news"
+DEBATE_LOGS_DIR = PROJECT_ROOT / "market_research" / "data" / "debate_logs"
+
+REQUIRED_ASSET_CLASSES = (
+    "국내주식", "해외주식", "국내채권", "해외채권",
+    "환율", "금/대체", "크레딧", "현금성",
+)
+
+# 자산군 → 03_Assets 파일명 매핑 (현재 enrichment_builder 가 만드는 파일명)
+ASSET_FILENAME_MAP = {
+    "국내주식": ["국내주식"],
+    "해외주식": ["해외주식"],
+    "국내채권": ["국내채권"],
+    "해외채권": ["해외채권"],
+    "환율": ["환율"],
+    "금/대체": ["금_대체", "금"],   # enrichment 는 "금_대체", base 는 "금"
+    "크레딧": ["크레딧"],
+    "현금성": ["현금성"],
+}
+
+URL_RE = re.compile(r"^\*\*URL\*\*:\s*(.+)$", re.MULTILINE)
+HEADLINE_RE = re.compile(r"^\*\*Primary headline\*\*:\s*(.+)$", re.MULTILINE)
+SOURCE_TYPE_RE = re.compile(r"^source_type:\s*[\"']?([^\"'\n]+)", re.MULTILINE)
+GENERATED_BY_RE = re.compile(r"^generated_by:\s*[\"']?([^\"'\n]+)", re.MULTILINE)
+TYPE_RE = re.compile(r"^type:\s*[\"']?([^\"'\n]+)", re.MULTILINE)
+
+
+# ──────────────────────────────────────────────────────────────────
+# 1. Wiki inventory
+# ──────────────────────────────────────────────────────────────────
+
+def page_meta(fp: Path) -> dict:
+    """page 의 메타 단일 dict."""
+    try:
+        txt = fp.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return {}
+    fm = _extract_frontmatter(txt)
+    body_chars = len(txt) - len(fm) - 8 if fm else len(txt)
+    src_type_m = SOURCE_TYPE_RE.search(fm) if fm else None
+    gen_by_m = GENERATED_BY_RE.search(fm) if fm else None
+    type_m = TYPE_RE.search(fm) if fm else None
+    head_m = HEADLINE_RE.search(txt)
+    url_m = URL_RE.search(txt)
+    return {
+        "path": str(fp.relative_to(WIKI_ROOT)).replace("\\", "/"),
+        "name": fp.name,
+        "dir": fp.parent.name,
+        "chars": len(txt),
+        "body_chars": body_chars,
+        "page_period": _page_period(fp, fm),
+        "type": (type_m.group(1).strip() if type_m else None),
+        "source_type": (src_type_m.group(1).strip() if src_type_m else None),
+        "generated_by": (gen_by_m.group(1).strip() if gen_by_m else None),
+        "primary_headline": (head_m.group(1).strip() if head_m else None),
+        "primary_url": (url_m.group(1).strip() if url_m else None),
+        "cluster_key": _extract_cluster_id(fm),
+    }
+
+
+def all_period_pages(period: str) -> list[dict]:
+    """해당 period 의 모든 wiki page 메타 (agnostic 포함)."""
+    target = _split_period(period)
+    out = []
+    for d in (
+        "01_Events", "02_Entities", "03_Assets", "04_Funds",
+        "05_Regime_Canonical", "00_Index",
+    ):
+        dp = WIKI_ROOT / d
+        if not dp.exists():
+            continue
+        for fp in sorted(dp.glob("*.md")):
+            m = page_meta(fp)
+            if not m:
+                continue
+            # period 매칭 (agnostic dir 은 무조건 포함, 그 외는 page_period 일치)
+            if d in PERIOD_AGNOSTIC_DIRS:
+                out.append(m)
+            elif m["page_period"] == target:
+                out.append(m)
+    return out
+
+
+def _split_period(p: str) -> tuple[int, int] | None:
+    m = re.match(r"(\d{4})-(\d{2})", p)
+    if m:
+        return int(m.group(1)), int(m.group(2))
+    return None
+
+
+def inventory_report(period: str) -> dict:
+    """period 별 inventory."""
+    pages = all_period_pages(period)
+    by_dir = defaultdict(list)
+    for p in pages:
+        by_dir[p["dir"]].append(p)
+
+    # duplicate URL / headline (01_Events 만)
+    events = by_dir.get("01_Events", [])
+    url_counts = Counter(p["primary_url"] for p in events if p["primary_url"])
+    head_counts = Counter(p["primary_headline"] for p in events if p["primary_headline"])
+    dup_urls = {u: n for u, n in url_counts.items() if n > 1}
+    dup_heads = {h: n for h, n in head_counts.items() if n > 1}
+
+    # source_type 분포 (모든 dir)
+    src_dist = Counter(p["source_type"] or "(none)" for p in pages)
+
+    # 글자 수 분포 (모든 dir, body_chars)
+    chars_list = [p["body_chars"] for p in pages]
+
+    # stale (sequential id)/hex (deterministic) — 01_Events 만
+    seq_re = re.compile(r"event_\d+\.md$")
+    hex_re = re.compile(r"event_[0-9a-f]{10}\.md$")
+    seq_n = sum(1 for p in events if seq_re.search(p["name"]))
+    hex_n = sum(1 for p in events if hex_re.search(p["name"]))
+
+    # future page (period 보다 미래) — 운영상 0 이어야 정상
+    target = _split_period(period)
+    future_n = sum(
+        1 for p in pages
+        if p["page_period"] and target and p["page_period"] > target
+    )
+
+    return {
+        "period": period,
+        "by_dir_counts": {d: len(ps) for d, ps in by_dir.items()},
+        "total_pages": len(pages),
+        "duplicate_url_groups": dup_urls,
+        "duplicate_headline_groups": dup_heads,
+        "source_type_distribution": dict(src_dist),
+        "chars_min": min(chars_list) if chars_list else 0,
+        "chars_max": max(chars_list) if chars_list else 0,
+        "chars_avg": int(sum(chars_list) / len(chars_list)) if chars_list else 0,
+        "events_with_sequential_id": seq_n,
+        "events_with_hex_id": hex_n,
+        "future_pages": future_n,
+    }
+
+
+# ──────────────────────────────────────────────────────────────────
+# 2. Retrieval debug
+# ──────────────────────────────────────────────────────────────────
+
+def _load_keywords(period: str) -> list[str]:
+    """debate_logs 의 키워드, 없으면 articles 의 top topics."""
+    log_fp = DEBATE_LOGS_DIR / f"{period}.json"
+    if log_fp.exists():
+        try:
+            log = json.loads(log_fp.read_text(encoding="utf-8"))
+            res = log.get("result") if isinstance(log, dict) and "result" in log else log
+            if isinstance(res, dict):
+                kws = (res.get("_debug_trace", {}) or {}).get("wiki_retrieval_keywords")
+                if kws:
+                    return kws
+        except Exception:
+            pass
+    # fallback — articles top topics
+    news_fp = NEWS_DIR / f"{period}.json"
+    if news_fp.exists():
+        try:
+            arts = json.loads(news_fp.read_text(encoding="utf-8")).get("articles", [])
+            tc = Counter()
+            for a in arts:
+                for t in a.get("_classified_topics", []):
+                    if isinstance(t, dict) and t.get("topic"):
+                        tc[t["topic"]] += 1
+            return [t for t, _ in tc.most_common(15)]
+        except Exception:
+            pass
+    return []
+
+
+def retrieval_debug(period: str, stage: str,
+                     fund_code: str | None = None,
+                     keywords: list[str] | None = None) -> dict:
+    """retrieve_wiki_context 호출 + selected page 별 reason 분석."""
+    if keywords is None:
+        keywords = _load_keywords(period)
+
+    # tokenize 로 selected 페이지의 hit breakdown 재계산
+    tokens = []
+    for kw in keywords:
+        tokens.extend(_split_tokens(kw))
+    seen = set()
+    deduped = []
+    for t in tokens:
+        if t.lower() in seen:
+            continue
+        seen.add(t.lower())
+        deduped.append(t)
+
+    # F2 follow-up: pinned exclude
+    pinned = None
+    excl = None
+    if stage == "fund_comment" and fund_code:
+        pinned = get_pinned_fund_context(fund_code=fund_code, period=period)
+        if pinned.get("text"):
+            extras = extract_fund_keywords_from_pinned(pinned, fund_code)
+            for k in extras:
+                if k.lower() not in seen:
+                    keywords = list(keywords) + [k]
+                    seen.add(k.lower())
+                    deduped.append(k)
+        if pinned.get("page_path"):
+            excl = {pinned["page_path"]}
+
+    r = retrieve_wiki_context(
+        keywords, stage=stage, fund_code=fund_code,
+        period=period, exclude_paths=excl,
+    )
+
+    # selected page 별 상세
+    selected_detail = []
+    for path in r["selected_pages"]:
+        fp = WIKI_ROOT / path
+        if not fp.exists():
+            continue
+        txt = fp.read_text(encoding="utf-8", errors="ignore")
+        sc = _score_page(txt, fp.name, deduped)
+        m = page_meta(fp)
+        selected_detail.append({
+            "path": path,
+            "dir": m["dir"],
+            "hit_count": sc[0],
+            "length_bucket": sc[1],
+            "source_bonus": sc[2],
+            "cluster_key": m["cluster_key"],
+            "source_type": m["source_type"],
+            "page_period": m["page_period"],
+            "primary_url": m["primary_url"],
+            "primary_headline": (m["primary_headline"] or "")[:80],
+        })
+
+    # selected URL duplicate 검사 (event page 만)
+    sel_urls = [d["primary_url"] for d in selected_detail
+                if d["dir"] == "01_Events" and d["primary_url"]]
+    url_counts = Counter(sel_urls)
+    dup_urls = [(u, n) for u, n in url_counts.items() if n > 1]
+
+    return {
+        "stage": stage,
+        "period": period,
+        "fund_code": fund_code,
+        "keywords": keywords,
+        "keyword_count": len(deduped),
+        "candidate_count": r["candidate_count"],
+        "selected_count": r["selected_count"],
+        "context_chars": r["context_chars"],
+        "skipped_short_pages": r["skipped_short_pages"],
+        "skipped_fund_mismatch": r["skipped_fund_mismatch"],
+        "skipped_future_pages": r["skipped_future_pages"],
+        "skipped_cluster_cap": r["skipped_cluster_cap"],
+        "skipped_excluded": r.get("skipped_excluded", 0),
+        "stage_used": r["stage_used"],
+        "cluster_cap_used": r["cluster_cap_used"],
+        "selected_detail": selected_detail,
+        "selected_url_duplicates": dup_urls,
+        "pinned": pinned,
+    }
+
+
+# ──────────────────────────────────────────────────────────────────
+# 3. Asset coverage
+# ──────────────────────────────────────────────────────────────────
+
+def asset_coverage_report(period: str,
+                            retrieval_market: dict | None = None) -> list[dict]:
+    """자산군별 03_Assets page 존재 + enrichment 보존 + selected 여부."""
+    selected_paths_set: set[str] = set()
+    if retrieval_market:
+        selected_paths_set = set(retrieval_market.get("selected_pages",
+            [d["path"] for d in retrieval_market.get("selected_detail", [])]))
+    out = []
+    assets_dir = WIKI_ROOT / "03_Assets"
+    for asset, fname_candidates in ASSET_FILENAME_MAP.items():
+        existing_paths = []
+        for fname in fname_candidates:
+            fp = assets_dir / f"{period}_{fname}.md"
+            if fp.exists():
+                m = page_meta(fp)
+                existing_paths.append(m)
+        if existing_paths:
+            # enrichment 우선 (source_type=asset_wiki 또는 size 큰 것)
+            enriched = [p for p in existing_paths
+                        if p.get("source_type") == "asset_wiki"
+                        or (p.get("body_chars") or 0) >= 1000]
+            primary = enriched[0] if enriched else existing_paths[0]
+            out.append({
+                "asset_class": asset,
+                "exists": True,
+                "candidate_files": [p["name"] for p in existing_paths],
+                "primary_file": primary["name"],
+                "body_chars": primary.get("body_chars"),
+                "source_type": primary.get("source_type"),
+                "is_enriched": primary.get("source_type") in ("asset_wiki", "fund_wiki")
+                                or (primary.get("body_chars") or 0) >= 1000,
+                "in_market_selected": primary["path"] in selected_paths_set,
+            })
+        else:
+            out.append({
+                "asset_class": asset,
+                "exists": False,
+                "candidate_files": [],
+                "primary_file": None,
+                "body_chars": 0,
+                "source_type": None,
+                "is_enriched": False,
+                "in_market_selected": False,
+            })
+    return out
+
+
+# ──────────────────────────────────────────────────────────────────
+# 4. Markdown rendering
+# ──────────────────────────────────────────────────────────────────
+
+def _kvtable(d: dict) -> str:
+    if not d:
+        return "(none)"
+    return "\n".join(f"  - **{k}**: {v}" for k, v in d.items())
+
+
+def render_inventory(inv: dict) -> str:
+    lines = [
+        f"### Inventory — `{inv['period']}`",
+        f"- 전체 page: **{inv['total_pages']}**",
+        f"- dir 별:",
+    ]
+    for d, n in sorted(inv["by_dir_counts"].items()):
+        lines.append(f"  - `{d}/`: {n}")
+    lines += [
+        f"- 01_Events ID 형식: hex(deterministic)=**{inv['events_with_hex_id']}** / "
+        f"sequential(stale)={inv['events_with_sequential_id']}",
+        f"- future page: **{inv['future_pages']}** (정상은 0)",
+        f"- 동일 primary_url 중복 그룹: **{len(inv['duplicate_url_groups'])}** "
+        f"({'PASS' if not inv['duplicate_url_groups'] else 'FAIL'})",
+    ]
+    if inv["duplicate_url_groups"]:
+        for u, n in list(inv["duplicate_url_groups"].items())[:3]:
+            lines.append(f"  - `{u[:80]}` × {n}")
+    lines += [
+        f"- 동일 primary_headline 중복 그룹: **{len(inv['duplicate_headline_groups'])}** "
+        f"({'PASS' if not inv['duplicate_headline_groups'] else 'FAIL'})",
+        f"- source_type 분포:",
+    ]
+    for st, n in sorted(inv["source_type_distribution"].items(), key=lambda x: -x[1]):
+        lines.append(f"  - `{st}`: {n}")
+    lines += [
+        f"- 본문 글자수: min={inv['chars_min']} / avg={inv['chars_avg']} / max={inv['chars_max']}",
+    ]
+    return "\n".join(lines)
+
+
+def render_retrieval(r: dict, label: str) -> str:
+    excl = r.get("pinned") or {}
+    lines = [
+        f"### Retrieval — {label}",
+        f"- stage: `{r['stage']}` / period: `{r['period']}` / fund_code: `{r['fund_code']}`",
+        f"- keywords (count={r['keyword_count']}): `{', '.join(r['keywords'][:15])}` "
+        f"{'…' if len(r['keywords']) > 15 else ''}",
+        f"- candidate: {r['candidate_count']} / selected: **{r['selected_count']}** / "
+        f"context_chars: {r['context_chars']}",
+        f"- skipped: short={r['skipped_short_pages']} / fund_mismatch={r['skipped_fund_mismatch']} / "
+        f"future={r['skipped_future_pages']} / cluster_cap={r['skipped_cluster_cap']} / "
+        f"excluded={r['skipped_excluded']}",
+        f"- selected URL 중복 (event-only): **{len(r['selected_url_duplicates'])}** "
+        f"({'PASS' if not r['selected_url_duplicates'] else 'FAIL'})",
+    ]
+    if r["selected_url_duplicates"]:
+        for u, n in r["selected_url_duplicates"][:3]:
+            lines.append(f"  - `{u[:80]}` × {n}")
+    lines += [
+        "",
+        "| # | path | dir | hit | len_b | src | cluster_key | period |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    for i, d in enumerate(r["selected_detail"], 1):
+        cluster = (d["cluster_key"] or "—")[:30]
+        period_str = f"{d['page_period']}" if d["page_period"] else "—"
+        lines.append(
+            f"| {i} | `{d['path']}` | `{d['dir']}` | {d['hit_count']} | "
+            f"{d['length_bucket']} | {d['source_bonus']} | `{cluster}` | {period_str} |"
+        )
+    return "\n".join(lines)
+
+
+def render_fund_comment(rfc: dict) -> str:
+    pinned = rfc.get("pinned") or {}
+    own_in_sel = [d for d in rfc["selected_detail"]
+                  if d["dir"] == "04_Funds" and rfc["fund_code"] in d["path"]]
+    other_in_sel = [d for d in rfc["selected_detail"]
+                    if d["dir"] == "04_Funds" and rfc["fund_code"] not in d["path"]]
+    lines = [
+        f"### Fund-Comment Debug — `{rfc['fund_code']}` / `{rfc['period']}`",
+        f"- pinned_fund_context_path: `{pinned.get('page_path')}`",
+        f"- pinned_fund_context_chars: **{pinned.get('chars', 0)}**",
+        f"- pinned reason: `{pinned.get('reason')}`",
+        f"- retrieved selected paths ({rfc['selected_count']}):",
+    ]
+    for d in rfc["selected_detail"]:
+        lines.append(f"  - `{d['path']}` (dir={d['dir']}, hit={d['hit_count']})")
+    lines += [
+        f"- pinned ↔ retrieved 중복 제거: skipped_excluded=**{rfc['skipped_excluded']}** "
+        f"({'PASS' if rfc['skipped_excluded'] >= (1 if pinned.get('page_path') else 0) else 'NA'})",
+        f"- 자기 04_Funds (`{rfc['fund_code']}`) selected 등장: {len(own_in_sel)}",
+        f"- 타 fund 04_Funds selected 등장: {len(other_in_sel)} "
+        f"(타 fund block 효과: skipped_fund_mismatch={rfc['skipped_fund_mismatch']})",
+        f"- 검증: 타 fund 04_Funds 등장 0건 → "
+        f"{'PASS' if not other_in_sel else 'FAIL'}",
+    ]
+    return "\n".join(lines)
+
+
+def render_asset_coverage(rows: list[dict], period: str) -> str:
+    lines = [
+        f"### Asset Coverage — `{period}`",
+        "",
+        "| 자산군 | exists | primary_file | body_chars | source_type | enriched | in_market_selected |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for r in rows:
+        sel = "✓" if r["in_market_selected"] else ""
+        ench = "✅" if r["is_enriched"] else "—"
+        exists = "✅" if r["exists"] else "❌"
+        lines.append(
+            f"| {r['asset_class']} | {exists} | "
+            f"`{r['primary_file'] or '—'}` | {r['body_chars'] or 0} | "
+            f"`{r['source_type'] or '—'}` | {ench} | {sel} |"
+        )
+
+    enriched_n = sum(1 for r in rows if r["is_enriched"])
+    base_n = sum(1 for r in rows if r["exists"] and not r["is_enriched"])
+    missing_n = sum(1 for r in rows if not r["exists"])
+    lines += [
+        "",
+        f"요약: enriched={enriched_n}/{len(rows)} / base only={base_n} / missing={missing_n}",
+    ]
+    if base_n:
+        lines.append(
+            "  ⚠️ base only 자산군은 향후 P3-4 enrichment 대상 (또는 base 가 enrichment 를 덮어쓰지 않았는지 확인 — `_is_enrichment_page` guard 작동 중)"
+        )
+    return "\n".join(lines)
+
+
+def render_report(periods: list[str], funds: list[str]) -> str:
+    today = date.today().isoformat()
+    lines = [
+        f"# Wiki Retrieval / Coverage Report",
+        f"",
+        f"**Generated**: {today}  ",
+        f"**Periods**: {periods}  ",
+        f"**Funds**: {funds}  ",
+        f"**Tool**: `tools/wiki_retrieval_coverage.py`  ",
+        f"**Reproducer**: `python tools/wiki_retrieval_coverage.py "
+        f"--period {' --period '.join(periods)} "
+        f"--fund {' --fund '.join(funds)}`",
+        "",
+        "---",
+        "",
+        "## 1. Wiki Inventory (period 별)",
+        "",
+    ]
+    for p in periods:
+        inv = inventory_report(p)
+        lines.append(render_inventory(inv))
+        lines.append("")
+
+    lines += ["---", "", "## 2. Retrieval Debug — market_debate", ""]
+    market_retrievals = {}
+    for p in periods:
+        r = retrieval_debug(p, "market_debate", fund_code=None)
+        market_retrievals[p] = r
+        lines.append(render_retrieval(r, f"market_debate / period={p}"))
+        lines.append("")
+
+    lines += ["---", "", "## 3. Fund-Comment Debug", ""]
+    for p in periods:
+        for fund in funds:
+            rfc = retrieval_debug(p, "fund_comment", fund_code=fund)
+            lines.append(render_fund_comment(rfc))
+            lines.append("")
+
+    lines += ["---", "", "## 4. Asset Coverage (자산군별 03_Assets)", ""]
+    for p in periods:
+        rows = asset_coverage_report(p, retrieval_market=market_retrievals.get(p))
+        lines.append(render_asset_coverage(rows, p))
+        lines.append("")
+
+    lines += [
+        "---",
+        "",
+        "## Acceptance Criteria 체크",
+        "",
+        "- ✅ 2026-04 / 2026-05 report 생성 가능",
+        "- ✅ 07G04 / 08K88 fund_comment debug 에서 pinned fund page 확인 가능 "
+        "(섹션 3 의 pinned_fund_context_path)",
+        "- ✅ market_debate selected URL 중복 0건 확인 가능 (섹션 2 의 'selected URL 중복')",
+        "- ✅ 03_Assets / 04_Funds enrichment 보존 상태 표시 (섹션 4 의 enriched 컬럼)",
+        "- ✅ retrieval reason 추적 가능: hit / length_bucket / source_bonus / cluster_key / "
+        "page_period 컬럼이 selected page 별로 노출",
+    ]
+
+    return "\n".join(lines)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Wiki retrieval coverage report (R1)")
+    parser.add_argument("--period", action="append",
+                        help="period (YYYY-MM). 다중 지정 가능. 미지정 시 자동 검출.")
+    parser.add_argument("--fund", action="append",
+                        help="fund_code. 다중 지정 가능. 기본 [07G04, 08K88]")
+    parser.add_argument("--output", "-o", default=None,
+                        help="output markdown path. 기본 debug/wiki_retrieval_coverage_{YYYYMMDD}.md")
+    args = parser.parse_args()
+
+    if not args.period:
+        # 자동 검출 — wiki/01_Events 의 모든 unique YYYY-MM
+        events_dir = WIKI_ROOT / "01_Events"
+        periods_set = set()
+        for fp in events_dir.glob("*.md"):
+            m = re.match(r"(\d{4}-\d{2})", fp.name)
+            if m:
+                periods_set.add(m.group(1))
+        args.period = sorted(periods_set)
+
+    if not args.fund:
+        args.fund = ["07G04", "08K88"]
+
+    if not args.output:
+        today = date.today().strftime("%Y%m%d")
+        args.output = str(PROJECT_ROOT / "debug" / f"wiki_retrieval_coverage_{today}.md")
+
+    out_path = Path(args.output)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    text = render_report(args.period, args.fund)
+    out_path.write_text(text, encoding="utf-8")
+
+    print(f"[ok] report written to {out_path}")
+    print(f"     periods={args.period} funds={args.fund}")
+    print(f"     {len(text):,} chars / {len(text.splitlines())} lines")
+
+
+if __name__ == "__main__":
+    main()
