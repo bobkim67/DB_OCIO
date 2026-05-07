@@ -219,6 +219,7 @@ def load_evidence_content(
         news_cache[month] = idx
         return idx
 
+    UNRESOLVED_TITLE = "(매핑 실패)"
     for ea in evidence_annotations or []:
         aid = ea.get("article_id")
         if not aid:
@@ -231,10 +232,18 @@ def load_evidence_content(
         topic = ea.get("topic") or ""
         all_topics = ea.get("all_topics") or ([topic] if topic else [])
 
+        # R8-A: resolver 가 unresolved 표시 (_resolved=False 또는 placeholder title)
+        resolver_resolved = ea.get("_resolved")
+        is_unresolved = (
+            resolver_resolved is False
+            or title == UNRESOLVED_TITLE
+            or not title
+        )
+
         # body/summary 보강 시도
         summary = ""
         has_body = False
-        if month and news_dir is not None:
+        if not is_unresolved and month and news_dir is not None:
             idx = _load_news_month(month)
             art = idx.get(aid)
             if art:
@@ -242,8 +251,12 @@ def load_evidence_content(
                 if desc:
                     summary = desc[:600]
                     has_body = True
-        if not has_body and not title:
-            warnings.append(f"evidence {aid} has neither title nor body")
+
+        if is_unresolved:
+            warnings.append(
+                f"[unresolved] evidence {aid} has no resolved metadata "
+                f"(title/source/topic missing) — claim extraction will skip"
+            )
 
         contents.append({
             "evidence_id": aid,
@@ -258,6 +271,8 @@ def load_evidence_content(
             "has_body": has_body,
             "linked_sections": list(linked_section_map.get(aid, [])),
             "salience": ea.get("salience"),
+            "resolved": not is_unresolved,
+            "source_type": ea.get("_source_type"),
         })
 
     return contents, warnings
@@ -312,6 +327,10 @@ def extract_claims(
     claims: list[dict] = []
     warnings: list[str] = []
     for idx, c in enumerate(contents):
+        # R8-A: unresolved evidence 는 claim extraction skip — resolver 가 이미
+        # warning 을 남겼고 (load_evidence_content), 빈 메타로 토픽 매칭이 의미 없음.
+        if c.get("resolved") is False:
+            continue
         match_text = " ".join([
             c.get("title") or "",
             c.get("topic") or "",
@@ -321,8 +340,8 @@ def extract_claims(
         topics = _hit_topics(match_text)
         if not topics:
             warnings.append(
-                f"evidence {c['evidence_id']} no topic matched "
-                f"(title={c['title'][:40]!r})"
+                f"[no_topic_matched] evidence {c['evidence_id']} "
+                f"(title={c['title'][:40]!r}) — resolved 이지만 rule 매칭 없음"
             )
             continue
         macro = [t for t in topics if t.startswith("macro:")]

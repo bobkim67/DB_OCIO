@@ -433,48 +433,56 @@ def build_trace(period: str, fund_code: str,
     if not data_snapshot.get("holdings_top3"):
         top_warnings.append("data_snapshot.holdings_top3 비어있음")
 
-    # evidence_annotations 결정 — fund draft 우선, 없으면 market_source 보강
-    evidence_annotations = fund_draft.get("evidence_annotations") or []
-    if not evidence_annotations and market_source_data:
-        evidence_annotations = market_source_data.get("evidence_annotations") or []
-        if evidence_annotations:
-            top_warnings.append(
-                "evidence_annotations sourced from market_source "
-                "(fund draft 에는 없음)"
+    # evidence_annotations 결정 — R8-A: multi-source resolver
+    # P1 fund_draft → P2 market_source → P3 debate_logs → P4/5 news/research.
+    # 기존 합성 (build_evidence_annotations) 만 쓰면 article_id 가 month
+    # window 밖이거나 debate_logs cache 에만 있을 때 모두 '(매핑 실패)' 가
+    # 됐던 문제를 해소.
+    evidence_annotations: list[dict] = []
+    resolution_summary: dict = {}
+    raw_eids: list[str] = []
+
+    # 우선 source 들에서 evidence_id 후보 수집 — fund_draft / market_source
+    # 둘 다 우선이지만 둘 다 있으면 union (id 중복은 첫 등장 우선)
+    if fund_draft.get("evidence_annotations"):
+        for a in fund_draft["evidence_annotations"]:
+            aid = a.get("article_id")
+            if aid and aid not in raw_eids:
+                raw_eids.append(aid)
+    if market_source_data:
+        for a in market_source_data.get("evidence_annotations") or []:
+            aid = a.get("article_id")
+            if aid and aid not in raw_eids:
+                raw_eids.append(aid)
+        for aid in market_source_data.get("_evidence_ids") or []:
+            if aid and aid not in raw_eids:
+                raw_eids.append(aid)
+
+    if raw_eids:
+        try:
+            from tools.evidence_resolver import resolve_evidence_annotations
+            evidence_annotations, resolution_summary = (
+                resolve_evidence_annotations(
+                    raw_eids, period, fund_draft, market_source_data,
+                    PROJECT_ROOT,
+                )
             )
-        else:
-            # Q-FIX-1 이전 quarterly debate 산출물은 _evidence_ids 만 있고
-            # evidence_annotations 가 없을 수 있음. build_evidence_annotations 로
-            # 합성 시도 (LLM 호출 0, 디스크 read 만).
-            raw_eids = market_source_data.get("_evidence_ids") or []
-            if raw_eids:
-                try:
-                    from market_research.report.debate_service import (
-                        build_evidence_annotations,
-                    )
-                    yr = market_source_data.get("year")
-                    months_in = market_source_data.get("months")
-                    if yr is None:
-                        yr = int(period[:4])
-                    if not months_in:
-                        if "Q" in period:
-                            q = int(period[-1])
-                            months_in = [(q - 1) * 3 + i for i in (1, 2, 3)]
-                        else:
-                            months_in = [int(period.split("-")[1])]
-                    evidence_annotations = build_evidence_annotations(
-                        raw_eids, yr, months_in,
-                    )
-                    if evidence_annotations:
-                        top_warnings.append(
-                            f"evidence_annotations synthesized from "
-                            f"market_source._evidence_ids ({len(raw_eids)} ids, "
-                            f"{len(evidence_annotations)} annotations)"
-                        )
-                except Exception as exc:
-                    top_warnings.append(
-                        f"failed to synthesize evidence_annotations: {exc}"
-                    )
+            top_warnings.append(
+                f"evidence resolver: {resolution_summary['resolved_count']}/"
+                f"{len(raw_eids)} resolved "
+                f"(rate={resolution_summary['resolution_rate']}, "
+                f"sources={resolution_summary['source_counts']})"
+            )
+            if resolution_summary["unresolved_count"] > 0:
+                top_warnings.append(
+                    f"evidence resolver: {resolution_summary['unresolved_count']} "
+                    f"ids unresolved → kept as placeholders "
+                    f"(no claim extraction will be attempted)"
+                )
+        except Exception as exc:
+            top_warnings.append(f"evidence resolver failed: {exc}")
+            evidence_annotations = []
+
     if not evidence_annotations:
         top_warnings.append("evidence_annotations 부재 (fund + market_source 모두)")
 
@@ -535,6 +543,7 @@ def build_trace(period: str, fund_code: str,
         "attribution_level": "section",
         "attribution_method_summary": method_summary,
         "citation_validation": citation_validation,
+        "evidence_resolution_summary": resolution_summary or None,
         "sources": {
             "evidence_annotations": evidence_annotations,
             "pinned_fund_context": (fund_draft.get("inputs_used") or {}).get(
