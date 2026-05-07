@@ -505,8 +505,24 @@ def build_trace(period: str, fund_code: str,
         market_source_meta, fund_draft,
     )
 
+    # R7: Evidence Causal Graph (provenance graph 와 별개)
+    # — fail-safe: 어떤 예외도 trace 자체를 막지 않음, warning 으로 surface
+    causal_layer: dict | None = None
+    causal_warnings: list[str] = []
+    try:
+        from tools.causal_graph import build_causal_layer
+        news_dir = PROJECT_ROOT / "market_research" / "data" / "news"
+        causal_layer = build_causal_layer(
+            evidence_annotations or [], attributions,
+            fund_code, period,
+            news_dir=news_dir if news_dir.is_dir() else None,
+        )
+        causal_warnings = list(causal_layer.get("warnings") or [])
+    except Exception as exc:
+        top_warnings.append(f"causal layer build failed: {exc}")
+
     trace_id = f"comment_trace:{fund_code}@{period}"
-    return {
+    out = {
         "schema_version": SCHEMA_VERSION,
         "tool_version": TOOL_VERSION,
         "trace_id": trace_id,
@@ -537,6 +553,18 @@ def build_trace(period: str, fund_code: str,
         "warnings": top_warnings,
         "errors": top_errors,
     }
+    # R7 layer (provenance 와 별도, 기존 schema 깨지 않도록 별 키)
+    if causal_layer is not None:
+        out["causal_schema_version"] = causal_layer.get("schema_version")
+        out["evidence_contents"] = causal_layer.get("evidence_contents")
+        out["causal_claims"] = causal_layer.get("causal_claims")
+        out["causal_paths"] = causal_layer.get("causal_paths")
+        out["graph_seed_causal"] = causal_layer.get("graph_seed_causal")
+        if causal_warnings:
+            out["warnings"] = list(top_warnings) + [
+                f"[causal] {w}" for w in causal_warnings
+            ]
+    return out
 
 
 # ──────────────────────────────────────────────────────────────────
