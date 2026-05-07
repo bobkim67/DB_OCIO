@@ -994,11 +994,16 @@ def _run_agent(agent_type: str, context: dict) -> dict:
             model=persona['model'],
             system=persona['system_prompt'],
             prompt=prompt,
-            max_tokens=1500,
+            # R8-B-impl: schema 에 asset_movement_commentary 추가로 응답 길어짐
+            # 1500 → 2500 (cost 증가 미미, 약 +30%).
+            max_tokens=2500,
             log_label=f'agent_{agent_type}',
         )
         result = _parse_json_response(text)
-        if result:
+        # parse_json_response 는 dict 또는 list 또는 None 반환 가능.
+        # asset_movement_commentary 같은 nested array 가 있는 응답이 잘리면
+        # 외부 object 가 깨져서 array 가 fallback 추출되는 케이스 있음 → dict 보호.
+        if isinstance(result, dict):
             result['agent'] = agent_type
             result['agent_name'] = persona['name']
             return result
@@ -1007,7 +1012,10 @@ def _run_agent(agent_type: str, context: dict) -> dict:
                 'agent': agent_type,
                 'agent_name': persona['name'],
                 'stance': 'neutral',
-                'key_points': [f'JSON 파싱 실패: {text[:200]}'],
+                'key_points': [
+                    f'JSON 파싱 실패 또는 array 반환 (type='
+                    f'{type(result).__name__}): {text[:200]}'
+                ],
                 'raw_text': text,
             }
     except Exception as exc:

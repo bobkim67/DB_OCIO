@@ -58,3 +58,7 @@ debug/*.json
 # Debug 신규 ad-hoc py (이미 commit된 것은 그대로 유지됨 — gitignore는 untracked만 제어)
 debug/*.py
 debug/*.R
+
+# R8-B live smoke — 산출물 (재실행 가능, script 만 tracked)
+debug/r8b_smoke/**/*.json
+debug/r8b_smoke/run.log

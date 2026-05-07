@@ -2690,11 +2690,16 @@ def build_report_prompt(fund_code, year, quarter, data_ctx, inputs,
             bm_lines.append(f'  {name}: {ret:+.2f}%{lv_str}')
     bm_table = '\n'.join(bm_lines)
 
-    # 펀드 성과
+    # 펀드 성과 — R6-A 이후 fund_ret 이 float (adapter) 또는 legacy dict 둘 다 가능
     fund_ret = data_ctx.get('fund_ret')
-    fund_data = f'펀드 수익률 ({period_desc}): {fund_ret["return"]:+.2f}%' if fund_ret else '데이터 없음'
+    if fund_ret is None:
+        fund_data = '데이터 없음'
+    elif isinstance(fund_ret, dict):
+        fund_data = f'펀드 수익률 ({period_desc}): {fund_ret["return"]:+.2f}%'
+    else:
+        fund_data = f'펀드 수익률 ({period_desc}): {float(fund_ret):+.2f}%'
     sub_text = ''
-    if fund_ret and fund_ret.get('sub_returns'):
+    if isinstance(fund_ret, dict) and fund_ret.get('sub_returns'):
         parts = [f'{k}: {v:+.2f}%' for k, v in fund_ret['sub_returns'].items()]
         sub_text = f'\n서브 포트폴리오: {", ".join(parts)} (비중 {cfg.get("sub_ratio", "N/A")})'
 
