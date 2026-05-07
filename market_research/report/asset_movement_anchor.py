@@ -78,9 +78,9 @@ _PA_ALIAS: dict[str, str] = {
 _ASSET_TO_INDICATOR: dict[str, tuple[str, str, str]] = {
     "국내주식": ("MSCI_KOREA", "level_pct", "MSCI Korea Index"),
     "해외주식": ("SP500_TR", "level_pct", "S&P 500 Total Return"),
-    "국내채권": ("BOK_RATE", "bp_diff", "BOK Policy Rate (proxy)"),
+    "국내채권": ("KAP_BOND_TR", "level_pct", "KAP종합채권 (KIS)"),
     "해외채권": ("UST_7_10Y_TR", "level_pct", "UST 7-10Y Total Return"),
-    "크레딧":   ("US_HY_OAS", "bp_diff", "US HY OAS Spread (bp)"),
+    "크레딧":   ("HY_TR", "level_pct", "Bloomberg US HY TR (LF98TRUU)"),
     "현금성":   ("FED_UPPER", "bp_diff", "Fed Funds Upper Bound (bp)"),
     "환율(FX)": ("USDKRW", "level_pct", "USD/KRW"),
     "원자재금": ("GOLD", "level_pct", "Gold Spot"),

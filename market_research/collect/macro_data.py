@@ -69,6 +69,10 @@ SCIP_INDICATORS = {
     'LUATTRUU':      {'dataset_id': 399, 'dataseries_id': 48, 'desc': 'Bloomberg US Treasury TR'},
     'EM_DOLLAR':     {'dataset_id': 419, 'dataseries_id': 48, 'desc': 'JP Morgan EM Currency Index'},
     'UST_7_10Y_TR':  {'dataset_id': 420, 'dataseries_id': 48, 'desc': 'Bloomberg US Treasury 7-10Y TR'},
+
+    # ── 크레딧 TR (Plan B P1) ──
+    'HY_TR':         {'dataset_id': 401, 'dataseries_id': 9,  'desc': 'Bloomberg US HY TR (LF98TRUU)'},
+    'IG_TR':         {'dataset_id': 139, 'dataseries_id': 6,  'desc': 'iShares LQD ETF TR proxy', 'blob_key': 'USD'},
 }
 
 
@@ -252,6 +256,52 @@ def load_scip_indicators(start_date='2024-01-01'):
     finally:
         conn.close()
 
+    return results
+
+
+# ═══════════════════════════════════════════════════════
+# dt.BMJISU 수집 — KIS 채권지수 (한국 채권 BM)
+# ═══════════════════════════════════════════════════════
+
+BMJISU_INDICATORS = {
+    'KAP_BOND_TR': {
+        'index_cd': 'KM000000',
+        'desc': 'KAP종합채권 지수 (dt.BMJISU.F_BOND_INDEX)',
+    },
+}
+
+
+def load_bmjisu_indicators(start_date='2024-01-01'):
+    """dt.BMJISU 한국 채권 BM 일별 시계열 수집.
+
+    F_BOND_INDEX (level) → indicators.csv level_pct 호환.
+    """
+    print("\n── dt.BMJISU (KIS 채권지수) 수집 ──")
+    conn = pymysql.connect(db='dt', **DB_CONFIG)
+    results = {}
+    start_int = start_date.replace('-', '')
+    try:
+        with conn.cursor() as cur:
+            for name, cfg in BMJISU_INDICATORS.items():
+                cur.execute(
+                    "SELECT D_TR_YMD AS ymd, F_BOND_INDEX AS lvl FROM BMJISU "
+                    "WHERE I_INDEX_CD = %s AND D_TR_YMD >= %s "
+                    "ORDER BY D_TR_YMD",
+                    (cfg['index_cd'], start_int))
+                series = {}
+                for r in cur.fetchall():
+                    ymd = str(r['ymd'])
+                    if len(ymd) != 8:
+                        continue
+                    lvl = r['lvl']
+                    if lvl is None:
+                        continue
+                    dt_str = f"{ymd[:4]}-{ymd[4:6]}-{ymd[6:8]}"
+                    series[dt_str] = float(lvl)
+                results[name] = series
+                print(f"  {name}: {len(series)}건 ({cfg['desc']})")
+    finally:
+        conn.close()
     return results
 
 
@@ -916,12 +966,15 @@ def load_news_backfill(pages=5):
 # 통합 저장
 # ═══════════════════════════════════════════════════════
 
-def save_results(scip_data, fred_data, nyfed_data=None, ecos_data=None):
+def save_results(scip_data, fred_data, nyfed_data=None, ecos_data=None,
+                 bmjisu_data=None):
     """JSON + CSV 저장"""
     if nyfed_data is None:
         nyfed_data = {}
     if ecos_data is None:
         ecos_data = {}
+    if bmjisu_data is None:
+        bmjisu_data = {}
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     # 메타 정보 포함 JSON
@@ -931,6 +984,7 @@ def save_results(scip_data, fred_data, nyfed_data=None, ecos_data=None):
         'fred': {},
         'nyfed': {},
         'ecos': {},
+        'bmjisu': {},
     }
     for name, series in scip_data.items():
         combined['scip'][name] = {
@@ -956,6 +1010,12 @@ def save_results(scip_data, fred_data, nyfed_data=None, ecos_data=None):
             'count': len(series),
             'data': series,
         }
+    for name, series in bmjisu_data.items():
+        combined['bmjisu'][name] = {
+            'desc': BMJISU_INDICATORS[name]['desc'],
+            'count': len(series),
+            'data': series,
+        }
 
     with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
         json.dump(combined, f, ensure_ascii=False, indent=2)
@@ -963,7 +1023,8 @@ def save_results(scip_data, fred_data, nyfed_data=None, ecos_data=None):
 
     # 통합 CSV (wide format — 날짜 x 지표)
     all_series = {}
-    for name, series in {**scip_data, **fred_data, **nyfed_data, **ecos_data}.items():
+    for name, series in {**scip_data, **fred_data, **nyfed_data, **ecos_data,
+                         **bmjisu_data}.items():
         all_series[name] = pd.Series(series, dtype=float)
 
     df = pd.DataFrame(all_series)
@@ -987,12 +1048,16 @@ def run(start_date='2024-01-01'):
     fred_data = load_fred_indicators(start_date)
     nyfed_data = load_nyfed_indicators(start_date)
     ecos_data = load_ecos_indicators(start_date)
+    bmjisu_data = load_bmjisu_indicators(start_date)
 
-    df = save_results(scip_data, fred_data, nyfed_data, ecos_data)
+    df = save_results(scip_data, fred_data, nyfed_data, ecos_data,
+                      bmjisu_data=bmjisu_data)
 
     # 요약
-    total = len(scip_data) + len(fred_data) + len(nyfed_data) + len(ecos_data)
-    ok = sum(1 for s in {**scip_data, **fred_data, **nyfed_data, **ecos_data}.values() if s)
+    all_dicts = {**scip_data, **fred_data, **nyfed_data, **ecos_data,
+                 **bmjisu_data}
+    total = len(all_dicts)
+    ok = sum(1 for s in all_dicts.values() if s)
     print(f"\n[완료] {ok}/{total}개 지표 수집 성공")
 
     return df
