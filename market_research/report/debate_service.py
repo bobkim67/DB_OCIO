@@ -548,6 +548,19 @@ def run_debate_and_save(mode: str, year: int, period_num: int,
         'edit_history': [],
     }
 
+    # R8-B wiring: agent + synthesis 단계에서 만든 자산군 anchors / commentary 를
+    # draft 에 보존. fund_comment_service._market_comment_to_inputs 가 pass-through
+    # 로 fund prompt 에 inline 한다. result 에 키가 없으면 skip — backward compat.
+    for _key in (
+        'asset_movement_anchors',
+        'asset_movement_commentary',
+        'asset_movement_commentary_fallback',
+        'asset_movement_commentary_warnings_by_agent',
+        'agents',
+    ):
+        if _key in result:
+            draft_data[_key] = result[_key]
+
     save_draft(period_key, fund_code, draft_data)
 
     eq_record = {
