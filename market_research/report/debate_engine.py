@@ -1017,9 +1017,11 @@ def _run_agent(agent_type: str, context: dict) -> dict:
             model=persona['model'],
             system=persona['system_prompt'],
             prompt=prompt,
-            # R8-B-impl: schema 에 asset_movement_commentary 추가로 응답 길어짐
-            # 1500 → 2500 (cost 증가 미미, 약 +30%).
-            max_tokens=2500,
+            # R8-B-impl: 1500 → 2500 (asset_movement_commentary 추가).
+            # R8-B-2 hotfix: 2500 → 5000. live smoke 에서 풍부한 amc (4 자산군
+            # × 6 필드) 채울 때 ~3500자 응답이 잘려 outer dict `}` 미종료 →
+            # parse fail (list 반환) → fallback path. 5000 으로 충분히 buffer.
+            max_tokens=5000,
             log_label=f'agent_{agent_type}',
         )
         result = _parse_json_response(text)
@@ -1051,15 +1053,27 @@ def _run_agent(agent_type: str, context: dict) -> dict:
                 ]
             return result
         else:
+            # R8-B-2 hotfix: parse fail diagnostic — truncation 의심 시 hint
+            warnings = [
+                f'JSON 파싱 실패 또는 array 반환 (type='
+                f'{type(result).__name__}): {text[:200]}'
+            ]
+            # response 가 잘려 outer dict 종료 안 된 패턴 (max_tokens 부족 의심)
+            stripped = text.strip().rstrip('`').rstrip()
+            if (stripped and not stripped.endswith('}')
+                    and 'asset_movement_commentary' in text):
+                warnings.append(
+                    'parse_failed_by_truncation: response does not end with `}` '
+                    'and contains asset_movement_commentary — consider increasing '
+                    f'max_tokens (current response len={len(text)} chars)'
+                )
             return {
                 'agent': agent_type,
                 'agent_name': persona['name'],
                 'stance': 'neutral',
-                'key_points': [
-                    f'JSON 파싱 실패 또는 array 반환 (type='
-                    f'{type(result).__name__}): {text[:200]}'
-                ],
+                'key_points': warnings,
                 'raw_text': text,
+                'asset_movement_commentary_warnings': warnings[1:] if len(warnings) > 1 else [],
             }
     except Exception as exc:
         return {
