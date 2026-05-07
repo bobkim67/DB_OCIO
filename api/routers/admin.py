@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Query
 
 from ..schemas.admin import (
@@ -89,7 +91,8 @@ from ..services import wiki_coverage_gateway as _wcg
 
 
 def _wc_meta() -> BaseMeta:
-    return BaseMeta(sources=[], warnings=[])
+    return BaseMeta(sources=[], warnings=[],
+                    generated_at=datetime.now(timezone.utc))
 
 
 @router.get(
