@@ -79,6 +79,16 @@ def _market_comment_to_inputs(market_payload: dict) -> dict:
     if ann:
         inputs['evidence_annotations'] = ann
 
+    # R8-B-impl: asset_movement_commentary / asset_movement_anchors pass-through.
+    # debate 가 자산군별 과거 등락 / drivers / outlook / portfolio_implication 을
+    # 구조화해 보내준 결과를 fund_comment prompt 가 우선적으로 사용.
+    amc = market_payload.get('asset_movement_commentary') or []
+    if amc:
+        inputs['asset_movement_commentary'] = amc
+    anchors = market_payload.get('asset_movement_anchors') or None
+    if anchors:
+        inputs['asset_movement_anchors'] = anchors
+
     return inputs
 
 

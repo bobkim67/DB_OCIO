@@ -508,6 +508,18 @@ def build_trace(period: str, fund_code: str,
     # R6-A: draft 에 citation_validation 이 있으면 trace 에 surface (관측용)
     citation_validation = fund_draft.get("citation_validation") or None
 
+    # R8-B-impl: market_source 또는 fund_draft 에 asset_movement_anchors /
+    # asset_movement_commentary 가 있으면 trace 에 surface (관측용)
+    asset_movement_anchors = (
+        (market_source_data or {}).get("asset_movement_anchors")
+        or fund_draft.get("asset_movement_anchors")
+    )
+    asset_movement_commentary = (
+        (market_source_data or {}).get("asset_movement_commentary")
+        or fund_draft.get("asset_movement_commentary")
+        or []
+    )
+
     graph_seed = build_graph_seed(
         fund_code, period, attributions, evidence_annotations,
         market_source_meta, fund_draft,
@@ -544,6 +556,8 @@ def build_trace(period: str, fund_code: str,
         "attribution_method_summary": method_summary,
         "citation_validation": citation_validation,
         "evidence_resolution_summary": resolution_summary or None,
+        "asset_movement_anchors": asset_movement_anchors or None,
+        "asset_movement_commentary": asset_movement_commentary or [],
         "sources": {
             "evidence_annotations": evidence_annotations,
             "pinned_fund_context": (fund_draft.get("inputs_used") or {}).get(

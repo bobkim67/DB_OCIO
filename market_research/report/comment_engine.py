@@ -2721,6 +2721,27 @@ def build_report_prompt(fund_code, year, quarter, data_ctx, inputs,
     if cfg.get('philosophy'):
         fund_info += f'\n운용철학: {cfg["philosophy"]}'
 
+    # R8-B-impl: asset_movement_commentary 가 inputs 에 있으면 anchor 섹션 prepend
+    # (fund_comment 가 시장 narrative 자유문 대신 자산군별 구조화 설명 우선 사용)
+    asset_movement_block = ""
+    amc = inputs.get('asset_movement_commentary') or []
+    if amc:
+        amc_lines = ["## 자산군별 시장 movement (debate 결과)"]
+        for it in amc[:6]:
+            ac = (it or {}).get('asset_class', '?')
+            past = (it or {}).get('past_movement', '')
+            drivers = ", ".join((it or {}).get('drivers') or [])
+            outlook = (it or {}).get('outlook', '')
+            implication = (it or {}).get('portfolio_implication', '')
+            amc_lines.append(f"- [{ac}] 과거: {past}")
+            if drivers:
+                amc_lines.append(f"  drivers: {drivers}")
+            if outlook:
+                amc_lines.append(f"  전망: {outlook}")
+            if implication:
+                amc_lines.append(f"  포지션 함의: {implication}")
+        asset_movement_block = "\n".join(amc_lines)
+
     # evidence list ([ref:N] 인용용, R6-A) — inputs.evidence_annotations 우선,
     # 없으면 빈 섹션. ref 번호는 ann 의 'ref' 필드 값을 그대로 사용 (시장 debate
     # 가 부여한 번호를 펀드 코멘트에서도 재사용 → comment_trace 매핑 일관)
@@ -2857,6 +2878,8 @@ def build_report_prompt(fund_code, year, quarter, data_ctx, inputs,
 
 ## 운용역 판단 (반드시 반영)
 {input_text}{constraint_text}{past_sample}{narrative_text}{pattern_text}{evidence_block}
+
+{asset_movement_block}
 
 위 포맷과 동일한 구조, 톤, 분량으로 {fund_code} ({period_desc}) 보고서를 작성하세요.
 수치는 반드시 제공된 데이터만 사용하세요."""

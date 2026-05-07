@@ -888,19 +888,57 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
         print(f'[asset_coverage] 오류: {e}')
     context['_asset_coverage'] = coverage
 
+    # R8-B-impl: Asset Movement Anchor — 자산군 기준 anchor + evidence/path nesting.
+    # evidence_annotations 가 아직 채워지기 전 단계라 evidence 는 빈 list.
+    # debate_service / _synthesize_debate 에서 evidence 생성 후 다시 채울 수 있음.
+    # 이 단계에서는 BM 변동 + GraphRAG transmission_paths 매칭만 시도.
+    try:
+        from market_research.report.asset_movement_anchor import (
+            build_asset_movement_anchors, format_anchors_for_prompt,
+        )
+        ind_csv = BASE_DIR / 'data' / 'macro' / 'indicators.csv'
+        # transmission_paths 를 R7 path-shaped 로 변환 — selected_path_labels 의
+        # path_id 가 GraphRAG (not R7 PATH_TEMPLATES) 라 매칭률은 낮지만 유효
+        anchor_paths = []
+        for p in (graph_trace.get('selected_path_labels') or []):
+            anchor_paths.append({
+                'path_id': str(p.get('idx', '?')),
+                'label': str((p.get('labels') or '?')),
+                'confidence': p.get('confidence'),
+                'covered_chain_nodes': [],
+                'supporting_evidence_ids': [],
+                'chain': [],
+            })
+        anchors = build_asset_movement_anchors(
+            period=f"{year}-{month:02d}",
+            fund_code=fund_code,
+            causal_paths=anchor_paths,
+            evidence_annotations=[],  # debate 단계 이전에 빈 list
+            indicators_csv_path=ind_csv if ind_csv.exists() else None,
+        )
+        context['asset_movement_anchors_text'] = format_anchors_for_prompt(anchors)
+        context['_asset_movement_anchors'] = anchors
+    except Exception as e:
+        context['asset_movement_anchors_text'] = ''
+        context['_asset_movement_anchors'] = None
+        print(f'[asset_movement_anchor] 오류: {e}')
+
     return context
 
 
 def _build_agent_prompt(agent_type: str, context: dict) -> str:
     """에이전트별 프롬프트 생성"""
+    # R8-B-impl: Asset Movement Anchors 가 가장 윗단 (자산군 1차 unit).
+    anchor_block = context.get('asset_movement_anchors_text') or ''
     shared = (
         f'## {context["year"]}년 {context["month"]}월 시장 분석\n\n'
-        f'{context.get("news_summary_text", "(뉴스 데이터 없음)")}\n\n'
-        f'{context.get("indicators_text", "(지표 데이터 없음)")}\n\n'
-        f'{context.get("timeseries_narrative_text", "")}\n\n'
-        f'{context.get("graph_paths_text", "")}\n\n'
-        f'{context.get("wiki_context_text", "")}\n\n'
-        f'{context.get("asset_coverage_text", "")}\n'
+        + (anchor_block + '\n\n' if anchor_block else '')
+        + f'{context.get("news_summary_text", "(뉴스 데이터 없음)")}\n\n'
+        + f'{context.get("indicators_text", "(지표 데이터 없음)")}\n\n'
+        + f'{context.get("timeseries_narrative_text", "")}\n\n'
+        + f'{context.get("graph_paths_text", "")}\n\n'
+        + f'{context.get("wiki_context_text", "")}\n\n'
+        + f'{context.get("asset_coverage_text", "")}\n'
     )
 
     if agent_type == 'monygeek':
@@ -923,11 +961,19 @@ def _build_agent_prompt(agent_type: str, context: dict) -> str:
         f'\n위 데이터를 바탕으로 {context["year"]}년 {context["month"]}월 시장을 분석하세요.\n\n'
         '응답: 반드시 유효한 JSON 객체 하나만 출력. 설명 텍스트 금지.\n'
         '각 문자열 값 안에 줄바꿈 금지. key_points 최대 5개(각 100자), '
-        'tail_risks 최대 3개(각 80자), reasoning 200자 이내.\n\n'
+        'tail_risks 최대 3개(각 80자), reasoning 200자 이내.\n'
+        # R8-B-impl: asset_movement_commentary — 자산군별 과거 등락/원인/전망/포지션 함의.
+        # Asset Movement Anchors 의 importance rank 상위 자산군부터 작성. 빈 list 허용.
+        'asset_movement_commentary 는 importance rank 상위 자산군 5개 이내, 각 항목 '
+        'commentary/outlook 80자 이내, drivers 최대 3개. 자산군이 anchor 에 없으면 생략.\n\n'
         '{"stance":"bullish|bearish|neutral","key_points":["포인트1","포인트2"],'
         '"risk_assessment":"리스크요약",'
         '"asset_allocation_view":{"국내주식":"비중확대|유지|축소","국내채권":"비중확대|유지|축소",'
         '"해외주식":"비중확대|유지|축소","해외채권":"비중확대|유지|축소"},'
+        '"asset_movement_commentary":[{"asset_class":"해외주식",'
+        '"past_movement":"-X%","drivers":["성장주조정","금리변동성"],'
+        '"causal_paths":["geopolitical_oil_inflation_rates_growth"],'
+        '"outlook":"...","portfolio_implication":"..."}],'
         '"tail_risks":["꼬리리스크1"],"reasoning":"분석근거"}'
     )
 
@@ -1362,6 +1408,25 @@ def run_market_debate(year: int, month: int,
         'asset_coverage_pass': asset_pass,
     }
 
+    # R8-B-impl: agent 측 asset_movement_commentary union (dedupe by asset_class,
+    # 각 자산군에서 confidence 가 가장 높은 항목을 채택. importance rank 정렬)
+    amc_pool: dict[str, dict] = {}
+    for resp in agent_responses.values():
+        for item in (resp.get('asset_movement_commentary') or []):
+            ac = (item or {}).get('asset_class')
+            if not ac:
+                continue
+            # 첫 등장 우선. 추후 LLM extractor 시 점수 기반 dedup 가능.
+            if ac not in amc_pool:
+                amc_pool[ac] = item
+    anchors = context.get('_asset_movement_anchors') or {}
+    rank_by_ac = {a['asset_class']: a.get('movement_rank', 99)
+                   for a in (anchors.get('asset_movements') or [])}
+    asset_movement_commentary_union = sorted(
+        amc_pool.values(),
+        key=lambda x: rank_by_ac.get(x.get('asset_class'), 99),
+    )
+
     result = {
         'year': year,
         'month': month,
@@ -1372,6 +1437,9 @@ def run_market_debate(year: int, month: int,
         'debate_narrative': debate_interp,
         '_evidence_ids': context.get('_evidence_ids', []),
         '_debug_trace': debug_trace,  # admin/debug 전용 — client DTO 에 미노출
+        # R8-B-impl: asset movement layer (input anchors + agent commentary union)
+        'asset_movement_anchors': anchors or None,
+        'asset_movement_commentary': asset_movement_commentary_union,
     }
 
     # ── 디버그 로그 저장 ──
