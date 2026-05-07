@@ -174,6 +174,8 @@ function TraceDetail({
   const summary = trace.attribution_method_summary ?? {};
   const sections: any[] = trace.section_attribution ?? [];
   const graph = trace.graph_seed ?? { nodes: [], edges: [] };
+  const causalGraph = trace.graph_seed_causal ?? null;
+  const causalPaths: any[] = trace.causal_paths ?? [];
   const sources = trace.sources ?? {};
   const warnings: string[] = trace.warnings ?? [];
   const errors: string[] = trace.errors ?? [];
@@ -329,7 +331,41 @@ function TraceDetail({
       </div>
 
       {/* R5-B Graph View (cytoscape) */}
-      <AdminCommentTraceGraph graph={graph} />
+      <AdminCommentTraceGraph provenance={graph} causal={causalGraph} />
+
+      {causalPaths.length > 0 && (
+        <div style={CARD}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
+            Causal Paths (R7) · {causalPaths.length}
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse" as const, fontSize: 11 }}>
+            <thead>
+              <tr>
+                <th style={TH}>path_id</th>
+                <th style={TH}>label</th>
+                <th style={TH}>cov</th>
+                <th style={TH}>evidence</th>
+                <th style={TH}>sections</th>
+                <th style={TH}>conf</th>
+              </tr>
+            </thead>
+            <tbody>
+              {causalPaths.map((p) => (
+                <tr key={p.path_id}>
+                  <td style={TD}>{p.path_id}</td>
+                  <td style={{ ...TD, fontFamily: "inherit" }}>{p.label}</td>
+                  <td style={TD}>
+                    {(p.covered_chain_nodes?.length ?? 0)}/{(p.chain?.length ?? 0)}
+                  </td>
+                  <td style={TD}>{p.supporting_evidence_ids?.length ?? 0}</td>
+                  <td style={TD}>{p.linked_sections?.length ?? 0}</td>
+                  <td style={TD}>{p.confidence}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Raw JSON */}
       <div style={CARD}>
