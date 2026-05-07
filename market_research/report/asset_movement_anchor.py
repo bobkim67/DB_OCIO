@@ -520,6 +520,81 @@ def build_asset_movement_anchors(
 # Prompt formatter — debate / fund_comment 용
 # ──────────────────────────────────────────────────────────────────
 
+def build_amc_fallback(anchors: dict | None, top_n: int = 3) -> list[dict]:
+    """R8-B-2: anchors → deterministic asset_movement_commentary stub (LLM 미사용).
+
+    importance rank 상위 top_n 자산군에 대해 anchor 의 BM/path/topic 만 합성.
+    drivers / outlook / portfolio_implication 은 정성 stub (admin 검수 필요 명시).
+
+    agent 가 amc 를 비워둔 경우 admin 이 fallback 을 참고하여 수동 보정 가능.
+    `result['asset_movement_commentary']` 자체를 덮어쓰지 않고 별도 field 로 surface.
+    """
+    if not anchors:
+        return []
+    out: list[dict] = []
+    movements = (anchors.get("asset_movements") or [])
+    # importance rank 정렬 (이미 movement_rank 채워져 있으므로 그 기준으로)
+    sorted_mv = sorted(movements, key=lambda a: a.get("movement_rank", 99))
+    for a in sorted_mv[:top_n]:
+        bm = a.get("bm") or {}
+        ret = bm.get("return_pct")
+        diff = bm.get("diff_bp")
+        if ret is not None:
+            past = f"{bm.get('name', '?')} {ret:+.2f}%"
+        elif diff is not None:
+            past = f"{bm.get('name', '?')} {diff:+.0f}bp"
+        else:
+            past = "수익률 미확인 — 정성 평가"
+        causal = [(p.get("path_id") or "?")
+                   for p in (a.get("causal_paths") or [])][:2]
+        drivers = list(a.get("topic_tags") or [])[:3]
+        out.append({
+            "asset_class": a.get("asset_class"),
+            "past_movement": past,
+            "drivers": drivers,
+            "causal_paths": causal,
+            "outlook": "(deterministic fallback — agent 미생성, admin 검수 필요)",
+            "portfolio_implication": "(deterministic fallback — agent 미생성, admin 검수 필요)",
+            "_source": "fallback",
+        })
+    return out
+
+
+def validate_amc_response(amc: list | None) -> list[str]:
+    """R8-B-2: agent 의 asset_movement_commentary 반환을 검증.
+
+    Returns warning 메시지 list. 빈 list 면 valid.
+    agent output 자체는 변경하지 않음 (caller 가 warnings 별도 field 로 보존).
+    """
+    warnings: list[str] = []
+    if amc is None:
+        warnings.append("asset_movement_commentary missing (key absent)")
+        return warnings
+    if not isinstance(amc, list):
+        warnings.append(f"asset_movement_commentary not a list "
+                        f"(type={type(amc).__name__})")
+        return warnings
+    if len(amc) == 0:
+        warnings.append("asset_movement_commentary is empty (R8-B-2 require ≥3)")
+        return warnings
+    if len(amc) < 3:
+        warnings.append(
+            f"asset_movement_commentary has only {len(amc)} item(s); "
+            f"R8-B-2 requires ≥3"
+        )
+    REQUIRED = ("asset_class", "past_movement", "drivers", "causal_paths",
+                "outlook", "portfolio_implication")
+    for i, item in enumerate(amc):
+        if not isinstance(item, dict):
+            warnings.append(f"amc[{i}] is not a dict (type={type(item).__name__})")
+            continue
+        for f in REQUIRED:
+            v = item.get(f)
+            if v is None or v == "" or v == []:
+                warnings.append(f"amc[{i}].{f} missing or empty")
+    return warnings
+
+
 def format_anchors_for_prompt(anchors: dict, max_per_anchor: int = 5) -> str:
     """anchor list 를 prompt-friendly text 로 직렬화.
 

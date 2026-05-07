@@ -959,21 +959,44 @@ def _build_agent_prompt(agent_type: str, context: dict) -> str:
 
     shared += (
         f'\n위 데이터를 바탕으로 {context["year"]}년 {context["month"]}월 시장을 분석하세요.\n\n'
-        '응답: 반드시 유효한 JSON 객체 하나만 출력. 설명 텍스트 금지.\n'
+        '## 응답 형식 (반드시 준수)\n'
+        '응답은 유효한 JSON 객체 하나만 출력. 설명 텍스트 / 코드블록 / 주석 금지.\n'
         '각 문자열 값 안에 줄바꿈 금지. key_points 최대 5개(각 100자), '
-        'tail_risks 최대 3개(각 80자), reasoning 200자 이내.\n'
-        # R8-B-impl: asset_movement_commentary — 자산군별 과거 등락/원인/전망/포지션 함의.
-        # Asset Movement Anchors 의 importance rank 상위 자산군부터 작성. 빈 list 허용.
-        'asset_movement_commentary 는 importance rank 상위 자산군 5개 이내, 각 항목 '
-        'commentary/outlook 80자 이내, drivers 최대 3개. 자산군이 anchor 에 없으면 생략.\n\n'
+        'tail_risks 최대 3개(각 80자), reasoning 200자 이내.\n\n'
+        # R8-B-2: asset_movement_commentary 필수 강화
+        '## asset_movement_commentary (필수, R8-B-2 강화)\n'
+        '- 빈 배열 금지. 반드시 3개 이상의 자산군 항목을 작성.\n'
+        '- 위 "Asset Movement Anchors" 의 importance rank 상위 자산군부터 선택.\n'
+        '- 우선순위: 해외주식 / 국내채권 / 환율(FX) / 원자재금 / 국내주식.\n'
+        '- 각 항목은 6개 필드를 모두 채울 것: '
+        'asset_class / past_movement / drivers / causal_paths / outlook / portfolio_implication.\n'
+        '- past_movement 의 수치는 anchor 에 있는 값만 그대로 사용. anchor 에 BM 값이 '
+        '없으면 "수익률 미확인 — 정성 평가" 같은 정성 표현 사용 (수치 임의 생성 금지).\n'
+        '- drivers 최대 3개 (각 30자), outlook 80자 이내, portfolio_implication 80자 이내.\n'
+        '- causal_paths 는 anchor 의 path_id 또는 GraphRAG path label 그대로 인용.\n'
+        '- fund BM 이 없는 자산군에 대해 alpha / 초과수익률 언급 금지.\n\n'
+        '## 응답 schema (예시)\n'
         '{"stance":"bullish|bearish|neutral","key_points":["포인트1","포인트2"],'
         '"risk_assessment":"리스크요약",'
         '"asset_allocation_view":{"국내주식":"비중확대|유지|축소","국내채권":"비중확대|유지|축소",'
         '"해외주식":"비중확대|유지|축소","해외채권":"비중확대|유지|축소"},'
-        '"asset_movement_commentary":[{"asset_class":"해외주식",'
-        '"past_movement":"-X%","drivers":["성장주조정","금리변동성"],'
+        '"asset_movement_commentary":['
+        '{"asset_class":"해외주식","past_movement":"미국 성장주 -3%대 조정",'
+        '"drivers":["성장주 밸류에이션 부담","금리 변동성","지정학 리스크"],'
         '"causal_paths":["geopolitical_oil_inflation_rates_growth"],'
-        '"outlook":"...","portfolio_implication":"..."}],'
+        '"outlook":"조정 이후 밸류에이션 회복 가능성 주목",'
+        '"portfolio_implication":"성장주 OW 유지, 변동성 확대 시 분할 조정"},'
+        '{"asset_class":"국내채권","past_movement":"수익률 미확인 — 정성 평가",'
+        '"drivers":["통화정책 기대 변화","WGBI 외국인 수급"],'
+        '"causal_paths":["rates_domestic_bond"],'
+        '"outlook":"금리 상단 인식 + 수급 우호적",'
+        '"portfolio_implication":"국내채권 듀레이션 점진적 확대"},'
+        '{"asset_class":"환율(FX)","past_movement":"USDKRW +1.7%",'
+        '"drivers":["달러 강세","외인 자금 흐름"],'
+        '"causal_paths":["fx_translation_overseas_assets"],'
+        '"outlook":"단기 변동성 확대",'
+        '"portfolio_implication":"해외자산 환헤지 비율 점검"}'
+        '],'
         '"tail_risks":["꼬리리스크1"],"reasoning":"분석근거"}'
     )
 
@@ -1006,6 +1029,26 @@ def _run_agent(agent_type: str, context: dict) -> dict:
         if isinstance(result, dict):
             result['agent'] = agent_type
             result['agent_name'] = persona['name']
+            # R8-B-2: amc 검증 + fallback surface (agent output 무수정)
+            try:
+                from market_research.report.asset_movement_anchor import (
+                    validate_amc_response, build_amc_fallback,
+                )
+                amc_warnings = validate_amc_response(
+                    result.get('asset_movement_commentary'),
+                )
+                if amc_warnings:
+                    result['asset_movement_commentary_warnings'] = amc_warnings
+                # fallback 은 항상 surface (admin 검수 자료 — agent amc 와 별개)
+                fallback = build_amc_fallback(
+                    context.get('_asset_movement_anchors'), top_n=3,
+                )
+                if fallback:
+                    result['asset_movement_commentary_fallback'] = fallback
+            except Exception as exc:
+                result['asset_movement_commentary_warnings'] = [
+                    f'guard/fallback failed: {exc}'
+                ]
             return result
         else:
             return {
@@ -1435,6 +1478,20 @@ def run_market_debate(year: int, month: int,
         key=lambda x: rank_by_ac.get(x.get('asset_class'), 99),
     )
 
+    # R8-B-2: per-agent amc warning 합산 (admin 검수용)
+    amc_warnings_by_agent: dict[str, list[str]] = {}
+    for ag, resp in agent_responses.items():
+        ws = resp.get('asset_movement_commentary_warnings') or []
+        if ws:
+            amc_warnings_by_agent[ag] = list(ws)
+
+    # R8-B-2: deterministic fallback (anchors 기반, agent 미생성 시 admin 보정 자료)
+    try:
+        from market_research.report.asset_movement_anchor import build_amc_fallback
+        amc_fallback = build_amc_fallback(anchors, top_n=3) if anchors else []
+    except Exception:
+        amc_fallback = []
+
     result = {
         'year': year,
         'month': month,
@@ -1448,6 +1505,9 @@ def run_market_debate(year: int, month: int,
         # R8-B-impl: asset movement layer (input anchors + agent commentary union)
         'asset_movement_anchors': anchors or None,
         'asset_movement_commentary': asset_movement_commentary_union,
+        # R8-B-2: agent 가 amc 를 비웠을 때 admin 검수용 별도 field
+        'asset_movement_commentary_fallback': amc_fallback,
+        'asset_movement_commentary_warnings_by_agent': amc_warnings_by_agent,
     }
 
     # ── 디버그 로그 저장 ──
