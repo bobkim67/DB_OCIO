@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import csv
 import re
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -139,31 +139,36 @@ PERIOD_QUARTER_RE = re.compile(r"^(\d{4})-Q([1-4])$")
 
 
 def _period_dates(period: str) -> tuple[date, date] | tuple[None, None]:
-    """period → (start_date, end_date) — month-end 기준."""
+    """period → (start_date, end_date).
+
+    월간 수익률 표준 정의에 맞춰 start = 전월 마지막 calendar day,
+    end = 당월 마지막 calendar day. 분기도 동일 (직전 분기말).
+    이는 comment_engine._load_bm_returns_for_range 의 prev_last/cur_last 패턴
+    (전월말 → 당월말) 과 정합성 유지하기 위함.
+    csv 에 해당 calendar day row 가 없으면 (휴일/주말) 기존 in-range filter 가
+    가까운 영업일로 자연 fallback.
+    """
     m = PERIOD_QUARTER_RE.match(period)
     if m:
         yr, q = int(m.group(1)), int(m.group(2))
         start_month = (q - 1) * 3 + 1
         end_month = start_month + 2
-        start = date(yr, start_month, 1)
-        # end 의 last day 는 단순히 다음달 1일 - 1일
+        # start = 직전 분기 마지막 calendar day (분기 첫달 1일 - 1일)
+        start = date(yr, start_month, 1) - timedelta(days=1)
         if end_month == 12:
             end = date(yr, 12, 31)
         else:
-            end = date(yr, end_month + 1, 1).fromordinal(
-                date(yr, end_month + 1, 1).toordinal() - 1
-            )
+            end = date(yr, end_month + 1, 1) - timedelta(days=1)
         return start, end
     m = PERIOD_MONTH_RE.match(period)
     if m:
         yr, mo = int(m.group(1)), int(m.group(2))
-        start = date(yr, mo, 1)
+        # start = 전월 마지막 calendar day (당월 1일 - 1일)
+        start = date(yr, mo, 1) - timedelta(days=1)
         if mo == 12:
             end = date(yr, 12, 31)
         else:
-            end = date(yr, mo + 1, 1).fromordinal(
-                date(yr, mo + 1, 1).toordinal() - 1
-            )
+            end = date(yr, mo + 1, 1) - timedelta(days=1)
         return start, end
     return None, None
 
