@@ -127,6 +127,28 @@ def daily_update(date_str: str = None, dry_run: bool = False) -> dict:
         print(f'  Base wiki 생성 실패: {exc}')
         result['steps']['wiki_base'] = {'status': 'error', 'error': str(exc)}
 
+    # ── Step 2.7: Claim extractor 정기 batch (R9-A.4, skeleton, default OFF) ──
+    # mini-spec docs/r9a4_minispec.md §3 — Refine 직후 / GraphRAG 직전.
+    # Commit 1 단계 — feature flag default OFF, 실제 LLM/write 는 Commit 2+
+    # 에서. daily_update 전체 흐름 graceful 보장 (D-6).
+    print(f'\n[Step 2.7] Claim extractor (R9-A.4 skeleton)...')
+    try:
+        from market_research.pipeline.claim_extract_step import (
+            step_claim_extract,
+        )
+        claim_result = step_claim_extract(month_str)
+        result['steps']['claim_extract'] = claim_result
+        print(f'  → status={claim_result["status"]} '
+              f'enabled={claim_result["enabled"]} '
+              f'llm_calls={claim_result["llm_calls"]} '
+              f'writes={claim_result["writes"]}')
+    except Exception as exc:
+        # daily_update 전체 graceful — Step 2.7 실패해도 보고서 build 계속.
+        print(f'  Step 2.7 실패 (graceful skip): {exc}')
+        result['steps']['claim_extract'] = {
+            'status': 'error', 'error': str(exc),
+        }
+
     if dry_run:
         print(f'\n  [dry-run] GraphRAG/델타 생략')
         result['dry_run'] = True
