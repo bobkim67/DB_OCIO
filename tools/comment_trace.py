@@ -56,6 +56,8 @@ TRACE_OUT_DIR = PROJECT_ROOT / "debug" / "comment_trace"
 
 SECTION_HEADER_RE = re.compile(r"^■\s+(.+)$", re.MULTILINE)
 REF_RE = re.compile(r"\[ref:(\d+)\]")
+# R9-A.5: claim reference (10-hex strict). evidence_trace.CLAIM_REF_RE 와 동일.
+CLAIM_REF_RE = re.compile(r"\[claim:([0-9a-fA-F]{10})\]")
 SLUG_NONWORD_RE = re.compile(r"\W+")
 
 
@@ -223,8 +225,14 @@ def split_sections(comment_text: str) -> list[dict]:
 def attribute_section(section: dict,
                        evidence_annotations: list[dict],
                        market_source_data: dict | None,
-                       fund_draft: dict) -> dict:
-    """section 내용 분석 → ref_ids / evidence_ids / asset / metric / warnings."""
+                       fund_draft: dict,
+                       canonical_claims_by_hash: dict[str, dict] | None = None) -> dict:
+    """section 내용 분석 → ref_ids / evidence_ids / asset / metric / warnings.
+
+    R9-A.5: canonical_claims_by_hash 가 주어지면 [claim:hash10] 도 추출 후
+    matched / unmatched 분리해서 claim_refs / claim_attributions 첨부.
+    None 이면 R9-A.5 surface 0 (기존 회귀 보호).
+    """
     text = section["text"]
     ref_ids = sorted({int(m.group(1)) for m in REF_RE.finditer(text)})
     asset_classes = [ac for ac in ASSET_CLASSES if ac in text]
@@ -272,6 +280,48 @@ def attribute_section(section: dict,
         ms_trace = market_source_data.get("_debug_trace") or {}
         wiki_pages = list(ms_trace.get("wiki_context_pages") or [])
 
+    # R9-A.5: claim ref attribution. canonical_claims_by_hash=None 이면
+    # surface 0 (기존 호출자 회귀 보호 — 추출 자체 skip).
+    claim_hashes: list[str] = []
+    claim_attributions: list[dict] = []
+    claim_unmatched: list[str] = []
+    if canonical_claims_by_hash is not None:
+        claim_hashes_all = [m.group(1) for m in CLAIM_REF_RE.finditer(text)]
+        claim_hashes = sorted(set(claim_hashes_all))
+        for h in claim_hashes:
+            c = canonical_claims_by_hash.get(h)
+            if c:
+                cid = c.get("claim_id") or ""
+                period = c.get("period") or ""
+                wiki_path = (
+                    f"08_Claims/{period}_claim_{h}.md"
+                    if period and h else None
+                )
+                short = (c.get("claim_text") or "").strip()
+                if len(short) > 80:
+                    short = short[:79].rstrip() + "…"
+                claim_attributions.append({
+                    "hash10": h,
+                    "claim_id": cid,
+                    "wiki_path": wiki_path,
+                    "supporting_evidence_ids":
+                        list(c.get("supporting_evidence_ids") or []),
+                    "claim_text_short": short,
+                    "matched": True,
+                })
+            else:
+                claim_unmatched.append(h)
+                claim_attributions.append({
+                    "hash10": h,
+                    "claim_id": None,
+                    "wiki_path": None,
+                    "supporting_evidence_ids": [],
+                    "claim_text_short": None,
+                    "matched": False,
+                })
+                warnings.append(
+                    f"[claim:{h}] not in canonical_claims for this period")
+
     return {
         "section_id": section["section_id"],
         "section_title": section["section_title"],
@@ -282,6 +332,10 @@ def attribute_section(section: dict,
         "wiki_pages": wiki_pages,
         "asset_classes_mentioned": asset_classes,
         "fund_data_keys": fund_data_keys,
+        # R9-A.5 — claim 인용 surface (canonical_claims_by_hash 가 없으면 빈 list)
+        "claim_refs": claim_hashes,
+        "claim_attributions": claim_attributions,
+        "claim_unmatched": claim_unmatched,
         "warnings": warnings,
     }
 
@@ -491,11 +545,45 @@ def build_trace(period: str, fund_code: str,
     comment_text = (fund_draft.get("draft_comment_raw")
                     or fund_draft.get("draft_comment") or "")
 
-    # section split + attribution
+    # R9-A.5: canonical claims 로드 (read-only, LLM 호출 0).
+    # store 결손 / period 무효 / 매칭 0 모두 graceful — claim surface 만 dormant.
+    canonical_claims_by_hash: dict[str, dict] = {}
+    canonical_claim_load_warning: str | None = None
+    try:
+        from market_research.analyze.claim_store import (
+            select_promoted_claims_for_period,
+        )
+        # period 가 분기 형식 ('2026-Q1') 일 수 있음 — claim store 는 월별 저장.
+        # 분기일 경우 해당 분기에 속한 3개월 union 으로 매핑 시도.
+        target_periods: list[str] = []
+        m = re.fullmatch(r"^(\d{4})-Q([1-4])$", period)
+        if m:
+            y = int(m.group(1))
+            q = int(m.group(2))
+            base = (q - 1) * 3 + 1
+            for off in range(3):
+                target_periods.append(f"{y}-{base + off:02d}")
+        else:
+            target_periods.append(period)
+        for p in target_periods:
+            for c in select_promoted_claims_for_period(p, max_claims=64) or []:
+                cid = c.get("claim_id") or ""
+                if isinstance(cid, str) and cid.startswith("claim:"):
+                    h = cid.rsplit(":", 1)[-1]
+                    canonical_claims_by_hash.setdefault(h, c)
+    except Exception as exc:
+        canonical_claim_load_warning = (
+            f"canonical claim load failed: {exc} "
+            "(claim trace surface dormant)"
+        )
+
+    # section split + attribution (canonical_claims_by_hash 가 비어있으면
+    # claim_refs/claim_attributions 도 자연스럽게 빈 list 만 나옴)
     sections = split_sections(comment_text)
     attributions = [
         attribute_section(s, evidence_annotations,
-                          market_source_data, fund_draft)
+                          market_source_data, fund_draft,
+                          canonical_claims_by_hash=canonical_claims_by_hash)
         for s in sections
     ]
 
@@ -504,6 +592,47 @@ def build_trace(period: str, fund_code: str,
         method_summary[a["attribution_method"]] = (
             method_summary.get(a["attribution_method"], 0) + 1
         )
+
+    # R9-A.5: claim citation summary aggregate
+    total_claim_refs = 0  # 등장 횟수 (중복 포함)
+    matched_count = 0
+    unmatched_count = 0
+    unmatched_hashes_acc: set[str] = set()
+    matched_hashes_acc: set[str] = set()
+    sections_with_claim = 0
+    sections_without_claim = 0
+    for a in attributions:
+        crefs = a.get("claim_refs") or []
+        # text 에 등장한 raw count 도 집계 — char_range 로 재추출
+        s_text = comment_text[a["char_range"][0]:a["char_range"][1]]
+        all_in_section = CLAIM_REF_RE.findall(s_text)
+        total_claim_refs += len(all_in_section)
+        if crefs:
+            sections_with_claim += 1
+        else:
+            sections_without_claim += 1
+        for ca in a.get("claim_attributions") or []:
+            if ca.get("matched"):
+                matched_hashes_acc.add(ca["hash10"])
+                matched_count += sum(1 for x in all_in_section
+                                      if x == ca["hash10"])
+            else:
+                unmatched_hashes_acc.add(ca["hash10"])
+                unmatched_count += sum(1 for x in all_in_section
+                                        if x == ca["hash10"])
+    claim_citation_summary = {
+        "total_claim_refs": total_claim_refs,
+        "unique_matched_claims": sorted(matched_hashes_acc),
+        "unique_unmatched_hashes": sorted(unmatched_hashes_acc),
+        "matched_count": matched_count,
+        "unmatched_count": unmatched_count,
+        "sections_with_claim_count": sections_with_claim,
+        "sections_without_claim_count": sections_without_claim,
+        "canonical_pool_size": len(canonical_claims_by_hash),
+        "load_warning": canonical_claim_load_warning,
+    }
+    if canonical_claim_load_warning:
+        top_warnings.append(canonical_claim_load_warning)
 
     # R6-A: draft 에 citation_validation 이 있으면 trace 에 surface (관측용)
     citation_validation = fund_draft.get("citation_validation") or None
@@ -555,6 +684,8 @@ def build_trace(period: str, fund_code: str,
         "attribution_level": "section",
         "attribution_method_summary": method_summary,
         "citation_validation": citation_validation,
+        # R9-A.5: claim trace surface (sectionAttribution 의 claim_* 필드 합산)
+        "claim_citation_summary": claim_citation_summary,
         "evidence_resolution_summary": resolution_summary or None,
         "asset_movement_anchors": asset_movement_anchors or None,
         "asset_movement_commentary": asset_movement_commentary or [],
