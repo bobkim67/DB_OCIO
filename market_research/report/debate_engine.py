@@ -888,6 +888,25 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
         print(f'[asset_coverage] 오류: {e}')
     context['_asset_coverage'] = coverage
 
+    # R9-A.3: canonical claim store read-only load. write 0, LLM 호출 0.
+    # claim store 결손 / promotion 0 모두 graceful → context['claims'] = [].
+    period_str = f"{year}-{month:02d}"
+    promoted_claims: list[dict] = []
+    try:
+        from market_research.analyze.claim_store import (
+            select_promoted_claims_for_period,
+        )
+        promoted_claims = select_promoted_claims_for_period(
+            period=period_str,
+            fund_code=fund_code,
+            max_claims=8,
+        ) or []
+    except Exception as e:
+        promoted_claims = []
+        print(f'[claim_store] read-side 오류: {e}')
+    context['_canonical_claims'] = promoted_claims
+    context['claims_text'] = _format_claims_for_context(promoted_claims)
+
     # R8-B-impl: Asset Movement Anchor — 자산군 기준 anchor + evidence/path nesting.
     # evidence_annotations 가 아직 채워지기 전 단계라 evidence 는 빈 list.
     # debate_service / _synthesize_debate 에서 evidence 생성 후 다시 채울 수 있음.
@@ -910,11 +929,12 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
                 'chain': [],
             })
         anchors = build_asset_movement_anchors(
-            period=f"{year}-{month:02d}",
+            period=period_str,
             fund_code=fund_code,
             causal_paths=anchor_paths,
             evidence_annotations=[],  # debate 단계 이전에 빈 list
             indicators_csv_path=ind_csv if ind_csv.exists() else None,
+            claims=promoted_claims,  # R9-A.3 read-only attach
         )
         context['asset_movement_anchors_text'] = format_anchors_for_prompt(anchors)
         context['_asset_movement_anchors'] = anchors
@@ -926,13 +946,70 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
     return context
 
 
+# ──────────────────────────────────────────────────────────────────
+# R9-A.3 — Canonical Claims block (debate shared context)
+# ──────────────────────────────────────────────────────────────────
+
+def _format_claims_for_context(
+    claims: list[dict] | None,
+    *, max_claims: int = 8, text_truncate: int = 180,
+) -> str:
+    """promoted claims → debate shared context block (read-only).
+
+    Renders short lines per claim; preserves [claim:hash10] anchor for
+    downstream evidence_trace surface. claims 비어있으면 빈 문자열 반환
+    (block 전체 skip — 기존 prompt 길이/순서 변경 0).
+    """
+    if not isinstance(claims, list) or not claims:
+        return ''
+    items = claims[:max_claims]
+    lines: list[str] = ['## Canonical Claims (R9-A.3, 참고용)']
+    for c in items:
+        if not isinstance(c, dict):
+            continue
+        cid = c.get('claim_id') or ''
+        h10 = cid.rsplit(':', 1)[-1] if cid.startswith('claim:') else 'unknown'
+        text = (c.get('claim_text') or '').strip()
+        if len(text) > text_truncate:
+            text = text[:text_truncate - 1].rstrip() + '…'
+        ctype = c.get('claim_type') or '?'
+        ac_list = []
+        for a in c.get('affected_assets') or []:
+            if isinstance(a, dict):
+                v = a.get('asset_class')
+                if v:
+                    ac_list.append(str(v))
+            elif isinstance(a, str):
+                ac_list.append(a)
+        cf = c.get('confidence')
+        sal = c.get('salience')
+        ev_ids = c.get('supporting_evidence_ids') or []
+        lines.append(f'[claim:{h10}] {text}')
+        lines.append(
+            f'  - type: {ctype} / assets: {", ".join(ac_list) or "(없음)"}'
+        )
+        lines.append(
+            f'  - confidence: {cf} / salience: {sal}'
+        )
+        if ev_ids:
+            lines.append(f'  - evidence_ids: {", ".join(map(str, ev_ids))}')
+    lines.append(
+        '> 위 claim 은 canonical store 에 저장된 R9-A.2 promotion 통과 자료. '
+        '단정 결론으로 인용하지 말고, 자산군 해석 근거가 필요할 때만 참고.'
+    )
+    return '\n'.join(lines)
+
+
 def _build_agent_prompt(agent_type: str, context: dict) -> str:
     """에이전트별 프롬프트 생성"""
     # R8-B-impl: Asset Movement Anchors 가 가장 윗단 (자산군 1차 unit).
+    # R9-A.3: anchor 직후 Canonical Claims 블록 (있을 때만, 빈 문자열이면 skip).
     anchor_block = context.get('asset_movement_anchors_text') or ''
+    claims_block = context.get('claims_text') or ''
     shared = (
         f'## {context["year"]}년 {context["month"]}월 시장 분석\n\n'
         + (anchor_block + '\n\n' if anchor_block else '')
+        + (claims_block + '\n\n' if claims_block else '')
         + f'{context.get("news_summary_text", "(뉴스 데이터 없음)")}\n\n'
         + f'{context.get("indicators_text", "(지표 데이터 없음)")}\n\n'
         + f'{context.get("timeseries_narrative_text", "")}\n\n'

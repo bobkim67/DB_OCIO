@@ -381,6 +381,53 @@ def importance_score(
 # Main: build_asset_movement_anchors
 # ──────────────────────────────────────────────────────────────────
 
+def _filter_claims_for_asset(
+    claims: list[dict] | None, asset_class: str,
+) -> list[dict]:
+    """R9-A.3: claim → 자산군별 linked_claims 추출 (read-only).
+
+    affected_assets 의 asset_class 와 매칭되는 claim 만 슬림 dict 로 변환.
+    LLM 호출 0, file write 0.
+    """
+    if not isinstance(claims, list) or not claims:
+        return []
+    out: list[dict] = []
+    for c in claims:
+        if not isinstance(c, dict):
+            continue
+        matched = False
+        for a in c.get("affected_assets", []) or []:
+            ac = a.get("asset_class") if isinstance(a, dict) else a
+            if ac == asset_class:
+                matched = True
+                break
+        if not matched:
+            continue
+        cid = c.get("claim_id") or ""
+        h10 = cid.rsplit(":", 1)[-1] if cid.startswith("claim:") else ""
+        period = c.get("period") or ""
+        wiki_filename = (
+            f"{period}_claim_{h10}.md"
+            if period and h10 else None
+        )
+        wiki_path = (
+            f"08_Claims/{wiki_filename}" if wiki_filename else None
+        )
+        out.append({
+            "claim_id": cid,
+            "claim_text": c.get("claim_text") or "",
+            "claim_type": c.get("claim_type") or "",
+            "affected_assets": list(c.get("affected_assets") or []),
+            "confidence": c.get("confidence"),
+            "salience": c.get("salience"),
+            "supporting_evidence_ids": list(
+                c.get("supporting_evidence_ids") or []),
+            "wiki_filename": wiki_filename,
+            "wiki_path": wiki_path,
+        })
+    return out
+
+
 def build_asset_movement_anchors(
     period: str,
     fund_code: str | None = None,
@@ -388,12 +435,17 @@ def build_asset_movement_anchors(
     evidence_annotations: list[dict] | None = None,
     pa_asset_summary: Any = None,
     indicators_csv_path: Path | None = None,
+    claims: list[dict] | None = None,
 ) -> dict:
     """8 자산군 anchor list + unattached_evidence + coverage_summary.
 
     causal_paths : R7 build_causal_layer 의 causal_paths
     evidence_annotations : R8-A resolver 의 결과 (title/topic 채워짐)
     pa_asset_summary : compute_single_port_pa.asset_summary (fund_code 일 때)
+    claims : R9-A.3 — canonical store 에서 select_promoted_claims_for_period
+             로 미리 필터링된 promotion 통과 claim 들. None / [] 이면 각
+             asset_movement.linked_claims = [] 로 설정 (기존 schema/behavior
+             일체 변경 없음).
     """
     causal_paths = causal_paths or []
     evidence_annotations = evidence_annotations or []
@@ -484,6 +536,8 @@ def build_asset_movement_anchors(
             "wiki_pages": [],  # 외부에서 wiki retriever 로 채움 (현재 단계 외)
             "topic_tags": sorted(evidence_topic.get(ac, set())),
             "importance_score": score,
+            # R9-A.3 read-only claim attach. claims=None/[] 이면 [].
+            "linked_claims": _filter_claims_for_asset(claims, ac),
         })
 
     # 6) movement_rank — importance 기준 desc
