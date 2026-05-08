@@ -2747,6 +2747,46 @@ def build_report_prompt(fund_code, year, quarter, data_ctx, inputs,
                 amc_lines.append(f"  포지션 함의: {implication}")
         asset_movement_block = "\n".join(amc_lines)
 
+    # R9-A.3: canonical claim 섹션 inline (fund_comment prompt 보조 자료).
+    # promoted claim 만 노출. 강제 결론 X, [claim:hash10] anchor 유지.
+    claim_block = ""
+    claims_in = inputs.get('claims') or []
+    if claims_in:
+        cb_lines = ["## 참고 가능한 확정 Claim (R9-A.3, 보조 자료)"]
+        for c in claims_in[:6]:
+            if not isinstance(c, dict):
+                continue
+            cid = c.get('claim_id') or ''
+            h10 = (cid.rsplit(':', 1)[-1]
+                   if isinstance(cid, str) and cid.startswith('claim:')
+                   else 'unknown')
+            text = (c.get('claim_text') or '').strip()
+            if len(text) > 180:
+                text = text[:179].rstrip() + '…'
+            ctype = c.get('claim_type') or '?'
+            ac_list = []
+            for a in c.get('affected_assets') or []:
+                if isinstance(a, dict):
+                    v = a.get('asset_class')
+                    if v:
+                        ac_list.append(str(v))
+                elif isinstance(a, str):
+                    ac_list.append(a)
+            cb_lines.append(f"[claim:{h10}] {text}")
+            cb_lines.append(
+                f"  type: {ctype} / assets: {', '.join(ac_list) or '(없음)'}"
+            )
+            ev = c.get('supporting_evidence_ids') or []
+            if ev:
+                cb_lines.append(f"  evidence_ids: {', '.join(map(str, ev))}")
+        cb_lines.append(
+            "주의: claim 은 근거 보조 자료입니다. 강제 결론으로 인용하지 "
+            "마세요. 펀드 데이터(수익률/PA/보유)에는 [claim:X] 를 붙이지 "
+            "마세요. claim 인용 시 [claim:hash10] 형태 그대로 사용하세요 "
+            "(나중에 trace 가능한 reference)."
+        )
+        claim_block = "\n".join(cb_lines)
+
     # evidence list ([ref:N] 인용용, R6-A) — inputs.evidence_annotations 우선,
     # 없으면 빈 섹션. ref 번호는 ann 의 'ref' 필드 값을 그대로 사용 (시장 debate
     # 가 부여한 번호를 펀드 코멘트에서도 재사용 → comment_trace 매핑 일관)
@@ -2885,6 +2925,8 @@ def build_report_prompt(fund_code, year, quarter, data_ctx, inputs,
 {input_text}{constraint_text}{past_sample}{narrative_text}{pattern_text}{evidence_block}
 
 {asset_movement_block}
+
+{claim_block}
 
 위 포맷과 동일한 구조, 톤, 분량으로 {fund_code} ({period_desc}) 보고서를 작성하세요.
 수치는 반드시 제공된 데이터만 사용하세요."""

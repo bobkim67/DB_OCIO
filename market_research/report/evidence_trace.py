@@ -20,6 +20,11 @@ SECTION_HEADER_RE = re.compile(r"^■\s+(.+)$", re.MULTILINE)
 SLUG_NONWORD_RE = re.compile(r"\W+")
 REF_RE = re.compile(r"\[ref:(\d+)\]")
 
+# R9-A.3: claim reference matching `[claim:hash10]` (10 hex). Strict 10-char
+# hex to avoid colliding with wider URL-like patterns. Hash10 은 R9-A.0
+# compute_claim_id 의 md5[:10] 출력과 동형.
+CLAIM_REF_RE = re.compile(r"\[claim:([0-9a-fA-F]{10})\]")
+
 
 def split_sections(comment_text: str) -> list[dict]:
     """■ 헤더 기준 분할. tools/comment_trace.py 의 split_sections 와 동일 로직.
@@ -60,6 +65,92 @@ def strip_refs(text: str) -> str:
     if not text:
         return text or ""
     return re.sub(r"\s*\[ref:\d+\]", "", text)
+
+
+def strip_claim_refs(text: str) -> str:
+    """LLM 원문에서 [claim:hash10] 태그 제거 (고객용). 앞 공백 한 칸까지."""
+    if not text:
+        return text or ""
+    return re.sub(r"\s*\[claim:[0-9a-fA-F]{10}\]", "", text)
+
+
+# ──────────────────────────────────────────────────────────────────
+# R9-A.3 — Claim reference trace
+# ──────────────────────────────────────────────────────────────────
+
+def extract_claim_refs(comment_text: str) -> list[dict]:
+    """[claim:hash10] 인용 추출 (트레이스용).
+
+    Returns:
+        [{'hash10': 'abc1234567', 'pos': 142}, ...]
+    중복 등장은 그대로 유지 (count 정보 보존). 빈/None 입력은 [].
+    """
+    if not comment_text:
+        return []
+    out: list[dict] = []
+    for m in CLAIM_REF_RE.finditer(comment_text):
+        out.append({
+            "hash10": m.group(1),
+            "pos": m.start(),
+        })
+    return out
+
+
+def build_claim_evidence_map(
+    refs: list[dict] | None,
+    canonical_claims: list[dict] | None,
+) -> list[dict]:
+    """[claim:hash10] → canonical claim metadata 매핑 (read-only).
+
+    canonical_claims: build_report_prompt 에 주입된 inputs['claims'] 또는
+    debate context 의 _canonical_claims (R9-A.3 promotion-passing).
+
+    Returns:
+        [{'hash10', 'claim_id', 'wiki_path', 'source_type', 'pos',
+          'matched': bool}, ...]
+    매칭 실패는 source_type='unmatched' / matched=False 로 row 유지
+    (silent drop X — comment_trace 가 invalid claim ref 도 surface).
+    """
+    if not refs:
+        return []
+    by_h: dict[str, dict] = {}
+    for c in canonical_claims or []:
+        if not isinstance(c, dict):
+            continue
+        cid = c.get("claim_id") or ""
+        if isinstance(cid, str) and cid.startswith("claim:"):
+            h = cid.rsplit(":", 1)[-1]
+            by_h[h] = c
+
+    out: list[dict] = []
+    for r in refs:
+        h = r.get("hash10")
+        c = by_h.get(h) if isinstance(h, str) else None
+        if c:
+            cid = c.get("claim_id") or ""
+            period = c.get("period") or ""
+            wiki_path = (
+                f"08_Claims/{period}_claim_{h}.md"
+                if period and h else None
+            )
+            out.append({
+                "hash10": h,
+                "claim_id": cid,
+                "wiki_path": wiki_path,
+                "source_type": "claim_wiki",
+                "pos": r.get("pos"),
+                "matched": True,
+            })
+        else:
+            out.append({
+                "hash10": h,
+                "claim_id": None,
+                "wiki_path": None,
+                "source_type": "unmatched",
+                "pos": r.get("pos"),
+                "matched": False,
+            })
+    return out
 
 
 def validate_citations(comment_text: str,

@@ -89,6 +89,12 @@ def _market_comment_to_inputs(market_payload: dict) -> dict:
     if anchors:
         inputs['asset_movement_anchors'] = anchors
 
+    # R9-A.3: canonical claims pass-through (read-only). market_payload 에
+    # claims 가 있으면 그대로 전달, 없으면 [] 유지. 기존 키는 절대 drop 안 함.
+    claims_passthrough = market_payload.get('claims') or []
+    if claims_passthrough:
+        inputs['claims'] = claims_passthrough
+
     return inputs
 
 
