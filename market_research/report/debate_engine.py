@@ -950,6 +950,50 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
 # R9-A.3 — Canonical Claims block (debate shared context)
 # ──────────────────────────────────────────────────────────────────
 
+
+def _compact_claims_for_persistence(claims: list[dict] | None) -> list[dict]:
+    """R9-A.3.x persistence — promoted claim 을 draft/final 보존용 compact 로
+    축약. claim_id 형식 'claim:{period}:{hash10}' 에서 wiki_path 추정.
+
+    Persisted fields (사용자 spec D-X-A 8필드):
+      - claim_id, claim_text, claim_type
+      - affected_assets, confidence, salience
+      - supporting_evidence_ids
+      - wiki_filename, wiki_path  (둘 다 보존 — wiki_filename 은 hash 만,
+        wiki_path 는 디렉토리 prefix 포함)
+    """
+    if not isinstance(claims, list):
+        return []
+    out: list[dict] = []
+    for c in claims:
+        if not isinstance(c, dict):
+            continue
+        cid = c.get('claim_id') or ''
+        h10 = (cid.rsplit(':', 1)[-1]
+               if isinstance(cid, str) and cid.startswith('claim:')
+               else '')
+        period = c.get('period') or ''
+        wiki_filename = (
+            f'{period}_claim_{h10}.md'
+            if period and h10 else None
+        )
+        wiki_path = (
+            f'08_Claims/{wiki_filename}' if wiki_filename else None
+        )
+        out.append({
+            'claim_id': cid,
+            'claim_text': c.get('claim_text') or '',
+            'claim_type': c.get('claim_type') or '',
+            'affected_assets': list(c.get('affected_assets') or []),
+            'confidence': c.get('confidence'),
+            'salience': c.get('salience'),
+            'supporting_evidence_ids':
+                list(c.get('supporting_evidence_ids') or []),
+            'wiki_filename': wiki_filename,
+            'wiki_path': wiki_path,
+        })
+    return out
+
 # R9-A.3.x (D-3-A) — claim 인용 규칙. agent / synthesis 양쪽 prompt 에 동일
 # 문구로 부착해 LLM 이 [claim:hash10] 태그를 누락하지 않도록 강제. canonical
 # claim 을 실제 논거로 사용한 경우에만 인용하고, 기사 근거가 필요한 사실
@@ -1625,6 +1669,12 @@ def run_market_debate(year: int, month: int,
         # R8-B-2: agent 가 amc 를 비웠을 때 admin 검수용 별도 field
         'asset_movement_commentary_fallback': amc_fallback,
         'asset_movement_commentary_warnings_by_agent': amc_warnings_by_agent,
+        # R9-A.3.x (D-X-A) — canonical claims persistence. fund_comment_service
+        # 의 _market_comment_to_inputs 가 market_payload['claims'] 를 그대로
+        # 받아 inputs['claims'] 로 전달 → comment_engine.build_report_prompt
+        # 의 claim_block 까지 자동 흐름. 빈 list 면 키만 존재 (downstream 회귀 0).
+        'claims': _compact_claims_for_persistence(
+            context.get('_canonical_claims') or []),
     }
 
     # ── 디버그 로그 저장 ──

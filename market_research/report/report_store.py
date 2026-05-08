@@ -122,6 +122,12 @@ def approve_and_save_final(period: str, fund_code: str,
         'cost_usd': draft.get('cost_usd', 0),
         'consensus_points': draft.get('consensus_points', []),
         'tail_risks': draft.get('tail_risks', []),
+        # R9-A.3.x (D-X-A) — canonical claims compact persistence (8 fields).
+        # fund_comment_service 가 final 우선 로드 → market_payload['claims']
+        # 가 비어있으면 fund prompt 의 Canonical Claims block 도 부재. 본
+        # 보존이 wiring chain 최종 단계. evidence_annotations 는 이번
+        # 트랙 범위 외 (별 트랙).
+        'claims': draft.get('claims', []),
     }
 
     path = _period_dir(period) / f'{fund_code}.final.json'
