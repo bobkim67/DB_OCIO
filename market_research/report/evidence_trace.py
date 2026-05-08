@@ -240,6 +240,133 @@ def validate_citations(comment_text: str,
     }
 
 
+def validate_claim_citations(comment_text: str,
+                              canonical_claims: list[dict] | None) -> dict:
+    """R9-A.5 — section 별 [claim:hash10] 파싱 + canonical 매핑 검증.
+
+    `validate_citations` 의 [claim:hash10] 미러. comment_trace 와 admin viewer
+    가 동일 schema 로 ref/claim 양쪽을 surface 할 수 있도록 같은 모양 사용.
+
+    Parameters
+    ----------
+    comment_text : LLM 원문 ([claim:hash10] 포함)
+    canonical_claims : promotion-passing claim list. 보통
+        market_research.analyze.claim_store.select_promoted_claims_for_period()
+        결과를 사용한다.
+
+    Returns
+    -------
+    {
+        'claim_citations': [
+            {
+                'section_id', 'section_title',
+                'claim_hashes': sorted unique 10-hex,
+                'claim_ids':   sorted unique full claim_id (matched 만),
+                'wiki_paths':  matched 의 wiki_path,
+                'unmatched_hashes': matched 못한 hash10 list,
+                'citation_type': 'claim_explicit' | 'claim_section_default',
+            },
+            ...
+        ],
+        'claim_citation_validation': {
+            'total_claim_refs': int,         # [claim:X] 등장 횟수 (중복 포함)
+            'matched_count': int,            # canonical 에 존재하는 등장
+            'unmatched_count': int,          # canonical 에 없는 등장
+            'unmatched_hashes': list[str],   # 고유 unmatched hash10
+            'sections_with_claim_count': int,
+            'sections_without_claim_count': int,
+            'warnings': list[str],
+        },
+    }
+    """
+    sections = split_sections(comment_text or "")
+    by_hash: dict[str, dict] = {}
+    for c in canonical_claims or []:
+        if not isinstance(c, dict):
+            continue
+        cid = c.get("claim_id") or ""
+        if isinstance(cid, str) and cid.startswith("claim:"):
+            h = cid.rsplit(":", 1)[-1]
+            by_hash[h] = c
+
+    claim_citations: list[dict] = []
+    total_claim_refs = 0
+    matched_count = 0
+    unmatched_count = 0
+    unmatched_hashes_acc: set[str] = set()
+    sections_with_claim_count = 0
+    sections_without_claim_count = 0
+    warnings: list[str] = []
+
+    for sec in sections:
+        text = sec["text"]
+        all_hashes = [m.group(1) for m in CLAIM_REF_RE.finditer(text)]
+        unique_hashes = sorted(set(all_hashes))
+        total_claim_refs += len(all_hashes)
+
+        if not unique_hashes:
+            sections_without_claim_count += 1
+            claim_citations.append({
+                "section_id": sec["section_id"],
+                "section_title": sec["section_title"],
+                "claim_hashes": [],
+                "claim_ids": [],
+                "wiki_paths": [],
+                "unmatched_hashes": [],
+                "citation_type": "claim_section_default",
+            })
+            continue
+
+        sections_with_claim_count += 1
+        sec_matched_ids: list[str] = []
+        sec_wiki_paths: list[str] = []
+        sec_unmatched: list[str] = []
+        for h in unique_hashes:
+            c = by_hash.get(h)
+            if c:
+                cid = c.get("claim_id") or ""
+                period = c.get("period") or ""
+                wiki_path = (
+                    f"08_Claims/{period}_claim_{h}.md"
+                    if period and h else None
+                )
+                sec_matched_ids.append(cid)
+                if wiki_path:
+                    sec_wiki_paths.append(wiki_path)
+                matched_count += all_hashes.count(h)
+            else:
+                sec_unmatched.append(h)
+                unmatched_count += all_hashes.count(h)
+                unmatched_hashes_acc.add(h)
+                warnings.append(
+                    f"section {sec['section_id']}: "
+                    f"[claim:{h}] not in canonical_claims"
+                )
+
+        claim_citations.append({
+            "section_id": sec["section_id"],
+            "section_title": sec["section_title"],
+            "claim_hashes": unique_hashes,
+            "claim_ids": sorted(set(sec_matched_ids)),
+            "wiki_paths": sorted(set(sec_wiki_paths)),
+            "unmatched_hashes": sorted(set(sec_unmatched)),
+            "citation_type": "claim_explicit",
+        })
+
+    return {
+        "claim_citations": claim_citations,
+        "claim_citation_validation": {
+            "total_claim_refs": total_claim_refs,
+            "matched_count": matched_count,
+            "unmatched_count": unmatched_count,
+            "unmatched_hashes": sorted(unmatched_hashes_acc),
+            "sections_with_claim_count": sections_with_claim_count,
+            "sections_without_claim_count": sections_without_claim_count,
+            "warnings": warnings,
+        },
+    }
+
+
 def extract_refs(comment: str) -> list[dict]:
     """코멘트에서 [ref:N] 태그가 포함된 문장 추출.
 
