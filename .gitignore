@@ -65,3 +65,6 @@ debug/r8b_smoke/run.log
 
 # R9-A.1 claim extractor pilot artifacts
 debug/claims/
+
+# R9-A.2 promotion ledger (run log 성격 — 매 실행마다 append, 재현성 X)
+market_research/data/claims/_promotion_quality.jsonl

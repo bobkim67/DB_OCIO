@@ -1,0 +1,940 @@
+{
+  "schema_version": "1.0.0",
+  "period": "2026-04",
+  "saved_at": "2026-05-08T09:21:05",
+  "source": "manual_pilot_r9a1",
+  "extractor_version": "r9a.1-haiku",
+  "claims": [
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-04:99fd23a770",
+      "period": "2026-04",
+      "source_evidence_ids": [
+        "6d31dc654bf8"
+      ],
+      "claim_text": "브렌트유 배럴당 141달러, 2008년 이후 최고",
+      "claim_type": "event_to_macro",
+      "affected_assets": [
+        {
+          "asset_class": "원자재금",
+          "direction": "positive"
+        },
+        {
+          "asset_class": "국내채권",
+          "direction": "negative"
+        }
+      ],
+      "causal_chain": [
+        {
+          "relation": "raises",
+          "source": "geopolitical_escalation",
+          "target": "oil_price"
+        }
+      ],
+      "direction": "positive",
+      "horizon": "short",
+      "confidence": 0.95,
+      "salience": 1.0,
+      "supporting_evidence_ids": [
+        "6d31dc654bf8"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.1-haiku",
+      "extraction_method": "llm",
+      "warnings": []
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-04:de1729b413",
+      "period": "2026-04",
+      "source_evidence_ids": [
+        "22967d0a08e6",
+        "6e36a53b15df"
+      ],
+      "claim_text": "트럼프 2주 휴전 승인으로 WTI 19% 폭락, 91.64달러",
+      "claim_type": "event_to_macro",
+      "affected_assets": [
+        {
+          "asset_class": "원자재금",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "국내주식",
+          "direction": "positive"
+        }
+      ],
+      "causal_chain": [
+        {
+          "relation": "lowers",
+          "source": "geopolitical_de_escalation",
+          "target": "oil_price"
+        },
+        {
+          "relation": "lowers",
+          "source": "oil_price_decline",
+          "target": "inflation_pressure"
+        }
+      ],
+      "direction": "mixed",
+      "horizon": "short",
+      "confidence": 0.92,
+      "salience": 1.0,
+      "supporting_evidence_ids": [
+        "22967d0a08e6",
+        "6e36a53b15df"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.1-haiku",
+      "extraction_method": "llm",
+      "warnings": []
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-04:e78dc83a1e",
+      "period": "2026-04",
+      "source_evidence_ids": [
+        "ec9df94da1ef",
+        "445792494826"
+      ],
+      "claim_text": "중동 휴전으로 코스피 5%대 급등, 원·달러 24.3원 급락",
+      "claim_type": "event_to_macro",
+      "affected_assets": [
+        {
+          "asset_class": "국내주식",
+          "direction": "positive"
+        },
+        {
+          "asset_class": "환율(FX)",
+          "direction": "negative"
+        }
+      ],
+      "causal_chain": [
+        {
+          "relation": "raises",
+          "source": "geopolitical_de_escalation",
+          "target": "risk_appetite"
+        },
+        {
+          "relation": "supports",
+          "source": "risk_appetite",
+          "target": "korean_equity"
+        },
+        {
+          "relation": "strengthens",
+          "source": "risk_appetite_recovery",
+          "target": "won_strength"
+        }
+      ],
+      "direction": "positive",
+      "horizon": "short",
+      "confidence": 0.93,
+      "salience": 0.95,
+      "supporting_evidence_ids": [
+        "ec9df94da1ef",
+        "445792494826"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.1-haiku",
+      "extraction_method": "llm",
+      "warnings": []
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-04:7c395e6de9",
+      "period": "2026-04",
+      "source_evidence_ids": [
+        "c59792b5d8f7",
+        "333332684601"
+      ],
+      "claim_text": "삼성전자 슈퍼 어닝으로 코스피 시총 비중 6년만 최고",
+      "claim_type": "asset_to_fund",
+      "affected_assets": [
+        {
+          "asset_class": "국내주식",
+          "direction": "positive"
+        }
+      ],
+      "causal_chain": [
+        {
+          "relation": "raises",
+          "source": "samsung_earnings_surprise",
+          "target": "kospi_concentration"
+        }
+      ],
+      "direction": "positive",
+      "horizon": "medium",
+      "confidence": 0.9,
+      "salience": 0.95,
+      "supporting_evidence_ids": [
+        "c59792b5d8f7",
+        "333332684601"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.1-haiku",
+      "extraction_method": "llm",
+      "warnings": []
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-04:692e7ae8b4",
+      "period": "2026-04",
+      "source_evidence_ids": [
+        "a60522fb02be"
+      ],
+      "claim_text": "반도체 2분기 슈퍼 사이클 지속 전망으로 수출 호조",
+      "claim_type": "outlook_view",
+      "affected_assets": [
+        {
+          "asset_class": "국내주식",
+          "direction": "positive"
+        },
+        {
+          "asset_class": "해외주식",
+          "direction": "positive"
+        }
+      ],
+      "causal_chain": [
+        {
+          "relation": "raises",
+          "source": "semiconductor_demand",
+          "target": "export_growth"
+        }
+      ],
+      "direction": "positive",
+      "horizon": "medium",
+      "confidence": 0.82,
+      "salience": 0.71,
+      "supporting_evidence_ids": [
+        "a60522fb02be"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.1-haiku",
+      "extraction_method": "llm",
+      "warnings": []
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-04:a79b6f699d",
+      "period": "2026-04",
+      "source_evidence_ids": [
+        "fa4ad58a20d9"
+      ],
+      "claim_text": "JP모건 CEO, 이란 전쟁이 인플레 고착·금리 상승 압력 경고",
+      "claim_type": "event_to_macro",
+      "affected_assets": [
+        {
+          "asset_class": "국내채권",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "해외채권",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "원자재금",
+          "direction": "positive"
+        }
+      ],
+      "causal_chain": [
+        {
+          "relation": "raises",
+          "source": "geopolitical_escalation",
+          "target": "inflation"
+        },
+        {
+          "relation": "raises",
+          "source": "inflation_risk",
+          "target": "bond_yields"
+        }
+      ],
+      "direction": "negative",
+      "horizon": "medium",
+      "confidence": 0.88,
+      "salience": 0.95,
+      "supporting_evidence_ids": [
+        "fa4ad58a20d9"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.1-haiku",
+      "extraction_method": "llm",
+      "warnings": []
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-04:42d8212ae6",
+      "period": "2026-04",
+      "source_evidence_ids": [
+        "bef43f874f29"
+      ],
+      "claim_text": "美 3월 ISM 비제조업 투입가격 3년반 만에 고수준",
+      "claim_type": "macro_to_asset",
+      "affected_assets": [
+        {
+          "asset_class": "국내채권",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "해외채권",
+          "direction": "negative"
+        }
+      ],
+      "causal_chain": [
+        {
+          "relation": "raises",
+          "source": "input_price_pressure",
+          "target": "inflation_risk"
+        },
+        {
+          "relation": "raises",
+          "source": "inflation_risk",
+          "target": "bond_yields"
+        }
+      ],
+      "direction": "negative",
+      "horizon": "medium",
+      "confidence": 0.85,
+      "salience": 0.93,
+      "supporting_evidence_ids": [
+        "bef43f874f29"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.1-haiku",
+      "extraction_method": "llm",
+      "warnings": []
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-04:507f63f050",
+      "period": "2026-04",
+      "source_evidence_ids": [
+        "dfcc71220236"
+      ],
+      "claim_text": "연준 의사록, 중동전쟁發 물가·고용 경계하며 금리 인상도 논의",
+      "claim_type": "outlook_view",
+      "affected_assets": [
+        {
+          "asset_class": "국내채권",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "해외채권",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "국내주식",
+          "direction": "negative"
+        }
+      ],
+      "causal_chain": [
+        {
+          "relation": "raises",
+          "source": "inflation_shock_risk",
+          "target": "fed_rate_path"
+        }
+      ],
+      "direction": "negative",
+      "horizon": "medium",
+      "confidence": 0.8,
+      "salience": 0.83,
+      "supporting_evidence_ids": [
+        "dfcc71220236"
+      ],
+      "counter_evidence_ids": [
+        "12"
+      ],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.1-haiku",
+      "extraction_method": "llm",
+      "warnings": []
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-04:ffcbe81d4b",
+      "period": "2026-04",
+      "source_evidence_ids": [
+        "b96610bc747f"
+      ],
+      "claim_text": "한은 기준금리 2.5% 동결, 중동전쟁 물가·환율 경계",
+      "claim_type": "macro_to_asset",
+      "affected_assets": [
+        {
+          "asset_class": "국내채권",
+          "direction": "neutral"
+        },
+        {
+          "asset_class": "환율(FX)",
+          "direction": "neutral"
+        }
+      ],
+      "causal_chain": [
+        {
+          "relation": "supports",
+          "source": "boe_hold_decision",
+          "target": "policy_stance"
+        }
+      ],
+      "direction": "neutral",
+      "horizon": "short",
+      "confidence": 0.85,
+      "salience": 0.83,
+      "supporting_evidence_ids": [
+        "b96610bc747f"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.1-haiku",
+      "extraction_method": "llm",
+      "warnings": []
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-04:e679b00e10",
+      "period": "2026-04",
+      "source_evidence_ids": [
+        "f64a71661cfa",
+        "868cef4f12c0"
+      ],
+      "claim_text": "美 철강 완제품에 25% 관세, 韓 주요 업계 긴급 화상회의",
+      "claim_type": "event_to_macro",
+      "affected_assets": [
+        {
+          "asset_class": "국내주식",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "해외주식",
+          "direction": "negative"
+        }
+      ],
+      "causal_chain": [
+        {
+          "relation": "lowers",
+          "source": "us_tariff_escalation",
+          "target": "korean_exports"
+        },
+        {
+          "relation": "weakens",
+          "source": "export_pressure",
+          "target": "domestic_equity"
+        }
+      ],
+      "direction": "negative",
+      "horizon": "medium",
+      "confidence": 0.88,
+      "salience": 0.97,
+      "supporting_evidence_ids": [
+        "f64a71661cfa",
+        "868cef4f12c0"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.1-haiku",
+      "extraction_method": "llm",
+      "warnings": []
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-04:02f15f2127",
+      "period": "2026-04",
+      "source_evidence_ids": [
+        "408477f92a66"
+      ],
+      "claim_text": "서울 평균 휘발윳값 2000원대, 러·우 전쟁 이후 첫 진입",
+      "claim_type": "macro_to_asset",
+      "affected_assets": [
+        {
+          "asset_class": "원자재금",
+          "direction": "positive"
+        },
+        {
+          "asset_class": "국내주식",
+          "direction": "negative"
+        }
+      ],
+      "causal_chain": [
+        {
+          "relation": "raises",
+          "source": "oil_price_surge",
+          "target": "domestic_gas_price"
+        },
+        {
+          "relation": "lowers",
+          "source": "energy_cost",
+          "target": "corporate_profitability"
+        }
+      ],
+      "direction": "negative",
+      "horizon": "short",
+      "confidence": 0.87,
+      "salience": 0.97,
+      "supporting_evidence_ids": [
+        "408477f92a66"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.1-haiku",
+      "extraction_method": "llm",
+      "warnings": []
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-04:36e1867741",
+      "period": "2026-04",
+      "source_evidence_ids": [
+        "4e79a0ab90a8"
+      ],
+      "claim_text": "JP모건 다이먼, 사모대출 부실이 예상보다 심각할 수 있다고 경고",
+      "claim_type": "risk",
+      "affected_assets": [
+        {
+          "asset_class": "크레딧",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "해외주식",
+          "direction": "negative"
+        }
+      ],
+      "causal_chain": [
+        {
+          "relation": "raises",
+          "source": "private_credit_risk",
+          "target": "credit_spread"
+        },
+        {
+          "relation": "lowers",
+          "source": "credit_deterioration",
+          "target": "equity_valuation"
+        }
+      ],
+      "direction": "negative",
+      "horizon": "medium",
+      "confidence": 0.78,
+      "salience": 0.81,
+      "supporting_evidence_ids": [
+        "4e79a0ab90a8"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.1-haiku",
+      "extraction_method": "llm",
+      "warnings": []
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-04:4712486a1a",
+      "period": "2026-04",
+      "source_evidence_ids": [
+        "8860912d1ee8"
+      ],
+      "claim_text": "버핏, 사모대출 리스크 경고 - 극장서 불나면 모두 출구로",
+      "claim_type": "risk",
+      "affected_assets": [
+        {
+          "asset_class": "크레딧",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "현금성",
+          "direction": "positive"
+        }
+      ],
+      "causal_chain": [
+        {
+          "relation": "raises",
+          "source": "private_credit_systemic_risk",
+          "target": "liquidity_preference"
+        }
+      ],
+      "direction": "negative",
+      "horizon": "medium",
+      "confidence": 0.8,
+      "salience": 0.75,
+      "supporting_evidence_ids": [
+        "8860912d1ee8"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.1-haiku",
+      "extraction_method": "llm",
+      "warnings": []
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-04:48e7df95fe",
+      "period": "2026-04",
+      "source_evidence_ids": [
+        "e4dffb4bb066"
+      ],
+      "claim_text": "연준, 금리경로 양방향 가능성 논의 - 전쟁발 인플레 경계",
+      "claim_type": "outlook_view",
+      "affected_assets": [
+        {
+          "asset_class": "국내채권",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "해외채권",
+          "direction": "negative"
+        }
+      ],
+      "causal_chain": [
+        {
+          "relation": "raises",
+          "source": "geopolitical_uncertainty",
+          "target": "fed_policy_uncertainty"
+        }
+      ],
+      "direction": "negative",
+      "horizon": "medium",
+      "confidence": 0.76,
+      "salience": 0.95,
+      "supporting_evidence_ids": [
+        "e4dffb4bb066"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.1-haiku",
+      "extraction_method": "llm",
+      "warnings": []
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-04:176f5fa057",
+      "period": "2026-04",
+      "source_evidence_ids": [
+        "10bc980a1d2c"
+      ],
+      "claim_text": "옐런, 트럼프 금리폭주를 바나나공화국 수준이라 비판",
+      "claim_type": "counterpoint",
+      "affected_assets": [
+        {
+          "asset_class": "해외채권",
+          "direction": "positive"
+        },
+        {
+          "asset_class": "환율(FX)",
+          "direction": "negative"
+        }
+      ],
+      "causal_chain": [
+        {
+          "relation": "weakens",
+          "source": "fed_policy_skepticism",
+          "target": "dollar_weakness"
+        }
+      ],
+      "direction": "positive",
+      "horizon": "medium",
+      "confidence": 0.72,
+      "salience": 0.75,
+      "supporting_evidence_ids": [
+        "10bc980a1d2c"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.1-haiku",
+      "extraction_method": "llm",
+      "warnings": []
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-04:80f1193922",
+      "period": "2026-04",
+      "source_evidence_ids": [
+        "834b65cfd9a7"
+      ],
+      "claim_text": "국내 금통위, 기준금리 동결로 수동적 인상 압력 속 샌드위치",
+      "claim_type": "macro_to_asset",
+      "affected_assets": [
+        {
+          "asset_class": "국내채권",
+          "direction": "neutral"
+        },
+        {
+          "asset_class": "환율(FX)",
+          "direction": "negative"
+        }
+      ],
+      "causal_chain": [
+        {
+          "relation": "raises",
+          "source": "policy_hold",
+          "target": "policy_divergence"
+        }
+      ],
+      "direction": "neutral",
+      "horizon": "medium",
+      "confidence": 0.74,
+      "salience": 0.81,
+      "supporting_evidence_ids": [
+        "834b65cfd9a7"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.1-haiku",
+      "extraction_method": "llm",
+      "warnings": []
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-04:cd3837f1c1",
+      "period": "2026-04",
+      "source_evidence_ids": [
+        "36d938811d9b"
+      ],
+      "claim_text": "미 3월 고용 17만8천명 깜짝 증가, 실업률 4.3%",
+      "claim_type": "macro_to_asset",
+      "affected_assets": [
+        {
+          "asset_class": "해외주식",
+          "direction": "positive"
+        },
+        {
+          "asset_class": "해외채권",
+          "direction": "negative"
+        }
+      ],
+      "causal_chain": [
+        {
+          "relation": "raises",
+          "source": "strong_employment",
+          "target": "fed_rate_path"
+        }
+      ],
+      "direction": "mixed",
+      "horizon": "short",
+      "confidence": 0.84,
+      "salience": 0.95,
+      "supporting_evidence_ids": [
+        "36d938811d9b"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.1-haiku",
+      "extraction_method": "llm",
+      "warnings": []
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-04:00a2c2cd42",
+      "period": "2026-04",
+      "source_evidence_ids": [
+        "8e36c3218791"
+      ],
+      "claim_text": "미 서비스업계, 이란전쟁 여파로 인플레 압력 3년 5개월 최대",
+      "claim_type": "event_to_macro",
+      "affected_assets": [
+        {
+          "asset_class": "해외채권",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "원자재금",
+          "direction": "positive"
+        }
+      ],
+      "causal_chain": [
+        {
+          "relation": "raises",
+          "source": "geopolitical_escalation",
+          "target": "service_inflation"
+        }
+      ],
+      "direction": "negative",
+      "horizon": "short",
+      "confidence": 0.86,
+      "salience": 0.86,
+      "supporting_evidence_ids": [
+        "8e36c3218791"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.1-haiku",
+      "extraction_method": "llm",
+      "warnings": []
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-04:f0565b4754",
+      "period": "2026-04",
+      "source_evidence_ids": [
+        "38501b5bc0d5"
+      ],
+      "claim_text": "한은 연준 금리인상 예상 속 금리인하 시점 더 늦춰질 수",
+      "claim_type": "outlook_view",
+      "affected_assets": [
+        {
+          "asset_class": "국내채권",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "국내주식",
+          "direction": "negative"
+        }
+      ],
+      "causal_chain": [
+        {
+          "relation": "lowers",
+          "source": "inflation_shock",
+          "target": "rate_cut_timing"
+        }
+      ],
+      "direction": "negative",
+      "horizon": "medium",
+      "confidence": 0.79,
+      "salience": 0.75,
+      "supporting_evidence_ids": [
+        "38501b5bc0d5"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.1-haiku",
+      "extraction_method": "llm",
+      "warnings": []
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-04:41ae5d41ba",
+      "period": "2026-04",
+      "source_evidence_ids": [
+        "6063ce4c1005"
+      ],
+      "claim_text": "국제유가 급락으로 정유주 줄줄이 하락",
+      "claim_type": "macro_to_asset",
+      "affected_assets": [
+        {
+          "asset_class": "국내주식",
+          "direction": "negative"
+        }
+      ],
+      "causal_chain": [
+        {
+          "relation": "lowers",
+          "source": "oil_price_collapse",
+          "target": "energy_sector"
+        }
+      ],
+      "direction": "negative",
+      "horizon": "short",
+      "confidence": 0.89,
+      "salience": 0.97,
+      "supporting_evidence_ids": [
+        "6063ce4c1005"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.1-haiku",
+      "extraction_method": "llm",
+      "warnings": []
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-04:6805d453c2",
+      "period": "2026-04",
+      "source_evidence_ids": [
+        "b13475bbcab6"
+      ],
+      "claim_text": "외환보유액 40억달러 감소, 고환율 방어로 4236.6억달러",
+      "claim_type": "macro_to_asset",
+      "affected_assets": [
+        {
+          "asset_class": "환율(FX)",
+          "direction": "positive"
+        },
+        {
+          "asset_class": "현금성",
+          "direction": "negative"
+        }
+      ],
+      "causal_chain": [
+        {
+          "relation": "supports",
+          "source": "fx_intervention",
+          "target": "won_strength"
+        }
+      ],
+      "direction": "positive",
+      "horizon": "short",
+      "confidence": 0.8,
+      "salience": 0.83,
+      "supporting_evidence_ids": [
+        "b13475bbcab6"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.1-haiku",
+      "extraction_method": "llm",
+      "warnings": []
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-04:c655d77883",
+      "period": "2026-04",
+      "source_evidence_ids": [
+        "8b5e68051907"
+      ],
+      "claim_text": "재경부, 원화 변동성 과하면 과감한 시장안정 조치 추진",
+      "claim_type": "outlook_view",
+      "affected_assets": [
+        {
+          "asset_class": "환율(FX)",
+          "direction": "neutral"
+        }
+      ],
+      "causal_chain": [
+        {
+          "relation": "supports",
+          "source": "government_commitment",
+          "target": "fx_stability"
+        }
+      ],
+      "direction": "neutral",
+      "horizon": "short",
+      "confidence": 0.77,
+      "salience": 0.93,
+      "supporting_evidence_ids": [
+        "8b5e68051907"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.1-haiku",
+      "extraction_method": "llm",
+      "warnings": []
+    }
+  ],
+  "stats": {
+    "total": 22,
+    "promoted": 8,
+    "skipped": 14,
+    "by_asset_class": {
+      "국내주식": 9,
+      "국내채권": 8,
+      "원자재금": 5,
+      "크레딧": 2,
+      "해외주식": 4,
+      "해외채권": 7,
+      "현금성": 2,
+      "환율(FX)": 6
+    },
+    "by_horizon": {
+      "medium": 12,
+      "short": 10
+    },
+    "by_claim_type": {
+      "asset_to_fund": 1,
+      "counterpoint": 1,
+      "event_to_macro": 6,
+      "macro_to_asset": 7,
+      "outlook_view": 5,
+      "risk": 2
+    }
+  }
+}
