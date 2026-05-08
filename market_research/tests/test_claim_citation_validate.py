@@ -134,6 +134,54 @@ def test_combined_ref_and_claim_validation_independent():
     assert ccc["claim_ids"] == ["claim:2026-04:aaaaaaaaaa"]
 
 
+def test_compact_claim_wiki_path_preferred():
+    """R9-A.5.x — compact schema (R9-A.3.x persistence) 의 wiki_path 가 있으면
+    period 재추정 대신 그대로 사용. fund_comment 가 _market_comment_to_inputs
+    경유로 받는 claim 에는 'period' 키가 없으므로 회귀 보호."""
+    compact_claim = {
+        # full canonical 의 'period' 키 의도적 제거 (compact schema)
+        "claim_id": "claim:2026-04:aaaaaaaaaa",
+        "claim_text": "compact text",
+        "wiki_path": "08_Claims/2026-04_claim_aaaaaaaaaa.md",  # preset
+    }
+    text = "본문[claim:aaaaaaaaaa]."
+    out = validate_claim_citations(text, [compact_claim])
+    sec = out["claim_citations"][0]
+    assert sec["wiki_paths"] == [
+        "08_Claims/2026-04_claim_aaaaaaaaaa.md"]
+    assert sec["claim_ids"] == ["claim:2026-04:aaaaaaaaaa"]
+
+
+def test_period_fallback_when_no_wiki_path():
+    """compact 에 wiki_path 가 없고 full canonical 처럼 period 만 있으면 기존
+    재추정 path 유지 (backward compat)."""
+    full_canonical = {
+        "claim_id": "claim:2026-04:bbbbbbbbbb",
+        "claim_text": "full canonical text",
+        "period": "2026-04",
+        # 'wiki_path' 키 부재
+    }
+    text = "본문[claim:bbbbbbbbbb]."
+    out = validate_claim_citations(text, [full_canonical])
+    sec = out["claim_citations"][0]
+    assert sec["wiki_paths"] == [
+        "08_Claims/2026-04_claim_bbbbbbbbbb.md"]
+
+
+def test_explicit_wiki_path_overrides_period():
+    """둘 다 있을 때 wiki_path 우선 (preset 신뢰)."""
+    claim = {
+        "claim_id": "claim:2026-04:cccccccccc",
+        "claim_text": "x",
+        "period": "2026-04",
+        "wiki_path": "08_Claims/custom_path.md",  # 의도적 overrideable
+    }
+    text = "본문[claim:cccccccccc]."
+    out = validate_claim_citations(text, [claim])
+    sec = out["claim_citations"][0]
+    assert sec["wiki_paths"] == ["08_Claims/custom_path.md"]
+
+
 def test_strip_helpers_orthogonal():
     """strip_refs / strip_claim_refs 가 서로 다른 태그만 제거 (R9-A.3 회귀)."""
     text = "본문[ref:3][claim:abc1234567]."

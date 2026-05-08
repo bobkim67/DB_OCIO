@@ -325,11 +325,21 @@ def validate_claim_citations(comment_text: str,
             c = by_hash.get(h)
             if c:
                 cid = c.get("claim_id") or ""
-                period = c.get("period") or ""
-                wiki_path = (
-                    f"08_Claims/{period}_claim_{h}.md"
-                    if period and h else None
-                )
+                # R9-A.5.x — compact schema (R9-A.3.x persistence) 가 이미
+                # wiki_path 필드를 갖고 있으면 그대로 사용. 그렇지 않은 경우
+                # (full canonical 등) 만 period+hash 로 재추정. fund_comment
+                # 가 받는 compact 에는 'period' 키가 없기 때문에 재추정만
+                # 시도하면 빈 wiki_path 가 됨 → draft.claim_citations.
+                # wiki_paths 가 비는 회귀 발생.
+                preset = c.get("wiki_path")
+                if isinstance(preset, str) and preset:
+                    wiki_path = preset
+                else:
+                    period = c.get("period") or ""
+                    wiki_path = (
+                        f"08_Claims/{period}_claim_{h}.md"
+                        if period and h else None
+                    )
                 sec_matched_ids.append(cid)
                 if wiki_path:
                     sec_wiki_paths.append(wiki_path)
