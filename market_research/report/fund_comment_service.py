@@ -412,13 +412,24 @@ def generate_fund_comment_and_save(
     # 시장 debate 의 evidence_annotations 를 그대로 재사용 (ref 번호 일관)
     fund_evidence_annotations = inputs.get('evidence_annotations') or []
     from market_research.report.evidence_trace import (
-        validate_citations, strip_refs,
+        validate_citations, validate_claim_citations, strip_refs,
     )
     citation_result = validate_citations(comment_text_raw,
                                             fund_evidence_annotations)
     comment_citations = citation_result['comment_citations']
     citation_validation = citation_result['citation_validation']
     customer_comment = strip_refs(comment_text_raw)
+
+    # R9-A.5 — claim citation surface (read-only). inputs.claims 가 있으면
+    # 그대로 사용, 없으면 빈 list. customer_comment 에 [claim:hash10] 태그가
+    # 그대로 남아있는 정책 (사용자 결정으로 strip 미적용 — admin/client 동시
+    # 노출). 본 단계는 trace 만 부착하고 sanitize 정책은 변경하지 않음.
+    fund_canonical_claims = inputs.get('claims') or []
+    claim_citation_result = validate_claim_citations(
+        comment_text_raw, fund_canonical_claims)
+    claim_citations = claim_citation_result['claim_citations']
+    claim_citation_validation = (
+        claim_citation_result['claim_citation_validation'])
 
     # inputs_used 에는 evidence_annotations 풀더미 저장 금지 (200자 트렁크 적용 안됨)
     # — 원자료는 별도 top-level evidence_annotations 필드로
@@ -441,6 +452,9 @@ def generate_fund_comment_and_save(
         'draft_comment_raw': comment_text_raw,
         'comment_citations': comment_citations,
         'citation_validation': citation_validation,
+        # R9-A.5 — claim trace surface (admin viewer 용, client display 무영향)
+        'claim_citations': claim_citations,
+        'claim_citation_validation': claim_citation_validation,
         'evidence_annotations': fund_evidence_annotations,
         'market_debate_period': period_key,
         'generated_at': time.strftime('%Y-%m-%dT%H:%M:%S'),
