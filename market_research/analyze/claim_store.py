@@ -210,6 +210,91 @@ def merge_claims(existing: list[dict] | None,
 # promotion ledger
 # ──────────────────────────────────────────────────────────────────
 
+def select_promoted_claims_for_period(
+    period: str,
+    asset_class: str | None = None,
+    fund_code: str | None = None,
+    max_claims: int = 8,
+) -> list[dict]:
+    """Read-side: load canonical store and return promotion-passing claims.
+
+    R9-A.3 read-only helper. canonical store / wiki / ledger 어디에도 write 0.
+    fund_code 는 R9-A 후행 (R9-A.4+) 매핑용 reserved — 현재는 affected_assets
+    교집합 필터만 사용한다.
+
+    Filtering / ranking:
+      1. period 의 canonical store 로드 (없으면 [])
+      2. R9-A.2 promotion rule (Rule A 또는 Rule B) 통과만 유지
+      3. asset_class 가 주어지면 affected_assets 에 포함된 claim 만
+      4. confidence × salience 내림차순, causal_chain 길이 내림차순으로 정렬
+      5. 상위 max_claims 만 반환
+
+    절대 raise 없음 — store 결손 / 매칭 0 / 잘못된 schema 모두 빈 list 로 graceful.
+    """
+    try:
+        store = load_claims_canonical(period)
+    except Exception:
+        return []
+    claims = store.get("claims", []) if isinstance(store, dict) else []
+    if not isinstance(claims, list) or not claims:
+        return []
+
+    # Lazy import 로 wiki.claim_pages 와의 circular dep 회피.
+    try:
+        from market_research.wiki.claim_pages import _meets_rule_a, _meets_rule_b
+    except Exception:
+        return []
+
+    promoted = [c for c in claims
+                if isinstance(c, dict)
+                and (_meets_rule_a(c) or _meets_rule_b(c))]
+
+    if asset_class:
+        target = asset_class
+
+        def _matches(c: dict) -> bool:
+            for a in c.get("affected_assets", []) or []:
+                ac = a.get("asset_class") if isinstance(a, dict) else a
+                if ac == target:
+                    return True
+            return False
+
+        promoted = [c for c in promoted if _matches(c)]
+
+    def _sort_key(c: dict):
+        try:
+            cf = float(c.get("confidence", 0.0))
+            sal = float(c.get("salience", 0.0))
+        except (TypeError, ValueError):
+            cf, sal = 0.0, 0.0
+        cc_len = len(c.get("causal_chain") or [])
+        return (-(cf * sal), -cc_len)
+
+    promoted.sort(key=_sort_key)
+    try:
+        cap = int(max_claims) if max_claims is not None else 8
+    except (TypeError, ValueError):
+        cap = 8
+    return promoted[: max(0, cap)]
+
+
+def claim_wiki_path(claim_id: str | None) -> str | None:
+    """`claim:{period}:{hash10}` → `08_Claims/{period}_claim_{hash10}.md`.
+
+    Read-only path 추정 — 파일 존재 여부는 별도 확인 책임. R9-A.3 trace
+    surface 에서 사용.
+    """
+    if not isinstance(claim_id, str) or not claim_id.startswith("claim:"):
+        return None
+    parts = claim_id.split(":")
+    if len(parts) != 3:
+        return None
+    _, period, h = parts
+    if not period or not h:
+        return None
+    return f"08_Claims/{period}_claim_{h}.md"
+
+
 def append_promotion_ledger(row: dict) -> Path:
     """Append a single promotion run row to _promotion_quality.jsonl."""
     if not isinstance(row, dict):
