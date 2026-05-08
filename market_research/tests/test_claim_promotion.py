@@ -38,9 +38,10 @@ def tmp_wiki(tmp_path, monkeypatch):
     return {"wiki": wiki_dir, "data": data_dir}
 
 
-def _claim(*, salience=0.9, confidence=0.9, assets=2, causal_chain=1,
+def _claim(*, salience=0.9, confidence=0.9, assets=3, causal_chain=1,
            text="테스트 청구문 sample text", evidence=("ev1",),
            cid_suffix="abc1234567"):
+    # default assets=3 → R9-A.2 후속 Rule A3 (cross-asset threshold) 통과.
     aas = [{"asset_class": ac, "direction": "positive"}
            for ac in ["국내주식", "해외주식", "국내채권", "해외채권"][:assets]]
     cc = [{"source": f"src_{i}", "target": f"tgt_{i}", "relation": "raises"}
@@ -77,12 +78,22 @@ def _claim(*, salience=0.9, confidence=0.9, assets=2, causal_chain=1,
 # ──────────────────────────────────────────────────────────────────
 
 def test_rule_a_alone_promoted(tmp_wiki):
-    c = _claim(salience=0.9, confidence=0.9, assets=2, causal_chain=1,
+    # A3: cross-asset (assets≥3). causal_chain=1 ensures B 미만족.
+    c = _claim(salience=0.9, confidence=0.9, assets=3, causal_chain=1,
                cid_suffix="aaaaaaaaaa")
     r = claim_pages.promote_claims([c], rule="auto")
     assert r["promoted_count"] == 1
     assert r["rule_breakdown"]["A"] == 1
     assert (tmp_wiki["wiki"] / "2026-04_claim_aaaaaaaaaa.md").exists()
+
+
+def test_rule_a_two_assets_no_longer_promoted(tmp_wiki):
+    # A3 회귀 — 기존 A0 (assets≥2) 와 분기점 보호. assets=2 + causal=1 → skip.
+    c = _claim(salience=0.95, confidence=0.95, assets=2, causal_chain=1,
+               cid_suffix="a3regress1")
+    r = claim_pages.promote_claims([c], rule="auto")
+    assert r["promoted_count"] == 0
+    assert r["skip_reasons"]["rule_a_b_unmet"] == 1
 
 
 def test_rule_b_alone_promoted(tmp_wiki):
@@ -353,8 +364,8 @@ def test_cli_live_out_of_band_with_allow_flag_proceeds(tmp_wiki, tmp_path):
 
 
 def test_cli_in_band_live_proceeds_without_flag(tmp_wiki, tmp_path):
-    # 1 promoted / 1 skipped → 50% rate, in band.
-    c_pass = _claim(salience=0.9, confidence=0.9, assets=2,
+    # 1 promoted (A3 pass: assets=3) / 1 skipped → 50% rate, in band.
+    c_pass = _claim(salience=0.9, confidence=0.9, assets=3,
                      causal_chain=1, cid_suffix="band111111")
     c_skip = _claim(salience=0.4, confidence=0.4, assets=1,
                      causal_chain=1, cid_suffix="band222222")

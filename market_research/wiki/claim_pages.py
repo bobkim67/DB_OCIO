@@ -55,15 +55,20 @@ ACCEPTANCE_BAND: tuple[float, float] = (30.0, 70.0)
 # ──────────────────────────────────────────────────────────────────
 
 def _meets_rule_a(claim: dict) -> bool:
-    """Rule A: salience >= 0.7 AND confidence >= 0.7 AND
-    len(affected_assets) >= 2."""
+    """Rule A (cross-asset, A3): salience >= 0.7 AND confidence >= 0.7 AND
+    len(affected_assets) >= 3.
+
+    R9-A.2 후속 — 단순 고신뢰 claim 이 아니라 '여러 자산군을 관통하는
+    설명축' 만 wiki 승격하도록 좁힘. pilot 22건 기준 8건 / 36.4% 통과
+    (acceptance band [30%, 70%] 내).
+    """
     try:
         s = float(claim.get("salience", 0.0))
         c = float(claim.get("confidence", 0.0))
     except (TypeError, ValueError):
         return False
     aas = claim.get("affected_assets") or []
-    return s >= 0.7 and c >= 0.7 and isinstance(aas, list) and len(aas) >= 2
+    return s >= 0.7 and c >= 0.7 and isinstance(aas, list) and len(aas) >= 3
 
 
 def _meets_rule_b(claim: dict) -> bool:
