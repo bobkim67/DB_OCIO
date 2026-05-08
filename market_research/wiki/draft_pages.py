@@ -294,6 +294,7 @@ def _is_enrichment_page(fp: Path) -> bool:
     return (
         'source_type: asset_wiki' in head
         or 'source_type: fund_wiki' in head
+        or 'source_type: claim_wiki' in head
         or 'generated_by: asset_fund_enrichment_builder' in head
     )
 
