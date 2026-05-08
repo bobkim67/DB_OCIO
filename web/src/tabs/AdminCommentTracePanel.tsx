@@ -233,7 +233,11 @@ function TraceDetail({
         )}
       </div>
 
-      {/* Section attribution table */}
+      {/* R9-A.5-UI: Claim Citation Summary card. trace.claim_citation_summary
+          가 backend payload 로 도달하면 표시. 없으면 빈 안내. */}
+      <ClaimCitationSummaryCard summary={trace.claim_citation_summary} />
+
+      {/* Section attribution table — R9-A.5-UI: claims 컬럼 추가 */}
       <div style={CARD}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
           Section Attribution ({sections.length})
@@ -249,13 +253,17 @@ function TraceDetail({
                 <th style={TH}>refs</th>
                 <th style={TH}>evidence</th>
                 <th style={TH}>wiki</th>
+                <th style={TH}>claims</th>
                 <th style={TH}>asset</th>
                 <th style={TH}>fund_data_keys</th>
                 <th style={TH}>warn</th>
               </tr>
             </thead>
             <tbody>
-              {sections.map((s: any, i: number) => (
+              {sections.map((s: any, i: number) => {
+                const claimRefCount = (s.claim_refs ?? []).length;
+                const claimUnmatchedCount = (s.claim_unmatched ?? []).length;
+                return (
                 <tr key={i}>
                   <td style={TD}>{s.section_title}</td>
                   <td style={TD}>
@@ -267,15 +275,29 @@ function TraceDetail({
                   <td style={TD}>{(s.ref_ids ?? []).length}</td>
                   <td style={TD}>{(s.evidence_ids ?? []).length}</td>
                   <td style={TD}>{(s.wiki_pages ?? []).length}</td>
+                  <td style={TD}>
+                    {claimRefCount === 0
+                      ? "—"
+                      : claimUnmatchedCount > 0
+                        ? <span style={PILL_WARN}>
+                            {claimRefCount} ({claimUnmatchedCount} unmatched)
+                          </span>
+                        : <span style={PILL_OK}>{claimRefCount}</span>}
+                  </td>
                   <td style={TD}>{(s.asset_classes_mentioned ?? []).join(", ") || "—"}</td>
                   <td style={TD}>{(s.fund_data_keys ?? []).join(", ") || "—"}</td>
                   <td style={TD}>{(s.warnings ?? []).length || "—"}</td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         )}
       </div>
+
+      {/* R9-A.5-UI: Linked Claims card — section_attribution 의
+          claim_attributions 평면화 + matched / unmatched 분리. */}
+      <LinkedClaimsCard sections={sections} />
 
       {/* Source groups */}
       <div style={CARD}>
@@ -381,5 +403,234 @@ function TraceDetail({
         )}
       </div>
     </>
+  );
+}
+
+
+// ──────────────────────────────────────────────────────────────────────
+// R9-A.5-UI surface — Claim Citation Summary
+// ──────────────────────────────────────────────────────────────────────
+
+type ClaimCitationSummary = {
+  total_claim_refs?: number;
+  unique_matched_claims?: string[];
+  unique_unmatched_hashes?: string[];
+  matched_count?: number;
+  unmatched_count?: number;
+  sections_with_claim_count?: number;
+  sections_without_claim_count?: number;
+  canonical_pool_size?: number;
+  load_warning?: string | null;
+};
+
+function ClaimCitationSummaryCard(
+  { summary }: { summary?: ClaimCitationSummary | null },
+) {
+  if (!summary) {
+    return (
+      <div style={CARD}>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
+          Claim Citation Summary (R9-A.5)
+        </div>
+        <div style={{ fontSize: 12, color: "#6b7280" }}>
+          claim trace 데이터 없음 — 이전 trace 또는 claim store 미연결
+        </div>
+      </div>
+    );
+  }
+  const total = summary.total_claim_refs ?? 0;
+  const matched = summary.matched_count ?? 0;
+  const unmatched = summary.unmatched_count ?? 0;
+  const pool = summary.canonical_pool_size ?? 0;
+  const loadWarning = summary.load_warning;
+  const matchPill = matched > 0 ? PILL_OK : PILL_INFO;
+  return (
+    <div style={CARD}>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
+        Claim Citation Summary (R9-A.5)
+      </div>
+      <div style={{ display: "grid",
+                    gridTemplateColumns: "180px 1fr",
+                    gap: 4, fontSize: 12 }}>
+        <div>canonical_pool_size</div>
+        <div>
+          {pool === 0
+            ? <span style={PILL_WARN}>0 (claim store 미연결)</span>
+            : <strong>{pool}</strong>}
+        </div>
+
+        <div>total_claim_refs</div><div>{total}</div>
+
+        <div>matched / unmatched</div>
+        <div>
+          <span style={matchPill}>matched {matched}</span>
+          &nbsp;
+          {unmatched > 0
+            ? <span style={PILL_WARN}>unmatched {unmatched}</span>
+            : <span style={PILL_OK}>unmatched 0</span>}
+        </div>
+
+        <div>sections (with / without)</div>
+        <div>
+          {summary.sections_with_claim_count ?? 0}
+          &nbsp;/&nbsp;
+          {summary.sections_without_claim_count ?? 0}
+        </div>
+
+        <div>unique_matched_claims</div>
+        <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 11 }}>
+          {(summary.unique_matched_claims ?? []).length === 0
+            ? "—"
+            : (summary.unique_matched_claims ?? []).join(", ")}
+        </div>
+
+        <div>unique_unmatched_hashes</div>
+        <div>
+          {(summary.unique_unmatched_hashes ?? []).length === 0
+            ? "—"
+            : (summary.unique_unmatched_hashes ?? []).map((h) => (
+                <span key={h} style={{ ...PILL_WARN, marginRight: 4 }}>
+                  {h}
+                </span>
+              ))}
+        </div>
+
+        <div>load_warning</div>
+        <div>
+          {loadWarning
+            ? <span style={PILL_WARN}>{loadWarning}</span>
+            : <span style={PILL_OK}>none</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ──────────────────────────────────────────────────────────────────────
+// R9-A.5-UI surface — Linked Claims
+// ──────────────────────────────────────────────────────────────────────
+
+type ClaimAttribution = {
+  hash10?: string;
+  claim_id?: string | null;
+  wiki_path?: string | null;
+  supporting_evidence_ids?: string[];
+  claim_text_short?: string | null;
+  matched?: boolean;
+};
+
+function LinkedClaimsCard({ sections }: { sections: any[] }) {
+  // Flatten section_attribution[*].claim_attributions, dedup by (section_id, hash10)
+  type Row = ClaimAttribution & { section_id: string; section_title?: string };
+  const rows: Row[] = [];
+  for (const s of sections ?? []) {
+    const list: ClaimAttribution[] = s?.claim_attributions ?? [];
+    for (const ca of list) {
+      rows.push({
+        ...ca,
+        section_id: s?.section_id ?? "?",
+        section_title: s?.section_title ?? "?",
+      });
+    }
+  }
+
+  if (rows.length === 0) {
+    return (
+      <div style={CARD}>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
+          Linked Claims (R9-A.5)
+        </div>
+        <div style={{ fontSize: 12, color: "#6b7280" }}>
+          [claim:hash10] 인용 없음 — LLM 출력에 canonical claim 인용이
+          포함되지 않았거나 trace 가 R9-A.5 surface 이전 버전.
+        </div>
+      </div>
+    );
+  }
+
+  const matchedRows = rows.filter((r) => r.matched);
+  const unmatchedRows = rows.filter((r) => !r.matched);
+
+  return (
+    <div style={CARD}>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
+        Linked Claims (R9-A.5)
+        &nbsp;
+        <span style={PILL_OK}>matched {matchedRows.length}</span>
+        &nbsp;
+        {unmatchedRows.length > 0 && (
+          <span style={PILL_WARN}>unmatched {unmatchedRows.length}</span>
+        )}
+      </div>
+      {matchedRows.length > 0 && (
+        <table style={{ width: "100%", borderCollapse: "collapse" as const,
+                         fontSize: 12, marginBottom: 8 }}>
+          <thead>
+            <tr>
+              <th style={TH}>hash10</th>
+              <th style={TH}>claim_id</th>
+              <th style={TH}>section</th>
+              <th style={TH}>claim_text_short</th>
+              <th style={TH}>wiki_path</th>
+              <th style={TH}>evidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            {matchedRows.map((r, i) => (
+              <tr key={`m-${i}`}>
+                <td style={TD}>{r.hash10 ?? "—"}</td>
+                <td style={TD}>{r.claim_id ?? "—"}</td>
+                <td style={TD}>{r.section_title ?? r.section_id}</td>
+                <td style={{ ...TD, fontFamily: "inherit" }}>
+                  {r.claim_text_short ?? "—"}
+                </td>
+                <td style={TD}>
+                  {r.wiki_path
+                    ? <span style={{ color: "#1d4ed8" }}>{r.wiki_path}</span>
+                    : "—"}
+                </td>
+                <td style={TD}>
+                  {(r.supporting_evidence_ids ?? []).length === 0
+                    ? "—"
+                    : (r.supporting_evidence_ids ?? []).join(", ")}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {unmatchedRows.length > 0 && (
+        <>
+          <div style={{ fontSize: 12, fontWeight: 600,
+                         marginTop: 8, marginBottom: 4 }}>
+            Unmatched (warning)
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse" as const,
+                           fontSize: 12 }}>
+            <thead>
+              <tr>
+                <th style={TH}>hash10</th>
+                <th style={TH}>section</th>
+                <th style={TH}>note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {unmatchedRows.map((r, i) => (
+                <tr key={`u-${i}`}>
+                  <td style={TD}>
+                    <span style={PILL_WARN}>{r.hash10 ?? "?"}</span>
+                  </td>
+                  <td style={TD}>{r.section_title ?? r.section_id}</td>
+                  <td style={TD}>
+                    canonical pool 밖 — promoted 아니거나 hash 오류
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+    </div>
   );
 }
