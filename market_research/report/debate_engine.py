@@ -950,6 +950,26 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
 # R9-A.3 — Canonical Claims block (debate shared context)
 # ──────────────────────────────────────────────────────────────────
 
+# R9-A.3.x (D-3-A) — claim 인용 규칙. agent / synthesis 양쪽 prompt 에 동일
+# 문구로 부착해 LLM 이 [claim:hash10] 태그를 누락하지 않도록 강제. canonical
+# claim 을 실제 논거로 사용한 경우에만 인용하고, 기사 근거가 필요한 사실
+# 문장에는 기존 [ref:N] 을 유지한다 (claim 은 ref 를 대체하지 않음).
+_CLAIM_CITATION_INSTRUCTION = (
+    '\n## 필수: Canonical Claim 인용 규칙 (R9-A.3)\n'
+    '- 위 "Canonical Claims" 블록의 항목을 실제 논거 (인과/리스크/해석) 로 '
+    '사용한 문장에는 끝에 [claim:hash10] 형태로 인용하세요. '
+    'hash10 은 [claim:xxxxxxxxxx] 의 10자 hex 부분 그대로입니다.\n'
+    '- 기사 근거가 필요한 사실 문장에는 기존 [ref:N] 을 유지하세요. '
+    'claim 은 ref 를 대체하지 않고, canonical 해석/인과 요약의 보조 trace 입니다.\n'
+    '- 한 문장에 [ref:N] 과 [claim:hash10] 을 함께 표기할 수 있습니다 '
+    '(예: "...A 가 B 로 전이되는 흐름이 관측되었습니다[ref:3][claim:de1729b413].").\n'
+    '- 사용하지 않은 claim 은 억지로 인용하지 마세요. '
+    'Canonical Claims 블록에 없는 hash10 을 새로 만들지 마세요.\n'
+    '- claim_text 를 그대로 복사하지 말고, 본문 맥락에 맞춰 풀어 쓴 뒤 '
+    '문장 끝에만 태그를 붙이세요.\n'
+)
+
+
 def _format_claims_for_context(
     claims: list[dict] | None,
     *, max_claims: int = 8, text_truncate: int = 180,
@@ -1004,12 +1024,14 @@ def _build_agent_prompt(agent_type: str, context: dict) -> str:
     """에이전트별 프롬프트 생성"""
     # R8-B-impl: Asset Movement Anchors 가 가장 윗단 (자산군 1차 unit).
     # R9-A.3: anchor 직후 Canonical Claims 블록 (있을 때만, 빈 문자열이면 skip).
+    # R9-A.3.x: claims block 이 있을 때만 _CLAIM_CITATION_INSTRUCTION 도 inline.
     anchor_block = context.get('asset_movement_anchors_text') or ''
     claims_block = context.get('claims_text') or ''
     shared = (
         f'## {context["year"]}년 {context["month"]}월 시장 분석\n\n'
         + (anchor_block + '\n\n' if anchor_block else '')
         + (claims_block + '\n\n' if claims_block else '')
+        + (_CLAIM_CITATION_INSTRUCTION + '\n' if claims_block else '')
         + f'{context.get("news_summary_text", "(뉴스 데이터 없음)")}\n\n'
         + f'{context.get("indicators_text", "(지표 데이터 없음)")}\n\n'
         + f'{context.get("timeseries_narrative_text", "")}\n\n'
@@ -1230,13 +1252,17 @@ def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> 
         )
 
     # P3: synthesis 단계에도 graph/wiki context 주입
+    # R9-A.3.x: synthesis 단계에도 Canonical Claims block + 인용 규칙 주입.
     graph_block = context.get("graph_paths_text", "") or ""
     wiki_block = context.get("wiki_context_text", "") or ""
     coverage_block = context.get("asset_coverage_text", "") or ""
+    claims_block = context.get("claims_text", "") or ""
     comment_prompt = (
         '4명의 분석가가 각각 다른 시각에서 시장을 분석했습니다.\n\n'
         f'## 분석가별 의견\n{debate_text}\n\n'
         f'## 뉴스 evidence\n{context.get("news_summary_text", "")}\n\n'
+        + (f'{claims_block}\n\n' if claims_block else '')
+        + (_CLAIM_CITATION_INSTRUCTION + '\n' if claims_block else '')
         + (f'{graph_block}\n\n' if graph_block else '')
         + (f'{wiki_block}\n\n' if wiki_block else '')
         + (f'{coverage_block}\n\n' if coverage_block else '')
