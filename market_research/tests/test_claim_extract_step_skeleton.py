@@ -27,7 +27,8 @@ def test_step_disabled_when_default_off():
     assert out["writes"] == 0
     assert out["period"] == "2026-04"
     assert out["target_suffix"] is None
-    assert "R9-A.4 Commit 1 skeleton" in out["notes"]
+    # Commit 2 — disabled 상태 notes 갱신 ("Step 2.7 disabled" 표현)
+    assert "disabled" in out["notes"]
 
 
 def test_step_disabled_when_flag_explicit_false():
@@ -123,3 +124,125 @@ def test_step_2_7_is_called_between_2_6_and_3():
     assert "claim_extract_step" in block
     # graceful 정책 — Exception catch 명시
     assert "graceful skip" in block or "except Exception" in block
+
+
+# ──────────────────────────────────────────────────────────────────
+# Commit 2 보강 — runner 호출 분기 (LLM 0 monkeypatch)
+# ──────────────────────────────────────────────────────────────────
+
+import json as _json
+
+
+_C2_RAW_OK = _json.dumps([
+    {
+        "claim_text": "valid commit2 test claim text",
+        "claim_type": "event_to_macro",
+        "affected_assets": [
+            {"asset_class": "국내주식", "direction": "positive"}
+        ],
+        "causal_chain": [
+            {"source": "x", "target": "y", "relation": "raises"}
+        ],
+        "direction": "positive",
+        "horizon": "short",
+        "confidence": 0.9,
+        "salience": 0.9,
+        "supporting_evidence_ids": ["art_c2"],
+        "counter_evidence_ids": [],
+    }
+], ensure_ascii=False)
+
+
+def _c2_evidence(n: int = 3) -> list[dict]:
+    return [
+        {
+            "article_id": f"art_c2_{i}",
+            "title": f"c2 fixture {i}",
+            "source": "Reuters",
+            "date": "2026-04-15",
+            "topic": "지정학",
+        }
+        for i in range(n)
+    ]
+
+
+def test_step_enabled_with_evidence_calls_runner():
+    """enabled=True + evidence_items 전달 시 runner 호출, file write 0."""
+    out = ces.step_claim_extract(
+        "2026-04",
+        enabled=True,
+        evidence_items=_c2_evidence(3),
+        llm_call=lambda p: _C2_RAW_OK,
+    )
+    assert out["status"] == ces.STATUS_SKELETON
+    assert out["enabled"] is True
+    assert out["llm_calls"] == 1
+    assert out["writes"] == 0
+    assert out["actually_saved"] == []
+    assert out["extraction"] is not None
+    assert out["extraction"]["abort_reason"] is None
+    assert len(out["extraction"]["claims"]) == 1
+
+
+def test_step_enabled_no_evidence_no_runner_call():
+    """enabled=True 라도 evidence_items=None 이면 runner 호출 0."""
+    out = ces.step_claim_extract(
+        "2026-04", enabled=True, evidence_items=None,
+    )
+    assert out["status"] == ces.STATUS_SKELETON
+    assert out["llm_calls"] == 0
+    assert out["writes"] == 0
+    assert out["extraction"] is None
+    assert "no_input" in out["notes"] or "evidence_items=None/[]" in out["notes"]
+
+
+def test_step_dry_run_invariant_write_0():
+    """write_canonical/wiki/ledger 모두 True 여도 actually_saved=[] (Commit 2 invariant)."""
+    out = ces.step_claim_extract(
+        "2026-04",
+        enabled=True,
+        evidence_items=_c2_evidence(3),
+        write_canonical=True,
+        write_wiki=True,
+        write_ledger=True,
+        llm_call=lambda p: _C2_RAW_OK,
+    )
+    assert out["writes"] == 0
+    assert out["actually_saved"] == []
+    # would_save 에 후보는 list 되지만 enabled_in_this_commit=False
+    assert len(out["would_save"]) == 3
+    assert all(w["enabled_in_this_commit"] is False for w in out["would_save"])
+
+
+def test_step_runner_failure_graceful():
+    """runner 가 실패 (LLM mock raise) 해도 daily_update 전체 graceful."""
+    def _fail(p):
+        raise RuntimeError("mock runner failure")
+
+    out = ces.step_claim_extract(
+        "2026-04",
+        enabled=True,
+        evidence_items=_c2_evidence(3),
+        llm_call=_fail,
+    )
+    # extract_claims 가 internally graceful → status='skeleton_no_op'
+    # extraction.abort_reason='llm_api_failure'
+    assert out["status"] == ces.STATUS_SKELETON
+    assert out["extraction"] is not None
+    assert out["extraction"]["abort_reason"] == "llm_api_failure"
+    assert out["writes"] == 0
+
+
+def test_step_target_suffix_in_would_save_path():
+    """target_suffix 가 would_save canonical path 에 반영."""
+    out = ces.step_claim_extract(
+        "2026-04",
+        enabled=True,
+        evidence_items=_c2_evidence(3),
+        target_suffix="r9a4-replay",
+        write_canonical=True,
+        llm_call=lambda p: _C2_RAW_OK,
+    )
+    canonical_entry = next(
+        w for w in out["would_save"] if w["kind"] == "canonical_store")
+    assert "2026-04.r9a4-replay.json" in canonical_entry["path"]

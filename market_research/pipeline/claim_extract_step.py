@@ -54,36 +54,53 @@ def step_claim_extract(
     *,
     enabled: bool | None = None,
     target_suffix: str | None = None,
+    evidence_items: list[dict] | None = None,
+    dry_run: bool = True,
+    cost_cap_usd: float = 0.5,
+    write_canonical: bool = False,
+    write_wiki: bool = False,
+    write_ledger: bool = False,
+    llm_call=None,
 ) -> dict[str, Any]:
-    """daily_update Step 2.7 진입점 (Commit 1 skeleton).
+    """daily_update Step 2.7 진입점.
+
+    Commit 1: skeleton no-op (LLM 0 / write 0).
+    Commit 2: enabled=True + evidence_items 주어지면 runner 호출 (LLM 1회 가능).
+              write_* flag 모두 default False → file write 0 (dry-run path).
+    Commit 3+: write_* flag 활성화 시 canonical / wiki / ledger 실 write.
 
     Parameters
     ----------
-    period : "YYYY-MM" — daily_update 의 month_str 그대로
-    enabled : feature flag override. None 이면 모듈 기본값 ENABLE_CLAIM_EXTRACTION
-              사용. 테스트 / admin override 용도.
-    target_suffix : D-2 결정값 — replay/smoke 산출물 분리용. 본 commit 에서는
-                     status 에 echo 만 하고 file 분리는 Commit 2+ 에서 사용.
+    period : "YYYY-MM"
+    enabled : feature flag override. None 이면 ENABLE_CLAIM_EXTRACTION.
+    target_suffix : D-2 — replay/smoke 산출물 분리. Commit 2 단계 echo 만.
+    evidence_items : refined evidence (memory dict, C2-Q1). None / [] 이면
+                      runner 호출 0.
+    dry_run : Commit 2 default True — runner 결과를 metadata 로만 반환.
+    cost_cap_usd : per-run cap (D-4)
+    write_canonical / write_wiki / write_ledger : Commit 2 단계 default 모두
+                      False → 호출 측이 명시 True 해도 본 commit 에선 차단
+                      (Commit 3+ 에서 활성화).
+    llm_call : 테스트 / admin override 용도. None 이면 runner default
+                (debate_engine._call_llm 재사용).
 
     Returns
     -------
-    status dict:
-      {
-        "status": "disabled" | "skeleton_no_op",
-        "period": str,
-        "enabled": bool,
-        "target_suffix": str | None,
-        "ts": ISO8601,
-        "llm_calls": 0,
-        "writes": 0,
-        "notes": str,
-      }
+    status dict (확장):
+      기존: status / period / enabled / target_suffix / ts / llm_calls /
+            writes / notes
+      신규 (Commit 2):
+        + extraction : runner 결과 dict 또는 None
+        + would_save : [{"path", "kind"}, ...] (write_* flag 가 True 였을 때
+                        예정 path. 본 commit 에선 항상 빈 list 또는 후보만)
+        + actually_saved : []  (Commit 2 단계 항상 빈 list 보장)
 
-    Invariants (Commit 1):
-      - LLM 호출 0
-      - file write 0 (canonical store / wiki / ledger 모두 미접근)
-      - daily_update 전체 흐름에 영향 0 (status dict 반환만)
-      - 어떤 입력에서도 raise 0 — daily_update 의 graceful 정책 (D-6) 보장
+    Invariants (Commit 2):
+      - daily_update 운영 default 영향 0 (ENABLE_CLAIM_EXTRACTION=False)
+      - file write 0 — write_* 모두 무시 (Commit 3+ 에서 정식 활성화)
+      - failure 6 유형 graceful (raise 0)
+      - extraction 결과는 metadata only — caller 가 검토 후 후행 commit 에서
+        canonical/wiki/ledger 쓰기 결정
     """
     use_enabled = (
         bool(enabled) if enabled is not None
@@ -91,32 +108,101 @@ def step_claim_extract(
     )
     ts = datetime.now().isoformat(timespec="seconds")
 
-    if not use_enabled:
-        return {
-            "status": STATUS_DISABLED,
-            "period": period,
-            "enabled": False,
-            "target_suffix": target_suffix,
-            "ts": ts,
-            "llm_calls": 0,
-            "writes": 0,
-            "notes": (
-                "R9-A.4 Commit 1 skeleton. ENABLE_CLAIM_EXTRACTION=False — "
-                "Step 2.7 no-op. extractor / canonical write 는 Commit 2+ 에서."
-            ),
-        }
-
-    # enabled=True 라도 Commit 1 단계에서는 실제 추출 0
-    return {
-        "status": STATUS_SKELETON,
+    base = {
         "period": period,
-        "enabled": True,
+        "enabled": use_enabled,
         "target_suffix": target_suffix,
         "ts": ts,
         "llm_calls": 0,
         "writes": 0,
+        "extraction": None,
+        "would_save": [],
+        "actually_saved": [],
+    }
+
+    if not use_enabled:
+        return {
+            **base,
+            "status": STATUS_DISABLED,
+            "notes": (
+                "R9-A.4 Step 2.7 disabled. ENABLE_CLAIM_EXTRACTION=False — "
+                "extractor / canonical write 미실행."
+            ),
+        }
+
+    # enabled=True — Commit 2 분기
+    if not evidence_items:
+        return {
+            **base,
+            "status": STATUS_SKELETON,
+            "notes": (
+                "Step 2.7 enabled 이나 evidence_items=None/[] — runner 호출 0. "
+                "no_input."
+            ),
+        }
+
+    # Commit 2 — runner 호출 가능. file write 는 차단 (write_* flag 무시).
+    try:
+        from market_research.analyze.claim_extractor_runner import (
+            extract_claims,
+        )
+        result = extract_claims(
+            period=period,
+            evidence_items=evidence_items,
+            dry_run=True,         # Commit 2: 항상 dry-run (write 0)
+            cost_cap_usd=cost_cap_usd,
+            llm_call=llm_call,
+        )
+    except Exception as exc:
+        # Runner import 실패 또는 unforeseen — graceful (D-6)
+        return {
+            **base,
+            "status": STATUS_SKELETON,
+            "notes": f"runner 호출 실패 (graceful): {exc}",
+        }
+
+    llm_calls = (
+        0 if result.get("abort_reason") in
+        ("no_evidence", "cost_cap_exceeded_estimate") else 1
+    )
+
+    # would_save: Commit 3+ 에서 활성화될 path 후보. 본 commit 에선 metadata
+    # 만 — write_* 가 True 여도 actually_saved 는 빈 list.
+    would_save: list[dict] = []
+    if write_canonical or write_wiki or write_ledger:
+        would_save.append({
+            "kind": "canonical_store",
+            "path": (
+                f"market_research/data/claims/{period}"
+                + (f".{target_suffix}" if target_suffix else "")
+                + ".json"
+            ),
+            "enabled_in_this_commit": False,
+        })
+        would_save.append({
+            "kind": "wiki_08_claims",
+            "path": "market_research/data/wiki/08_Claims/",
+            "enabled_in_this_commit": False,
+        })
+        would_save.append({
+            "kind": "promotion_ledger",
+            "path": "market_research/data/claims/_promotion_quality.jsonl",
+            "enabled_in_this_commit": False,
+        })
+
+    return {
+        **base,
+        "status": STATUS_SKELETON,
+        "llm_calls": llm_calls,
+        "writes": 0,  # invariant — Commit 2 file write 0
+        "extraction": result,
+        "would_save": would_save,
+        "actually_saved": [],
         "notes": (
-            "R9-A.4 Commit 1 skeleton — flag 켜져 있으나 실제 extractor / "
-            "canonical write 는 Commit 2+ 에서. 본 단계 status 만 반환."
+            f"Step 2.7 enabled. runner 호출 {llm_calls}회. "
+            f"abort_reason={result.get('abort_reason')}. "
+            f"claims={len(result.get('claims', []))} / "
+            f"invalid={len(result.get('invalid_claims', []))}. "
+            "file write 0 (Commit 2 invariant — write 는 Commit 3+ 에서)."
         ),
     }
