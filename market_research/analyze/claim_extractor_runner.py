@@ -69,6 +69,35 @@ def _estimate_cost_usd(input_text: str, output_text_or_max: str | int) -> float:
 
 
 # ──────────────────────────────────────────────────────────────────
+# Pre-call cost estimator (C3-δ — monthly cap 사전 추정용 public helper)
+# ──────────────────────────────────────────────────────────────────
+
+def estimate_pre_call_cost_usd(
+    period: str,
+    evidence_items: list[dict] | None,
+    *,
+    max_items: int = MAX_INPUT_EVIDENCE,
+) -> float:
+    """LLM 호출 0 으로 본 runner 가 호출 시 소요할 추정 비용 (USD).
+
+    `extract_claims` 의 §6.2~6.3 와 동일한 prompt build + token 추정 path 를
+    재사용. 호출 측은 (monthly_so_far + estimated) 와 monthly cap 비교를
+    사전 분기에 사용한다.
+
+    invariant:
+        - LLM 호출 0 / file write 0 / network 0
+        - evidence 가 비어 있으면 0.0 반환
+    """
+    if not evidence_items:
+        return 0.0
+    items = [e for e in evidence_items if isinstance(e, dict)][:max_items]
+    if not items:
+        return 0.0
+    prompt_dict = build_extraction_prompt(period, items, max_items=max_items)
+    return _estimate_cost_usd(prompt_dict["user"], MAX_TOKENS)
+
+
+# ──────────────────────────────────────────────────────────────────
 # Default LLM call — debate_engine._call_llm 재사용 (C2-Q2)
 # ──────────────────────────────────────────────────────────────────
 
