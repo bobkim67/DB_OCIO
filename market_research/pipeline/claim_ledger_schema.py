@@ -54,7 +54,7 @@ LEDGER_ROW_FIELDS_C3: tuple[str, ...] = (
 
 # Commit 4 — 32 fields. C3 의 24 fields 확장 (기존 키 변경 0, 신규 8 키만 추가).
 # workorder r9a4_commit4_workorder.md §6 / §8 schema. dict 순서가 row JSON 출력 순서.
-LEDGER_ROW_FIELDS: tuple[str, ...] = LEDGER_ROW_FIELDS_C3 + (
+LEDGER_ROW_FIELDS_C4_INITIAL: tuple[str, ...] = LEDGER_ROW_FIELDS_C3 + (
     # write gate monitoring
     "write_allowed",                    # 최종 write 진입 여부
     "write_block_reason",               # 차단 사유 (None | enum string)
@@ -66,6 +66,13 @@ LEDGER_ROW_FIELDS: tuple[str, ...] = LEDGER_ROW_FIELDS_C3 + (
     # plan monitoring
     "candidate_count",                  # plan input_count (valid claims)
     "canonical_existing_conflict_count",  # plan.merge_conflicts 길이
+)
+
+# Commit 4.1 — 33 fields. isolated_write 추가 (target_suffix 분리 표시).
+# C4 initial 32 → C4.1 33 으로 확장 — backward compat: C3 24/C4 32 row 도
+# validate_ledger_row_preview(allow_legacy_c3=True) 로 graceful read 가능.
+LEDGER_ROW_FIELDS: tuple[str, ...] = LEDGER_ROW_FIELDS_C4_INITIAL + (
+    "isolated_write",                   # target_suffix 가 None 이 아닐 때 True
 )
 
 # Monthly cap — workorder §5 D-4. Commit 4 에서 CLI override 가능 예정.
@@ -180,6 +187,8 @@ def build_ledger_row_preview(
     monthly_cost_after_estimate: float | None = None,
     candidate_count: int = 0,
     canonical_existing_conflict_count: int = 0,
+    # Commit 4.1 — target_suffix isolation 표시
+    isolated_write: bool | None = None,
 ) -> dict[str, Any]:
     """Commit 3 단계의 ledger row preview.
 
@@ -240,6 +249,12 @@ def build_ledger_row_preview(
         "candidate_count": _to_int(candidate_count),
         "canonical_existing_conflict_count": _to_int(
             canonical_existing_conflict_count),
+        # Commit 4.1 — target_suffix 가 None 이 아니면 자동 True (호출 측 echo
+        # 없이도 도출 가능). 명시 호출자 우선.
+        "isolated_write": (
+            bool(isolated_write) if isolated_write is not None
+            else bool(target_suffix)
+        ),
     }
 
 
@@ -283,7 +298,7 @@ def validate_ledger_row_preview(
             errors.append(f"type_error:{f}_not_number")
     for f in ("dry_run", "write_canonical", "write_wiki", "write_ledger",
               "out_of_band_override", "write_allowed", "allow_out_of_band",
-              "write_claims"):
+              "write_claims", "isolated_write"):
         if f in row and not isinstance(row[f], bool):
             errors.append(f"type_error:{f}_not_bool")
     return errors

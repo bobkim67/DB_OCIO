@@ -155,29 +155,33 @@ def test_monthly_cap_constant():
 # Commit 4 — schema 24 → 32 backward compatibility
 # ──────────────────────────────────────────────────────────────────
 
-def test_c4_schema_fields_count_32_with_c3_subset():
-    """C4 schema 는 32필드. C3 24필드는 정확한 subset."""
-    assert len(LEDGER_ROW_FIELDS) == 32
+def test_c4_schema_fields_count_with_c3_subset():
+    """C4.1 schema 는 33필드 (C4 initial 32 + isolated_write).
+
+    C3 24필드는 처음 24 위치에 동일 순서로 정확한 subset.
+    """
+    assert len(LEDGER_ROW_FIELDS) == 33
     assert len(LEDGER_ROW_FIELDS_C3) == 24
     assert set(LEDGER_ROW_FIELDS_C3) <= set(LEDGER_ROW_FIELDS)
     # C3 의 모든 필드가 C4 의 처음 24 위치에 동일 순서 (key order 보존)
     assert LEDGER_ROW_FIELDS[:24] == LEDGER_ROW_FIELDS_C3
 
 
-def test_c4_new_8_fields_distinct_from_c3():
-    """C4 신규 8필드 — 8필드 모두 명확."""
+def test_c4_new_9_fields_distinct_from_c3():
+    """C4 + C4.1 신규 9필드 (8 monitoring + 1 isolated_write)."""
     c4_only = set(LEDGER_ROW_FIELDS) - set(LEDGER_ROW_FIELDS_C3)
     expected_new = {
         "write_allowed", "write_block_reason", "allow_out_of_band",
         "write_claims", "monthly_cost_before",
         "monthly_cost_after_estimate", "candidate_count",
         "canonical_existing_conflict_count",
+        "isolated_write",  # Commit 4.1
     }
     assert c4_only == expected_new
 
 
-def test_c4_build_preview_returns_all_32_fields():
-    """build_ledger_row_preview 가 default 호출에서도 32필드 모두 채움."""
+def test_c4_build_preview_returns_all_33_fields():
+    """build_ledger_row_preview 가 default 호출에서도 33필드 모두 채움."""
     row = build_ledger_row_preview(period="2026-04")
     assert set(row.keys()) == set(LEDGER_ROW_FIELDS)
     # 신규 8필드 default 검증
@@ -189,6 +193,8 @@ def test_c4_build_preview_returns_all_32_fields():
     assert row["monthly_cost_after_estimate"] == 0.0
     assert row["candidate_count"] == 0
     assert row["canonical_existing_conflict_count"] == 0
+    # Commit 4.1 — target_suffix=None default → isolated_write=False
+    assert row["isolated_write"] is False
 
 
 def test_c4_legacy_c3_row_validates_with_allow_legacy_flag():

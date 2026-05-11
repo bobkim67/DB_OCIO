@@ -320,12 +320,36 @@ def claim_wiki_path(claim_id: str | None) -> str | None:
     return f"08_Claims/{period}_claim_{h}.md"
 
 
-def append_promotion_ledger(row: dict) -> Path:
-    """Append a single promotion run row to _promotion_quality.jsonl."""
+def _ledger_path(target_suffix: str | None = None) -> Path:
+    """ledger path resolver. target_suffix 가 주어지면 운영 ledger 와 분리.
+
+    `target_suffix=None` → `_promotion_quality.jsonl` (운영, R9-A.2 동작)
+    `target_suffix='r9a4-replay'` → `_promotion_quality.r9a4-replay.jsonl`
+    """
+    if target_suffix is None:
+        return PROMOTION_LEDGER_PATH
+    if not isinstance(target_suffix, str) or not target_suffix:
+        raise ValueError(
+            f"target_suffix must be non-empty string, got {target_suffix!r}")
+    if not _TARGET_SUFFIX_RE.match(target_suffix):
+        raise ValueError(
+            f"target_suffix must be alphanumeric / underscore / hyphen, "
+            f"got {target_suffix!r}")
+    return CLAIMS_DATA_DIR / f"_promotion_quality.{target_suffix}.jsonl"
+
+
+def append_promotion_ledger(row: dict,
+                            target_suffix: str | None = None) -> Path:
+    """Append a single promotion run row to ledger jsonl.
+
+    target_suffix : R9-A.4 Commit 4.1 — replay/smoke 산출물을 운영 ledger 와
+        분리. None 이면 운영 `_promotion_quality.jsonl` 에 append.
+    """
     if not isinstance(row, dict):
         raise TypeError("ledger row must be dict")
     CLAIMS_DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with PROMOTION_LEDGER_PATH.open("a", encoding="utf-8") as f:
+    path = _ledger_path(target_suffix)
+    with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(row, ensure_ascii=False, sort_keys=True))
         f.write("\n")
-    return PROMOTION_LEDGER_PATH
+    return path

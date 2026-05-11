@@ -44,6 +44,23 @@ from market_research.wiki.paths import CLAIMS_WIKI_DIR
 CLAIM_HEADING_MAX_LEN = 120
 CLAIM_WIKI_SCHEMA_VERSION = "r9a-claim-1.0.0"
 
+# R9-A.4 Commit 4.1 — target_suffix 검증 패턴 (claim_store 와 동일 규칙).
+import re as _re
+_TARGET_SUFFIX_RE = _re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _validate_target_suffix(target_suffix: str | None) -> None:
+    """target_suffix 가 None 이면 통과. 비정상 포맷이면 ValueError."""
+    if target_suffix is None:
+        return
+    if not isinstance(target_suffix, str) or not target_suffix:
+        raise ValueError(
+            f"target_suffix must be non-empty string, got {target_suffix!r}")
+    if not _TARGET_SUFFIX_RE.match(target_suffix):
+        raise ValueError(
+            f"target_suffix must be alphanumeric / underscore / hyphen, "
+            f"got {target_suffix!r}")
+
 # Acceptance band for promotion_rate when running CLI live write.
 # Out-of-band live runs are aborted unless --allow-out-of-band is passed.
 # dry-run never aborts. Threshold itself is fixed by spec — do not modify.
@@ -121,9 +138,17 @@ def _hash10_of(claim_id: str) -> str:
     return claim_id.rsplit(":", 1)[-1]
 
 
-def _page_path(claim: dict) -> Path:
+def _page_path(claim: dict, target_suffix: str | None = None) -> Path:
+    """Wiki page path. target_suffix 가 주어지면 운영 path 와 분리된 file.
+
+    `target_suffix=None` → `{period}_claim_{h}.md` (R9-A.2 운영 동작)
+    `target_suffix='r9a4-replay'` → `{period}_claim_{h}.r9a4-replay.md`
+    """
+    _validate_target_suffix(target_suffix)
     period = claim.get("period") or "unknown"
     h = _hash10_of(claim.get("claim_id") or "claim:unknown:0000000000")
+    if target_suffix:
+        return CLAIMS_WIKI_DIR / f"{period}_claim_{h}.{target_suffix}.md"
     return CLAIMS_WIKI_DIR / f"{period}_claim_{h}.md"
 
 
@@ -295,8 +320,12 @@ def _render_page(claim: dict, promotion_rule: str | None) -> str:
 
 def write_claim_page(claim: dict,
                      dry_run: bool = False,
-                     promotion_rule: str | None = None) -> Path | None:
+                     promotion_rule: str | None = None,
+                     target_suffix: str | None = None) -> Path | None:
     """Write a single claim's wiki page (idempotent).
+
+    target_suffix : R9-A.4 Commit 4.1 — replay/smoke 산출물 분리. 운영 wiki
+        file 과 충돌하지 않는 별 path 로 write. None 이면 운영 동작 그대로.
 
     Returns:
         Path written, or None if skipped (idempotent / dry-run).
@@ -306,7 +335,7 @@ def write_claim_page(claim: dict,
         raise ValueError(
             f"claim failed validation before write: {v['errors']}")
 
-    out = _page_path(claim)
+    out = _page_path(claim, target_suffix=target_suffix)
     if dry_run:
         return None
 
@@ -327,7 +356,8 @@ def write_claim_page(claim: dict,
 def promote_claims(claims: list[dict],
                    rule: str = "auto",
                    force_ids: Iterable[str] = (),
-                   dry_run: bool = False) -> dict:
+                   dry_run: bool = False,
+                   target_suffix: str | None = None) -> dict:
     """Apply promotion rules and write wiki pages for qualifying claims.
 
     Returns:
@@ -369,7 +399,7 @@ def promote_claims(claims: list[dict],
             skip_reasons["rule_a_b_unmet"] += 1
             continue
 
-        out = _page_path(claim)
+        out = _page_path(claim, target_suffix=target_suffix)
         if out.exists() and _is_claim_wiki(out):
             existing_sup = _read_existing_supporting_ids(out) or []
             new_sup = list(claim.get("supporting_evidence_ids") or [])
@@ -383,7 +413,10 @@ def promote_claims(claims: list[dict],
             continue
 
         if not dry_run:
-            write_claim_page(claim, dry_run=False, promotion_rule=applied)
+            write_claim_page(
+                claim, dry_run=False, promotion_rule=applied,
+                target_suffix=target_suffix,
+            )
         promoted.append(cid)
         if applied in rule_breakdown:
             rule_breakdown[applied] += 1

@@ -750,22 +750,25 @@ def step_claim_extract(
             })
             writes += 1
 
-            # 2) wiki 08_Claims — promote_claims (idempotent)
+            # 2) wiki 08_Claims — promote_claims (idempotent + target_suffix
+            #    분리, C4.1)
             wiki_result = promote_claims(
                 valid_claims,
                 rule=rule,
                 force_ids=force_promote_ids,
                 dry_run=False,
+                target_suffix=target_suffix,
             )
             actually_saved.append({
                 "kind": "wiki_08_claims",
                 "promoted_count": wiki_result.get("promoted_count", 0),
                 "skipped_count": wiki_result.get("skipped_count", 0),
+                "target_suffix": target_suffix,
             })
             writes += int(wiki_result.get("promoted_count", 0) or 0)
 
-            # 3) promotion ledger — 32필드 row append
-            append_promotion_ledger(ledger_preview)
+            # 3) promotion ledger — 33필드 row append (target_suffix 분리, C4.1)
+            append_promotion_ledger(ledger_preview, target_suffix=target_suffix)
             actually_saved.append({
                 "kind": "promotion_ledger",
                 "row_status": ledger_preview.get("status"),
