@@ -97,8 +97,10 @@ def test_rule_a_two_assets_no_longer_promoted(tmp_wiki):
 
 
 def test_rule_b_alone_promoted(tmp_wiki):
-    # rule A 미만족 (single asset), rule B 만족 (causal_chain ≥ 2)
-    c = _claim(salience=0.5, confidence=0.5, assets=1, causal_chain=2,
+    # Commit 5 calibration: rule A 미만족 (single asset), rule B 만족
+    # (chain≥3 + supporting_evidence_ids≥2).
+    c = _claim(salience=0.5, confidence=0.5, assets=1, causal_chain=3,
+               evidence=("ev1", "ev2"),
                cid_suffix="bbbbbbbbbb")
     r = claim_pages.promote_claims([c], rule="auto")
     assert r["promoted_count"] == 1

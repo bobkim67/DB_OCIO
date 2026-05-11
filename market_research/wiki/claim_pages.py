@@ -66,6 +66,16 @@ def _validate_target_suffix(target_suffix: str | None) -> None:
 # dry-run never aborts. Threshold itself is fixed by spec — do not modify.
 ACCEPTANCE_BAND: tuple[float, float] = (30.0, 70.0)
 
+# R9-A.4 Commit 5 — Rule B calibration (workorder "commit5_ruleb").
+# 9.3b real Haiku 분석:
+#   - chain length 분포 (chain=2/3/4 = 1/16/1) 가 너무 집중되어 chain≥2 단독은
+#     18/18 rate 100% 전수 통과 → out_of_band.
+#   - chain≥3 단독 시 17/18 (94.4%) 여전히 out_of_band.
+#   - chain≥3 + supporting_ev_count≥2 조합만 12/18 (66.7%) acceptance band 진입.
+# 본 commit 은 임계 변경만 (prompt / Rule A / band 유지).
+RULE_B_CHAIN_MIN: int = 3
+RULE_B_SUPPORTING_EV_MIN: int = 2
+
 
 # ──────────────────────────────────────────────────────────────────
 # Promotion rules (deterministic, no LLM)
@@ -88,10 +98,34 @@ def _meets_rule_a(claim: dict) -> bool:
     return s >= 0.7 and c >= 0.7 and isinstance(aas, list) and len(aas) >= 3
 
 
-def _meets_rule_b(claim: dict) -> bool:
-    """Rule B: len(causal_chain) >= 2 (multi-step)."""
+def _rule_b_diagnose(claim: dict) -> tuple[bool, str | None]:
+    """Rule B 통과 여부 + 실패 사유.
+
+    R9-A.4 Commit 5 calibration:
+      - chain length >= RULE_B_CHAIN_MIN (3)
+      - AND supporting_evidence_ids 길이 >= RULE_B_SUPPORTING_EV_MIN (2)
+
+    Returns:
+        (passed, fail_reason)
+        fail_reason ∈ {"chain_too_short", "insufficient_supporting_evidence",
+                        None}
+    """
     cc = claim.get("causal_chain") or []
-    return isinstance(cc, list) and len(cc) >= 2
+    if not isinstance(cc, list) or len(cc) < RULE_B_CHAIN_MIN:
+        return False, "chain_too_short"
+    sup = claim.get("supporting_evidence_ids") or []
+    if not isinstance(sup, list) or len(sup) < RULE_B_SUPPORTING_EV_MIN:
+        return False, "insufficient_supporting_evidence"
+    return True, None
+
+
+def _meets_rule_b(claim: dict) -> bool:
+    """Rule B (calibrated): chain≥3 + supporting_evidence_ids≥2.
+
+    Commit 5 (workorder commit5_ruleb) — 9.3b real Haiku 분석 기반 임계 보정.
+    Rule A / prompt / acceptance band 는 변경 0.
+    """
+    return _rule_b_diagnose(claim)[0]
 
 
 def _evaluate_rules(claim: dict, rule: str,

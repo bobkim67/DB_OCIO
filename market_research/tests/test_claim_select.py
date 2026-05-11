@@ -24,7 +24,8 @@ def tmp_claims(tmp_path, monkeypatch):
 
 def _claim(*, suffix, salience=0.9, confidence=0.9, assets=3,
            causal_chain=1, period="2026-04",
-           text="테스트 청구문 sample text"):
+           text="테스트 청구문 sample text",
+           evidence=("ev1",)):
     aas = [{"asset_class": ac, "direction": "positive"}
            for ac in ["국내주식", "해외주식", "국내채권", "해외채권"][:assets]]
     cc = [{"source": f"src_{i}", "target": f"tgt_{i}",
@@ -33,8 +34,8 @@ def _claim(*, suffix, salience=0.9, confidence=0.9, assets=3,
         "schema_version": "1.0.0",
         "claim_id": f"claim:{period}:{suffix}",
         "period": period,
-        "source_evidence_ids": ["ev1"],
-        "supporting_evidence_ids": ["ev1"],
+        "source_evidence_ids": list(evidence),
+        "supporting_evidence_ids": list(evidence),
         "counter_evidence_ids": [],
         "claim_text": text,
         "claim_type": "macro_to_asset",
@@ -72,8 +73,11 @@ def test_canonical_load_missing_returns_dict(tmp_claims):
 # ──────────────────────────────────────────────────────────────────
 
 def test_select_only_promoted(tmp_claims):
+    # Commit 5 calibration: promo_b 는 Rule A 미만족이지만 chain≥3 + sup≥2 로
+    # Rule B 통과. promo_a 는 Rule A 통과 (assets≥3).
     promo_a = _claim(suffix="aaaaaaaaaa", assets=3, causal_chain=1)
-    promo_b = _claim(suffix="bbbbbbbbbb", assets=1, causal_chain=2,
+    promo_b = _claim(suffix="bbbbbbbbbb", assets=1, causal_chain=3,
+                     evidence=("ev1", "ev2"),
                      salience=0.5, confidence=0.5)
     skip_unmet = _claim(suffix="ccccccccc1", assets=1, causal_chain=1,
                         salience=0.5, confidence=0.5)
@@ -135,12 +139,15 @@ def test_asset_class_filter(tmp_claims):
 # ──────────────────────────────────────────────────────────────────
 
 def test_ranking_by_confidence_salience_then_causal_length(tmp_claims):
+    # Commit 5 calibration: low_long_cc 는 Rule B 새 임계 (chain≥3 + sup≥2)
+    # 만족하도록 evidence 2개 부여.
     # All pass A or B. ranking key: confidence*salience desc, causal_chain len desc
     high = _claim(suffix="hh11111111", assets=3, salience=0.9, confidence=0.9,
-                  causal_chain=1)            # score = 0.81
+                  causal_chain=1)            # score = 0.81, A pass
     mid = _claim(suffix="mm11111111", assets=3, salience=0.8, confidence=0.8,
-                 causal_chain=2)             # score = 0.64
+                 causal_chain=2)             # score = 0.64, A pass
     low_long_cc = _claim(suffix="ll11111111", assets=1, causal_chain=3,
+                         evidence=("ev1", "ev2"),
                          salience=0.5, confidence=0.5)  # score=0.25, B pass
 
     claim_store.save_claims_canonical(

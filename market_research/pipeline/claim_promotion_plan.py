@@ -22,7 +22,10 @@ from typing import Any, Iterable
 from market_research.analyze.claim_extractor import validate_claim
 from market_research.wiki.claim_pages import (
     ACCEPTANCE_BAND,
+    RULE_B_CHAIN_MIN,
+    RULE_B_SUPPORTING_EV_MIN,
     _evaluate_rules,
+    _rule_b_diagnose,
 )
 
 
@@ -161,6 +164,9 @@ def build_promotion_plan(
     rule_breakdown = {"A": 0, "B": 0, "C": 0}
     skip_reasons = {
         "rule_a_b_unmet": 0,
+        # R9-A.4 Commit 5 — Rule B fail breakdown (chain / supporting_evidence)
+        "rule_b_chain_too_short": 0,
+        "rule_b_insufficient_supporting_evidence": 0,
         "duplicate_existing": 0,
         "supporting_diff_existing": 0,
         "validation_failed": 0,
@@ -202,11 +208,23 @@ def build_promotion_plan(
                 "merge_conflicts": [],
                 "merge_policy": merge_policy,
                 "canonical_existing_count": len(existing_index),
+                "rule_b_thresholds": {
+                    "chain_min": RULE_B_CHAIN_MIN,
+                    "supporting_ev_min": RULE_B_SUPPORTING_EV_MIN,
+                },
                 "error": f"unknown_rule:{rule!r}",
             }
         if not ok:
             skipped_claim_ids.append(cid)
             skip_reasons["rule_a_b_unmet"] += 1
+            # R9-A.4 Commit 5 — Rule B 실패 시 사유 breakdown.
+            # Rule A 가 통과해도 rule="B" 선택자라면 B 가 결정자. 보수적으로
+            # 항상 B 진단 추가 (counter 는 독립, rule_a_b_unmet 와 합 가능).
+            _, b_reason = _rule_b_diagnose(claim)
+            if b_reason == "chain_too_short":
+                skip_reasons["rule_b_chain_too_short"] += 1
+            elif b_reason == "insufficient_supporting_evidence":
+                skip_reasons["rule_b_insufficient_supporting_evidence"] += 1
             continue
 
         # 3) Merge conflict (vs canonical_existing)
@@ -258,4 +276,9 @@ def build_promotion_plan(
         "merge_conflicts": merge_conflicts,
         "merge_policy": merge_policy,
         "canonical_existing_count": len(existing_index),
+        # Commit 5 — calibration 임계 echo (debug / monitoring 용도)
+        "rule_b_thresholds": {
+            "chain_min": RULE_B_CHAIN_MIN,
+            "supporting_ev_min": RULE_B_SUPPORTING_EV_MIN,
+        },
     }

@@ -447,11 +447,25 @@ def test_93a_promotion_ledger_row_count_unchanged():
 
 
 def test_93a_wiki_08_claims_count_unchanged():
+    """운영 08_Claims md count 만 검증 — target_suffix 산출물 (`.{suffix}.md`)
+    은 명시적 replay artifact 이므로 제외 (C4.1 격리 정책).
+
+    Commit 5 갱신: 9.3 controlled write smoke 가 18 개 `.r9a4-replay.md` 를
+    생성해도 운영 count 는 8 그대로여야 한다.
+    """
     from market_research.wiki.paths import CLAIMS_WIKI_DIR
     if not CLAIMS_WIKI_DIR.exists():
         pytest.skip("08_Claims 디렉토리 부재")
-    md_count = len(list(CLAIMS_WIKI_DIR.glob("*.md")))
-    assert md_count == 8, f"08_Claims md 수 invariant 위반: {md_count} (예상 8)"
+    # 운영 파일 = `.<suffix>.md` 패턴이 아닌 base `.md` 만.
+    operational = [
+        f for f in CLAIMS_WIKI_DIR.glob("*.md")
+        if f.name.count(".") == 1   # `{period}_claim_{h}.md` 만 (suffix 1개)
+    ]
+    md_count = len(operational)
+    assert md_count == 8, (
+        f"운영 08_Claims md 수 invariant 위반: {md_count} (예상 8). "
+        f"replay artifact 는 별 카운트."
+    )
 
 
 @pytest.mark.parametrize("label", list(PROTECTED_FILES.keys()))
