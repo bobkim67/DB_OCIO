@@ -23,8 +23,9 @@ from typing import Any
 from market_research.analyze.claim_store import PROMOTION_LEDGER_PATH
 
 
-# 24 fields — workorder §6.1 schema. dict 순서가 row JSON 출력 순서.
-LEDGER_ROW_FIELDS: tuple[str, ...] = (
+# Commit 3 — 24 legacy fields. C3 row 의 read backward compat 검증 용도로 보존.
+# C4 신규 row 는 LEDGER_ROW_FIELDS (32 fields) 를 사용.
+LEDGER_ROW_FIELDS_C3: tuple[str, ...] = (
     "ts",
     "period",
     "source",
@@ -49,6 +50,22 @@ LEDGER_ROW_FIELDS: tuple[str, ...] = (
     "warnings",
     "out_of_band_override",
     "target_suffix",
+)
+
+# Commit 4 — 32 fields. C3 의 24 fields 확장 (기존 키 변경 0, 신규 8 키만 추가).
+# workorder r9a4_commit4_workorder.md §6 / §8 schema. dict 순서가 row JSON 출력 순서.
+LEDGER_ROW_FIELDS: tuple[str, ...] = LEDGER_ROW_FIELDS_C3 + (
+    # write gate monitoring
+    "write_allowed",                    # 최종 write 진입 여부
+    "write_block_reason",               # 차단 사유 (None | enum string)
+    "allow_out_of_band",                # flag echo
+    "write_claims",                     # flag echo (write_canonical=wiki=ledger 통합값)
+    # cost / capacity monitoring
+    "monthly_cost_before",              # 호출 전 누적 cost (= monthly_cost_usd_so_far 와 동일 의미, drift 추적용 dup)
+    "monthly_cost_after_estimate",      # before + est_cost
+    # plan monitoring
+    "candidate_count",                  # plan input_count (valid claims)
+    "canonical_existing_conflict_count",  # plan.merge_conflicts 길이
 )
 
 # Monthly cap — workorder §5 D-4. Commit 4 에서 CLI override 가능 예정.
@@ -154,6 +171,15 @@ def build_ledger_row_preview(
     out_of_band_override: bool = False,
     target_suffix: str | None = None,
     ts: str | None = None,
+    # Commit 4 신규 8 fields
+    write_allowed: bool = False,
+    write_block_reason: str | None = None,
+    allow_out_of_band: bool = False,
+    write_claims: bool = False,
+    monthly_cost_before: float | None = None,
+    monthly_cost_after_estimate: float | None = None,
+    candidate_count: int = 0,
+    canonical_existing_conflict_count: int = 0,
 ) -> dict[str, Any]:
     """Commit 3 단계의 ledger row preview.
 
@@ -166,6 +192,18 @@ def build_ledger_row_preview(
     """
     if ts is None:
         ts = datetime.now().isoformat(timespec="seconds")
+
+    # monthly_cost_before default = monthly_cost_usd_so_far (drift 추적 dup).
+    _before = (
+        _to_float(monthly_cost_before)
+        if monthly_cost_before is not None
+        else _to_float(monthly_cost_usd_so_far)
+    )
+    _after = (
+        _to_float(monthly_cost_after_estimate)
+        if monthly_cost_after_estimate is not None
+        else _to_float(_before + cost_usd)
+    )
 
     return {
         "ts": ts,
@@ -192,30 +230,60 @@ def build_ledger_row_preview(
         "warnings": list(warnings or []),
         "out_of_band_override": bool(out_of_band_override),
         "target_suffix": _to_str_or_none(target_suffix),
+        # Commit 4 신규 8
+        "write_allowed": bool(write_allowed),
+        "write_block_reason": _to_str_or_none(write_block_reason),
+        "allow_out_of_band": bool(allow_out_of_band),
+        "write_claims": bool(write_claims),
+        "monthly_cost_before": round(_before, 6),
+        "monthly_cost_after_estimate": round(_after, 6),
+        "candidate_count": _to_int(candidate_count),
+        "canonical_existing_conflict_count": _to_int(
+            canonical_existing_conflict_count),
     }
 
 
-def validate_ledger_row_preview(row: dict) -> list[str]:
+def validate_ledger_row_preview(
+    row: dict,
+    *,
+    allow_legacy_c3: bool = False,
+) -> list[str]:
     """필수 필드 누락 / 타입 오류 → 오류 메시지 list 반환 (빈 list = 정상).
 
-    Commit 4 에서 실 append 직전 마지막 검증으로 재사용 가능.
+    Parameters
+    ----------
+    row : dict
+        검증 대상 row.
+    allow_legacy_c3 : bool
+        True 이면 Commit 3 의 24필드 schema 만 충족해도 valid 로 판정.
+        Commit 4 신규 8필드 누락은 errors 가 아닌 통과.
+        gitignored ledger 의 backward compat read 검증 용도.
+        default False — Commit 4 신규 row 는 32필드 모두 채워야 valid.
+
+    Commit 4 신규: backward compat 모드 추가.
     """
     errors: list[str] = []
     if not isinstance(row, dict):
         return ["row_not_dict"]
-    for field in LEDGER_ROW_FIELDS:
+
+    required = LEDGER_ROW_FIELDS_C3 if allow_legacy_c3 else LEDGER_ROW_FIELDS
+    for field in required:
         if field not in row:
             errors.append(f"missing_field:{field}")
-    # type sanity (대표 필드)
+
+    # type sanity — 존재하는 필드만 검사 (graceful)
     for f in ("input_count", "valid_claim_count", "invalid_claim_count",
-              "promoted_count", "skipped_count"):
+              "promoted_count", "skipped_count", "candidate_count",
+              "canonical_existing_conflict_count"):
         if f in row and not isinstance(row[f], int):
             errors.append(f"type_error:{f}_not_int")
-    for f in ("cost_usd", "monthly_cost_usd_so_far", "promotion_rate"):
+    for f in ("cost_usd", "monthly_cost_usd_so_far", "promotion_rate",
+              "monthly_cost_before", "monthly_cost_after_estimate"):
         if f in row and not isinstance(row[f], (int, float)):
             errors.append(f"type_error:{f}_not_number")
     for f in ("dry_run", "write_canonical", "write_wiki", "write_ledger",
-              "out_of_band_override"):
+              "out_of_band_override", "write_allowed", "allow_out_of_band",
+              "write_claims"):
         if f in row and not isinstance(row[f], bool):
             errors.append(f"type_error:{f}_not_bool")
     return errors

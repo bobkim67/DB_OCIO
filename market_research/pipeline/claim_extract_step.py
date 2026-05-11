@@ -121,6 +121,74 @@ def _canonical_target_path(period: str, target_suffix: str | None) -> str:
     return f"{base}.json"
 
 
+# ──────────────────────────────────────────────────────────────────
+# C4-β — Write gate (G-11/G-12/G-13)
+# ──────────────────────────────────────────────────────────────────
+
+def _evaluate_write_gate(
+    *,
+    status: str,
+    plan: dict | None,
+    invalid_count: int,
+    actual_cost: float,
+    cost_cap_usd: float,
+    write_canonical: bool,
+    write_wiki: bool,
+    write_ledger: bool,
+    allow_out_of_band: bool,
+    target_suffix: str | None,
+) -> tuple[bool, str | None]:
+    """workorder §5 — G-1~G-13 다단 검증. Returns (write_allowed, reason).
+
+    G-11 : `--write-claims` (3종 모두 True)
+    G-12 : out_of_band=True 면 allow_out_of_band 필요
+    G-13 : target_suffix 미지정 시 운영 file 덮어쓰기 차단 (C4-Q4=B)
+
+    failure status 들은 자동으로 write_block_reason 에 매핑 (G-3~G-10).
+    """
+    write_claims_flag = bool(write_canonical and write_wiki and write_ledger)
+
+    # G-11 — flag 미지정 시 항상 dry-run
+    if not write_claims_flag:
+        return False, "default_dry_run"
+
+    # Status-driven blocks (G-3~G-10)
+    if status == STATUS_COST_CAP_MONTHLY_PRE_ABORT:
+        return False, "monthly_cap_exceeded"
+    if status == STATUS_COST_CAP_PRE_ABORT:
+        return False, "cost_cap_pre_estimate"
+    if status == STATUS_RUNNER_ABORTED:
+        return False, "runner_aborted"
+    if status == STATUS_NO_VALID_CLAIMS:
+        return False, "no_valid_claims"
+    if status == STATUS_PERIOD_MISMATCH:
+        return False, "period_mismatch"
+    if status == STATUS_MERGE_CONFLICT_PREVIEW:
+        return False, "merge_conflict_present"
+    if status == STATUS_PROMOTION_ZERO:
+        return False, "promotion_zero"
+    if status == STATUS_PARTIAL_EXTRACTION:
+        # F-3 (invalid > 0) 또는 F-8 (cost cap actual). 안전망 — write 0.
+        if invalid_count > 0:
+            return False, "invalid_present"
+        if actual_cost > cost_cap_usd:
+            return False, "cost_cap_exceeded_actual"
+        return False, "partial_extraction"
+
+    # G-12 — out_of_band 기본 차단
+    if status == STATUS_PROMOTION_OUT_OF_BAND:
+        if not allow_out_of_band:
+            return False, "out_of_band_default_block"
+        # else: allow flag 명시 → 다음 gate 로
+
+    # G-13 — target_suffix 미지정 시 운영 file 덮어쓰기 차단 (Q4=B)
+    if target_suffix is None:
+        return False, "missing_target_suffix"
+
+    # 통과 — STATUS_OK_PLAN_READY 또는 (STATUS_PROMOTION_OUT_OF_BAND + allow)
+    return True, None
+
+
 def _period_mismatch_ids(claims: list[dict], period: str) -> list[str]:
     out: list[str] = []
     for c in claims or []:
@@ -212,6 +280,7 @@ def step_claim_extract(
     write_canonical: bool = False,
     write_wiki: bool = False,
     write_ledger: bool = False,
+    allow_out_of_band: bool = False,
     dry_run_debug_path: str | Path | None = None,
     write_invalid_dump: bool = False,
     rule: str = "auto",
@@ -283,6 +352,13 @@ def step_claim_extract(
         "plan": None,
         "ledger_row_preview": None,
         "period_mismatch_ids": [],
+        # Commit 4 monitoring fields
+        "write_allowed": False,
+        "write_block_reason": None,
+        "allow_out_of_band": bool(allow_out_of_band),
+        "write_claims": bool(write_canonical and write_wiki and write_ledger),
+        "candidate_count": 0,
+        "canonical_existing_conflict_count": 0,
     }
 
     if not use_enabled:
@@ -351,12 +427,21 @@ def step_claim_extract(
             ],
             out_of_band_override=False,
             target_suffix=target_suffix,
+            write_allowed=False,
+            write_block_reason="monthly_cap_exceeded",
+            allow_out_of_band=allow_out_of_band,
+            write_claims=bool(write_canonical and write_wiki and write_ledger),
+            monthly_cost_before=monthly_so_far,
+            monthly_cost_after_estimate=monthly_so_far + est_cost,
+            candidate_count=0,
+            canonical_existing_conflict_count=0,
         )
         return {
             **base,
             "status": STATUS_COST_CAP_MONTHLY_PRE_ABORT,
             "warning_code": "cost_cap_exceeded_monthly",
             "ledger_row_preview": ledger_preview,
+            "write_block_reason": "monthly_cap_exceeded",
             "notes": (
                 f"monthly cap pre-abort: ${monthly_so_far:.4f}+"
                 f"${est_cost:.4f} > ${monthly_cap_usd}. LLM 호출 0."
@@ -395,6 +480,18 @@ def step_claim_extract(
     if abort_reason in _ABORT_REASON_TO_STATUS:
         status, warning_code = _ABORT_REASON_TO_STATUS[abort_reason]
         plan = None
+        _, abort_block_reason = _evaluate_write_gate(
+            status=status,
+            plan=None,
+            invalid_count=len(invalid_claims),
+            actual_cost=actual_cost,
+            cost_cap_usd=cost_cap_usd,
+            write_canonical=write_canonical,
+            write_wiki=write_wiki,
+            write_ledger=write_ledger,
+            allow_out_of_band=allow_out_of_band,
+            target_suffix=target_suffix,
+        )
         ledger_preview = build_ledger_row_preview(
             ts=ts,
             period=period,
@@ -418,6 +515,14 @@ def step_claim_extract(
             warnings=list(result.get("warnings") or []),
             out_of_band_override=False,
             target_suffix=target_suffix,
+            write_allowed=False,
+            write_block_reason=abort_block_reason,
+            allow_out_of_band=allow_out_of_band,
+            write_claims=bool(write_canonical and write_wiki and write_ledger),
+            monthly_cost_before=monthly_so_far,
+            monthly_cost_after_estimate=monthly_so_far + actual_cost,
+            candidate_count=0,
+            canonical_existing_conflict_count=0,
         )
         return {
             **base,
@@ -427,6 +532,7 @@ def step_claim_extract(
             "extraction": result,
             "plan": plan,
             "ledger_row_preview": ledger_preview,
+            "write_block_reason": abort_block_reason,
             "would_save": _build_would_save(
                 period=period,
                 target_suffix=target_suffix,
@@ -534,6 +640,32 @@ def step_claim_extract(
     skipped_count = int((plan or {}).get("skipped_count", 0) or 0)
     promotion_rate = float((plan or {}).get("promotion_rate", 0.0) or 0.0)
 
+    # C4 — write gate 평가 (G-11/G-12/G-13)
+    write_allowed, write_block_reason = _evaluate_write_gate(
+        status=status,
+        plan=plan,
+        invalid_count=invalid_count,
+        actual_cost=actual_cost,
+        cost_cap_usd=cost_cap_usd,
+        write_canonical=write_canonical,
+        write_wiki=write_wiki,
+        write_ledger=write_ledger,
+        allow_out_of_band=allow_out_of_band,
+        target_suffix=target_suffix,
+    )
+
+    # out_of_band drift surface warning (C4 §6.2)
+    if (
+        status == STATUS_PROMOTION_OUT_OF_BAND
+        and write_block_reason == "out_of_band_default_block"
+    ):
+        warnings.append(
+            f"promotion_rate={promotion_rate:.1f}% is out-of-band relative to "
+            f"R9-A.2 acceptance band [30.0, 70.0]; --allow-out-of-band 미지정 → "
+            "canonical/wiki/ledger write 차단. R9-A.1 manual pilot rate=36.4% "
+            "대비 drift 가능 — Rule B / prompt calibration 은 9.3b/Commit 5 트랙."
+        )
+
     ledger_preview = build_ledger_row_preview(
         ts=ts,
         period=period,
@@ -548,15 +680,23 @@ def step_claim_extract(
         skip_reasons=skip_reasons,
         cost_usd=actual_cost,
         monthly_cost_usd_so_far=monthly_so_far,
-        dry_run=True,
+        dry_run=(not write_allowed),
         write_canonical=write_canonical,
         write_wiki=write_wiki,
         write_ledger=write_ledger,
         status=status,
         abort_reason=None,
         warnings=warnings,
-        out_of_band_override=False,
+        out_of_band_override=bool(allow_out_of_band and plan and plan.get("out_of_band")),
         target_suffix=target_suffix,
+        write_allowed=write_allowed,
+        write_block_reason=write_block_reason,
+        allow_out_of_band=allow_out_of_band,
+        write_claims=bool(write_canonical and write_wiki and write_ledger),
+        monthly_cost_before=monthly_so_far,
+        monthly_cost_after_estimate=monthly_so_far + actual_cost,
+        candidate_count=valid_count,
+        canonical_existing_conflict_count=len((plan or {}).get("merge_conflicts", [])),
     )
 
     would_save = _build_would_save(
@@ -573,8 +713,6 @@ def step_claim_extract(
 
     # invalid raw dump path — C3-Q6 default B (explicit flag)
     if write_invalid_dump and dry_run_debug_path is not None and invalid_count > 0:
-        # path 는 이미 _validate_debug_path 통과
-        # Commit 3 — would_save 에 metadata 추가만 (실 write 0)
         would_save.append({
             "kind": "invalid_raw_dump",
             "path": str(dry_run_debug_path),
@@ -582,26 +720,93 @@ def step_claim_extract(
             "invalid_count": invalid_count,
         })
 
+    # ── C4-γ — 실 write 분기 (G-1~G-13 통과 시) ──
+    actually_saved: list[dict] = []
+    writes = 0
+    if write_allowed:
+        try:
+            from market_research.analyze.claim_store import (
+                append_promotion_ledger,
+                save_claims_canonical,
+            )
+            from market_research.wiki.claim_pages import promote_claims
+
+            source = str(result.get("source") or "daily_update_r9a4")
+            extractor_version = str(
+                result.get("extractor_version") or "r9a.4-haiku")
+
+            # 1) canonical store — target_suffix 필수 (G-13 통과 보장)
+            canonical_path = save_claims_canonical(
+                period=period,
+                claims=valid_claims,
+                source=source,
+                extractor_version=extractor_version,
+                promotion_result=plan,
+                target_suffix=target_suffix,
+            )
+            actually_saved.append({
+                "kind": "canonical_store",
+                "path": str(canonical_path),
+            })
+            writes += 1
+
+            # 2) wiki 08_Claims — promote_claims (idempotent)
+            wiki_result = promote_claims(
+                valid_claims,
+                rule=rule,
+                force_ids=force_promote_ids,
+                dry_run=False,
+            )
+            actually_saved.append({
+                "kind": "wiki_08_claims",
+                "promoted_count": wiki_result.get("promoted_count", 0),
+                "skipped_count": wiki_result.get("skipped_count", 0),
+            })
+            writes += int(wiki_result.get("promoted_count", 0) or 0)
+
+            # 3) promotion ledger — 32필드 row append
+            append_promotion_ledger(ledger_preview)
+            actually_saved.append({
+                "kind": "promotion_ledger",
+                "row_status": ledger_preview.get("status"),
+            })
+            writes += 1
+        except Exception as exc:
+            # Write 도중 실패 — graceful (D-6). write_allowed 는 True 였으나
+            # 실 write 가 일부만 진행됐을 수 있음 → block_reason overlay.
+            warnings.append(f"write_execution_error: {exc}")
+            write_allowed = False
+            write_block_reason = "write_execution_error"
+
     notes = (
         f"Step 2.7 enabled. runner 호출 {llm_calls}회. "
-        f"status={status} warning_code={warning_code}. "
+        f"status={status} warning_code={warning_code} "
+        f"write_allowed={write_allowed} block={write_block_reason}. "
         f"valid={valid_count} invalid={invalid_count} "
         f"promoted={promoted_count} promotion_rate={promotion_rate:.1f}%. "
         f"cost=${actual_cost:.4f} monthly=${monthly_so_far:.4f}. "
-        "file write 0 (Commit 3 invariant)."
+        f"writes={writes}."
     )
 
-    return {
+    out = {
         **base,
         "status": status,
         "warning_code": warning_code,
         "llm_calls": llm_calls,
-        "writes": 0,  # invariant — Commit 3 file write 0
+        "writes": writes,
         "extraction": result,
         "plan": plan,
         "ledger_row_preview": ledger_preview,
         "period_mismatch_ids": period_mismatch_ids,
         "would_save": would_save,
-        "actually_saved": [],
+        "actually_saved": actually_saved,
         "notes": notes,
     }
+    # base 의 monitoring 기본값을 실측값으로 덮어쓰기
+    out["write_allowed"] = bool(write_allowed)
+    out["write_block_reason"] = write_block_reason
+    out["candidate_count"] = valid_count
+    out["canonical_existing_conflict_count"] = len(
+        (plan or {}).get("merge_conflicts", [])
+    )
+    return out

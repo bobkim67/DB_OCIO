@@ -42,13 +42,28 @@ PROMOTION_LEDGER_PATH = CLAIMS_DATA_DIR / "_promotion_quality.jsonl"
 # Internal — paths / stats
 # ──────────────────────────────────────────────────────────────────
 
-def _canonical_path(period: str) -> Path:
+_TARGET_SUFFIX_RE = __import__("re").compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _canonical_path(period: str, target_suffix: str | None = None) -> Path:
     if not isinstance(period, str) or not period:
         raise ValueError(f"period must be non-empty string, got {period!r}")
     if "/" in period or "\\" in period or ".." in period:
         raise ValueError(f"unsafe period: {period!r}")
+    if target_suffix is not None:
+        if not isinstance(target_suffix, str) or not target_suffix:
+            raise ValueError(
+                f"target_suffix must be non-empty string, got {target_suffix!r}")
+        if not _TARGET_SUFFIX_RE.match(target_suffix):
+            raise ValueError(
+                f"target_suffix must be alphanumeric / underscore / hyphen, "
+                f"got {target_suffix!r}")
     CLAIMS_DATA_DIR.mkdir(parents=True, exist_ok=True)
-    return CLAIMS_DATA_DIR / f"{period}.json"
+    name = (
+        f"{period}.{target_suffix}.json" if target_suffix
+        else f"{period}.json"
+    )
+    return CLAIMS_DATA_DIR / name
 
 
 def _compute_stats(claims: list[dict],
@@ -94,11 +109,20 @@ def save_claims_canonical(period: str,
                           claims: list[dict],
                           source: str,
                           extractor_version: str,
-                          promotion_result: dict | None = None) -> Path:
+                          promotion_result: dict | None = None,
+                          target_suffix: str | None = None) -> Path:
     """Validate-then-save canonical claim store for a period.
 
+    Parameters
+    ----------
+    target_suffix : optional alphanumeric/underscore/hyphen suffix. None 이면
+        운영 file `{period}.json` 에 저장 (R9-A.2 기존 동작). Non-None 이면
+        `{period}.{suffix}.json` 분리 저장 (R9-A.4 Commit 4 / 9.3 controlled
+        write smoke 용도).
+
     Raises:
-        ValueError if any claim fails R9-A.0 validator.
+        ValueError if any claim fails R9-A.0 validator OR target_suffix
+        포맷이 비정상.
     """
     if not isinstance(claims, list):
         raise TypeError(f"claims must be list, got {type(claims).__name__}")
@@ -118,11 +142,12 @@ def save_claims_canonical(period: str,
         "saved_at": datetime.now().isoformat(timespec="seconds"),
         "source": source,
         "extractor_version": extractor_version,
+        "target_suffix": target_suffix,
         "claims": serialized,
         "stats": _compute_stats(serialized, promotion_result),
     }
 
-    out = _canonical_path(period)
+    out = _canonical_path(period, target_suffix=target_suffix)
     out.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=False),
         encoding="utf-8",

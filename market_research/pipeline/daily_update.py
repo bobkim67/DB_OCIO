@@ -41,7 +41,15 @@ CACHE_DIR = DATA_DIR / 'report_cache'
 REGIME_FILE = DATA_DIR / 'regime_memory.json'
 
 
-def daily_update(date_str: str = None, dry_run: bool = False) -> dict:
+def daily_update(
+    date_str: str = None,
+    dry_run: bool = False,
+    *,
+    enable_claim_extraction: bool = False,
+    write_claims: bool = False,
+    allow_out_of_band: bool = False,
+    target_suffix: str | None = None,
+) -> dict:
     """
     일일 증분 업데이트 메인 함수.
 
@@ -51,6 +59,21 @@ def daily_update(date_str: str = None, dry_run: bool = False) -> dict:
         대상 날짜 (YYYY-MM-DD). None이면 오늘.
     dry_run : bool
         True면 뉴스 수집/분류만 (GraphRAG/델타 생략)
+    enable_claim_extraction : bool
+        R9-A.4 Commit 4 — Step 2.7 (claim extraction) opt-in. False 면 모듈
+        default (ENABLE_CLAIM_EXTRACTION=False) 따름. CLI `--enable-claim-
+        extraction` 와 연동.
+    write_claims : bool
+        R9-A.4 Commit 4 — canonical/wiki/ledger 실 write opt-in. False 면
+        dry-run/plan/debug 까지만 (write 0). CLI `--write-claims` 와 연동.
+    allow_out_of_band : bool
+        R9-A.4 Commit 4 — promotion plan out_of_band=True 일 때도 write 허용.
+        False 면 out_of_band=True 시 write abort. CLI `--allow-out-of-band`
+        와 연동.
+    target_suffix : str | None
+        R9-A.4 Commit 4 — `data/claims/{period}.{suffix}.json` 분리 저장.
+        None 이면 write_claims=True 라도 운영 file 덮어쓰기 차단 (Q4=B).
+        CLI `--target-suffix` 와 연동.
 
     Returns
     -------
@@ -127,21 +150,33 @@ def daily_update(date_str: str = None, dry_run: bool = False) -> dict:
         print(f'  Base wiki 생성 실패: {exc}')
         result['steps']['wiki_base'] = {'status': 'error', 'error': str(exc)}
 
-    # ── Step 2.7: Claim extractor 정기 batch (R9-A.4, skeleton, default OFF) ──
+    # ── Step 2.7: Claim extractor 정기 batch (R9-A.4) ──
     # mini-spec docs/r9a4_minispec.md §3 — Refine 직후 / GraphRAG 직전.
-    # Commit 1 단계 — feature flag default OFF, 실제 LLM/write 는 Commit 2+
-    # 에서. daily_update 전체 흐름 graceful 보장 (D-6).
-    print(f'\n[Step 2.7] Claim extractor (R9-A.4 skeleton)...')
+    # Commit 4: CLI flag (--enable-claim-extraction / --write-claims /
+    # --allow-out-of-band / --target-suffix) 로 opt-in. flag 없으면 모듈
+    # default ENABLE_CLAIM_EXTRACTION=False 따라 skip.
+    # daily_update 전체 흐름 graceful 보장 (D-6).
+    print(f'\n[Step 2.7] Claim extractor (R9-A.4)...')
     try:
         from market_research.pipeline.claim_extract_step import (
             step_claim_extract,
         )
-        claim_result = step_claim_extract(month_str)
+        claim_result = step_claim_extract(
+            month_str,
+            enabled=(True if enable_claim_extraction else None),
+            write_canonical=bool(write_claims),
+            write_wiki=bool(write_claims),
+            write_ledger=bool(write_claims),
+            allow_out_of_band=bool(allow_out_of_band),
+            target_suffix=target_suffix,
+        )
         result['steps']['claim_extract'] = claim_result
         print(f'  → status={claim_result["status"]} '
               f'enabled={claim_result["enabled"]} '
               f'llm_calls={claim_result["llm_calls"]} '
-              f'writes={claim_result["writes"]}')
+              f'writes={claim_result["writes"]} '
+              f'write_allowed={claim_result.get("write_allowed", False)} '
+              f'block={claim_result.get("write_block_reason")}')
     except Exception as exc:
         # daily_update 전체 graceful — Step 2.7 실패해도 보고서 build 계속.
         print(f'  Step 2.7 실패 (graceful skip): {exc}')
@@ -724,5 +759,32 @@ if __name__ == '__main__':
                         help='Target date (YYYY-MM-DD). Default: today')
     parser.add_argument('--dry-run', action='store_true',
                         help='Collect/classify only (no GraphRAG)')
+    # R9-A.4 Commit 4 — Step 2.7 claim extraction CLI flag
+    parser.add_argument(
+        '--enable-claim-extraction', action='store_true',
+        help='R9-A.4 Step 2.7 (claim extraction) opt-in (default OFF)',
+    )
+    parser.add_argument(
+        '--write-claims', action='store_true',
+        help=('R9-A.4 canonical/wiki/ledger 실 write opt-in. '
+              '미지정 시 dry-run/plan/debug 까지만 (write 0).'),
+    )
+    parser.add_argument(
+        '--allow-out-of-band', action='store_true',
+        help=('promotion plan out_of_band=True 일 때 write 허용 opt-in. '
+              '미지정 시 out_of_band=True → write abort.'),
+    )
+    parser.add_argument(
+        '--target-suffix', default=None, metavar='SUFFIX',
+        help=('data/claims/{period}.{suffix}.json 분리 저장 (alphanumeric / '
+              'hyphen / underscore). 미지정 시 운영 file 덮어쓰기 차단 (Q4=B).'),
+    )
     args = parser.parse_args()
-    daily_update(args.date, dry_run=args.dry_run)
+    daily_update(
+        args.date,
+        dry_run=args.dry_run,
+        enable_claim_extraction=args.enable_claim_extraction,
+        write_claims=args.write_claims,
+        allow_out_of_band=args.allow_out_of_band,
+        target_suffix=args.target_suffix,
+    )
