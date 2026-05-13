@@ -4,9 +4,9 @@ status: base
 entity_id: graphnode__유가
 label: "유가"
 taxonomy_topic: 에너지_원자재
-node_importance: 1.6260
+node_importance: 1.2821
 importance_basis: edge_effective_score_sum
-support_count_sum: 8
+support_count_sum: 4
 path_count: 1
 path_role_hit: true
 unique_article_count: 2500
@@ -17,7 +17,7 @@ graph_node_id: 유가
 period: 2026-04
 has_graph_signal: true
 source_of_truth: pipeline_refine+graphrag
-updated_at: 2026-04-29T10:39:40
+updated_at: 2026-05-06T13:02:21
 ---
 
 # Entity — 유가
@@ -28,7 +28,7 @@ updated_at: 2026-04-29T10:39:40
 ## Confirmed facts
 
 - Mention summary: 2026-02-27 ~ 2026-04-29 · 2500 articles
-- Linked events: `event_2319`, `event_2956`, `event_3842`, `event_3436`, `event_3810`
+- Linked events: `event_fb83c66e28`, `event_fe3e74bd08`, `event_e63013c1f1`, `event_aa5fca2753`, `event_287e0763d4`
 - Related asset classes (derived): `원자재`
 
 ### Recent articles
@@ -43,8 +43,8 @@ updated_at: 2026-04-29T10:39:40
 
 ## Graph provenance
 
-- `node_importance`: 1.6260 (edge_effective_score_sum)
-- `support_count_sum`: 8
+- `node_importance`: 1.2821 (edge_effective_score_sum)
+- `support_count_sum`: 4
 - `path_count`: 1
 - `path_role_hit`: true
 

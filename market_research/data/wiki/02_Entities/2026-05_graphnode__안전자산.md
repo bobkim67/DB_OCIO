@@ -4,7 +4,7 @@ status: base
 entity_id: graphnode__안전자산
 label: "안전자산"
 taxonomy_topic: 귀금속_금
-node_importance: 0.6932
+node_importance: 0.6336
 importance_basis: edge_effective_score_sum
 support_count_sum: 4
 path_count: 0
@@ -17,7 +17,7 @@ graph_node_id: 안전자산
 period: 2026-05
 has_graph_signal: true
 source_of_truth: pipeline_refine+graphrag
-updated_at: 2026-05-06T08:53:43
+updated_at: 2026-05-06T12:48:23
 ---
 
 # Entity — 안전자산
@@ -28,7 +28,7 @@ updated_at: 2026-05-06T08:53:43
 ## Confirmed facts
 
 - Mention summary: 2026-03-16 ~ 2026-05-06 · 9 articles
-- Linked events: `event_1007`, `event_59`, `event_83`, `event_270`, `event_540`
+- Linked events: `event_847117682c`, `event_822b113784`, `event_2d6b7dc4b5`, `event_aa4ba1f219`, `event_2296b3e780`
 - Related asset classes (derived): `금`
 
 ### Recent articles
@@ -43,7 +43,7 @@ updated_at: 2026-05-06T08:53:43
 
 ## Graph provenance
 
-- `node_importance`: 0.6932 (edge_effective_score_sum)
+- `node_importance`: 0.6336 (edge_effective_score_sum)
 - `support_count_sum`: 4
 - `path_count`: 0
 - `path_role_hit`: false

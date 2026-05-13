@@ -4,7 +4,7 @@ status: base
 entity_id: graphnode__유가_급등
 label: "유가 급등"
 taxonomy_topic: 에너지_원자재
-node_importance: 0.6931
+node_importance: 0.6335
 importance_basis: edge_effective_score_sum
 support_count_sum: 1
 path_count: 0
@@ -17,7 +17,7 @@ graph_node_id: 유가_급등
 period: 2026-05
 has_graph_signal: true
 source_of_truth: pipeline_refine+graphrag
-updated_at: 2026-05-06T08:53:43
+updated_at: 2026-05-06T12:48:23
 ---
 
 # Entity — 유가 급등
@@ -28,7 +28,7 @@ updated_at: 2026-05-06T08:53:43
 ## Confirmed facts
 
 - Mention summary: 2026-05-01 ~ 2026-05-05 · 4 articles
-- Linked events: `event_445`, `event_440`, `event_951`, `event_212`
+- Linked events: `event_07221cd239`, `event_2877573481`, `event_edc3dd5f99`, `event_aee752e150`
 - Related asset classes (derived): `원자재`
 
 ### Recent articles
@@ -39,7 +39,7 @@ updated_at: 2026-05-06T08:53:43
 
 ## Graph provenance
 
-- `node_importance`: 0.6931 (edge_effective_score_sum)
+- `node_importance`: 0.6335 (edge_effective_score_sum)
 - `support_count_sum`: 1
 - `path_count`: 0
 - `path_role_hit`: false

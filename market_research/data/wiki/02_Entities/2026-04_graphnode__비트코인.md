@@ -4,7 +4,7 @@ status: base
 entity_id: graphnode__비트코인
 label: "비트코인"
 taxonomy_topic: 크립토
-node_importance: 0.2097
+node_importance: 0.0595
 importance_basis: edge_effective_score_sum
 support_count_sum: 1
 path_count: 0
@@ -17,7 +17,7 @@ graph_node_id: 비트코인
 period: 2026-04
 has_graph_signal: true
 source_of_truth: pipeline_refine+graphrag
-updated_at: 2026-04-29T10:39:40
+updated_at: 2026-05-06T13:02:21
 ---
 
 # Entity — 비트코인
@@ -28,7 +28,7 @@ updated_at: 2026-04-29T10:39:40
 ## Confirmed facts
 
 - Mention summary: 2026-03-13 ~ 2026-04-29 · 935 articles
-- Linked events: `event_2319`, `event_2611`, `event_2551`, `event_4968`, `event_3425`
+- Linked events: `event_fb83c66e28`, `event_50b3734dbb`, `event_f4ba473b38`, `event_563d3c666b`, `event_e4692103c0`
 - Related asset classes (derived): —
 
 ### Recent articles
@@ -43,7 +43,7 @@ updated_at: 2026-04-29T10:39:40
 
 ## Graph provenance
 
-- `node_importance`: 0.2097 (edge_effective_score_sum)
+- `node_importance`: 0.0595 (edge_effective_score_sum)
 - `support_count_sum`: 1
 - `path_count`: 0
 - `path_role_hit`: false

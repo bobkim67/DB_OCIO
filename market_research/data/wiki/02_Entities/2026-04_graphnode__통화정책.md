@@ -4,11 +4,11 @@ status: base
 entity_id: graphnode__통화정책
 label: "통화정책"
 taxonomy_topic: 통화정책
-node_importance: 2.6067
+node_importance: 0.4872
 importance_basis: edge_effective_score_sum
-support_count_sum: 18
-path_count: 1
-path_role_hit: true
+support_count_sum: 6
+path_count: 0
+path_role_hit: false
 unique_article_count: 116
 first_seen: 2026-04-01
 last_seen: 2026-04-29
@@ -17,7 +17,7 @@ graph_node_id: 통화정책
 period: 2026-04
 has_graph_signal: true
 source_of_truth: pipeline_refine+graphrag
-updated_at: 2026-04-29T10:39:40
+updated_at: 2026-05-06T13:02:21
 ---
 
 # Entity — 통화정책
@@ -28,7 +28,7 @@ updated_at: 2026-04-29T10:39:40
 ## Confirmed facts
 
 - Mention summary: 2026-04-01 ~ 2026-04-29 · 116 articles
-- Linked events: `event_2248`, `event_2250`, `event_2749`, `event_2319`, `event_3295`
+- Linked events: `event_4f2814a11c`, `event_08e72409d0`, `event_92220047ac`, `event_fb83c66e28`, `event_151019285c`
 - Related asset classes (derived): `채권`
 
 ### Recent articles
@@ -43,9 +43,9 @@ updated_at: 2026-04-29T10:39:40
 
 ## Graph provenance
 
-- `node_importance`: 2.6067 (edge_effective_score_sum)
-- `support_count_sum`: 18
-- `path_count`: 1
-- `path_role_hit`: true
+- `node_importance`: 0.4872 (edge_effective_score_sum)
+- `support_count_sum`: 6
+- `path_count`: 0
+- `path_role_hit`: false
 
 > Detailed adjacency and transmission paths are available in `07_Graph_Evidence/`. This base page records only summary provenance.

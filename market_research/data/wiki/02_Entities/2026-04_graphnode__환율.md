@@ -4,11 +4,11 @@ status: base
 entity_id: graphnode__환율
 label: "환율"
 taxonomy_topic: 환율_FX
-node_importance: 1.8822
+node_importance: 0.3956
 importance_basis: edge_effective_score_sum
-support_count_sum: 8
-path_count: 2
-path_role_hit: true
+support_count_sum: 3
+path_count: 0
+path_role_hit: false
 unique_article_count: 2053
 first_seen: 2026-02-05
 last_seen: 2026-04-29
@@ -17,7 +17,7 @@ graph_node_id: 환율
 period: 2026-04
 has_graph_signal: true
 source_of_truth: pipeline_refine+graphrag
-updated_at: 2026-04-29T10:39:40
+updated_at: 2026-05-06T13:02:21
 ---
 
 # Entity — 환율
@@ -28,7 +28,7 @@ updated_at: 2026-04-29T10:39:40
 ## Confirmed facts
 
 - Mention summary: 2026-02-05 ~ 2026-04-29 · 2053 articles
-- Linked events: `event_2319`, `event_2250`, `event_2563`, `event_3436`, `event_3096`
+- Linked events: `event_fb83c66e28`, `event_08e72409d0`, `event_360d7d1b41`, `event_aa5fca2753`, `event_808919ed86`
 - Related asset classes (derived): `환율`
 
 ### Recent articles
@@ -43,9 +43,9 @@ updated_at: 2026-04-29T10:39:40
 
 ## Graph provenance
 
-- `node_importance`: 1.8822 (edge_effective_score_sum)
-- `support_count_sum`: 8
-- `path_count`: 2
-- `path_role_hit`: true
+- `node_importance`: 0.3956 (edge_effective_score_sum)
+- `support_count_sum`: 3
+- `path_count`: 0
+- `path_role_hit`: false
 
 > Detailed adjacency and transmission paths are available in `07_Graph_Evidence/`. This base page records only summary provenance.

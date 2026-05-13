@@ -4,9 +4,9 @@ status: base
 entity_id: graphnode__금리
 label: "금리"
 taxonomy_topic: 금리_채권
-node_importance: 1.5889
+node_importance: 0.0830
 importance_basis: edge_effective_score_sum
-support_count_sum: 20
+support_count_sum: 1
 path_count: 2
 path_role_hit: true
 unique_article_count: 1615
@@ -17,7 +17,7 @@ graph_node_id: 금리
 period: 2026-04
 has_graph_signal: true
 source_of_truth: pipeline_refine+graphrag
-updated_at: 2026-04-29T10:39:40
+updated_at: 2026-05-06T13:02:21
 ---
 
 # Entity — 금리
@@ -28,7 +28,7 @@ updated_at: 2026-04-29T10:39:40
 ## Confirmed facts
 
 - Mention summary: 2026-03-24 ~ 2026-04-29 · 1615 articles
-- Linked events: `event_2248`, `event_2319`, `event_3436`, `event_3810`, `event_11287`
+- Linked events: `event_4f2814a11c`, `event_fb83c66e28`, `event_aa5fca2753`, `event_287e0763d4`, `event_05dc7eb91e`
 - Related asset classes (derived): `채권`
 
 ### Recent articles
@@ -43,8 +43,8 @@ updated_at: 2026-04-29T10:39:40
 
 ## Graph provenance
 
-- `node_importance`: 1.5889 (edge_effective_score_sum)
-- `support_count_sum`: 20
+- `node_importance`: 0.0830 (edge_effective_score_sum)
+- `support_count_sum`: 1
 - `path_count`: 2
 - `path_role_hit`: true
 

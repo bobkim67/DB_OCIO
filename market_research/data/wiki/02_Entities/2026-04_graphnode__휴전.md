@@ -4,7 +4,7 @@ status: base
 entity_id: graphnode__휴전
 label: "휴전"
 taxonomy_topic: 지정학
-node_importance: 1.2552
+node_importance: 0.3560
 importance_basis: edge_effective_score_sum
 support_count_sum: 3
 path_count: 0
@@ -17,7 +17,7 @@ graph_node_id: 휴전
 period: 2026-04
 has_graph_signal: true
 source_of_truth: pipeline_refine+graphrag
-updated_at: 2026-04-29T10:39:40
+updated_at: 2026-05-06T13:02:21
 ---
 
 # Entity — 휴전
@@ -28,7 +28,7 @@ updated_at: 2026-04-29T10:39:40
 ## Confirmed facts
 
 - Mention summary: 2026-04-01 ~ 2026-04-29 · 584 articles
-- Linked events: `event_2319`, `event_2250`, `event_2611`, `event_2563`, `event_2281`
+- Linked events: `event_fb83c66e28`, `event_08e72409d0`, `event_50b3734dbb`, `event_360d7d1b41`, `event_eb38409537`
 - Related asset classes (derived): —
 
 ### Recent articles
@@ -43,7 +43,7 @@ updated_at: 2026-04-29T10:39:40
 
 ## Graph provenance
 
-- `node_importance`: 1.2552 (edge_effective_score_sum)
+- `node_importance`: 0.3560 (edge_effective_score_sum)
 - `support_count_sum`: 3
 - `path_count`: 0
 - `path_role_hit`: false

@@ -4,7 +4,7 @@ status: base
 entity_id: graphnode__기준금리
 label: "기준금리"
 taxonomy_topic: 통화정책
-node_importance: 0.3019
+node_importance: 0.0856
 importance_basis: edge_effective_score_sum
 support_count_sum: 1
 path_count: 0
@@ -17,7 +17,7 @@ graph_node_id: 기준금리
 period: 2026-04
 has_graph_signal: true
 source_of_truth: pipeline_refine+graphrag
-updated_at: 2026-04-29T10:39:40
+updated_at: 2026-05-06T13:02:21
 ---
 
 # Entity — 기준금리
@@ -28,7 +28,7 @@ updated_at: 2026-04-29T10:39:40
 ## Confirmed facts
 
 - Mention summary: 2026-04-01 ~ 2026-04-29 · 296 articles
-- Linked events: `event_2248`, `event_2250`, `event_2319`, `event_940`, `event_12824`
+- Linked events: `event_4f2814a11c`, `event_08e72409d0`, `event_fb83c66e28`, `event_022dad60de`, `event_bfcda30950`
 - Related asset classes (derived): `채권`
 
 ### Recent articles
@@ -43,7 +43,7 @@ updated_at: 2026-04-29T10:39:40
 
 ## Graph provenance
 
-- `node_importance`: 0.3019 (edge_effective_score_sum)
+- `node_importance`: 0.0856 (edge_effective_score_sum)
 - `support_count_sum`: 1
 - `path_count`: 0
 - `path_role_hit`: false

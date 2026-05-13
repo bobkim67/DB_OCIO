@@ -4,7 +4,7 @@ status: base
 entity_id: graphnode__관세
 label: "관세"
 taxonomy_topic: 관세_무역
-node_importance: 1.0016
+node_importance: 0.2840
 importance_basis: edge_effective_score_sum
 support_count_sum: 2
 path_count: 0
@@ -17,7 +17,7 @@ graph_node_id: 관세
 period: 2026-04
 has_graph_signal: true
 source_of_truth: pipeline_refine+graphrag
-updated_at: 2026-04-29T10:39:40
+updated_at: 2026-05-06T13:02:21
 ---
 
 # Entity — 관세
@@ -28,7 +28,7 @@ updated_at: 2026-04-29T10:39:40
 ## Confirmed facts
 
 - Mention summary: 2026-04-01 ~ 2026-04-29 · 1144 articles
-- Linked events: `event_2319`, `event_3096`, `event_2667`, `event_10975`, `event_9930`
+- Linked events: `event_fb83c66e28`, `event_808919ed86`, `event_b61c345e81`, `event_8f93bed416`, `event_16731119cc`
 - Related asset classes (derived): —
 
 ### Recent articles
@@ -43,7 +43,7 @@ updated_at: 2026-04-29T10:39:40
 
 ## Graph provenance
 
-- `node_importance`: 1.0016 (edge_effective_score_sum)
+- `node_importance`: 0.2840 (edge_effective_score_sum)
 - `support_count_sum`: 2
 - `path_count`: 0
 - `path_role_hit`: false

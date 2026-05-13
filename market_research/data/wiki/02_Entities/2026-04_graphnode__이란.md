@@ -4,9 +4,9 @@ status: base
 entity_id: graphnode__이란
 label: "이란"
 taxonomy_topic: 지정학
-node_importance: 0.5277
+node_importance: 0.1258
 importance_basis: edge_effective_score_sum
-support_count_sum: 2
+support_count_sum: 1
 path_count: 0
 path_role_hit: false
 unique_article_count: 3030
@@ -17,7 +17,7 @@ graph_node_id: 이란
 period: 2026-04
 has_graph_signal: true
 source_of_truth: pipeline_refine+graphrag
-updated_at: 2026-04-29T10:39:40
+updated_at: 2026-05-06T13:02:21
 ---
 
 # Entity — 이란
@@ -28,7 +28,7 @@ updated_at: 2026-04-29T10:39:40
 ## Confirmed facts
 
 - Mention summary: 2026-02-27 ~ 2026-04-29 · 3030 articles
-- Linked events: `event_2319`, `event_2956`, `event_3842`, `event_2250`, `event_3436`
+- Linked events: `event_fb83c66e28`, `event_fe3e74bd08`, `event_e63013c1f1`, `event_08e72409d0`, `event_aa5fca2753`
 - Related asset classes (derived): —
 
 ### Recent articles
@@ -43,8 +43,8 @@ updated_at: 2026-04-29T10:39:40
 
 ## Graph provenance
 
-- `node_importance`: 0.5277 (edge_effective_score_sum)
-- `support_count_sum`: 2
+- `node_importance`: 0.1258 (edge_effective_score_sum)
+- `support_count_sum`: 1
 - `path_count`: 0
 - `path_role_hit`: false
 
