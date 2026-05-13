@@ -147,6 +147,24 @@ def test_step28_none_claim_step_skipped():
 # 4. _step_group_monitoring — claims 있음 (워크오더 §1 flag ON + claims)
 # ──────────────────────────────────────────────────────────────────
 
+def test_r9a19_step28_uses_single_batch_mode(tmp_path, monkeypatch):
+    """R9-A.19 — daily_update Step 2.8 은 single_batch mode 로 호출."""
+    import market_research.pipeline.daily_update as du_mod
+    monkeypatch.setattr(du_mod, "BASE_DIR", tmp_path / "market_research")
+
+    claims = [_make_claim(cid="claim:2026-04:c1",
+                          gid="group:2026-04:g1")]
+    out = _step_group_monitoring("2026-04", {
+        "extraction": {"claims": claims},
+    })
+    assert out["status"] == "ok"
+    assert out["monitoring_mode"] == "single_batch"
+    assert out["stable_candidate_enabled"] is False
+    assert out["within_run_duplicate_semantics"] == (
+        "same_batch_repeated_group_diagnostic"
+    )
+
+
 def test_step28_with_claims_writes_artifacts(tmp_path, monkeypatch):
     """raw claims 있으면 summary 반환 + diagnostics 파일 생성.
 
@@ -272,11 +290,18 @@ def test_step28_r9a11_fixture_reproduction(tmp_path, monkeypatch):
         "extraction": {"claims": rows},
     })
     assert out["status"] == "ok"
-    # R9-A.16 fixture 의 group 수 재현 (57)
+    # R9-A.19 — single_batch mode 로 호출됨
+    assert out["monitoring_mode"] == "single_batch"
+    assert out["stable_candidate_enabled"] is False
+    # R9-A.16 fixture 의 group 수 재현 (57) — numeric 은 mode 와 무관
     assert out["total_groups"] == 57
     assert out["total_claims"] == 73
-    # 그러나 단일 run_id 로 inject 했으므로 multi-run repeat 은 잡히지 않음
+    # 단일 run_id 로 inject 했으므로 multi-run repeat 은 잡히지 않음
     # → stable_candidates 는 0 (run_count ≥ 2 가 1 개 batch 안에서는 불가).
-    # 대신 within_run_duplicate_count 가 R9-A.16 의 cross-run repeat≥2 = 12
-    # 와 동일 — 단일 run 안에 같은 group_id 12 번 중복 카운트.
-    assert out["within_run_duplicate_count"] == 12   # R9-A.16 repeat≥2
+    # within_run_duplicate_count 가 R9-A.16 의 cross-run repeat≥2 = 12 와
+    # 동일하게 카운트되지만, R9-A.19 single_batch 의미상 overmerge 가 아니라
+    # same-batch repeated group diagnostic 으로 해석.
+    assert out["within_run_duplicate_count"] == 12
+    assert out["within_run_duplicate_semantics"] == (
+        "same_batch_repeated_group_diagnostic"
+    )

@@ -765,6 +765,15 @@ def _step_regime_check(delta: dict) -> dict:
 def _step_group_monitoring(month_str: str, claim_step: dict) -> dict:
     """Step 2.8 — R9-A.17 utility 로 raw claims 를 누적 집계.
 
+    R9-A.19 — 본 호출은 **single_batch** monitoring mode 로 명시:
+        - daily_update 는 단일 batch 결과만 요약 (run_id 단일 = month_str)
+        - stable_candidate / strong_stable_candidate 는 reference-only
+        - within_run_duplicate 는 overmerge warning 이 아니라 same-batch
+          repeated group diagnostic (단일 batch 내 같은 evset+assets 의
+          claim 이 2회 이상 등장한 진단)
+        - multi-run aggregation 의도면 tools/promotion_monthly_summary
+          entrypoint (multi_run mode) 사용
+
     워크오더 §2 — claim extraction 결과가 없으면 no-op (graceful).
     워크오더 §3 — 출력은 diagnostics 영역 (debug/claims/out/) 만, 운영 영역
     변경 0. 워크오더 §4 — _promotion_quality.jsonl 미변경.
@@ -783,6 +792,7 @@ def _step_group_monitoring(month_str: str, claim_step: dict) -> dict:
 
     try:
         from market_research.pipeline.claim_group_monitoring import (
+            MONITORING_MODE_SINGLE_BATCH,
             build_claim_group_monitoring_summary,
             write_monitoring_artifacts,
         )
@@ -797,7 +807,12 @@ def _step_group_monitoring(month_str: str, claim_step: dict) -> dict:
     tagged = [{**c, 'run_id': run_id} for c in raw_claims]
 
     try:
-        summary = build_claim_group_monitoring_summary(tagged)
+        # R9-A.19 — daily_update 는 single_batch mode 명시.
+        # stable_candidate_enabled=False, within_run_duplicate 는 overmerge
+        # 가 아니라 same-batch repeated group diagnostic 으로 해석.
+        summary = build_claim_group_monitoring_summary(
+            tagged, monitoring_mode=MONITORING_MODE_SINGLE_BATCH,
+        )
     except Exception as exc:
         return {
             'status': 'error',
@@ -822,6 +837,11 @@ def _step_group_monitoring(month_str: str, claim_step: dict) -> dict:
 
     return {
         'status': 'ok',
+        'monitoring_mode': summary['monitoring_mode'],   # R9-A.19
+        'stable_candidate_enabled':
+            summary['stable_candidate_enabled'],         # R9-A.19
+        'within_run_duplicate_semantics':
+            summary['within_run_duplicate_semantics'],   # R9-A.19
         'total_groups': summary['total_groups'],
         'stable_candidates': summary['stable_candidates'],
         'strong_stable_candidates': summary['strong_stable_candidates'],

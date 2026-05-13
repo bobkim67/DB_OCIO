@@ -11,10 +11,18 @@ aggregation logic 을 재사용 가능한 함수로 승격. 운영 daily/monthly
 Public API:
     build_claim_group_monitoring_summary(claims, *, stable_min_runs=2,
                                           strong_min_runs=3,
-                                          run_id_field="run_id") -> dict
+                                          run_id_field="run_id",
+                                          monitoring_mode="multi_run") -> dict
     render_monitoring_markdown(period, source, summary) -> str
     write_monitoring_artifacts(out_dir, period, source, summary,
                                 *, ts=None) -> dict[str, Path]
+
+Monitoring modes (R9-A.19):
+    - "multi_run" (default): N-run aggregation 의도. stable candidate
+      해석 valid. within_run_duplicate = overmerge warning.
+    - "single_batch": daily_update 단일 batch 의도. stable candidate
+      reference-only. within_run_duplicate = same-batch repeated group
+      diagnostic (overmerge failure 아님).
 
 Invariants:
     - LLM 호출 0
@@ -82,6 +90,47 @@ DEFAULT_STRONG_MIN_RUNS: int = 3
 
 # 워크오더 §4 — sample claim texts per group (representative + alternates)
 SAMPLE_TEXTS_PER_GROUP: int = 3
+
+# R9-A.19 — Monitoring mode semantics
+#
+#   "multi_run":
+#       - 여러 fresh Haiku run 의 결과를 합쳐 N-run aggregation
+#       - run_id 가 각 run 마다 distinct 하게 부여됨
+#       - stable_candidate (run_count ≥ stable_min_runs) 해석 valid
+#       - within_run_duplicate = overmerge warning (같은 run 안에 같은 group)
+#       - R9-A.7~A.17 의 원래 의도. promotion_monthly_summary entrypoint
+#         같은 multi-run aggregation 호출자.
+#
+#   "single_batch":
+#       - 단일 daily_update batch 의 결과만 요약 (run_id 단일)
+#       - stable_candidate / strong_stable_candidate 해석 제한 — 참고값
+#       - within_run_duplicate = same-batch repeated group diagnostic
+#         (overmerge failure 아님 — 단순히 같은 batch 내에 같은 evset+
+#         assets 의 claim 이 2회 이상 나왔다는 진단)
+#       - daily_update.py `--enable-group-monitoring` 같은 호출자.
+MONITORING_MODE_MULTI_RUN: str = "multi_run"
+MONITORING_MODE_SINGLE_BATCH: str = "single_batch"
+ALLOWED_MONITORING_MODES: frozenset[str] = frozenset({
+    MONITORING_MODE_MULTI_RUN,
+    MONITORING_MODE_SINGLE_BATCH,
+})
+DEFAULT_MONITORING_MODE: str = MONITORING_MODE_MULTI_RUN
+
+# within_run_duplicate semantics labels (mode 별)
+_WITHIN_DUP_SEMANTICS = {
+    MONITORING_MODE_MULTI_RUN: "overmerge_warning",
+    MONITORING_MODE_SINGLE_BATCH: "same_batch_repeated_group_diagnostic",
+}
+
+# run_count interpretation labels
+_RUN_COUNT_INTERPRETATION = {
+    MONITORING_MODE_MULTI_RUN:
+        "run_count is # of distinct Haiku runs in which a group appears",
+    MONITORING_MODE_SINGLE_BATCH:
+        "run_count is always 1 for a single batch — stable_candidate "
+        "thresholds are not meaningful, treat run_count/claim_count as "
+        "reference-only diagnostic",
+}
 
 
 def _select_representative_claim(claims_in_group: list[dict]) -> str:
@@ -252,6 +301,7 @@ def build_claim_group_monitoring_summary(
     stable_min_runs: int = DEFAULT_STABLE_MIN_RUNS,
     strong_min_runs: int = DEFAULT_STRONG_MIN_RUNS,
     run_id_field: str = "run_id",
+    monitoring_mode: str = DEFAULT_MONITORING_MODE,
 ) -> dict[str, Any]:
     """R9-A.17 — R9-A.14 G1 canonical_group_id 기반 N-run monitoring summary.
 
@@ -280,10 +330,30 @@ def build_claim_group_monitoring_summary(
     run_id_field : str, default "run_id"
         claim dict 안의 run 식별자 필드명.
 
+    monitoring_mode : str, default "multi_run"
+        R9-A.19 mode semantics. "multi_run" (N-run aggregation, stable
+        candidate 해석 valid, within_run_dup = overmerge warning) 또는
+        "single_batch" (단일 batch, stable_candidate_enabled=False,
+        within_run_dup = same-batch diagnostic). 모듈 docstring 참조.
+        invalid 값은 ValueError.
+
     Returns
     -------
-    dict — 본 모듈 docstring 의 Output 구조 참조.
+    dict — 본 모듈 docstring 의 Output 구조 + 신규 R9-A.19 필드:
+        - monitoring_mode (echo)
+        - stable_candidate_enabled (bool)
+        - within_run_duplicate_semantics (str)
+        - run_count_interpretation (str)
+
+    Raises
+    ------
+    ValueError : monitoring_mode 가 ALLOWED_MONITORING_MODES 외 값일 때.
     """
+    if monitoring_mode not in ALLOWED_MONITORING_MODES:
+        raise ValueError(
+            f"invalid monitoring_mode: {monitoring_mode!r}. "
+            f"allowed: {sorted(ALLOWED_MONITORING_MODES)}"
+        )
     claim_list = [c for c in claims if isinstance(c, dict)]
     overmerge_warnings = _detect_overmerge_warnings(
         claim_list, run_id_field=run_id_field
@@ -329,6 +399,8 @@ def build_claim_group_monitoring_summary(
     # Sorted groups (워크오더 §5)
     sorted_groups = sorted(groups.values(), key=_sort_key)
 
+    # R9-A.19 — Mode-dependent semantics
+    stable_enabled = (monitoring_mode == MONITORING_MODE_MULTI_RUN)
     return {
         "total_groups": n_groups,
         "stable_candidates": stable_count,
@@ -343,6 +415,13 @@ def build_claim_group_monitoring_summary(
         "overmerge_warnings": overmerge_warnings,
         "stable_min_runs": stable_min_runs,
         "strong_min_runs": strong_min_runs,
+        # R9-A.19 — Mode semantics
+        "monitoring_mode": monitoring_mode,
+        "stable_candidate_enabled": stable_enabled,
+        "within_run_duplicate_semantics":
+            _WITHIN_DUP_SEMANTICS[monitoring_mode],
+        "run_count_interpretation":
+            _RUN_COUNT_INTERPRETATION[monitoring_mode],
     }
 
 
@@ -370,6 +449,23 @@ def render_monitoring_markdown(
              f"({', '.join(summary['runs'])})")
     L.append("- group_id 정의: R9-A.14 G1 — "
              "`period + evidence_set_hash + sorted_assets`")
+    # R9-A.19 — Monitoring mode 명시
+    mode = summary.get("monitoring_mode") or DEFAULT_MONITORING_MODE
+    stable_enabled = summary.get("stable_candidate_enabled", True)
+    within_sem = summary.get(
+        "within_run_duplicate_semantics", "overmerge_warning"
+    )
+    L.append(f"- **monitoring_mode**: `{mode}`")
+    L.append(f"- stable_candidate_enabled: {stable_enabled}")
+    L.append(f"- within_run_duplicate_semantics: `{within_sem}`")
+    if mode == MONITORING_MODE_SINGLE_BATCH:
+        L.append("")
+        L.append("> ⚠️ **single_batch mode** — 본 summary 는 단일 batch 결과. "
+                 "stable_candidate / strong_stable_candidate 는 참고값이며, "
+                 "within_run_duplicate 는 overmerge failure 가 아니라 "
+                 "same-batch repeated group diagnostic 으로만 해석. "
+                 "multi-run aggregation 은 tools/promotion_monthly_summary "
+                 "entrypoint (multi_run mode) 사용.")
     L.append("")
     L.append("## Summary")
     L.append("")

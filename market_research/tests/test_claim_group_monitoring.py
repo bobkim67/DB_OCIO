@@ -425,6 +425,142 @@ def test_custom_run_id_field():
 # Robustness — non-dict / missing fields
 # ──────────────────────────────────────────────────────────────────
 
+# ──────────────────────────────────────────────────────────────────
+# R9-A.19 — monitoring_mode semantics
+# ──────────────────────────────────────────────────────────────────
+
+def test_r9a19_default_mode_is_multi_run():
+    """default monitoring_mode 는 'multi_run' — backward compat (R9-A.17
+    호출자들의 의도)."""
+    from market_research.pipeline.claim_group_monitoring import (
+        DEFAULT_MONITORING_MODE, MONITORING_MODE_MULTI_RUN,
+    )
+    assert DEFAULT_MONITORING_MODE == MONITORING_MODE_MULTI_RUN
+    s = build_claim_group_monitoring_summary([])
+    assert s["monitoring_mode"] == "multi_run"
+    assert s["stable_candidate_enabled"] is True
+    assert s["within_run_duplicate_semantics"] == "overmerge_warning"
+
+
+def test_r9a19_single_batch_mode_semantics():
+    """single_batch mode — stable disabled, within_dup 는 diagnostic 만."""
+    from market_research.pipeline.claim_group_monitoring import (
+        MONITORING_MODE_SINGLE_BATCH,
+    )
+    s = build_claim_group_monitoring_summary(
+        [], monitoring_mode=MONITORING_MODE_SINGLE_BATCH,
+    )
+    assert s["monitoring_mode"] == "single_batch"
+    assert s["stable_candidate_enabled"] is False
+    assert s["within_run_duplicate_semantics"] == (
+        "same_batch_repeated_group_diagnostic"
+    )
+    assert "single batch" in s["run_count_interpretation"] or \
+           "reference-only" in s["run_count_interpretation"]
+
+
+def test_r9a19_multi_run_mode_explicit():
+    """multi_run mode 명시 — default 와 동일."""
+    from market_research.pipeline.claim_group_monitoring import (
+        MONITORING_MODE_MULTI_RUN,
+    )
+    s = build_claim_group_monitoring_summary(
+        [], monitoring_mode=MONITORING_MODE_MULTI_RUN,
+    )
+    assert s["monitoring_mode"] == "multi_run"
+    assert s["stable_candidate_enabled"] is True
+    assert s["within_run_duplicate_semantics"] == "overmerge_warning"
+
+
+def test_r9a19_invalid_mode_raises_valueerror():
+    """ALLOWED_MONITORING_MODES 외 값 → ValueError."""
+    with pytest.raises(ValueError, match="invalid monitoring_mode"):
+        build_claim_group_monitoring_summary([], monitoring_mode="bogus")
+    with pytest.raises(ValueError):
+        build_claim_group_monitoring_summary([], monitoring_mode="")
+
+
+def test_r9a19_mode_does_not_change_count_metrics():
+    """mode 변경은 stable_count 등의 numeric 계산 결과를 바꾸지 않는다.
+
+    mode 는 해석 layer 만 영향 — 같은 input 이면 두 mode 모두 같은
+    stable_candidates / strong_stable_candidates / within_run_duplicate
+    값을 산출 (단 stable_candidate_enabled 만 다름).
+    """
+    from market_research.pipeline.claim_group_monitoring import (
+        MONITORING_MODE_MULTI_RUN, MONITORING_MODE_SINGLE_BATCH,
+    )
+    # 3 runs 에 같은 group 등장 → multi_run 에서는 stable+strong, single_batch
+    # 에서도 numeric 동일하지만 stable_candidate_enabled 만 False.
+    claims = [
+        _claim(run_id=f"r{i}", group_id="group:p:gA",
+               claim_id=f"claim:p:cA{i}")
+        for i in range(1, 4)
+    ]
+    s_multi = build_claim_group_monitoring_summary(
+        claims, monitoring_mode=MONITORING_MODE_MULTI_RUN,
+    )
+    s_single = build_claim_group_monitoring_summary(
+        claims, monitoring_mode=MONITORING_MODE_SINGLE_BATCH,
+    )
+    # numeric 동일
+    for k in ("total_groups", "stable_candidates",
+              "strong_stable_candidates", "within_run_duplicate_count",
+              "promoted_groups"):
+        assert s_multi[k] == s_single[k], f"mode 가 {k} 를 변경시킴"
+    # semantics flag 만 다름
+    assert s_multi["stable_candidate_enabled"] is True
+    assert s_single["stable_candidate_enabled"] is False
+    assert s_multi["within_run_duplicate_semantics"] != \
+           s_single["within_run_duplicate_semantics"]
+
+
+def test_r9a19_single_batch_within_dup_diagnostic():
+    """single_batch mode 에서 같은 run + 같은 group 의 multi-claim 은
+    overmerge 가 아니라 same-batch repeated group diagnostic 으로 분류."""
+    from market_research.pipeline.claim_group_monitoring import (
+        MONITORING_MODE_SINGLE_BATCH,
+    )
+    claims = [
+        _claim(run_id="batch1", group_id="group:p:gA",
+               claim_id="claim:p:c1"),
+        _claim(run_id="batch1", group_id="group:p:gA",
+               claim_id="claim:p:c2"),
+    ]
+    s = build_claim_group_monitoring_summary(
+        claims, monitoring_mode=MONITORING_MODE_SINGLE_BATCH,
+    )
+    # numeric 은 그대로 — within_run_duplicate_count=1
+    assert s["within_run_duplicate_count"] == 1
+    # 그러나 semantics label 이 단순 diagnostic
+    assert s["within_run_duplicate_semantics"] == (
+        "same_batch_repeated_group_diagnostic"
+    )
+
+
+def test_r9a19_render_markdown_shows_mode_banner():
+    """render_monitoring_markdown 가 mode 를 표시. single_batch 는 경고 박스."""
+    from market_research.pipeline.claim_group_monitoring import (
+        MONITORING_MODE_SINGLE_BATCH,
+        render_monitoring_markdown,
+    )
+    s_single = build_claim_group_monitoring_summary(
+        [], monitoring_mode=MONITORING_MODE_SINGLE_BATCH,
+    )
+    md = render_monitoring_markdown("2026-04", "test", s_single)
+    assert "single_batch" in md
+    assert "stable_candidate_enabled" in md
+    assert "monitoring_mode" in md
+    # single_batch 경고 박스
+    assert "single_batch mode" in md or "참고값" in md
+
+    s_multi = build_claim_group_monitoring_summary([])
+    md_multi = render_monitoring_markdown("2026-04", "test", s_multi)
+    assert "multi_run" in md_multi
+    # multi_run 에는 single_batch 경고 박스 없음
+    assert "single_batch mode" not in md_multi
+
+
 def test_non_dict_entries_skipped():
     claims = [
         _claim(run_id="r1", group_id="group:p:gA",

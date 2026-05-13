@@ -39,6 +39,7 @@ from market_research.analyze.claim_extractor import (  # noqa: E402
 from market_research.pipeline.claim_group_monitoring import (  # noqa: E402
     DEFAULT_STABLE_MIN_RUNS,
     DEFAULT_STRONG_MIN_RUNS,
+    MONITORING_MODE_MULTI_RUN,
     build_claim_group_monitoring_summary,
     write_monitoring_artifacts,
 )
@@ -119,10 +120,14 @@ def main(argv: list[str] | None = None) -> int:
             r["canonical_group_id"] = _recompute_group_id(r, args.period)
         print(f"Recomputed canonical_group_id with R9-A.14 G1 definition")
 
+    # R9-A.19 — promotion_monthly_summary 는 multi-run aggregation 의도.
+    # multi_run mode 명시 (stable_candidate 해석 valid, within_run_dup =
+    # overmerge warning).
     summary = build_claim_group_monitoring_summary(
         rows,
         stable_min_runs=args.stable_min_runs,
         strong_min_runs=args.strong_min_runs,
+        monitoring_mode=MONITORING_MODE_MULTI_RUN,
     )
 
     print()
