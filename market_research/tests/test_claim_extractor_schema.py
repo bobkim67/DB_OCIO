@@ -680,8 +680,13 @@ def test_r9a12_group_id_different_assets_different_group():
     assert g1 != g2
 
 
-def test_r9a12_group_id_different_direction_different_group():
-    """같은 evidence + 같은 assets + 다른 direction → 다른 group_id."""
+def test_r9a14_g1_group_id_direction_diagnostic_only():
+    """R9-A.14 G1 채택 — direction 은 diagnostic field. 같은 evidence + 같은
+    assets 면 direction 이 달라도 같은 group_id.
+
+    R9-A.13 sensitivity matrix 결과: direction split 8.3% (12 multi-claim
+    bucket 중 1개). enum variance 의 주범 — group_id 산정에서 제거.
+    """
     from market_research.analyze.claim_extractor import (
         compute_canonical_group_id,
     )
@@ -693,11 +698,12 @@ def test_r9a12_group_id_different_direction_different_group():
         "2026-04", "x", ["해외채권"],
         source_evidence_ids=["e1"], direction="negative",
     )
-    assert g1 != g2
+    # R9-A.14 — direction 은 diagnostic only, group_id 에 영향 X
+    assert g1 == g2
 
 
-def test_r9a12_group_id_different_horizon_different_group():
-    """같은 evidence + assets + dir + 다른 horizon → 다른 group_id."""
+def test_r9a14_g1_group_id_horizon_diagnostic_only():
+    """R9-A.14 G1 — horizon 도 diagnostic only. R9-A.13 horizon split 25%."""
     from market_research.analyze.claim_extractor import (
         compute_canonical_group_id,
     )
@@ -709,11 +715,11 @@ def test_r9a12_group_id_different_horizon_different_group():
         "2026-04", "x", ["해외채권"],
         source_evidence_ids=["e1"], horizon="long",
     )
-    assert g1 != g2
+    assert g1 == g2
 
 
-def test_r9a12_group_id_different_claim_type_different_group():
-    """같은 evidence + assets + dir + hor + 다른 claim_type → 다른 group_id."""
+def test_r9a14_g1_group_id_claim_type_diagnostic_only():
+    """R9-A.14 G1 — claim_type 도 diagnostic only. R9-A.13 split 33% (최다)."""
     from market_research.analyze.claim_extractor import (
         compute_canonical_group_id,
     )
@@ -725,7 +731,74 @@ def test_r9a12_group_id_different_claim_type_different_group():
         "2026-04", "x", ["해외채권"],
         source_evidence_ids=["e1"], claim_type="risk",
     )
+    assert g1 == g2
+
+
+def test_r9a14_g1_all_enums_diagnostic_together():
+    """R9-A.14 G1 — direction + horizon + claim_type 모두 달라도 같은 group_id
+    (같은 evidence + 같은 assets 라면)."""
+    from market_research.analyze.claim_extractor import (
+        compute_canonical_group_id,
+    )
+    g1 = compute_canonical_group_id(
+        "2026-04", "wording A", ["해외채권"],
+        source_evidence_ids=["e1", "e2"],
+        direction="positive", horizon="short", claim_type="event_to_macro",
+    )
+    g2 = compute_canonical_group_id(
+        "2026-04", "wording B", ["해외채권"],
+        source_evidence_ids=["e1", "e2"],
+        direction="negative", horizon="long", claim_type="risk",
+    )
+    assert g1 == g2
+
+
+def test_r9a14_g1_evidence_still_distinct():
+    """R9-A.14 G1 — evidence_set 다르면 여전히 distinct (과소병합 원칙 유지)."""
+    from market_research.analyze.claim_extractor import (
+        compute_canonical_group_id,
+    )
+    g1 = compute_canonical_group_id(
+        "2026-04", "x", ["해외채권"],
+        source_evidence_ids=["e1", "e2"],
+    )
+    g2 = compute_canonical_group_id(
+        "2026-04", "x", ["해외채권"],
+        source_evidence_ids=["e3", "e4"],
+    )
     assert g1 != g2
+
+
+def test_r9a14_g1_assets_still_distinct():
+    """R9-A.14 G1 — affected_assets 다르면 여전히 distinct (자산군별 추적)."""
+    from market_research.analyze.claim_extractor import (
+        compute_canonical_group_id,
+    )
+    g1 = compute_canonical_group_id(
+        "2026-04", "x", ["국내주식"],
+        source_evidence_ids=["e1"],
+    )
+    g2 = compute_canonical_group_id(
+        "2026-04", "x", ["해외주식"],
+        source_evidence_ids=["e1"],
+    )
+    assert g1 != g2
+
+
+def test_r9a14_g1_assets_order_independent():
+    """R9-A.14 G1 — affected_assets 순서 무관 (sorted 처리)."""
+    from market_research.analyze.claim_extractor import (
+        compute_canonical_group_id,
+    )
+    g1 = compute_canonical_group_id(
+        "2026-04", "x", ["국내채권", "해외채권"],
+        source_evidence_ids=["e1"],
+    )
+    g2 = compute_canonical_group_id(
+        "2026-04", "x", ["해외채권", "국내채권"],
+        source_evidence_ids=["e1"],
+    )
+    assert g1 == g2
 
 
 def test_r9a12_normalize_claim_attaches_evidence_aware_group_id():

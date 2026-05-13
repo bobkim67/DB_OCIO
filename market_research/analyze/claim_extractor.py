@@ -15,13 +15,16 @@ R9-A.8 layered identity:
 R9-A.10 fallback: normalize_claim() 에서 source_evidence_ids 비어있고
 supporting_evidence_ids 있으면 copy (운영 prompt schema 누락 보정, LLM 0).
 
-R9-A.12 group_id 재정의 (text-based 폐기):
+R9-A.12 group_id 재정의 (text-based 폐기) →
+R9-A.14 G1 채택 (taxonomy enum 도 제거):
     _build_canonical_group_signature
-        (evidence_set_hash + assets + dir/hor/type, md5[:12])
-        ← claim_text/normalized_text 미포함
+        (evidence_set_hash + assets, md5[:12])
+        ← claim_text/normalized_text 미포함 (R9-A.12)
+        ← direction/horizon/claim_type 도 미포함 (R9-A.14, G1 정의)
     compute_canonical_group_id
         (period + group_signature → md5[:10])
-        ← Haiku wording variance 와 무관, 같은 evidence/assets/dir 면 동일
+        ← Haiku wording 및 enum variance 와 무관
+        ← 같은 evidence + 같은 assets 면 동일 group
 
 원칙 (사용자 design):
     - LLM claim 은 후보 생성, group_id 가 운영 identity
@@ -278,32 +281,34 @@ def _build_canonical_group_signature(
     source_evidence_ids: list[Any] | None,
     affected_assets: Any,
     *,
-    direction: Any = "unknown",
-    horizon: Any = "unknown",
-    claim_type: Any = "outlook_view",
+    direction: Any = "unknown",   # R9-A.14 — kwarg 받지만 hash 입력 X (호환)
+    horizon: Any = "unknown",     # R9-A.14 — kwarg 받지만 hash 입력 X (호환)
+    claim_type: Any = "outlook_view",  # R9-A.14 — 동일
 ) -> str:
-    """R9-A.12 canonical group signature — evidence + assets + dir/hor/type.
+    """R9-A.12/A.14 canonical group signature — G1 정의 (evset + assets).
 
-    claim_text 는 입력 X (의도적). R9-A.11 fresh N=5 검증에서 Haiku 의
-    어휘/문장 구조 variance 가 normalize_claim_text 한계를 초과해 텍스트
-    기반 group_id 가 mean 0.0 으로 죽는 것을 확인 → text 폐기, evidence/
-    assets/direction 기반 deterministic grouping 으로 전환.
+    R9-A.13 sensitivity matrix (LLM 0, R9-A.11 raw 73 rows 재분석) 결과:
+        G8 (current) mean overlap 0.0481 ↔ G1 (evset+assets) 0.0737
+        repeat≥2: G8 7 → G1 12, within_dup: 둘 다 0.00%
+        split 주범: claim_type 33% / horizon 25% / direction 8%
+        → enum variance 가 group 을 쪼개는 주범 → group_id 에서 제거.
 
-    포함 재료:
-        - evidence_set_hash (sorted+unique evidence_ids → md5[:10])
-        - sorted affected_assets (asset_class strings)
-        - direction / horizon / claim_type (taxonomy enum)
+    R9-A.14 — G8 → G1 채택:
+        포함 재료:
+            - evidence_set_hash (sorted+unique evidence_ids → md5[:10])
+            - sorted affected_assets (asset_class strings)
+        제외 재료 (이전 R9-A.12 G8 에서 제거):
+            - direction / horizon / claim_type (Haiku enum variance 회피)
+            - claim_text / normalized_text (R9-A.12 부터 이미 제외)
+            - causal_chain natural language 부분
 
-    제외 재료:
-        - claim_text / normalized_text (LLM wording variance 회피)
-        - causal_chain natural language 부분
+    direction/horizon/claim_type 은 compute_canonical_group_id 의 kwarg 로
+    여전히 받지만 (시그니처 backward compat) hash 입력에 미사용 — diagnostic
+    field 로만 유지 (운영 monitoring 에서 enum 분포 추적 가능).
     """
     payload = {
         "evset": _build_evidence_set_hash(source_evidence_ids),
         "assets": _extract_asset_class_strings(affected_assets),
-        "direction": str(direction or "unknown"),
-        "horizon": str(horizon or "unknown"),
-        "claim_type": str(claim_type or "outlook_view"),
     }
     blob = json.dumps(payload, ensure_ascii=False, sort_keys=True)\
         .encode("utf-8")
@@ -316,30 +321,33 @@ def compute_canonical_group_id(
     affected_assets: list[Any] | None,
     *,
     source_evidence_ids: list[Any] | None = None,
-    direction: Any = "unknown",
-    horizon: Any = "unknown"
-    ,
-    claim_type: Any = "outlook_view",
+    direction: Any = "unknown",       # R9-A.14 — kwarg 보존, hash 입력 X
+    horizon: Any = "unknown",         # R9-A.14 — kwarg 보존, hash 입력 X
+    claim_type: Any = "outlook_view",  # R9-A.14 — kwarg 보존, hash 입력 X
 ) -> str:
-    """Canonical group_id (R9-A.12) — evidence/assets/dir 기반 deterministic.
+    """Canonical group_id (R9-A.12 → R9-A.14 G1) — evidence + assets only.
 
     layered: period + canonical_group_signature → md5[:10]. signature 는
-    evidence_set_hash + sorted affected_assets + direction + horizon +
-    claim_type. **claim_text 는 group_id 산정에 미사용** (R9-A.12 전환).
+    R9-A.14 부터 **evidence_set_hash + sorted affected_assets** 만.
 
-    backward compat:
-        - 시그니처는 (period, claim_text, affected_assets) positional + kwargs
-        - claim_text 는 인수로만 받고 group_id 계산에 안 씀 (call site 호환)
-        - source_evidence_ids 신규 kwarg (default None = empty evidence)
+    R9-A.13 sensitivity matrix 결과로 direction/horizon/claim_type 은
+    Haiku run-to-run enum variance 의 주범 (claim_type 33% / horizon 25% /
+    direction 8% split) 으로 확인 → G8 → G1 채택.
 
-    Output format `group:{period}:{md5_hex10}` — 동일 (다운스트림 무영향).
+    backward compat (시그니처 유지):
+        - positional: (period, claim_text, affected_assets) 그대로
+        - claim_text 는 인수만 받고 hash 입력 X (R9-A.12)
+        - direction/horizon/claim_type 는 kwarg 만 받고 hash 입력 X (R9-A.14)
+        - source_evidence_ids kwarg (R9-A.12 신규)
+        - output format `group:{period}:{md5_hex10}` 동일 (다운스트림 무영향)
 
-    Use cases (R9-A.12 design):
-        - 같은 evidence subset + 같은 assets/direction → 같은 group_id
-          (Haiku wording variance 와 무관)
+    Use cases:
+        - 같은 evidence subset + 같은 assets → 같은 group_id
+          (wording / dir / horizon / claim_type 모두 무관)
         - LLM claim 은 후보, group_id 가 운영 identity
-        - claim_text 는 display only
-        - 과소병합 > 과대병합 원칙 (다른 evidence set 이면 다른 group)
+        - claim_text / direction / horizon / claim_type 은 display +
+          diagnostic field 로만 유지 (운영 monitoring 에서 enum 분포 추적)
+        - 과소병합 > 과대병합 원칙 (다른 evidence set or assets 이면 distinct)
     """
     p = period if isinstance(period, str) and period else "unknown"
     sig = _build_canonical_group_signature(
