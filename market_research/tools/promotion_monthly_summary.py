@@ -28,7 +28,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -41,6 +40,7 @@ from market_research.pipeline.claim_group_monitoring import (  # noqa: E402
     DEFAULT_STABLE_MIN_RUNS,
     DEFAULT_STRONG_MIN_RUNS,
     build_claim_group_monitoring_summary,
+    write_monitoring_artifacts,
 )
 
 
@@ -70,122 +70,6 @@ def _load_jsonl(path: Path) -> list[dict]:
                 continue
             rows.append(json.loads(line))
     return rows
-
-
-def _render_md(period: str, source: str, summary: dict) -> str:
-    L: list[str] = []
-    L.append("# Claim group monitoring summary")
-    L.append("")
-    L.append(f"- period: {period}")
-    L.append(f"- source: `{source}`")
-    L.append(f"- total claims: {summary['total_claims']}")
-    L.append(f"- total runs: {summary['total_runs']} "
-             f"({', '.join(summary['runs'])})")
-    L.append(f"- group_id 정의: R9-A.14 G1 — "
-             "`period + evidence_set_hash + sorted_assets`")
-    L.append("")
-    L.append("## Summary")
-    L.append("")
-    L.append("| metric | value |")
-    L.append("|---|---|")
-    L.append(f"| total groups | {summary['total_groups']} |")
-    L.append(f"| stable (run≥{summary['stable_min_runs']}) | "
-             f"**{summary['stable_candidates']}** |")
-    L.append(f"| strong stable (run≥{summary['strong_min_runs']}) | "
-             f"**{summary['strong_stable_candidates']}** |")
-    L.append(f"| all-run groups | {summary['all_run_groups']} |")
-    L.append(f"| promoted groups | {summary['promoted_groups']} |")
-    L.append(f"| within-run duplicate count | "
-             f"{summary['within_run_duplicate_count']} |")
-
-    strong = [g for g in summary["groups"]
-              if g.get("strong_stable_candidate")]
-    stable = [g for g in summary["groups"]
-              if g.get("stable_candidate") and
-              not g.get("strong_stable_candidate")]
-
-    if strong:
-        L.append("")
-        L.append(f"## Strong stable candidates "
-                 f"(run≥{summary['strong_min_runs']}, total {len(strong)})")
-        L.append("")
-        for i, g in enumerate(strong, 1):
-            gid_short = g["canonical_group_id"].split(":")[-1]
-            L.append(f"### #{i} `{gid_short}`")
-            L.append(f"- run_count: {g['run_count']} / "
-                     f"claim_count: {g['claim_count']}")
-            L.append(f"- runs_touched: {g['runs_touched']}")
-            L.append(f"- evidence_set_hash: `{g['evidence_set_hash']}`")
-            L.append(f"- affected_assets: {g['affected_assets']}")
-            L.append(f"- promoted: {g['promoted_count']}/{g['claim_count']} "
-                     f"(rate {g['promoted_rate']:.2f})")
-            L.append(f"- direction: {g['direction_distribution']}")
-            L.append(f"- horizon: {g['horizon_distribution']}")
-            L.append(f"- claim_type: {g['claim_type_distribution']}")
-            L.append(f"- promotion_rule: {g['promotion_rule_distribution']}")
-            L.append(f"- representative_claim: {g['representative_claim']}")
-            L.append("")
-
-    if stable:
-        L.append("")
-        L.append(f"## Stable candidates "
-                 f"(run≥{summary['stable_min_runs']}, "
-                 f"non-strong, total {len(stable)})")
-        L.append("")
-        L.append("| group_id (hash) | runs | claims | assets | promoted | "
-                 "dir | hor | type | representative |")
-        L.append("|---|---|---|---|---|---|---|---|---|")
-        for g in stable:
-            gid_short = g["canonical_group_id"].split(":")[-1]
-            assets = "+".join(g["affected_assets"])[:40]
-            rep = (g["representative_claim"] or "")[:60].replace("|", "\\|")
-            dir_d = ",".join(f"{k}={v}" for k, v in
-                             g["direction_distribution"].items())
-            hor_d = ",".join(f"{k}={v}" for k, v in
-                             g["horizon_distribution"].items())
-            type_d = ",".join(f"{k}={v}" for k, v in
-                              g["claim_type_distribution"].items())
-            L.append(
-                f"| {gid_short} | {g['run_count']} | {g['claim_count']} | "
-                f"{assets} | {g['promoted_count']}/{g['claim_count']} | "
-                f"{dir_d} | {hor_d} | {type_d} | {rep} |"
-            )
-
-    # Enum variance diagnostic
-    dir_var = sum(1 for g in summary["groups"]
-                  if g.get("has_direction_variance"))
-    hor_var = sum(1 for g in summary["groups"]
-                  if g.get("has_horizon_variance"))
-    type_var = sum(1 for g in summary["groups"]
-                   if g.get("has_claim_type_variance"))
-    L.append("")
-    L.append("## Enum variance diagnostics")
-    L.append("")
-    L.append(f"- direction variance groups: {dir_var}")
-    L.append(f"- horizon variance groups: {hor_var}")
-    L.append(f"- claim_type variance groups: {type_var}")
-
-    if summary["overmerge_warnings"]:
-        L.append("")
-        L.append(f"## ⚠️ Overmerge warnings "
-                 f"({len(summary['overmerge_warnings'])})")
-        L.append("")
-        L.append("| run_id | canonical_group_id | claim_count | claim_ids |")
-        L.append("|---|---|---|---|")
-        for w in summary["overmerge_warnings"]:
-            L.append(
-                f"| {w['run_id']} | {w['canonical_group_id']} | "
-                f"{w['duplicate_claim_count']} | "
-                f"{', '.join(w['claim_ids'][:3])} |"
-            )
-    else:
-        L.append("")
-        L.append("## Overmerge guardrail")
-        L.append("")
-        L.append("✅ overmerge 감지 0건 — within-run duplicate 없음.")
-
-    L.append("")
-    return "\n".join(L)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -257,28 +141,16 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  overmerge warning count      : "
           f"{summary['within_run_duplicate_count']}")
 
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    json_path = out_dir / (
-        f"claim_group_monitoring_{args.period}_{ts}.json"
-    )
-    md_path = out_dir / (
-        f"claim_group_monitoring_{args.period}_{ts}.md"
-    )
-    json_path.write_text(
-        json.dumps(summary, ensure_ascii=False, indent=2, default=str),
-        encoding="utf-8",
-    )
-    md_path.write_text(
-        _render_md(args.period, raw_path.name, summary),
-        encoding="utf-8",
+    artifacts = write_monitoring_artifacts(
+        out_dir, args.period, raw_path.name, summary,
     )
 
     print()
     print("=" * 72)
     print("Artifacts (diagnostics 영역 — gitignored, 운영 영역 변경 0)")
     print("=" * 72)
-    print(f"  summary JSON: {json_path}")
-    print(f"  summary MD :  {md_path}")
+    print(f"  summary JSON: {artifacts['json']}")
+    print(f"  summary MD :  {artifacts['md']}")
     print(f"  LLM cost: $0.00")
     return 0
 

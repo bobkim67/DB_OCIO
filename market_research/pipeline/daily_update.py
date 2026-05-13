@@ -49,6 +49,7 @@ def daily_update(
     write_claims: bool = False,
     allow_out_of_band: bool = False,
     target_suffix: str | None = None,
+    enable_group_monitoring: bool = False,
 ) -> dict:
     """
     일일 증분 업데이트 메인 함수.
@@ -74,6 +75,11 @@ def daily_update(
         R9-A.4 Commit 4 — `data/claims/{period}.{suffix}.json` 분리 저장.
         None 이면 write_claims=True 라도 운영 file 덮어쓰기 차단 (Q4=B).
         CLI `--target-suffix` 와 연동.
+    enable_group_monitoring : bool
+        R9-A.18 — Step 2.8 (claim group monitoring) opt-in. False 면 skip,
+        True 면 Step 2.7 의 raw claims 를 utility 로 집계해 diagnostics 영역
+        (debug/claims/out/) 에 JSON+MD 출력. 운영 영역 변경 0 — ledger 미수정.
+        CLI `--enable-group-monitoring` 와 연동.
 
     Returns
     -------
@@ -183,6 +189,23 @@ def daily_update(
         result['steps']['claim_extract'] = {
             'status': 'error', 'error': str(exc),
         }
+
+    # ── Step 2.8: Claim group monitoring (R9-A.18, opt-in) ──
+    # `--enable-group-monitoring` flag 가 켜진 경우에만 Step 2.7 의 raw claims
+    # 를 R9-A.17 utility 로 집계해 diagnostics 영역에 JSON+MD 출력.
+    # 운영 영역 변경 0 — daily_update 기본 동작 불변 (default OFF).
+    if enable_group_monitoring:
+        claim_step = result['steps'].get('claim_extract') or {}
+        group_step = _step_group_monitoring(month_str, claim_step)
+        result['steps']['group_monitoring'] = group_step
+        if group_step.get('status') == 'ok':
+            print(f"  → groups={group_step['total_groups']} "
+                  f"stable={group_step['stable_candidates']} "
+                  f"strong={group_step['strong_stable_candidates']} "
+                  f"overmerge={group_step['within_run_duplicate_count']}")
+        else:
+            print(f"  [Step 2.8] {group_step.get('status')}: "
+                  f"{group_step.get('reason', '')}")
 
     if dry_run:
         print(f'\n  [dry-run] GraphRAG/델타 생략')
@@ -736,6 +759,83 @@ def _step_regime_check(delta: dict) -> dict:
 
 
 # ═══════════════════════════════════════════════════════
+# R9-A.18 — Step 2.8: claim group monitoring (opt-in, LLM 0)
+# ═══════════════════════════════════════════════════════
+
+def _step_group_monitoring(month_str: str, claim_step: dict) -> dict:
+    """Step 2.8 — R9-A.17 utility 로 raw claims 를 누적 집계.
+
+    워크오더 §2 — claim extraction 결과가 없으면 no-op (graceful).
+    워크오더 §3 — 출력은 diagnostics 영역 (debug/claims/out/) 만, 운영 영역
+    변경 0. 워크오더 §4 — _promotion_quality.jsonl 미변경.
+    """
+    extraction = (claim_step or {}).get('extraction') or {}
+    raw_claims = extraction.get('claims') or []
+    if not raw_claims:
+        return {
+            'status': 'skipped',
+            'reason': 'no claim extraction results',
+            'total_groups': 0,
+            'stable_candidates': 0,
+            'strong_stable_candidates': 0,
+            'within_run_duplicate_count': 0,
+        }
+
+    try:
+        from market_research.pipeline.claim_group_monitoring import (
+            build_claim_group_monitoring_summary,
+            write_monitoring_artifacts,
+        )
+    except Exception as exc:
+        return {
+            'status': 'error',
+            'reason': f'utility import 실패: {exc}',
+        }
+
+    # daily batch single-run — run_id 를 month_str 로 stamp.
+    run_id = month_str
+    tagged = [{**c, 'run_id': run_id} for c in raw_claims]
+
+    try:
+        summary = build_claim_group_monitoring_summary(tagged)
+    except Exception as exc:
+        return {
+            'status': 'error',
+            'reason': f'aggregation 실패: {exc}',
+        }
+
+    # Diagnostics 영역만 (워크오더 §3) — gitignored.
+    out_dir = BASE_DIR.parent / 'debug' / 'claims' / 'out'
+    try:
+        artifacts = write_monitoring_artifacts(
+            out_dir, month_str, 'daily_update_step28', summary,
+        )
+        json_path = str(artifacts['json'])
+        md_path = str(artifacts['md'])
+    except Exception as exc:
+        # write 실패는 graceful — summary metric 은 반환.
+        json_path = None
+        md_path = None
+        write_error = str(exc)
+    else:
+        write_error = None
+
+    return {
+        'status': 'ok',
+        'total_groups': summary['total_groups'],
+        'stable_candidates': summary['stable_candidates'],
+        'strong_stable_candidates': summary['strong_stable_candidates'],
+        'within_run_duplicate_count':
+            summary['within_run_duplicate_count'],
+        'promoted_groups': summary['promoted_groups'],
+        'total_claims': summary['total_claims'],
+        'summary_json_path': json_path,
+        'summary_md_path': md_path,
+        'write_error': write_error,
+    }
+
+
+# ═══════════════════════════════════════════════════════
 # 캐시 저장
 # ═══════════════════════════════════════════════════════
 
@@ -779,6 +879,14 @@ if __name__ == '__main__':
         help=('data/claims/{period}.{suffix}.json 분리 저장 (alphanumeric / '
               'hyphen / underscore). 미지정 시 운영 file 덮어쓰기 차단 (Q4=B).'),
     )
+    # R9-A.18 — Step 2.8 (claim group monitoring) opt-in
+    parser.add_argument(
+        '--enable-group-monitoring', action='store_true',
+        help=('R9-A.18 Step 2.8 (claim group monitoring) opt-in. flag 없을 때 '
+              '기존 동작 불변. ON 시 Step 2.7 raw claims 를 R9-A.17 utility 로 '
+              '집계 → debug/claims/out/ (gitignored) 에 JSON+MD 출력. '
+              '운영 영역 변경 0 — ledger 미수정.'),
+    )
     args = parser.parse_args()
     daily_update(
         args.date,
@@ -787,4 +895,5 @@ if __name__ == '__main__':
         write_claims=args.write_claims,
         allow_out_of_band=args.allow_out_of_band,
         target_suffix=args.target_suffix,
+        enable_group_monitoring=args.enable_group_monitoring,
     )
