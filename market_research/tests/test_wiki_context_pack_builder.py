@@ -472,3 +472,246 @@ def test_unknown_period_type_raises():
         wcp.build_wiki_context_pack(
             period_key="2026-04", period_type="weird",
         )
+
+
+# ──────────────────────────────────────────────────────────────────
+# Global max_pages (R9-B.2 HOLD fix — workorder §"필수 수정")
+# ──────────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def synthetic_wiki_rich(tmp_path: Path) -> Path:
+    """Larger synthetic wiki — multiple pages per dir + 3 claim wikis.
+
+    Used to exercise global max_pages cap and priority/round-robin selection.
+    """
+    wiki = tmp_path / "wiki"
+    for d in (
+        "01_Events", "02_Entities", "03_Assets", "04_Funds",
+        "05_Regime_Canonical", "07_Graph_Evidence", "08_Claims",
+    ):
+        (wiki / d).mkdir(parents=True)
+
+    def w(rel: str, body: str) -> None:
+        (wiki / rel).write_text(body, encoding="utf-8")
+
+    # 4 events
+    for h in ("aaa1", "aaa2", "aaa3", "aaa4"):
+        w(f"01_Events/2026-04_event_{h}.md",
+          f"---\ntype: event\nperiod: 2026-04\nevent_id: {h}\n---\n# E {h}\nbody")
+    # 4 entities
+    for label in ("AI", "관세", "금리", "환율"):
+        w(f"02_Entities/2026-04_graphnode__{label}.md",
+          f"---\ntype: entity\nperiod: 2026-04\nlabel: \"{label}\"\n---\n# {label}\nbody")
+    # 3 assets
+    for ac in ("국내주식", "해외주식", "국내채권"):
+        w(f"03_Assets/2026-04_{ac}.md",
+          f"---\nperiod: 2026-04\nasset_class: {ac}\n---\n# {ac}\nbody")
+    # 1 regime
+    w("05_Regime_Canonical/current_regime.md",
+      "---\ntype: regime\ndominant_narrative: \"지정학\"\nsince: 2026-04-01\n---\n# Regime\nbody")
+    # 2 graph
+    w("07_Graph_Evidence/2026-04_transmission_paths_draft.md",
+      "---\ntype: graph_evidence\nperiod: 2026-04\nphase: P1\n---\n# Paths\nbody")
+    w("07_Graph_Evidence/transmission_paths_summary.md",
+      "---\ntype: graph_evidence\nperiod: 2026-04\nphase: P1\n---\n# Summary\nbody")
+    # 3 production claim wikis (rule-A passing, rule-B passing, rule-A passing)
+    for h in ("aaaaaaaaaa", "bbbbbbbbbb", "cccccccccc"):
+        w(f"08_Claims/2026-04_claim_{h}.md",
+          f"---\ntype: claim\nsource_type: claim_wiki\nclaim_id: claim:2026-04:{h}\n"
+          f"period: 2026-04\npromoted_at: 2026-05-01T00:00:00\n"
+          f"promotion_rule: B\n---\n# Claim {h}\nbody")
+    # 1 fund page
+    w("04_Funds/2026-04_07G04.md",
+      "---\nperiod: 2026-04\nfund_code: 07G04\n---\n# 07G04\nbody")
+    return wiki
+
+
+@pytest.fixture
+def synthetic_claims_store_rich(tmp_path: Path) -> Path:
+    """3 claims all passing Rule A/B in store priority order (conf×sal desc).
+
+    sibling of synthetic_wiki_rich (tmp_path/wiki and tmp_path/claims).
+    """
+    claims = tmp_path / "claims"
+    claims.mkdir(parents=True)
+
+    def _c(h: str, conf: float, sal: float) -> dict:
+        return {
+            "schema_version": "1.0.0",
+            "claim_id": f"claim:2026-04:{h}",
+            "period": "2026-04",
+            "supporting_evidence_ids": ["ev1", "ev2"],
+            "claim_text": f"claim {h}",
+            "claim_type": "macro_to_asset",
+            "affected_assets": [
+                {"asset_class": "국내주식", "direction": "negative"},
+                {"asset_class": "해외주식", "direction": "negative"},
+                {"asset_class": "환율(FX)", "direction": "positive"},
+            ],
+            "causal_chain": [
+                {"source": "a", "target": "b", "relation": "raises"},
+                {"source": "b", "target": "c", "relation": "raises"},
+                {"source": "c", "target": "d", "relation": "raises"},
+            ],
+            "direction": "negative",
+            "horizon": "short",
+            "confidence": conf,
+            "salience": sal,
+            "linked_wiki_pages": [],
+            "extractor_version": "test",
+            "extraction_method": "test",
+        }
+
+    store = {
+        "schema_version": "1.0.0",
+        "period": "2026-04",
+        "saved_at": "2026-05-01T00:00:00",
+        "source": "synthetic",
+        "extractor_version": "test",
+        "claims": [
+            _c("aaaaaaaaaa", 0.95, 0.95),  # rank 1
+            _c("bbbbbbbbbb", 0.90, 0.90),  # rank 2
+            _c("cccccccccc", 0.85, 0.85),  # rank 3
+        ],
+        "stats": {},
+    }
+    (claims / "2026-04.json").write_text(
+        json.dumps(store, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return claims
+
+
+def test_max_pages_applies_to_total_selected_pages(
+    synthetic_wiki_rich: Path, synthetic_claims_store_rich: Path,
+):
+    """max_pages 는 전체 selected wiki page 수의 글로벌 상한."""
+    pack = wcp.build_wiki_context_pack(
+        period_key="2026-04", stage="market_debate",
+        wiki_root=synthetic_wiki_rich,
+        max_pages=5,
+        builder_run_time="2030-01-01T00:00:00+00:00",
+    )
+    st = pack["source_trace"]
+    assert st["wiki_pages_selected"] <= 5
+    assert len(st["selected_wiki_paths"]) <= 5
+    mc = pack["market_context"]
+    mc_total = (
+        len(mc["events"]) + len(mc["entities"]) + len(mc["assets"])
+        + len(mc["regime"]) + len(mc["graph_evidence"]) + len(mc["claims"])
+    )
+    if pack["fund_context"]["fund_page"]:
+        mc_total += 1
+    mc_total += len(pack["prior_memory"]["debate_memory"])
+    assert mc_total <= 5
+    # Should hit the cap (we have >5 pages in fixture)
+    assert st["wiki_pages_selected"] == 5
+
+
+def test_source_type_counts_sum_matches_selected_pages(
+    synthetic_wiki_rich: Path, synthetic_claims_store_rich: Path,
+):
+    """sum(source_type_counts.values()) == wiki_pages_selected (모든 view 일치)."""
+    for cap in (3, 5, 8, 12, 50):
+        pack = wcp.build_wiki_context_pack(
+            period_key="2026-04", stage="market_debate",
+            wiki_root=synthetic_wiki_rich,
+            max_pages=cap,
+            builder_run_time="2030-01-01T00:00:00+00:00",
+        )
+        st = pack["source_trace"]
+        sel = st["wiki_pages_selected"]
+        assert sum(st["source_type_counts"].values()) == sel, (
+            f"cap={cap}: source_type_counts sum != selected"
+        )
+        assert len(st["selected_wiki_paths"]) == sel, (
+            f"cap={cap}: paths len != selected"
+        )
+        assert sum(st["selected_by_directory"].values()) == sel, (
+            f"cap={cap}: by_directory sum != selected"
+        )
+        mc = pack["market_context"]
+        mc_total = sum(
+            len(mc[k]) for k in
+            ("events", "entities", "assets", "regime", "graph_evidence", "claims")
+        )
+        if pack["fund_context"]["fund_page"]:
+            mc_total += 1
+        mc_total += len(pack["prior_memory"]["debate_memory"])
+        assert mc_total == sel, f"cap={cap}: market_context buckets sum != selected"
+
+
+def test_claim_pages_prioritized_within_max_pages(
+    synthetic_wiki_rich: Path, synthetic_claims_store_rich: Path,
+):
+    """max_pages=3 + 3 store-passing claims (모두 wiki match) → claims 가 전부."""
+    pack = wcp.build_wiki_context_pack(
+        period_key="2026-04", stage="market_debate",
+        wiki_root=synthetic_wiki_rich,
+        max_pages=3,
+        builder_run_time="2030-01-01T00:00:00+00:00",
+    )
+    st = pack["source_trace"]
+    assert st["wiki_pages_selected"] == 3
+    # All 3 slots taken by 08_Claims
+    assert st["selected_by_directory"].get("08_Claims") == 3
+    # No other dir gets a slot
+    other = {k: v for k, v in st["selected_by_directory"].items() if k != "08_Claims"}
+    assert all(v == 0 for v in other.values()) or other == {}, (
+        f"non-claim dirs should be empty when claims fill cap: {other}"
+    )
+    # source_type_counts: only claim_memory
+    assert st["source_type_counts"] == {"claim_memory": 3}
+    # claim ordering preserved (store conf×sal desc → aaa, bbb, ccc)
+    claim_ids = [c["claim_id"] for c in pack["market_context"]["claims"]]
+    assert claim_ids == [
+        "claim:2026-04:aaaaaaaaaa",
+        "claim:2026-04:bbbbbbbbbb",
+        "claim:2026-04:cccccccccc",
+    ]
+
+
+def test_round_robin_balanced_fill_after_claims(
+    synthetic_wiki_rich: Path, synthetic_claims_store_rich: Path,
+):
+    """claims 3개 reserved 후 남은 9 slot 이 priority round-robin 으로 배분."""
+    pack = wcp.build_wiki_context_pack(
+        period_key="2026-04", stage="market_debate",
+        wiki_root=synthetic_wiki_rich,
+        max_pages=12,
+        builder_run_time="2030-01-01T00:00:00+00:00",
+    )
+    sbd = pack["source_trace"]["selected_by_directory"]
+    assert sbd["08_Claims"] == 3  # reserved first
+    # round-robin order: 07→05→01→03→02 with pools [2,1,4,3,4]
+    # 9 picks: 07,05,01,03,02, 07(none left for 07 — actually 2 left? 0+1=1), 01,03,02, 01
+    # 07 has 2 → 1 picked at slot 4 + 1 picked at slot 9 etc.
+    # Simply assert distribution is non-degenerate (each present dir has >=1).
+    for d in ("07_Graph_Evidence", "05_Regime_Canonical", "01_Events",
+              "03_Assets", "02_Entities"):
+        assert sbd.get(d, 0) >= 1, f"{d} should have at least 1 slot"
+    assert sum(sbd.values()) == 12
+    # 04_Funds (market_debate excluded) and 06_Debate_Memory absent
+    assert "04_Funds" not in sbd
+    assert "06_Debate_Memory" not in sbd
+
+
+def test_fund_pinned_reserved_before_filldirs(
+    synthetic_wiki_rich: Path, synthetic_claims_store_rich: Path,
+):
+    """fund_comment stage: fund_pinned + claims 가 먼저 reserve."""
+    pack = wcp.build_wiki_context_pack(
+        period_key="2026-04", stage="fund_comment", fund_code="07G04",
+        wiki_root=synthetic_wiki_rich,
+        max_pages=5,
+        builder_run_time="2030-01-01T00:00:00+00:00",
+    )
+    st = pack["source_trace"]
+    assert st["wiki_pages_selected"] == 5
+    # fund_pinned (1) + claims (3) + 1 more from fill = 5
+    assert st["selected_by_directory"].get("04_Funds") == 1
+    assert st["selected_by_directory"].get("08_Claims") == 3
+    # remaining 1 slot → 07_Graph_Evidence (highest in fill priority)
+    assert st["selected_by_directory"].get("07_Graph_Evidence") == 1
+    assert pack["fund_context"]["fund_page"] is not None
+    assert pack["fund_context"]["fund_page"]["fund_code"] == "07G04"

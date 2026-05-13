@@ -46,6 +46,19 @@ MODE = "wiki_first_debug"
 DEFAULT_MAX_PAGES = 12
 DEFAULT_BODY_EXCERPT_CHARS = 700
 
+# Global selection priority (workorder §"권장 selection priority").
+# 1. 08_Claims (joined) → reserved phase
+# 2. 07_Graph_Evidence → 5. 03_Assets → 6. 02_Entities → fill phase (round-robin)
+# 04_Funds pinned 은 fund_comment stage contract 이라 claims 보다 먼저 reserve.
+# 06_Debate_Memory 는 opt-in 시 round-robin 맨 끝.
+_FILL_PRIORITY_DIRS: tuple[str, ...] = (
+    "07_Graph_Evidence",
+    "05_Regime_Canonical",
+    "01_Events",
+    "03_Assets",
+    "02_Entities",
+)
+
 # Dir → page_type
 _DIR_TO_TYPE: dict[str, str] = {
     "00_Index": "wiki_index",
@@ -480,11 +493,18 @@ def _select_pages_for_window(
     wiki_root: Path | None = None,
 ) -> tuple[list[WikiPageRecord], dict]:
     """Read directory, parse, apply date-window filter. Returns
-    (selected_records, stats)."""
+    (window_passed_records, stats).
+
+    Note: This is **pre-cap** — global ``max_pages`` is enforced later by
+    ``_apply_global_cap``. ``stats['window_passed']`` is the count after
+    filters; ``stats['final_selected']`` is filled by caller after
+    cap+priority+round-robin.
+    """
     records: list[WikiPageRecord] = []
     stats = {
         "considered": 0,
-        "selected": 0,
+        "window_passed": 0,
+        "final_selected": 0,
         "skipped_window_miss": 0,
         "skipped_cutoff_violation": 0,
         "skipped_available_from_future": 0,
@@ -526,8 +546,143 @@ def _select_pages_for_window(
         if rec.used_filename_fallback:
             stats["fallback_count"] += 1
         records.append(rec)
-        stats["selected"] += 1
+        stats["window_passed"] += 1
     return records, stats
+
+
+# ──────────────────────────────────────────────────────────────────
+# Entry rendering + global cap helpers
+# ──────────────────────────────────────────────────────────────────
+
+def _rec_to_entry(directory: str, rec: WikiPageRecord) -> dict:
+    """WikiPageRecord → context_pack entry dict (uniform per-bucket schema)."""
+    entry: dict = {
+        "page_id": _make_page_id(directory, rec),
+        "path": rec.path,
+        "page_type": rec.page_type,
+        "title": rec.title,
+        "window_start": rec.window_start,
+        "window_end": rec.window_end,
+        "as_of_date": rec.as_of_date,
+        "source_cutoff_date": rec.source_cutoff_date,
+        "available_from": rec.available_from,
+        "excerpt": rec.body_excerpt,
+        "source_type": rec.source_type,
+        "frontmatter_keys": sorted(rec.frontmatter.keys()),
+    }
+    if directory == "08_Claims":
+        entry["claim_id"] = rec.claim_id
+        entry["canonical_group_id"] = rec.canonical_group_id
+        entry["related_group_ids"] = rec.related_group_ids
+        entry["affected_assets"] = rec.affected_assets
+        entry["promotion_rule"] = rec.promotion_rule
+    return entry
+
+
+def _apply_global_cap(
+    *,
+    max_pages: int,
+    fund_pinned: dict | None,
+    claim_entries: list[dict],
+    candidates_by_dir: dict[str, list[WikiPageRecord]],
+    include_debate_memory: bool,
+) -> dict:
+    """Global ``max_pages`` cap + priority reservation + round-robin fill.
+
+    Priority (workorder §"권장 selection priority"):
+
+    1. ``fund_pinned`` (fund_comment stage contract — 1 page)
+    2. ``08_Claims`` joined (claim_store rank: confidence × salience desc)
+    3. Round-robin from ``_FILL_PRIORITY_DIRS``
+       (07_Graph_Evidence > 05_Regime_Canonical > 01_Events > 03_Assets
+       > 02_Entities)
+    4. If ``include_debate_memory`` → 06_Debate_Memory at the end
+
+    Returns dict with per-dir selected entries + summary counts.
+    """
+    out_events: list[dict] = []
+    out_entities: list[dict] = []
+    out_assets: list[dict] = []
+    out_regime: list[dict] = []
+    out_graph: list[dict] = []
+    out_claims: list[dict] = []
+    out_debate_memory: list[dict] = []
+    out_fund: dict | None = None
+    selected_paths: list[str] = []
+    source_type_counts: dict[str, int] = {}
+    selected_by_dir: dict[str, int] = {}
+    total = 0
+
+    def _route(directory: str, entry: dict) -> None:
+        nonlocal total, out_fund
+        if directory == "01_Events":
+            out_events.append(entry)
+        elif directory == "02_Entities":
+            out_entities.append(entry)
+        elif directory == "03_Assets":
+            out_assets.append(entry)
+        elif directory == "04_Funds":
+            out_fund = entry
+        elif directory == "05_Regime_Canonical":
+            out_regime.append(entry)
+        elif directory == "06_Debate_Memory":
+            out_debate_memory.append(entry)
+        elif directory == "07_Graph_Evidence":
+            out_graph.append(entry)
+        elif directory == "08_Claims":
+            out_claims.append(entry)
+        selected_paths.append(entry["path"])
+        st = entry.get("source_type") or "unknown"
+        source_type_counts[st] = source_type_counts.get(st, 0) + 1
+        selected_by_dir[directory] = selected_by_dir.get(directory, 0) + 1
+        total += 1
+
+    # Phase 1 — fund_pinned (fund_comment contract)
+    if fund_pinned is not None and total < max_pages:
+        _route("04_Funds", fund_pinned)
+
+    # Phase 2 — claims (priority #1 in workorder)
+    for ce in claim_entries:
+        if total >= max_pages:
+            break
+        _route("08_Claims", ce)
+
+    # Phase 3 — round-robin priority dirs
+    fill_dirs: list[str] = [
+        d for d in _FILL_PRIORITY_DIRS if d in candidates_by_dir
+    ]
+    if include_debate_memory and "06_Debate_Memory" in candidates_by_dir:
+        fill_dirs.append("06_Debate_Memory")
+    # Build pools (preserve _select_pages_for_window order — alphabetical).
+    pools: dict[str, list[WikiPageRecord]] = {
+        d: list(candidates_by_dir.get(d, [])) for d in fill_dirs
+    }
+    while total < max_pages:
+        added_this_round = False
+        for d in fill_dirs:
+            if total >= max_pages:
+                break
+            if pools[d]:
+                rec = pools[d].pop(0)
+                _route(d, _rec_to_entry(d, rec))
+                added_this_round = True
+        if not added_this_round:
+            break
+
+    return {
+        "events": out_events,
+        "entities": out_entities,
+        "assets": out_assets,
+        "regime": out_regime,
+        "graph": out_graph,
+        "claims": out_claims,
+        "debate_memory": out_debate_memory,
+        "fund_page": out_fund,
+        "selected_paths": selected_paths,
+        "source_type_counts": source_type_counts,
+        "selected_by_dir": selected_by_dir,
+        "total_selected": total,
+    }
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -748,38 +903,27 @@ def build_wiki_context_pack(
     )
     run_time = builder_run_time or datetime.now(timezone.utc).isoformat(timespec="seconds")
     allowed = _allowed_dirs(stage)
+    if max_pages <= 0:
+        raise ValueError(f"max_pages must be > 0, got {max_pages}")
 
-    # Per-dir selection
-    market_events: list[dict] = []
-    market_entities: list[dict] = []
-    market_assets: list[dict] = []
-    market_regime: list[dict] = []
-    market_graph: list[dict] = []
-    market_claims: list[dict] = []
-    fund_page_entry: dict | None = None
-    debate_memory_entries: list[dict] = []
-    selected_paths: list[str] = []
-    source_type_counts: dict[str, int] = {}
     per_dir_stats: dict[str, dict] = {}
     overall_warnings: list[dict] = []
     total_considered = 0
-    total_selected = 0
     cutoff_violations_total = 0
 
-    # 1) Regular dir scans
-    scan_dirs_for_overlap = [
-        ("01_Events", market_events),
-        ("02_Entities", market_entities),
-        ("03_Assets", market_assets),
-        ("05_Regime_Canonical", market_regime),
-        ("07_Graph_Evidence", market_graph),
+    # ── Phase A: scan all non-claim, non-fund dirs for window-passing
+    # candidates. NO max_pages applied yet (global cap applied later).
+    scan_dirs = [
+        d for d in (
+            "01_Events", "02_Entities", "03_Assets",
+            "05_Regime_Canonical", "07_Graph_Evidence",
+        ) if d in allowed
     ]
     if include_debate_memory and "06_Debate_Memory" in allowed:
-        scan_dirs_for_overlap.append(("06_Debate_Memory", debate_memory_entries))
+        scan_dirs.append("06_Debate_Memory")
 
-    for directory, bucket in scan_dirs_for_overlap:
-        if directory not in allowed:
-            continue
+    candidates_by_dir: dict[str, list[WikiPageRecord]] = {}
+    for directory in scan_dirs:
         recs, stats = _select_pages_for_window(
             directory, request_window,
             builder_run_time=run_time,
@@ -788,7 +932,6 @@ def build_wiki_context_pack(
         )
         per_dir_stats[directory] = stats
         total_considered += stats["considered"]
-        total_selected += stats["selected"]
         cutoff_violations_total += stats["skipped_cutoff_violation"]
         if stats["fallback_count"] > 0:
             overall_warnings.append({
@@ -796,51 +939,26 @@ def build_wiki_context_pack(
                 "directory": directory,
                 "count": stats["fallback_count"],
             })
+        candidates_by_dir[directory] = recs
 
-        # cap per-bucket via max_pages (overall budget) — page 당 importance
-        # 등 별도 랭킹 없는 R9-B.2 단계에서는 alphabetical (안정적 reproducibility).
-        for rec in recs[:max_pages]:
-            entry = {
-                "page_id": _make_page_id(directory, rec),
-                "path": rec.path,
-                "page_type": rec.page_type,
-                "title": rec.title,
-                "window_start": rec.window_start,
-                "window_end": rec.window_end,
-                "as_of_date": rec.as_of_date,
-                "source_cutoff_date": rec.source_cutoff_date,
-                "available_from": rec.available_from,
-                "excerpt": rec.body_excerpt,
-                "source_type": rec.source_type,
-                "frontmatter_keys": sorted(rec.frontmatter.keys()),
-            }
-            if directory == "08_Claims":
-                entry["claim_id"] = rec.claim_id
-                entry["canonical_group_id"] = rec.canonical_group_id
-                entry["related_group_ids"] = rec.related_group_ids
-                entry["affected_assets"] = rec.affected_assets
-                entry["promotion_rule"] = rec.promotion_rule
-            bucket.append(entry)
-            selected_paths.append(rec.path)
-            source_type_counts[rec.source_type] = source_type_counts.get(rec.source_type, 0) + 1
-
-    # 2) 04_Funds — pinned only on fund_comment
+    # ── Phase B: fund_pinned (fund_comment stage contract — pre-cap)
+    fund_pinned_entry: dict | None = None
     if stage == "fund_comment" and "04_Funds" in allowed and fund_code:
         fname = f"{period_key}_{fund_code}.md"
         fp = root / "04_Funds" / fname
         per_dir_stats["04_Funds"] = {
-            "considered": 0, "selected": 0,
+            "considered": 0, "window_passed": 0, "final_selected": 0,
             "skipped_window_miss": 0, "skipped_cutoff_violation": 0,
             "skipped_available_from_future": 0, "skipped_unparseable": 0,
             "skipped_non_production": 0, "fallback_count": 0,
         }
         if fp.exists():
             per_dir_stats["04_Funds"]["considered"] = 1
+            total_considered += 1
             rec = parse_wiki_page(
                 fp, body_excerpt_chars=body_excerpt_chars, wiki_root=root,
             )
             if rec is not None:
-                # cutoff / available 검사
                 ok = True
                 if rec.source_cutoff_date and rec.source_cutoff_date > request_window["as_of_date"]:
                     cutoff_violations_total += 1
@@ -850,10 +968,10 @@ def build_wiki_context_pack(
                     per_dir_stats["04_Funds"]["skipped_available_from_future"] += 1
                     ok = False
                 if ok:
-                    per_dir_stats["04_Funds"]["selected"] = 1
+                    per_dir_stats["04_Funds"]["window_passed"] = 1
                     if rec.used_filename_fallback:
                         per_dir_stats["04_Funds"]["fallback_count"] = 1
-                    fund_page_entry = {
+                    fund_pinned_entry = {
                         "page_id": _make_page_id("04_Funds", rec),
                         "path": rec.path,
                         "fund_code": fund_code,
@@ -865,10 +983,6 @@ def build_wiki_context_pack(
                         "source_type": "fund_context",
                         "frontmatter_keys": sorted(rec.frontmatter.keys()),
                     }
-                    selected_paths.append(rec.path)
-                    source_type_counts["fund_context"] = source_type_counts.get("fund_context", 0) + 1
-                    total_considered += 1
-                    total_selected += 1
         else:
             overall_warnings.append({
                 "warning_type": "fund_page_not_found",
@@ -876,7 +990,8 @@ def build_wiki_context_pack(
                 "fund_code": fund_code,
             })
 
-    # 3) 08_Claims — store join
+    # ── Phase C: 08_Claims — store join. claim entries 는 store 우선순위
+    # (confidence × salience desc) 그대로 보존 (raw 모두 — 캡은 Phase D).
     claims_section_entries: list[dict] = []
     claim_trace: dict = {
         "selected_claim_ids": [],
@@ -895,30 +1010,47 @@ def build_wiki_context_pack(
             builder_run_time=run_time,
             request_window=request_window,
         )
+        # claim wiki page 도 considered 카운트 (per-page traversal).
+        per_dir_stats["08_Claims"] = {
+            "considered": len(claims_section_entries),
+            "window_passed": len(claims_section_entries),
+            "final_selected": 0,  # filled after cap
+            "skipped_window_miss": 0,
+            "skipped_cutoff_violation": claim_trace.get("source_cutoff_violations", 0),
+            "skipped_available_from_future": 0,
+            "skipped_unparseable": 0,
+            "skipped_non_production": 0,
+            "fallback_count": 0,
+        }
+        total_considered += len(claims_section_entries)
         cutoff_violations_total += claim_trace.get("source_cutoff_violations", 0)
         overall_warnings.extend(claim_trace.get("warnings", []))
-        for entry in claims_section_entries:
-            market_claims.append(entry)
-            selected_paths.append(entry["path"])
-            source_type_counts["claim_memory"] = source_type_counts.get("claim_memory", 0) + 1
-            total_selected += 1
-            total_considered += 1
 
-    # Per-dir directional stats (selected_by_dir)
-    selected_by_dir: dict[str, int] = {}
-    for entry in (
-        [("01_Events", e) for e in market_events]
-        + [("02_Entities", e) for e in market_entities]
-        + [("03_Assets", e) for e in market_assets]
-        + [("05_Regime_Canonical", e) for e in market_regime]
-        + [("07_Graph_Evidence", e) for e in market_graph]
-        + [("08_Claims", e) for e in market_claims]
-        + [("06_Debate_Memory", e) for e in debate_memory_entries]
-    ):
-        d = entry[0]
-        selected_by_dir[d] = selected_by_dir.get(d, 0) + 1
-    if fund_page_entry is not None:
-        selected_by_dir["04_Funds"] = 1
+    # ── Phase D: global cap + priority reservation + round-robin
+    selection = _apply_global_cap(
+        max_pages=max_pages,
+        fund_pinned=fund_pinned_entry,
+        claim_entries=claims_section_entries,
+        candidates_by_dir=candidates_by_dir,
+        include_debate_memory=include_debate_memory,
+    )
+    market_events = selection["events"]
+    market_entities = selection["entities"]
+    market_assets = selection["assets"]
+    market_regime = selection["regime"]
+    market_graph = selection["graph"]
+    market_claims = selection["claims"]
+    debate_memory_entries = selection["debate_memory"]
+    fund_page_entry = selection["fund_page"]
+    selected_paths = selection["selected_paths"]
+    source_type_counts = selection["source_type_counts"]
+    selected_by_dir = selection["selected_by_dir"]
+    total_selected = selection["total_selected"]
+
+    # Backfill final_selected per_dir_stats (post-cap actual counts)
+    for d, n in selected_by_dir.items():
+        if d in per_dir_stats:
+            per_dir_stats[d]["final_selected"] = n
 
     # Pack assembly
     pack = {
