@@ -1,0 +1,995 @@
+# -*- coding: utf-8 -*-
+"""R9-B.2 — Wiki Context Pack Builder (read-only, debug-only).
+
+Loads canonical wiki pages and packages them into a structured
+``wiki_context_pack`` dict for downstream R9-B.4 prompt injection.
+
+Boundary (R9-B.2):
+  - LLM 호출 0
+  - debate prompt 미주입 (builder 산출만)
+  - 운영 wiki / claims / report_output / regime_memory 변경 0
+  - 기존 raw-source-first path 변경 0
+
+Public API:
+    build_wiki_context_pack(...)
+    parse_wiki_page(path) -> WikiPageRecord
+
+CLI 는 ``market_research/tools/build_wiki_context_pack.py`` 에서 호출.
+
+See ``market_research/docs/r9b_wiki_first_debate_architecture.md`` for the
+schema this builder targets.
+"""
+from __future__ import annotations
+
+import calendar
+import json
+import re
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Iterable
+
+# wiki/__init__ 는 pymysql 의존이라 paths 만 직접 import.
+import importlib.util as _iu
+import sys as _sys
+
+_WIKI_PATHS_PATH = Path(__file__).resolve().parent.parent / "wiki" / "paths.py"
+_spec = _iu.spec_from_file_location("_r9b_paths", _WIKI_PATHS_PATH)
+_paths_mod = _iu.module_from_spec(_spec)
+_sys.modules.setdefault("_r9b_paths", _paths_mod)
+_spec.loader.exec_module(_paths_mod)  # type: ignore[union-attr]
+WIKI_ROOT: Path = _paths_mod.WIKI_ROOT
+
+
+SCHEMA_VERSION = "r9b-context-pack-1.0.0"
+MODE = "wiki_first_debug"
+DEFAULT_MAX_PAGES = 12
+DEFAULT_BODY_EXCERPT_CHARS = 700
+
+# Dir → page_type
+_DIR_TO_TYPE: dict[str, str] = {
+    "00_Index": "wiki_index",
+    "01_Events": "event",
+    "02_Entities": "entity",
+    "03_Assets": "asset",
+    "04_Funds": "fund",
+    "05_Regime_Canonical": "regime",
+    "06_Debate_Memory": "debate_memory",
+    "07_Graph_Evidence": "graph_evidence",
+    "08_Claims": "claim",
+}
+
+# Dir → source_type (R9-B.1 §8.12)
+_DIR_TO_SOURCE_TYPE: dict[str, str] = {
+    "01_Events": "wiki_event_memory",
+    "02_Entities": "wiki_entity_memory",
+    "03_Assets": "wiki_asset_memory",
+    "04_Funds": "fund_context",
+    "05_Regime_Canonical": "wiki_regime_memory",
+    "06_Debate_Memory": "interpreted_memory",
+    "07_Graph_Evidence": "wiki_graph_memory",
+    "08_Claims": "claim_memory",
+    "00_Index": "wiki_index",
+}
+
+# Stage policy (R9-B.2 §7 + design doc §5)
+_STAGE_DIRS: dict[str, tuple[str, ...]] = {
+    "market_debate": (
+        "01_Events", "02_Entities", "03_Assets",
+        "05_Regime_Canonical", "07_Graph_Evidence", "08_Claims",
+    ),
+    "fund_comment": (
+        "01_Events", "02_Entities", "03_Assets",
+        "04_Funds",  # pinned via fund_code
+        "05_Regime_Canonical", "07_Graph_Evidence", "08_Claims",
+    ),
+    "quarterly_debate": (
+        "01_Events", "02_Entities", "03_Assets",
+        "05_Regime_Canonical", "07_Graph_Evidence", "08_Claims",
+    ),
+    "admin_preview": tuple(_DIR_TO_TYPE.keys()),
+}
+
+# Period-agnostic dirs — window filter 면제 (date 없는 canonical regime / index)
+_PERIOD_AGNOSTIC_DIRS: frozenset[str] = frozenset({
+    "00_Index", "05_Regime_Canonical",
+})
+
+
+_PERIOD_RE = re.compile(r"^(\d{4})-(\d{2})$")
+_FILENAME_PERIOD_RE = re.compile(r"(\d{4})-(\d{2})")
+
+
+# ──────────────────────────────────────────────────────────────────
+# Local Rule A/B (decoupled from market_research.wiki.claim_pages —
+# 그 모듈은 pymysql 까지 전이 import 함). 운영 정의와 정확히 동일.
+# ──────────────────────────────────────────────────────────────────
+
+_RULE_B_CHAIN_MIN = 3
+_RULE_B_SUPPORTING_EV_MIN = 2
+
+
+def _meets_rule_a_local(claim: dict) -> bool:
+    try:
+        s = float(claim.get("salience", 0.0))
+        c = float(claim.get("confidence", 0.0))
+    except (TypeError, ValueError):
+        return False
+    aas = claim.get("affected_assets") or []
+    return s >= 0.7 and c >= 0.7 and isinstance(aas, list) and len(aas) >= 3
+
+
+def _meets_rule_b_local(claim: dict) -> bool:
+    cc = claim.get("causal_chain") or []
+    if not isinstance(cc, list) or len(cc) < _RULE_B_CHAIN_MIN:
+        return False
+    sup = claim.get("supporting_evidence_ids") or []
+    return isinstance(sup, list) and len(sup) >= _RULE_B_SUPPORTING_EV_MIN
+
+
+# ──────────────────────────────────────────────────────────────────
+# Data classes
+# ──────────────────────────────────────────────────────────────────
+
+@dataclass
+class WikiPageRecord:
+    """Parsed wiki page (read-only)."""
+    path: str                # WIKI_ROOT-relative posix path
+    directory: str           # "01_Events" 등
+    page_type: str           # "event" 등
+    source_type: str         # "wiki_event_memory" 등
+    title: str
+    frontmatter: dict
+    body_excerpt: str
+    # Derived date fields (frontmatter 또는 filename fallback)
+    period_key: str | None
+    window_start: str | None
+    window_end: str | None
+    as_of_date: str | None
+    source_cutoff_date: str | None
+    available_from: str | None
+    # Claim-specific
+    claim_id: str | None = None
+    canonical_group_id: str | None = None
+    related_group_ids: list[str] = field(default_factory=list)
+    affected_assets: list[str] = field(default_factory=list)
+    promotion_rule: str | None = None
+    # Provenance — fallback warning 발생 여부
+    used_filename_fallback: bool = False
+
+
+# ──────────────────────────────────────────────────────────────────
+# Date helpers
+# ──────────────────────────────────────────────────────────────────
+
+def _month_end_date(period_key: str) -> str | None:
+    """'2026-04' → '2026-04-30'."""
+    m = _PERIOD_RE.match(period_key or "")
+    if not m:
+        return None
+    y, mo = int(m.group(1)), int(m.group(2))
+    if not (1 <= mo <= 12):
+        return None
+    last = calendar.monthrange(y, mo)[1]
+    return f"{y:04d}-{mo:02d}-{last:02d}"
+
+
+def _month_start_date(period_key: str) -> str | None:
+    m = _PERIOD_RE.match(period_key or "")
+    if not m:
+        return None
+    y, mo = int(m.group(1)), int(m.group(2))
+    return f"{y:04d}-{mo:02d}-01"
+
+
+def _resolve_request_window(
+    *,
+    period_key: str,
+    period_type: str,
+    window_start: str | None,
+    window_end: str | None,
+    as_of_date: str | None,
+) -> dict:
+    """Fill defaults for a monthly request. period_type='custom' 은
+    caller 가 window_start/end/as_of_date 를 명시해야 한다."""
+    if period_type == "monthly":
+        ws = window_start or _month_start_date(period_key) or ""
+        we = window_end or _month_end_date(period_key) or ""
+        aod = as_of_date or we
+    elif period_type == "custom":
+        ws = window_start or ""
+        we = window_end or ""
+        aod = as_of_date or we
+    else:
+        raise ValueError(
+            f"unsupported period_type: {period_type!r} (expected 'monthly' or 'custom')"
+        )
+    return {
+        "period_type": period_type,
+        "period_key": period_key,
+        "window_start": ws,
+        "window_end": we,
+        "as_of_date": aod,
+        "source_cutoff_date": aod,
+    }
+
+
+def _periods_overlap(
+    page_ws: str | None, page_we: str | None,
+    req_ws: str, req_we: str,
+) -> bool:
+    if not page_ws or not page_we:
+        return False
+    return page_ws <= req_we and page_we >= req_ws
+
+
+# ──────────────────────────────────────────────────────────────────
+# Frontmatter / body parser
+# ──────────────────────────────────────────────────────────────────
+
+def _parse_frontmatter(text: str) -> tuple[dict, int]:
+    """Very small YAML-ish frontmatter parser — strings/numbers/bool/list/null.
+
+    Returns (dict, body_offset). 만약 frontmatter 가 없으면 ({}, 0).
+    body_offset 은 frontmatter 종료 바로 다음 줄의 인덱스.
+    """
+    if not text.startswith("---"):
+        return {}, 0
+    end = text.find("\n---", 4)
+    if end < 0:
+        return {}, 0
+    fm_text = text[3:end].strip("\n")
+    body_offset = end + 4  # skip "\n---"
+    if body_offset < len(text) and text[body_offset] == "\n":
+        body_offset += 1
+
+    out: dict = {}
+    for line in fm_text.splitlines():
+        line = line.rstrip()
+        if not line or line.startswith("#"):
+            continue
+        # nested mapping (we ignore — keep top-level only)
+        if ":" not in line:
+            continue
+        k, _, v = line.partition(":")
+        k = k.strip()
+        v = v.strip()
+        if not k:
+            continue
+        # strip simple quotes
+        if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+            v = v[1:-1]
+            out[k] = v
+            continue
+        # list literal
+        if v.startswith("[") and v.endswith("]"):
+            inner = v[1:-1].strip()
+            if not inner:
+                out[k] = []
+                continue
+            items: list = []
+            for raw in inner.split(","):
+                t = raw.strip()
+                if (t.startswith('"') and t.endswith('"')) or (t.startswith("'") and t.endswith("'")):
+                    t = t[1:-1]
+                items.append(t)
+            out[k] = items
+            continue
+        # bool / null
+        lv = v.lower()
+        if lv in ("true", "false"):
+            out[k] = (lv == "true")
+            continue
+        if lv in ("null", "none", "~", ""):
+            out[k] = None if lv != "" else ""
+            continue
+        # number
+        try:
+            if "." in v:
+                out[k] = float(v)
+            else:
+                out[k] = int(v)
+            continue
+        except ValueError:
+            pass
+        out[k] = v
+    return out, body_offset
+
+
+def _filename_period(name: str) -> str | None:
+    m = _FILENAME_PERIOD_RE.search(name)
+    if not m:
+        return None
+    return f"{m.group(1)}-{m.group(2)}"
+
+
+def _excerpt_body(text: str, body_offset: int, max_chars: int) -> str:
+    body = text[body_offset:].strip()
+    if len(body) <= max_chars:
+        return body
+    return body[:max_chars].rstrip() + " …"
+
+
+def _extract_title(body: str) -> str:
+    for line in body.splitlines():
+        line = line.strip()
+        if line.startswith("# "):
+            return line[2:].strip()
+    return ""
+
+
+def _parse_affected_assets_from_body(body: str) -> list[str]:
+    """`## Affected Assets` 섹션의 첫 토큰들 추출 (08_Claims body 패턴)."""
+    out: list[str] = []
+    in_section = False
+    for line in body.splitlines():
+        s = line.strip()
+        if s.lower().startswith("## affected assets"):
+            in_section = True
+            continue
+        if in_section:
+            if s.startswith("## "):
+                break
+            if s.startswith("- "):
+                core = s[2:]
+                # "원자재금: positive"
+                head = core.split(":", 1)[0].strip()
+                if head and head != "(없음)":
+                    out.append(head)
+    return out
+
+
+def parse_wiki_page(
+    path: Path, *,
+    body_excerpt_chars: int = DEFAULT_BODY_EXCERPT_CHARS,
+    wiki_root: Path | None = None,
+) -> WikiPageRecord | None:
+    """단일 wiki page → WikiPageRecord. 읽기 실패 시 None.
+
+    wiki_root 가 명시되면 그 root 기준 relative path 로 directory 추출.
+    기본은 module-level WIKI_ROOT. 테스트의 synthetic wiki tree 에서
+    필수.
+    """
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return None
+    fm, body_off = _parse_frontmatter(text)
+    body = text[body_off:]
+    excerpt = _excerpt_body(text, body_off, body_excerpt_chars)
+    title = _extract_title(body)
+
+    root = wiki_root or WIKI_ROOT
+    try:
+        rel = str(path.relative_to(root)).replace("\\", "/")
+    except ValueError:
+        rel = path.name
+    directory = rel.split("/", 1)[0] if "/" in rel else ""
+    page_type = _DIR_TO_TYPE.get(directory, str(fm.get("type") or fm.get("page_type") or ""))
+    source_type = _DIR_TO_SOURCE_TYPE.get(directory, "unknown")
+
+    # Date fields — frontmatter 우선
+    fm_period = fm.get("period_key") or fm.get("period")
+    fm_window_start = fm.get("window_start")
+    fm_window_end = fm.get("window_end")
+    fm_as_of = fm.get("as_of_date")
+    fm_cutoff = fm.get("source_cutoff_date")
+    # NOTE: `updated_at` 은 selection 기준으로 쓰지 않는다 (design doc §1.4).
+    # 파일 수정시각이라 daily_update 재실행만으로 미래로 점프할 수 있음.
+    # available_from 은 semantic 타임스탬프 (generated_at/promoted_at/debate_date)
+    # 만 사용. 없으면 None → cutoff 검사만 적용.
+    fm_available = (
+        fm.get("available_from")
+        or fm.get("generated_at")
+        or fm.get("promoted_at")
+        or fm.get("debate_date")
+    )
+
+    used_fallback = False
+    period_key: str | None = str(fm_period) if fm_period else None
+    if not period_key:
+        period_key = _filename_period(path.name)
+        if period_key:
+            used_fallback = True
+
+    window_start = str(fm_window_start) if fm_window_start else None
+    window_end = str(fm_window_end) if fm_window_end else None
+    if (window_start is None or window_end is None) and period_key:
+        window_start = window_start or _month_start_date(period_key)
+        window_end = window_end or _month_end_date(period_key)
+        used_fallback = used_fallback or (
+            fm_window_start is None or fm_window_end is None
+        )
+    as_of_date = str(fm_as_of) if fm_as_of else (window_end if window_end else None)
+    source_cutoff_date = str(fm_cutoff) if fm_cutoff else as_of_date
+    available_from = str(fm_available) if fm_available else None
+
+    claim_id = fm.get("claim_id")
+    canonical_group_id = fm.get("canonical_group_id")
+    related = fm.get("related_group_ids")
+    if isinstance(related, list):
+        related_ids = [str(r) for r in related]
+    elif isinstance(related, str) and related:
+        related_ids = [related]
+    else:
+        related_ids = []
+    promotion_rule = fm.get("promotion_rule")
+
+    affected: list[str] = []
+    fm_aa = fm.get("affected_assets")
+    if isinstance(fm_aa, list):
+        affected = [str(a) for a in fm_aa]
+    elif directory == "08_Claims":
+        affected = _parse_affected_assets_from_body(body)
+
+    return WikiPageRecord(
+        path=rel,
+        directory=directory,
+        page_type=page_type,
+        source_type=source_type,
+        title=title,
+        frontmatter=fm,
+        body_excerpt=excerpt,
+        period_key=period_key,
+        window_start=window_start,
+        window_end=window_end,
+        as_of_date=as_of_date,
+        source_cutoff_date=source_cutoff_date,
+        available_from=available_from,
+        claim_id=str(claim_id) if claim_id else None,
+        canonical_group_id=str(canonical_group_id) if canonical_group_id else None,
+        related_group_ids=related_ids,
+        affected_assets=affected,
+        promotion_rule=str(promotion_rule) if promotion_rule else None,
+        used_filename_fallback=used_fallback,
+    )
+
+
+# ──────────────────────────────────────────────────────────────────
+# Directory scanning
+# ──────────────────────────────────────────────────────────────────
+
+def _list_pages_in_dir(directory: str, wiki_root: Path | None = None) -> list[Path]:
+    root = wiki_root or WIKI_ROOT
+    d = root / directory
+    if not d.exists():
+        return []
+    return sorted(p for p in d.glob("*.md") if p.is_file())
+
+
+def _is_production_claim_page(name: str) -> bool:
+    """Filter out replay variants (e.g. `*.r9a4-replay.md`).
+
+    Production page filename: `{period}_claim_{hash10}.md` — no extra suffix.
+    Anything with an extra dot-suffix before `.md` is a target_suffix variant.
+    """
+    if not name.endswith(".md"):
+        return False
+    stem = name[:-3]
+    # production: 2026-04_claim_xxxxxxxxxx
+    # variant:    2026-04_claim_xxxxxxxxxx.r9a4-replay
+    return stem.count(".") == 0
+
+
+def _select_pages_for_window(
+    directory: str,
+    request_window: dict,
+    *,
+    builder_run_time: str,
+    body_excerpt_chars: int,
+    wiki_root: Path | None = None,
+) -> tuple[list[WikiPageRecord], dict]:
+    """Read directory, parse, apply date-window filter. Returns
+    (selected_records, stats)."""
+    records: list[WikiPageRecord] = []
+    stats = {
+        "considered": 0,
+        "selected": 0,
+        "skipped_window_miss": 0,
+        "skipped_cutoff_violation": 0,
+        "skipped_available_from_future": 0,
+        "skipped_unparseable": 0,
+        "skipped_non_production": 0,
+        "fallback_count": 0,
+    }
+    for fp in _list_pages_in_dir(directory, wiki_root):
+        # 08_Claims 는 replay variant 가 폭증 — production filename 만.
+        if directory == "08_Claims" and not _is_production_claim_page(fp.name):
+            stats["skipped_non_production"] += 1
+            continue
+        rec = parse_wiki_page(
+            fp, body_excerpt_chars=body_excerpt_chars, wiki_root=wiki_root,
+        )
+        if rec is None:
+            stats["skipped_unparseable"] += 1
+            continue
+        stats["considered"] += 1
+
+        if directory in _PERIOD_AGNOSTIC_DIRS:
+            # period-agnostic: as_of cutoff 만 본다 (window 자체가 없음).
+            if rec.source_cutoff_date and rec.source_cutoff_date > request_window["as_of_date"]:
+                stats["skipped_cutoff_violation"] += 1
+                continue
+        else:
+            if not _periods_overlap(
+                rec.window_start, rec.window_end,
+                request_window["window_start"], request_window["window_end"],
+            ):
+                stats["skipped_window_miss"] += 1
+                continue
+            if rec.source_cutoff_date and rec.source_cutoff_date > request_window["as_of_date"]:
+                stats["skipped_cutoff_violation"] += 1
+                continue
+        if rec.available_from and rec.available_from > builder_run_time:
+            stats["skipped_available_from_future"] += 1
+            continue
+        if rec.used_filename_fallback:
+            stats["fallback_count"] += 1
+        records.append(rec)
+        stats["selected"] += 1
+    return records, stats
+
+
+# ──────────────────────────────────────────────────────────────────
+# Claim store integration
+# ──────────────────────────────────────────────────────────────────
+
+def _load_claim_store_passing(
+    period_key: str, *,
+    claims_dir: Path | None = None,
+) -> list[dict]:
+    """Load canonical claim store for period and apply local Rule A/B.
+
+    Decoupled from ``market_research.analyze.claim_store.select_promoted_claims_for_period``
+    — that function transitively imports pymysql via wiki package and silently
+    returns [] when the env lacks pymysql. We read the JSON directly.
+    """
+    if claims_dir is None:
+        claims_dir = WIKI_ROOT.parent / "claims"
+    fp = claims_dir / f"{period_key}.json"
+    if not fp.exists():
+        return []
+    try:
+        store = json.loads(fp.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    claims = store.get("claims") if isinstance(store, dict) else None
+    if not isinstance(claims, list):
+        return []
+    out: list[dict] = []
+    for c in claims:
+        if not isinstance(c, dict):
+            continue
+        if _meets_rule_a_local(c) or _meets_rule_b_local(c):
+            out.append(c)
+    return out
+
+
+def _claim_id_to_filename(claim_id: str) -> str | None:
+    """`claim:2026-04:e78dc83a1e` → `2026-04_claim_e78dc83a1e.md`."""
+    if not isinstance(claim_id, str) or not claim_id.startswith("claim:"):
+        return None
+    parts = claim_id.split(":")
+    if len(parts) != 3:
+        return None
+    _, period, h = parts
+    if not period or not h:
+        return None
+    return f"{period}_claim_{h}.md"
+
+
+def _build_claim_section(
+    *,
+    period_key: str,
+    wiki_root: Path,
+    claims_dir: Path | None = None,
+    body_excerpt_chars: int,
+    builder_run_time: str,
+    request_window: dict,
+) -> tuple[list[dict], dict]:
+    """claim_store selected + wiki 08_Claims 매칭 → claim entries + trace.
+
+    Returns (claim_entries, trace_dict). trace 는 selected/matched count,
+    join rate, related_group_ids, source_cutoff_violations 포함.
+    """
+    selected = _load_claim_store_passing(period_key, claims_dir=claims_dir)
+    selected_ids = [c.get("claim_id") for c in selected if c.get("claim_id")]
+    claim_entries: list[dict] = []
+    matched = 0
+    related_group_ids: list[str] = []
+    cutoff_violations = 0
+    warnings: list[dict] = []
+
+    for c in selected:
+        cid = c.get("claim_id")
+        if not cid:
+            continue
+        fname = _claim_id_to_filename(cid)
+        if not fname:
+            continue
+        page_path = wiki_root / "08_Claims" / fname
+        if not page_path.exists():
+            warnings.append({
+                "warning_type": "claim_wiki_missing",
+                "claim_id": cid,
+                "expected_path": f"08_Claims/{fname}",
+            })
+            continue
+        rec = parse_wiki_page(
+            page_path, body_excerpt_chars=body_excerpt_chars,
+            wiki_root=wiki_root,
+        )
+        if rec is None:
+            warnings.append({
+                "warning_type": "claim_wiki_unparseable",
+                "claim_id": cid,
+                "path": f"08_Claims/{fname}",
+            })
+            continue
+        # date hygiene
+        if rec.source_cutoff_date and rec.source_cutoff_date > request_window["as_of_date"]:
+            cutoff_violations += 1
+            warnings.append({
+                "warning_type": "source_cutoff_violation",
+                "path": rec.path,
+                "source_cutoff_date": rec.source_cutoff_date,
+                "request_as_of": request_window["as_of_date"],
+            })
+            continue
+        if rec.available_from and rec.available_from > builder_run_time:
+            warnings.append({
+                "warning_type": "available_from_future",
+                "path": rec.path,
+                "available_from": rec.available_from,
+                "builder_run_time": builder_run_time,
+            })
+            continue
+        if rec.used_filename_fallback:
+            warnings.append({
+                "warning_type": "frontmatter_missing_date_fields",
+                "path": rec.path,
+            })
+        related_group_ids.extend(rec.related_group_ids)
+        matched += 1
+        claim_entries.append({
+            "page_id": f"claim:{period_key}:{cid.rsplit(':', 1)[-1]}",
+            "path": rec.path,
+            "claim_id": cid,
+            "canonical_group_id": rec.canonical_group_id,
+            "related_group_ids": rec.related_group_ids,
+            "promotion_rule": rec.promotion_rule,
+            "title": rec.title,
+            "affected_assets": rec.affected_assets,
+            "store_confidence": c.get("confidence"),
+            "store_salience": c.get("salience"),
+            "store_claim_type": c.get("claim_type"),
+            "store_supporting_evidence_ids": c.get("supporting_evidence_ids") or [],
+            "window_start": rec.window_start,
+            "window_end": rec.window_end,
+            "as_of_date": rec.as_of_date,
+            "source_cutoff_date": rec.source_cutoff_date,
+            "excerpt": rec.body_excerpt,
+            "source_type": "claim_memory",
+        })
+
+    selected_count = len(selected_ids)
+    join_rate: float | None
+    if selected_count == 0:
+        join_rate = None  # n/a
+        warnings.append({
+            "warning_type": "claim_store_zero_selected",
+            "period": period_key,
+            "note": (
+                "claim_store 에서 Rule A/B 통과 claim 0. join rate 계산 불가. "
+                "기존 운영 wiki 8개 page 와 무관 — store/promotion threshold "
+                "issue. R9-A 트랙 후속과 별 트랙으로 진단 필요."
+            ),
+        })
+    else:
+        join_rate = matched / selected_count
+
+    # dedup related_group_ids
+    dedup_related = list(dict.fromkeys(related_group_ids))
+
+    trace = {
+        "selected_claim_ids": selected_ids,
+        "matched_wiki_claim_count": matched,
+        "claim_store_to_wiki_join_rate": join_rate,
+        "selected_related_group_ids": dedup_related,
+        "source_cutoff_violations": cutoff_violations,
+        "warnings": warnings,
+    }
+    return claim_entries, trace
+
+
+# ──────────────────────────────────────────────────────────────────
+# Stage gating
+# ──────────────────────────────────────────────────────────────────
+
+def _allowed_dirs(stage: str) -> tuple[str, ...]:
+    if stage not in _STAGE_DIRS:
+        raise ValueError(
+            f"unknown stage: {stage!r} (expected one of "
+            f"{list(_STAGE_DIRS)})"
+        )
+    return _STAGE_DIRS[stage]
+
+
+# ──────────────────────────────────────────────────────────────────
+# Public API
+# ──────────────────────────────────────────────────────────────────
+
+def build_wiki_context_pack(
+    *,
+    period_key: str,
+    period_type: str = "monthly",
+    window_start: str | None = None,
+    window_end: str | None = None,
+    as_of_date: str | None = None,
+    stage: str = "market_debate",
+    fund_code: str | None = None,
+    max_pages: int = DEFAULT_MAX_PAGES,
+    body_excerpt_chars: int = DEFAULT_BODY_EXCERPT_CHARS,
+    include_debate_memory: bool = False,
+    wiki_root: Path | None = None,
+    builder_run_time: str | None = None,
+) -> dict:
+    """Build the wiki context pack (read-only).
+
+    See ``r9b_wiki_first_debate_architecture.md`` §8 for the schema.
+    """
+    root = wiki_root or WIKI_ROOT
+    request_window = _resolve_request_window(
+        period_key=period_key,
+        period_type=period_type,
+        window_start=window_start,
+        window_end=window_end,
+        as_of_date=as_of_date,
+    )
+    run_time = builder_run_time or datetime.now(timezone.utc).isoformat(timespec="seconds")
+    allowed = _allowed_dirs(stage)
+
+    # Per-dir selection
+    market_events: list[dict] = []
+    market_entities: list[dict] = []
+    market_assets: list[dict] = []
+    market_regime: list[dict] = []
+    market_graph: list[dict] = []
+    market_claims: list[dict] = []
+    fund_page_entry: dict | None = None
+    debate_memory_entries: list[dict] = []
+    selected_paths: list[str] = []
+    source_type_counts: dict[str, int] = {}
+    per_dir_stats: dict[str, dict] = {}
+    overall_warnings: list[dict] = []
+    total_considered = 0
+    total_selected = 0
+    cutoff_violations_total = 0
+
+    # 1) Regular dir scans
+    scan_dirs_for_overlap = [
+        ("01_Events", market_events),
+        ("02_Entities", market_entities),
+        ("03_Assets", market_assets),
+        ("05_Regime_Canonical", market_regime),
+        ("07_Graph_Evidence", market_graph),
+    ]
+    if include_debate_memory and "06_Debate_Memory" in allowed:
+        scan_dirs_for_overlap.append(("06_Debate_Memory", debate_memory_entries))
+
+    for directory, bucket in scan_dirs_for_overlap:
+        if directory not in allowed:
+            continue
+        recs, stats = _select_pages_for_window(
+            directory, request_window,
+            builder_run_time=run_time,
+            body_excerpt_chars=body_excerpt_chars,
+            wiki_root=root,
+        )
+        per_dir_stats[directory] = stats
+        total_considered += stats["considered"]
+        total_selected += stats["selected"]
+        cutoff_violations_total += stats["skipped_cutoff_violation"]
+        if stats["fallback_count"] > 0:
+            overall_warnings.append({
+                "warning_type": "frontmatter_missing_date_fields",
+                "directory": directory,
+                "count": stats["fallback_count"],
+            })
+
+        # cap per-bucket via max_pages (overall budget) — page 당 importance
+        # 등 별도 랭킹 없는 R9-B.2 단계에서는 alphabetical (안정적 reproducibility).
+        for rec in recs[:max_pages]:
+            entry = {
+                "page_id": _make_page_id(directory, rec),
+                "path": rec.path,
+                "page_type": rec.page_type,
+                "title": rec.title,
+                "window_start": rec.window_start,
+                "window_end": rec.window_end,
+                "as_of_date": rec.as_of_date,
+                "source_cutoff_date": rec.source_cutoff_date,
+                "available_from": rec.available_from,
+                "excerpt": rec.body_excerpt,
+                "source_type": rec.source_type,
+                "frontmatter_keys": sorted(rec.frontmatter.keys()),
+            }
+            if directory == "08_Claims":
+                entry["claim_id"] = rec.claim_id
+                entry["canonical_group_id"] = rec.canonical_group_id
+                entry["related_group_ids"] = rec.related_group_ids
+                entry["affected_assets"] = rec.affected_assets
+                entry["promotion_rule"] = rec.promotion_rule
+            bucket.append(entry)
+            selected_paths.append(rec.path)
+            source_type_counts[rec.source_type] = source_type_counts.get(rec.source_type, 0) + 1
+
+    # 2) 04_Funds — pinned only on fund_comment
+    if stage == "fund_comment" and "04_Funds" in allowed and fund_code:
+        fname = f"{period_key}_{fund_code}.md"
+        fp = root / "04_Funds" / fname
+        per_dir_stats["04_Funds"] = {
+            "considered": 0, "selected": 0,
+            "skipped_window_miss": 0, "skipped_cutoff_violation": 0,
+            "skipped_available_from_future": 0, "skipped_unparseable": 0,
+            "skipped_non_production": 0, "fallback_count": 0,
+        }
+        if fp.exists():
+            per_dir_stats["04_Funds"]["considered"] = 1
+            rec = parse_wiki_page(
+                fp, body_excerpt_chars=body_excerpt_chars, wiki_root=root,
+            )
+            if rec is not None:
+                # cutoff / available 검사
+                ok = True
+                if rec.source_cutoff_date and rec.source_cutoff_date > request_window["as_of_date"]:
+                    cutoff_violations_total += 1
+                    per_dir_stats["04_Funds"]["skipped_cutoff_violation"] += 1
+                    ok = False
+                if ok and rec.available_from and rec.available_from > run_time:
+                    per_dir_stats["04_Funds"]["skipped_available_from_future"] += 1
+                    ok = False
+                if ok:
+                    per_dir_stats["04_Funds"]["selected"] = 1
+                    if rec.used_filename_fallback:
+                        per_dir_stats["04_Funds"]["fallback_count"] = 1
+                    fund_page_entry = {
+                        "page_id": _make_page_id("04_Funds", rec),
+                        "path": rec.path,
+                        "fund_code": fund_code,
+                        "title": rec.title,
+                        "window_start": rec.window_start,
+                        "window_end": rec.window_end,
+                        "as_of_date": rec.as_of_date,
+                        "excerpt": rec.body_excerpt,
+                        "source_type": "fund_context",
+                        "frontmatter_keys": sorted(rec.frontmatter.keys()),
+                    }
+                    selected_paths.append(rec.path)
+                    source_type_counts["fund_context"] = source_type_counts.get("fund_context", 0) + 1
+                    total_considered += 1
+                    total_selected += 1
+        else:
+            overall_warnings.append({
+                "warning_type": "fund_page_not_found",
+                "expected_path": f"04_Funds/{fname}",
+                "fund_code": fund_code,
+            })
+
+    # 3) 08_Claims — store join
+    claims_section_entries: list[dict] = []
+    claim_trace: dict = {
+        "selected_claim_ids": [],
+        "matched_wiki_claim_count": 0,
+        "claim_store_to_wiki_join_rate": None,
+        "selected_related_group_ids": [],
+        "source_cutoff_violations": 0,
+        "warnings": [],
+    }
+    if "08_Claims" in allowed:
+        claims_section_entries, claim_trace = _build_claim_section(
+            period_key=period_key,
+            wiki_root=root,
+            claims_dir=(root.parent / "claims"),
+            body_excerpt_chars=body_excerpt_chars,
+            builder_run_time=run_time,
+            request_window=request_window,
+        )
+        cutoff_violations_total += claim_trace.get("source_cutoff_violations", 0)
+        overall_warnings.extend(claim_trace.get("warnings", []))
+        for entry in claims_section_entries:
+            market_claims.append(entry)
+            selected_paths.append(entry["path"])
+            source_type_counts["claim_memory"] = source_type_counts.get("claim_memory", 0) + 1
+            total_selected += 1
+            total_considered += 1
+
+    # Per-dir directional stats (selected_by_dir)
+    selected_by_dir: dict[str, int] = {}
+    for entry in (
+        [("01_Events", e) for e in market_events]
+        + [("02_Entities", e) for e in market_entities]
+        + [("03_Assets", e) for e in market_assets]
+        + [("05_Regime_Canonical", e) for e in market_regime]
+        + [("07_Graph_Evidence", e) for e in market_graph]
+        + [("08_Claims", e) for e in market_claims]
+        + [("06_Debate_Memory", e) for e in debate_memory_entries]
+    ):
+        d = entry[0]
+        selected_by_dir[d] = selected_by_dir.get(d, 0) + 1
+    if fund_page_entry is not None:
+        selected_by_dir["04_Funds"] = 1
+
+    # Pack assembly
+    pack = {
+        "schema_version": SCHEMA_VERSION,
+        "period_type": request_window["period_type"],
+        "period_key": request_window["period_key"],
+        "window_start": request_window["window_start"],
+        "window_end": request_window["window_end"],
+        "as_of_date": request_window["as_of_date"],
+        "stage": stage,
+        "fund_code": fund_code,
+        "mode": MODE,
+        "generated_at": run_time,
+        "debate_run_id": None,
+        "market_context": {
+            "events": market_events,
+            "entities": market_entities,
+            "assets": market_assets,
+            "regime": market_regime,
+            "graph_evidence": market_graph,
+            "claims": market_claims,
+        },
+        "fund_context": {
+            "fund_page": fund_page_entry,
+            "fund_claims": [],            # R9-B.2: schema 자리만 (B4+)
+            "fund_asset_exposures": [],
+        },
+        "prior_memory": {
+            "debate_memory": debate_memory_entries,
+            "include_policy": ("summary_only" if include_debate_memory else "disabled"),
+        },
+        "validation_pack": {
+            "raw_sources_used": [],       # R9-B.2: pack 단독 호출. B4+ 에서 채움.
+            "numeric_guardrails": [],
+            "source_cutoff_date": request_window["source_cutoff_date"],
+        },
+        "source_trace": {
+            "wiki_pages_considered": total_considered,
+            "wiki_pages_selected": total_selected,
+            "selected_wiki_paths": selected_paths,
+            "selected_by_directory": selected_by_dir,
+            "source_type_counts": source_type_counts,
+            "selected_claim_ids": claim_trace["selected_claim_ids"],
+            "selected_related_group_ids": claim_trace["selected_related_group_ids"],
+            "claim_store_selected_count": len(claim_trace["selected_claim_ids"]),
+            "matched_wiki_claim_count": claim_trace["matched_wiki_claim_count"],
+            "claim_store_to_wiki_join_rate": claim_trace["claim_store_to_wiki_join_rate"],
+            "source_cutoff_violations": cutoff_violations_total,
+            "per_dir_stats": per_dir_stats,
+        },
+        "warnings": overall_warnings,
+    }
+    return pack
+
+
+def _make_page_id(directory: str, rec: WikiPageRecord) -> str:
+    """Generate a stable page_id."""
+    if directory == "08_Claims" and rec.claim_id:
+        return rec.claim_id
+    if directory == "05_Regime_Canonical":
+        return f"regime:{rec.path}"
+    if directory == "04_Funds":
+        return f"fund:{rec.period_key or '?'}:{rec.path.rsplit('/', 1)[-1].rstrip('.md')}"
+    # 01/02/03/06/07 — period + file stem
+    stem = rec.path.rsplit("/", 1)[-1].removesuffix(".md")
+    return f"{rec.page_type}:{rec.period_key or '?'}:{stem}"
+
+
+__all__ = [
+    "build_wiki_context_pack",
+    "parse_wiki_page",
+    "WikiPageRecord",
+    "SCHEMA_VERSION",
+]
