@@ -299,6 +299,9 @@ def normalize_claim(raw: dict | None) -> dict:
 
     - missing field 는 default 로 채움 (validator 가 충족하는 형태)
     - claim_id 미지정 시 deterministic ID 자동 산출
+    - canonical_group_id 미지정 시 자동 산출 (R9-A.8)
+    - source_evidence_ids 비어있고 supporting_evidence_ids 있으면 fallback
+      copy (R9-A.10) — 기존 source 값은 덮어쓰지 않음
     - schema_version / extractor_version / extraction_method 자동 채움
     - 기존 값은 보존 (override 안 함)
     """
@@ -315,6 +318,17 @@ def normalize_claim(raw: dict | None) -> dict:
     out.setdefault("source_evidence_ids", [])
     out.setdefault("supporting_evidence_ids", [])
     out.setdefault("counter_evidence_ids", [])
+
+    # R9-A.10 — source_evidence_ids fallback. R9-A.4 운영 prompt 가
+    # output schema 에 `source_evidence_ids` 를 명시하지 않아 LLM 출력에서
+    # 항상 비어 있다 (R9-A.9 N=5 5/5 run 전부 'empty' sentinel 재현). 그러나
+    # `supporting_evidence_ids` 는 prompt schema 에 명시되어 정상적으로 채워짐.
+    # R9-A.0 contract 에 따르면 `supporting ⊆ source` — fallback 으로 source
+    # 가 비어있을 때만 supporting 의 copy 로 채운다. 기존 source 가 채워진
+    # 데이터 (R9-A.1 manual pilot 22 claim 등) 는 영향 0 (덮어쓰기 X).
+    if not out["source_evidence_ids"] and out["supporting_evidence_ids"]:
+        out["source_evidence_ids"] = list(out["supporting_evidence_ids"])
+
     out.setdefault("affected_assets", [])
     out.setdefault("causal_chain", [])
     out.setdefault("linked_wiki_pages", [])

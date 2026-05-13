@@ -461,6 +461,125 @@ def test_r9a8_claim_id_includes_evidence_group_id_does_not():
 
 
 # ──────────────────────────────────────────────────────────────────
+# 4.6  R9-A.10 — source_evidence_ids fallback 복구
+# ──────────────────────────────────────────────────────────────────
+
+def test_r9a10_fallback_copies_supporting_into_source_when_empty():
+    """R9-A.4 운영 prompt 가 source_* 누락 시 supporting_* 로 fallback."""
+    from market_research.analyze.claim_extractor import normalize_claim
+    c = normalize_claim({
+        "period": "2026-04",
+        "claim_text": "x",
+        "supporting_evidence_ids": ["e2", "e1"],   # raw input 순서 보존
+        # source_evidence_ids 미지정 → setdefault [] → empty
+    })
+    # fallback 으로 supporting 의 copy 가 들어와야 함
+    assert c["source_evidence_ids"] == ["e2", "e1"]
+    # supporting 자체는 변경 X
+    assert c["supporting_evidence_ids"] == ["e2", "e1"]
+
+
+def test_r9a10_fallback_preserves_existing_source():
+    """기존 source_evidence_ids 가 채워져 있으면 절대 덮어쓰지 않음."""
+    from market_research.analyze.claim_extractor import normalize_claim
+    c = normalize_claim({
+        "period": "2026-04",
+        "claim_text": "x",
+        "source_evidence_ids": ["manual_evidence"],
+        "supporting_evidence_ids": ["e1", "e2"],
+    })
+    # 기존 source 보존
+    assert c["source_evidence_ids"] == ["manual_evidence"]
+    # supporting 도 보존
+    assert c["supporting_evidence_ids"] == ["e1", "e2"]
+
+
+def test_r9a10_no_fallback_when_both_empty():
+    """둘 다 비어있으면 source_evidence_ids 빈 list 유지 (sentinel hash 정상)."""
+    from market_research.analyze.claim_extractor import (
+        normalize_claim, _build_evidence_set_hash,
+    )
+    c = normalize_claim({
+        "period": "2026-04",
+        "claim_text": "x",
+    })
+    assert c["source_evidence_ids"] == []
+    assert c["supporting_evidence_ids"] == []
+    # evidence_set_hash 는 sentinel "empty"
+    assert _build_evidence_set_hash(c["source_evidence_ids"]) == "empty"
+
+
+def test_r9a10_fallback_explicit_empty_source_still_fills():
+    """raw 에 `source_evidence_ids: []` 가 명시되어도 fallback 작동.
+
+    R9-A.4 운영 Haiku 가 source_* 미명시 → normalize_claim 의 setdefault 가
+    `[]` 채움 → fallback 이 supporting 으로 보강. 또는 Haiku 가 명시적으로
+    `"source_evidence_ids": []` 출력해도 동일하게 fallback. 핵심 — supporting
+    의 정보가 있는데 source 가 비어있는 경우만.
+    """
+    from market_research.analyze.claim_extractor import normalize_claim
+    c = normalize_claim({
+        "period": "2026-04",
+        "claim_text": "x",
+        "source_evidence_ids": [],
+        "supporting_evidence_ids": ["e3"],
+    })
+    assert c["source_evidence_ids"] == ["e3"]
+
+
+def test_r9a10_fallback_recovers_evidence_layer_in_claim_id():
+    """워크오더 §test4 — 같은 content + supporting 만 다른 두 claim →
+    fallback 후 claim_id 가 evidence layer 차이로 distinct 해야 함."""
+    from market_research.analyze.claim_extractor import normalize_claim
+    same_payload = {
+        "period": "2026-04",
+        "claim_text": "이란 휴전 합의로 위험선호 확대",
+        "affected_assets": [{"asset_class": "해외주식"}],
+        "direction": "positive",
+        "horizon": "short",
+        "claim_type": "event_to_macro",
+    }
+    c1 = normalize_claim({
+        **same_payload,
+        "supporting_evidence_ids": ["e1", "e2"],
+    })
+    c2 = normalize_claim({
+        **same_payload,
+        "supporting_evidence_ids": ["e3", "e4"],
+    })
+    # source 가 supporting 의 copy 로 채워짐
+    assert c1["source_evidence_ids"] == ["e1", "e2"]
+    assert c2["source_evidence_ids"] == ["e3", "e4"]
+    # evidence layer 가 distinct → claim_id 도 distinct
+    assert c1["claim_id"] != c2["claim_id"]
+    # 그러나 canonical_group_id 는 같은 content 이므로 동일 (evidence 무관)
+    assert c1["canonical_group_id"] == c2["canonical_group_id"]
+
+
+def test_r9a10_fallback_evidence_order_independent_after_copy():
+    """워크오더 §test4 — 같은 supporting set (순서만 다름) → 같은 claim_id."""
+    from market_research.analyze.claim_extractor import normalize_claim
+    same_payload = {
+        "period": "2026-04",
+        "claim_text": "x",
+        "affected_assets": ["국내주식"],
+    }
+    c1 = normalize_claim({
+        **same_payload,
+        "supporting_evidence_ids": ["e1", "e2", "e3"],
+    })
+    c2 = normalize_claim({
+        **same_payload,
+        "supporting_evidence_ids": ["e3", "e1", "e2"],
+    })
+    # supporting 순서 보존 (단순 copy)
+    assert c1["source_evidence_ids"] == ["e1", "e2", "e3"]
+    assert c2["source_evidence_ids"] == ["e3", "e1", "e2"]
+    # 그러나 _build_evidence_set_hash 가 sorted+unique 처리 → claim_id 동일
+    assert c1["claim_id"] == c2["claim_id"]
+
+
+# ──────────────────────────────────────────────────────────────────
 # 5. causal_chain 검증
 # ──────────────────────────────────────────────────────────────────
 
