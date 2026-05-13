@@ -32,6 +32,10 @@ from market_research.wiki.claim_pages import (
 # Commit 3 default merge policy (C3-Q5 default A — D-5 결정값 유지).
 DEFAULT_MERGE_POLICY: str = "prefer_higher_confidence"
 
+# R9-A.5.1 — evidence-overlap (Jaccard) 기반 dedup candidate 탐지 임계.
+# read-only diagnostic (promotion 결과 불변). 임계 이상 pair 만 surface.
+EVIDENCE_OVERLAP_DEDUP_THRESHOLD: float = 0.50
+
 
 def _hash10_of(claim_id: str | None) -> str:
     """`claim:{period}:{hash10}` → trailing hash10. 비정상 입력은 'unknown'."""
@@ -107,6 +111,87 @@ def is_out_of_band(promotion_rate: float) -> bool:
     return (promotion_rate < lo) or (promotion_rate > hi)
 
 
+def _evidence_set(claim: dict) -> set[str]:
+    """claim 의 supporting_evidence_ids 를 set 으로 정규화 (str cast + dedup)."""
+    sup = claim.get("supporting_evidence_ids") or []
+    if not isinstance(sup, list):
+        return set()
+    return {str(x) for x in sup if x}
+
+
+def detect_dedup_candidates(
+    claims: list[dict],
+    *,
+    threshold: float = EVIDENCE_OVERLAP_DEDUP_THRESHOLD,
+) -> list[dict]:
+    """R9-A.5.1 — evidence-overlap (Jaccard) 기반 dedup candidate 탐지.
+
+    Read-only diagnostic — promotion 결과는 변경하지 않는다.
+
+    각 claim 쌍에 대해 supporting_evidence_ids 의 Jaccard similarity 를 계산해
+    `threshold` (default 0.50) 이상이면 후보로 surface 한다. Workorder R9-A.5.1
+    Case A~D 명세:
+        A. overlap 충분 → 후보 (jaccard ≥ threshold)
+        B. overlap 0 (shared 없음) → skip (jaccard=0 < threshold)
+        C. evidence 없음 (한쪽 또는 양쪽 empty) → skip (shared=0 또는 union=0)
+        D. 자기 자신 비교 금지 → i<j + claim_id 동일 가드
+
+    Output per candidate:
+        {
+          "claim_id_a": str,         # sorted (a < b lexicographically)
+          "claim_id_b": str,
+          "jaccard": float (0~1, round 4),
+          "shared_evidence_count": int,
+          "union_evidence_count": int,
+          "reason": "evidence_overlap"
+        }
+
+    Order: jaccard desc → claim_id_a asc → claim_id_b asc (deterministic).
+    """
+    sets: list[tuple[str, set[str]]] = []
+    for c in claims:
+        if not isinstance(c, dict):
+            continue
+        cid = c.get("claim_id")
+        if not isinstance(cid, str) or not cid:
+            continue
+        sets.append((cid, _evidence_set(c)))
+
+    candidates: list[dict] = []
+    n = len(sets)
+    for i in range(n):
+        cid_a, ev_a = sets[i]
+        for j in range(i + 1, n):
+            cid_b, ev_b = sets[j]
+            if cid_a == cid_b:
+                # Case D — 자기 자신 비교 제외 (동일 claim_id 가 중복 입력된 경우).
+                continue
+            union = ev_a | ev_b
+            if not union:
+                # Case C — 양쪽 evidence 모두 비어있음.
+                continue
+            shared = ev_a & ev_b
+            if not shared:
+                # Case B — shared=0 → jaccard=0 < threshold.
+                continue
+            jac = len(shared) / len(union)
+            if jac < threshold:
+                continue
+            a, b = sorted([cid_a, cid_b])
+            candidates.append({
+                "claim_id_a": a,
+                "claim_id_b": b,
+                "jaccard": round(jac, 4),
+                "shared_evidence_count": len(shared),
+                "union_evidence_count": len(union),
+                "reason": "evidence_overlap",
+            })
+    candidates.sort(
+        key=lambda d: (-d["jaccard"], d["claim_id_a"], d["claim_id_b"])
+    )
+    return candidates
+
+
 def build_promotion_plan(
     claims: list[dict],
     *,
@@ -155,6 +240,10 @@ def build_promotion_plan(
         merge_conflicts    : list[dict]   # per-claim conflict detail
         merge_policy       : str          # echo, Commit 4 에서 실 사용
         canonical_existing_count : int    # input snapshot
+        rule_b_thresholds  : {"chain_min", "supporting_ev_min"}
+        dedup_candidates   : list[dict]   # R9-A.5.1 — evidence-overlap Jaccard
+                                          # diagnostic (read-only)
+        dedup_threshold    : float        # echo (default 0.50)
     """
     force_set = {x for x in (force_ids or ()) if isinstance(x, str)}
     existing_index = _index_canonical(canonical_existing)
@@ -176,6 +265,10 @@ def build_promotion_plan(
     merge_conflicts: list[dict] = []
 
     input_list = [c for c in (claims or []) if isinstance(c, dict)]
+
+    # R9-A.5.1 — evidence-overlap dedup candidate (read-only diagnostic).
+    # input_list 전체 (promote/skip 무관) 대상 — promotion 흐름 0 영향.
+    dedup_candidates = detect_dedup_candidates(input_list)
 
     for claim in input_list:
         cid = claim.get("claim_id") or "(no id)"
@@ -212,6 +305,8 @@ def build_promotion_plan(
                     "chain_min": RULE_B_CHAIN_MIN,
                     "supporting_ev_min": RULE_B_SUPPORTING_EV_MIN,
                 },
+                "dedup_candidates": dedup_candidates,
+                "dedup_threshold": EVIDENCE_OVERLAP_DEDUP_THRESHOLD,
                 "error": f"unknown_rule:{rule!r}",
             }
         if not ok:
@@ -281,4 +376,7 @@ def build_promotion_plan(
             "chain_min": RULE_B_CHAIN_MIN,
             "supporting_ev_min": RULE_B_SUPPORTING_EV_MIN,
         },
+        # R9-A.5.1 — evidence-overlap (Jaccard) dedup diagnostic.
+        "dedup_candidates": dedup_candidates,
+        "dedup_threshold": EVIDENCE_OVERLAP_DEDUP_THRESHOLD,
     }
