@@ -538,11 +538,16 @@ def test_c3_f10_merge_conflict_step_level():
     # canonical_existing — runner 가 normalize 후 source_evidence_ids 를 default
     # [] 로 두기 때문에 cid 도 빈 list 기준으로 산출됨. 동일 cid 와 supporting
     # 으로 inject.
+    # R9-A.8 — compute_claim_id 가 direction/horizon/claim_type 도 hash 입력에
+    # 포함하므로, existing claim 의 값과 동일하게 kwargs 전달해야 cid 매치.
     cid = compute_claim_id(
         period="2026-04",
         claim_text=_C3_PROMOTABLE_CLAIM["claim_text"],
         source_evidence_ids=[],
         affected_assets=_C3_PROMOTABLE_CLAIM["affected_assets"],
+        direction="positive",
+        horizon="short",
+        claim_type="event_to_macro",
     )
     existing = [{
         "schema_version": "1.0.0",

@@ -4,14 +4,29 @@
 LLM 호출 0. Phase 0 범위는 "데이터 형상의 단일 source-of-truth" 만 정의한다.
 실제 LLM extractor 는 Phase 1 (claim_extractor_pilot) 에서 별도 GO 후 추가.
 
+R9-A.8 — Canonical claim identity 재설계 (LLM 0). R9-A.7 fresh N=7 에서
+21 pair claim_id Jaccard=0.0 이슈 해결. layered identity:
+
+    _normalize_claim_text  (NFKC + ws + lower + trailing/multi punct squash)
+    _build_evidence_set_hash  (sorted unique md5[:10])
+    _build_content_signature  (norm_text + assets + dir/hor/type, md5[:12])
+    compute_claim_id          (period + ev_hash + content_sig, md5[:10])
+    compute_canonical_group_id  (period + content_sig, evidence 무관, md5[:10])
+
+format 은 backward-compat: claim_id "claim:{period}:{md5[:10]}", group_id
+"group:{period}:{md5[:10]}". 다운스트림 `_hash10_of`, `_wiki_page_filename`,
+`[claim:hash10]` anchor (debate / comment_engine / evidence_trace) 모두 무영향.
+
 Public API:
     SCHEMA_VERSION, EXTRACTOR_VERSION
     ALLOWED_ASSET_CLASSES, ALLOWED_CLAIM_TYPES, ALLOWED_DIRECTIONS,
     ALLOWED_HORIZONS, ALLOWED_RELATIONS, ALLOWED_EXTRACTION_METHODS
-    REQUIRED_FIELDS
+    REQUIRED_FIELDS, OPTIONAL_FIELDS
 
     compute_claim_id(period, claim_text, source_evidence_ids,
-                     affected_assets) -> str
+                     affected_assets, *, direction, horizon, claim_type) -> str
+    compute_canonical_group_id(period, claim_text, affected_assets, *,
+                               direction, horizon, claim_type) -> str
     normalize_claim(raw: dict) -> dict
     validate_claim(claim: dict) -> dict
     serialize_claim(claim: dict) -> dict
@@ -96,6 +111,14 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "warnings",
 )
 
+# R9-A.8 — optional fields. REQUIRED_FIELDS 에 포함하지 않아 기존 운영 데이터
+# (R9-A.1 manual pilot 22 claim 등) 가 validate_claim 에서 미존재로 fail 되지
+# 않는다. normalize_claim() 통과 시 자동 부착되지만, 운영 파일을 그대로 read
+# 만 하면 md5 변경 0.
+OPTIONAL_FIELDS: tuple[str, ...] = (
+    "canonical_group_id",
+)
+
 # Threshold heuristics (validator soft warnings)
 CLAIM_TEXT_MIN_LEN = 8
 CLAIM_TEXT_MAX_LEN = 500
@@ -108,12 +131,35 @@ _PERIOD_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2]|Q[1-4])$")
 # Deterministic claim_id
 # ──────────────────────────────────────────────────────────────────
 
+# R9-A.8 — normalize_claim_text 강화 regex.
+# trailing punctuation: 한·영·일 마침표 / 물음표 / 느낌표 / whitespace.
+# multi punctuation squash: 연속 .!? → 단일.
+_TRAILING_PUNCT_RE = re.compile(r"[.!?。!?\s]+$")
+_MULTI_PUNCT_RE = re.compile(r"([.!?。!?])\1+")
+
+
 def _normalize_claim_text(text: Any) -> str:
-    """Unicode NFKC + whitespace squash. ID 산출의 deterministic 입력."""
+    """ID 산출의 deterministic 입력 — wording variance 흡수 (R9-A.8).
+
+    파이프라인:
+        1. NFKC unicode 정규화
+        2. trim + 연속 whitespace 단일화
+        3. lower (영문 대소문자 통일)
+        4. 연속 punctuation squash ("..." → ".", "?!?" → "?")
+        5. trailing punctuation 제거 ("문장.", "문장!" → "문장")
+
+    주의: 한국어 명사 어미/조사 변화는 normalize 하지 않는다 (다른 의미가
+    같은 signature 되는 위험 차단 — 워크오더 §1 "너무 공격적으로 normalize
+    하지 말 것").
+    """
     if not isinstance(text, str):
         text = "" if text is None else str(text)
-    text = unicodedata.normalize("NFKC", text).strip()
-    return " ".join(text.split())
+    s = unicodedata.normalize("NFKC", text).strip()
+    s = " ".join(s.split())            # whitespace squash
+    s = s.lower()                       # 영문 소문자 (한글 무영향)
+    s = _MULTI_PUNCT_RE.sub(r"\1", s)   # ".." → "."
+    s = _TRAILING_PUNCT_RE.sub("", s)   # trailing punctuation / ws strip
+    return s
 
 
 def _extract_asset_class_strings(affected_assets: Any) -> list[str]:
@@ -131,36 +177,117 @@ def _extract_asset_class_strings(affected_assets: Any) -> list[str]:
     return sorted(out)
 
 
-def compute_claim_id(period: str,
-                     claim_text: str,
-                     source_evidence_ids: list[str] | None,
-                     affected_assets: list[Any] | None) -> str:
-    """Deterministic claim_id.
+def _build_evidence_set_hash(evidence_ids: list[Any] | None) -> str:
+    """Sorted+unique evidence_ids 의 md5[:10]. R9-A.8 layered identity.
 
-    같은 (period, normalized claim_text, sorted source_evidence_ids,
-    sorted affected_assets) 입력은 입력 순서/중복과 무관하게 같은 ID.
-    claim_text 가 변하면 다른 ID.
+    empty evidence set 은 sentinel 문자열 "empty" 로 통일 — distinct claim
+    들이 evidence 부재만으로 같은 hash 가 되는 것을 방지.
+    """
+    if not isinstance(evidence_ids, list):
+        return "empty"
+    sorted_unique = sorted({str(e) for e in evidence_ids if e})
+    if not sorted_unique:
+        return "empty"
+    blob = "|".join(sorted_unique).encode("utf-8")
+    return hashlib.md5(blob).hexdigest()[:10]
 
-    Returns: "claim:{period}:{md5_hex10}"
+
+def _build_content_signature(
+    claim_text: Any,
+    affected_assets: Any,
+    *,
+    direction: Any = "unknown",
+    horizon: Any = "unknown",
+    claim_type: Any = "outlook_view",
+) -> str:
+    """R9-A.8 content signature (LLM wording variance 흡수 + semantics).
+
+    포함 재료:
+        - normalize_claim_text(claim_text)
+        - sorted affected_assets (asset_class strings)
+        - direction / horizon / claim_type (taxonomy enum 들)
+
+    제외 재료 (LLM 흔들림이 큼):
+        - evidence_ids (별도 evidence_set_hash 로 분리)
+        - causal_chain 본문 (source/target/relation 자체는 안정적이지만
+          natural language → wording variance 큼)
+        - rationale / summary 등 장문 보조 필드
+    """
+    payload = {
+        "text": _normalize_claim_text(claim_text or ""),
+        "assets": _extract_asset_class_strings(affected_assets),
+        "direction": str(direction or "unknown"),
+        "horizon": str(horizon or "unknown"),
+        "claim_type": str(claim_type or "outlook_view"),
+    }
+    blob = json.dumps(payload, ensure_ascii=False, sort_keys=True)\
+        .encode("utf-8")
+    return hashlib.md5(blob).hexdigest()[:12]
+
+
+def compute_claim_id(
+    period: str,
+    claim_text: str,
+    source_evidence_ids: list[str] | None,
+    affected_assets: list[Any] | None,
+    *,
+    direction: Any = "unknown",
+    horizon: Any = "unknown",
+    claim_type: Any = "outlook_view",
+) -> str:
+    """Deterministic claim_id (R9-A.8 layered identity).
+
+    layered: period + evidence_set_hash + content_signature → md5[:10].
+
+    backward compat: 기존 4-positional 호출 (R9-A.0~A.7) 동일 시그니처.
+    direction/horizon/claim_type 은 kwargs 로만 노출, 미지정 시 unknown/
+    outlook_view default. 출력 format `claim:{period}:{md5_hex10}` 동일.
+
+    같은 (period, sorted source_evidence_ids, normalize(claim_text), sorted
+    asset_class, direction, horizon, claim_type) 입력 → 같은 ID.
     """
     p = period if isinstance(period, str) and period else "unknown"
-    norm_text = _normalize_claim_text(claim_text or "")
-
-    eids: list[str] = []
-    if isinstance(source_evidence_ids, list):
-        eids = sorted({str(e) for e in source_evidence_ids if e})
-
-    aas = _extract_asset_class_strings(affected_assets)
-
-    payload = {
-        "period": p,
-        "claim_text": norm_text,
-        "source_evidence_ids": eids,
-        "affected_assets": aas,
-    }
-    blob = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
-    h = hashlib.md5(blob).hexdigest()[:10]
+    ev_hash = _build_evidence_set_hash(source_evidence_ids)
+    sig = _build_content_signature(
+        claim_text, affected_assets,
+        direction=direction, horizon=horizon, claim_type=claim_type,
+    )
+    payload = f"{p}|{ev_hash}|{sig}"
+    h = hashlib.md5(payload.encode("utf-8")).hexdigest()[:10]
     return f"claim:{p}:{h}"
+
+
+def compute_canonical_group_id(
+    period: str,
+    claim_text: str,
+    affected_assets: list[Any] | None,
+    *,
+    direction: Any = "unknown",
+    horizon: Any = "unknown",
+    claim_type: Any = "outlook_view",
+) -> str:
+    """Canonical group_id — evidence 무관, 같은 경제 claim 개념을 묶는다.
+
+    layered: period + content_signature → md5[:10]. evidence_set 이 달라도
+    같은 normalize(claim_text) + 같은 assets + 같은 direction/horizon/
+    claim_type 이면 같은 group.
+
+    Output format `group:{period}:{md5_hex10}` — claim_id (`claim:...`) 와
+    prefix 로 구분.
+
+    Use cases:
+        - N-run claim identity overlap 측정 (R9-A.7 후속)
+        - repeat claim vs unstable claim 자동 분류
+        - wiki promote 후보 N-run 누적
+    """
+    p = period if isinstance(period, str) and period else "unknown"
+    sig = _build_content_signature(
+        claim_text, affected_assets,
+        direction=direction, horizon=horizon, claim_type=claim_type,
+    )
+    payload = f"{p}|{sig}"
+    h = hashlib.md5(payload.encode("utf-8")).hexdigest()[:10]
+    return f"group:{p}:{h}"
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -202,6 +329,21 @@ def normalize_claim(raw: dict | None) -> dict:
             out.get("claim_text") or "",
             out.get("source_evidence_ids") or [],
             out.get("affected_assets") or [],
+            direction=out.get("direction") or "unknown",
+            horizon=out.get("horizon") or "unknown",
+            claim_type=out.get("claim_type") or "outlook_view",
+        )
+    # R9-A.8 — canonical_group_id 자동 부착 (optional field).
+    # 기존 운영 데이터에 group_id 가 없으면 normalize_claim 통과 시 계산되며,
+    # 운영 file 직접 write 없으면 md5 변경 0.
+    if not out.get("canonical_group_id"):
+        out["canonical_group_id"] = compute_canonical_group_id(
+            out.get("period") or "unknown",
+            out.get("claim_text") or "",
+            out.get("affected_assets") or [],
+            direction=out.get("direction") or "unknown",
+            horizon=out.get("horizon") or "unknown",
+            claim_type=out.get("claim_type") or "outlook_view",
         )
     return out
 
@@ -262,6 +404,15 @@ def validate_claim(claim: Any) -> dict:
     cid = claim.get("claim_id")
     if not isinstance(cid, str) or not cid.startswith("claim:"):
         errors.append(f"claim_id must start with 'claim:', got {cid!r}")
+
+    # R9-A.8 — canonical_group_id (optional). 존재 시 format 만 검증.
+    gid = claim.get("canonical_group_id")
+    if gid is not None:
+        if not isinstance(gid, str) or not gid.startswith("group:"):
+            warnings.append(
+                f"canonical_group_id format unusual: expected 'group:...', "
+                f"got {gid!r}"
+            )
 
     # claim_text
     txt = claim.get("claim_text")
@@ -411,8 +562,16 @@ def validate_claim(claim: Any) -> dict:
 # ──────────────────────────────────────────────────────────────────
 
 def serialize_claim(claim: dict) -> dict:
-    """Stable field order — REQUIRED_FIELDS 순서로 dict 재구성. 미존재 키는 skip."""
-    return {k: claim[k] for k in REQUIRED_FIELDS if k in claim}
+    """Stable field order — REQUIRED_FIELDS 순서 + OPTIONAL_FIELDS 후행.
+
+    R9-A.8 — canonical_group_id 등 OPTIONAL_FIELDS 도 존재 시 직렬화에 포함.
+    기존 데이터 호환 (REQUIRED 순서 보존), 새 데이터는 OPTIONAL 도 dump.
+    """
+    out: dict[str, Any] = {k: claim[k] for k in REQUIRED_FIELDS if k in claim}
+    for k in OPTIONAL_FIELDS:
+        if k in claim:
+            out[k] = claim[k]
+    return out
 
 
 def write_claims_jsonl(path: str | Path, claims: list[dict]) -> Path:

@@ -244,6 +244,223 @@ def test_different_period_different_id():
 
 
 # ──────────────────────────────────────────────────────────────────
+# 4.5  R9-A.8 — Canonical claim identity 재설계
+# ──────────────────────────────────────────────────────────────────
+
+def test_r9a8_normalize_strips_trailing_punctuation():
+    """trailing . / ! / ? / 한국어 마침표 제거 후 동일 ID."""
+    from market_research.analyze.claim_extractor import compute_claim_id
+    cid1 = compute_claim_id("2026-04", "미국 금리 상승 우려", ["e1"],
+                            ["국내채권"])
+    cid2 = compute_claim_id("2026-04", "미국 금리 상승 우려.", ["e1"],
+                            ["국내채권"])
+    cid3 = compute_claim_id("2026-04", "미국 금리 상승 우려!", ["e1"],
+                            ["국내채권"])
+    cid4 = compute_claim_id("2026-04", "미국 금리 상승 우려…", ["e1"],
+                            ["국내채권"])
+    assert cid1 == cid2 == cid3 == cid4
+
+
+def test_r9a8_normalize_squashes_multi_punctuation():
+    """'..' / '!?!' 등 연속 punctuation → 단일로 squash."""
+    from market_research.analyze.claim_extractor import compute_claim_id
+    cid1 = compute_claim_id("2026-04", "원유 급등", ["e1"], ["원자재금"])
+    cid2 = compute_claim_id("2026-04", "원유 급등...", ["e1"], ["원자재금"])
+    cid3 = compute_claim_id("2026-04", "원유 급등!!!!!", ["e1"], ["원자재금"])
+    assert cid1 == cid2 == cid3
+
+
+def test_r9a8_normalize_lowercases_english():
+    """영문 대소문자 차이는 동일 ID — 한글 무영향."""
+    from market_research.analyze.claim_extractor import compute_claim_id
+    cid_lower = compute_claim_id("2026-04", "FOMC dovish 시그널",
+                                  ["e1"], ["해외채권"])
+    cid_upper = compute_claim_id("2026-04", "FOMC DOVISH 시그널",
+                                  ["e1"], ["해외채권"])
+    cid_mixed = compute_claim_id("2026-04", "fomc Dovish 시그널",
+                                  ["e1"], ["해외채권"])
+    assert cid_lower == cid_upper == cid_mixed
+
+
+def test_r9a8_evidence_set_hash_order_dedupe_independent():
+    """evidence_ids 순서 / 중복은 무영향 (기존 R9-A.0 회귀 재확인)."""
+    from market_research.analyze.claim_extractor import compute_claim_id
+    cid1 = compute_claim_id("2026-04", "x", ["e3", "e1", "e2", "e1"],
+                             ["국내주식"])
+    cid2 = compute_claim_id("2026-04", "x", ["e1", "e2", "e3"], ["국내주식"])
+    assert cid1 == cid2
+
+
+def test_r9a8_direction_horizon_claim_type_in_id():
+    """direction / horizon / claim_type 이 다르면 다른 ID — 신규 kwarg 인자."""
+    from market_research.analyze.claim_extractor import compute_claim_id
+    base = ("2026-04", "x", ["e1"], ["국내주식"])
+    cid0 = compute_claim_id(*base)
+    cid_dir = compute_claim_id(*base, direction="positive")
+    cid_hor = compute_claim_id(*base, horizon="short")
+    cid_typ = compute_claim_id(*base, claim_type="risk")
+    assert cid0 != cid_dir
+    assert cid0 != cid_hor
+    assert cid0 != cid_typ
+    # 그러나 backward compat — kwargs 미지정 (defaults) 시 deterministic
+    cid_again = compute_claim_id(*base)
+    assert cid0 == cid_again
+
+
+def test_r9a8_canonical_group_id_basic():
+    """compute_canonical_group_id 출력 format 검증."""
+    from market_research.analyze.claim_extractor import (
+        compute_canonical_group_id,
+    )
+    gid = compute_canonical_group_id(
+        "2026-04", "이란 휴전 합의로 KOSPI 급등", ["국내주식"],
+    )
+    assert gid.startswith("group:2026-04:")
+    suffix = gid.split(":")[2]
+    assert len(suffix) == 10
+    int(suffix, 16)  # hex 검증
+
+
+def test_r9a8_group_id_evidence_set_independent():
+    """canonical_group_id 는 evidence 무관 — 같은 content → 같은 group."""
+    from market_research.analyze.claim_extractor import (
+        compute_canonical_group_id,
+    )
+    # evidence 인수 자체가 group_id signature 에 들어가지 않음 — affected_assets
+    # 만 들어감.
+    gid1 = compute_canonical_group_id(
+        "2026-04", "미국 고용 호조로 위험선호 확대", ["해외주식"],
+    )
+    gid2 = compute_canonical_group_id(
+        "2026-04", "미국 고용 호조로 위험선호 확대", ["해외주식"],
+    )
+    assert gid1 == gid2
+
+
+def test_r9a8_group_id_assets_order_independent():
+    """affected_assets 순서가 달라도 같은 group_id."""
+    from market_research.analyze.claim_extractor import (
+        compute_canonical_group_id,
+    )
+    gid1 = compute_canonical_group_id(
+        "2026-04", "금리 충격으로 다중 자산 영향",
+        ["국내채권", "해외채권", "해외주식"],
+    )
+    gid2 = compute_canonical_group_id(
+        "2026-04", "금리 충격으로 다중 자산 영향",
+        ["해외주식", "해외채권", "국내채권"],
+    )
+    assert gid1 == gid2
+
+
+def test_r9a8_group_id_normalize_text():
+    """group_id 도 normalize_claim_text 통과 — wording variance 흡수."""
+    from market_research.analyze.claim_extractor import (
+        compute_canonical_group_id,
+    )
+    gid_plain = compute_canonical_group_id(
+        "2026-04", "FOMC 매파 시그널", ["해외채권"],
+    )
+    gid_period = compute_canonical_group_id(
+        "2026-04", "FOMC 매파 시그널.", ["해외채권"],
+    )
+    gid_case = compute_canonical_group_id(
+        "2026-04", "fomc 매파 시그널", ["해외채권"],
+    )
+    assert gid_plain == gid_period == gid_case
+
+
+def test_r9a8_group_id_different_text_different_group():
+    """다른 의미의 claim 은 다른 group_id."""
+    from market_research.analyze.claim_extractor import (
+        compute_canonical_group_id,
+    )
+    gid1 = compute_canonical_group_id(
+        "2026-04", "금리 상승", ["해외채권"],
+    )
+    gid2 = compute_canonical_group_id(
+        "2026-04", "달러 강세", ["환율(FX)"],
+    )
+    assert gid1 != gid2
+
+
+def test_r9a8_group_id_different_period_different_group():
+    """period 가 다르면 다른 group_id."""
+    from market_research.analyze.claim_extractor import (
+        compute_canonical_group_id,
+    )
+    gid_apr = compute_canonical_group_id("2026-04", "x", ["국내주식"])
+    gid_may = compute_canonical_group_id("2026-05", "x", ["국내주식"])
+    assert gid_apr != gid_may
+
+
+def test_r9a8_normalize_claim_attaches_group_id():
+    """normalize_claim() 통과 시 canonical_group_id 자동 부착."""
+    from market_research.analyze.claim_extractor import normalize_claim
+    c = normalize_claim({
+        "period": "2026-04",
+        "claim_text": "미국 금리 상승 → 채권 부담",
+        "source_evidence_ids": ["e1"],
+        "affected_assets": [{"asset_class": "국내채권"}],
+    })
+    assert "canonical_group_id" in c
+    assert c["canonical_group_id"].startswith("group:2026-04:")
+    # claim_id 도 부착
+    assert c["claim_id"].startswith("claim:2026-04:")
+
+
+def test_r9a8_normalize_preserves_existing_group_id():
+    """기존 group_id 가 있으면 보존 (override X)."""
+    from market_research.analyze.claim_extractor import normalize_claim
+    existing = "group:2026-04:abcdef0123"
+    c = normalize_claim({
+        "period": "2026-04",
+        "claim_text": "x",
+        "canonical_group_id": existing,
+    })
+    assert c["canonical_group_id"] == existing
+
+
+def test_r9a8_validate_unusual_group_id_format_warns():
+    """canonical_group_id 가 'group:' prefix 아닐 때 warning 만 (error X)."""
+    from market_research.analyze.claim_extractor import validate_claim
+    c = _valid_claim()
+    c["canonical_group_id"] = "claim:2026-04:abcdef0123"   # 잘못된 prefix
+    r = validate_claim(c)
+    assert r["valid"], r["errors"]
+    assert any("canonical_group_id" in w for w in r["warnings"])
+
+
+def test_r9a8_validate_missing_group_id_no_warning():
+    """canonical_group_id 가 아예 없으면 backward compat — no warning."""
+    from market_research.analyze.claim_extractor import validate_claim
+    c = _valid_claim()
+    # _valid_claim() 은 normalize_claim 통과 → group_id 자동 부착. 의도적으로
+    # 제거해 옛 데이터 (R9-A.1) shape 시뮬레이션.
+    c.pop("canonical_group_id", None)
+    r = validate_claim(c)
+    assert r["valid"], r["errors"]
+    assert not any("canonical_group_id" in w for w in r["warnings"])
+
+
+def test_r9a8_claim_id_includes_evidence_group_id_does_not():
+    """워크오더 §정책 — claim_id 는 evidence 포함, group_id 는 evidence 무관."""
+    from market_research.analyze.claim_extractor import (
+        compute_claim_id, compute_canonical_group_id,
+    )
+    same_text = "x"
+    same_assets = ["국내주식"]
+    cid_e1 = compute_claim_id("2026-04", same_text, ["e1"], same_assets)
+    cid_e2 = compute_claim_id("2026-04", same_text, ["e2"], same_assets)
+    gid_e1 = compute_canonical_group_id("2026-04", same_text, same_assets)
+    gid_e2 = compute_canonical_group_id("2026-04", same_text, same_assets)
+    # evidence 만 다른 두 claim_id 는 달라야 함
+    assert cid_e1 != cid_e2
+    # 같은 content 의 group_id 는 동일
+    assert gid_e1 == gid_e2
+
+
+# ──────────────────────────────────────────────────────────────────
 # 5. causal_chain 검증
 # ──────────────────────────────────────────────────────────────────
 
@@ -467,14 +684,16 @@ def test_jsonl_path_traversal_rejected(tmp_path):
 # ──────────────────────────────────────────────────────────────────
 
 def test_serialize_claim_field_order():
+    """REQUIRED_FIELDS 순서 보존 + R9-A.8 OPTIONAL_FIELDS 후행 보존."""
     from market_research.analyze.claim_extractor import (
-        serialize_claim, REQUIRED_FIELDS,
+        serialize_claim, REQUIRED_FIELDS, OPTIONAL_FIELDS,
     )
     c = _valid_claim()
     s = serialize_claim(c)
     keys = list(s.keys())
-    # REQUIRED_FIELDS 순서 보존
-    expected_order = [k for k in REQUIRED_FIELDS if k in c]
+    # REQUIRED 먼저 (선언 순서), OPTIONAL 후행 (있을 때만)
+    expected_order = [k for k in REQUIRED_FIELDS if k in c] + \
+        [k for k in OPTIONAL_FIELDS if k in c]
     assert keys == expected_order
 
 
