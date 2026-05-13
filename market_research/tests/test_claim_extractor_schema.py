@@ -528,8 +528,14 @@ def test_r9a10_fallback_explicit_empty_source_still_fills():
 
 
 def test_r9a10_fallback_recovers_evidence_layer_in_claim_id():
-    """워크오더 §test4 — 같은 content + supporting 만 다른 두 claim →
-    fallback 후 claim_id 가 evidence layer 차이로 distinct 해야 함."""
+    """워크오더 §test4 (R9-A.12 정의 갱신) — 같은 content + supporting 만
+    다른 두 claim → fallback 후 claim_id distinct, group_id 도 distinct.
+
+    R9-A.8 원래 의도는 group_id evidence-independent 였으나, R9-A.11 fresh
+    N=5 검증에서 text-based group_id 가 wording variance 로 죽는 것 확인 →
+    R9-A.12 에서 group_id 정의를 evidence/assets/dir 기반으로 변경. evidence
+    가 다르면 group 도 distinct (과소병합 원칙).
+    """
     from market_research.analyze.claim_extractor import normalize_claim
     same_payload = {
         "period": "2026-04",
@@ -547,13 +553,13 @@ def test_r9a10_fallback_recovers_evidence_layer_in_claim_id():
         **same_payload,
         "supporting_evidence_ids": ["e3", "e4"],
     })
-    # source 가 supporting 의 copy 로 채워짐
+    # R9-A.10 — source 가 supporting 의 copy 로 채워짐
     assert c1["source_evidence_ids"] == ["e1", "e2"]
     assert c2["source_evidence_ids"] == ["e3", "e4"]
     # evidence layer 가 distinct → claim_id 도 distinct
     assert c1["claim_id"] != c2["claim_id"]
-    # 그러나 canonical_group_id 는 같은 content 이므로 동일 (evidence 무관)
-    assert c1["canonical_group_id"] == c2["canonical_group_id"]
+    # R9-A.12 — group_id 도 distinct (evidence 가 산정에 포함됨, 과소병합)
+    assert c1["canonical_group_id"] != c2["canonical_group_id"]
 
 
 def test_r9a10_fallback_evidence_order_independent_after_copy():
@@ -577,6 +583,213 @@ def test_r9a10_fallback_evidence_order_independent_after_copy():
     assert c2["source_evidence_ids"] == ["e3", "e1", "e2"]
     # 그러나 _build_evidence_set_hash 가 sorted+unique 처리 → claim_id 동일
     assert c1["claim_id"] == c2["claim_id"]
+
+
+# ──────────────────────────────────────────────────────────────────
+# 4.7  R9-A.12 — group_id 재정의: evidence/assets/dir 기반 deterministic
+#                (text 폐기 — wording variance 회피)
+# ──────────────────────────────────────────────────────────────────
+
+def test_r9a12_group_id_same_evidence_different_wording_same_group():
+    """**R9-A.12 핵심** — 같은 evidence + 같은 assets/dir/hor/type 이면
+    wording 이 달라도 같은 group_id.
+
+    Haiku run-to-run wording variance (R9-A.11 normalized_text Jaccard 0.0)
+    가 group_id 에 영향을 주지 않아야 함.
+    """
+    from market_research.analyze.claim_extractor import (
+        compute_canonical_group_id,
+    )
+    gid1 = compute_canonical_group_id(
+        "2026-04",
+        "미국 금리 상승은 채권에 부담",   # wording A
+        ["해외채권"],
+        source_evidence_ids=["e1", "e2"],
+        direction="negative",
+        horizon="short",
+        claim_type="macro_to_asset",
+    )
+    gid2 = compute_canonical_group_id(
+        "2026-04",
+        "Fed의 매파적 스탠스가 채권 가격에 부담",   # wording B (전혀 다름)
+        ["해외채권"],
+        source_evidence_ids=["e1", "e2"],
+        direction="negative",
+        horizon="short",
+        claim_type="macro_to_asset",
+    )
+    assert gid1 == gid2
+
+
+def test_r9a12_group_id_different_evidence_different_group():
+    """다른 evidence subset → 다른 group_id (과소병합 원칙)."""
+    from market_research.analyze.claim_extractor import (
+        compute_canonical_group_id,
+    )
+    common = {
+        "claim_text": "x",
+        "affected_assets": ["해외채권"],
+        "direction": "negative",
+        "horizon": "short",
+        "claim_type": "macro_to_asset",
+    }
+    gid1 = compute_canonical_group_id(
+        "2026-04", common["claim_text"], common["affected_assets"],
+        source_evidence_ids=["e1", "e2"],
+        direction=common["direction"], horizon=common["horizon"],
+        claim_type=common["claim_type"],
+    )
+    gid2 = compute_canonical_group_id(
+        "2026-04", common["claim_text"], common["affected_assets"],
+        source_evidence_ids=["e3", "e4"],
+        direction=common["direction"], horizon=common["horizon"],
+        claim_type=common["claim_type"],
+    )
+    assert gid1 != gid2
+
+
+def test_r9a12_group_id_evidence_order_dedupe_independent():
+    """evidence_ids 순서/중복 무관 — sorted+unique 처리."""
+    from market_research.analyze.claim_extractor import (
+        compute_canonical_group_id,
+    )
+    g1 = compute_canonical_group_id(
+        "2026-04", "x", ["해외채권"],
+        source_evidence_ids=["e1", "e2", "e3"],
+    )
+    g2 = compute_canonical_group_id(
+        "2026-04", "x", ["해외채권"],
+        source_evidence_ids=["e3", "e1", "e2", "e1"],
+    )
+    assert g1 == g2
+
+
+def test_r9a12_group_id_different_assets_different_group():
+    """같은 evidence + 다른 affected_assets → 다른 group_id."""
+    from market_research.analyze.claim_extractor import (
+        compute_canonical_group_id,
+    )
+    g1 = compute_canonical_group_id(
+        "2026-04", "x", ["국내주식"],
+        source_evidence_ids=["e1"],
+    )
+    g2 = compute_canonical_group_id(
+        "2026-04", "x", ["해외주식"],
+        source_evidence_ids=["e1"],
+    )
+    assert g1 != g2
+
+
+def test_r9a12_group_id_different_direction_different_group():
+    """같은 evidence + 같은 assets + 다른 direction → 다른 group_id."""
+    from market_research.analyze.claim_extractor import (
+        compute_canonical_group_id,
+    )
+    g1 = compute_canonical_group_id(
+        "2026-04", "x", ["해외채권"],
+        source_evidence_ids=["e1"], direction="positive",
+    )
+    g2 = compute_canonical_group_id(
+        "2026-04", "x", ["해외채권"],
+        source_evidence_ids=["e1"], direction="negative",
+    )
+    assert g1 != g2
+
+
+def test_r9a12_group_id_different_horizon_different_group():
+    """같은 evidence + assets + dir + 다른 horizon → 다른 group_id."""
+    from market_research.analyze.claim_extractor import (
+        compute_canonical_group_id,
+    )
+    g1 = compute_canonical_group_id(
+        "2026-04", "x", ["해외채권"],
+        source_evidence_ids=["e1"], horizon="short",
+    )
+    g2 = compute_canonical_group_id(
+        "2026-04", "x", ["해외채권"],
+        source_evidence_ids=["e1"], horizon="long",
+    )
+    assert g1 != g2
+
+
+def test_r9a12_group_id_different_claim_type_different_group():
+    """같은 evidence + assets + dir + hor + 다른 claim_type → 다른 group_id."""
+    from market_research.analyze.claim_extractor import (
+        compute_canonical_group_id,
+    )
+    g1 = compute_canonical_group_id(
+        "2026-04", "x", ["해외채권"],
+        source_evidence_ids=["e1"], claim_type="event_to_macro",
+    )
+    g2 = compute_canonical_group_id(
+        "2026-04", "x", ["해외채권"],
+        source_evidence_ids=["e1"], claim_type="risk",
+    )
+    assert g1 != g2
+
+
+def test_r9a12_normalize_claim_attaches_evidence_aware_group_id():
+    """normalize_claim 통과 시 evidence_set 가 group_id 에 자동 반영."""
+    from market_research.analyze.claim_extractor import normalize_claim
+    same_payload = {
+        "period": "2026-04",
+        "claim_text": "어떤 wording",
+        "affected_assets": ["해외채권"],
+        "direction": "negative",
+        "horizon": "short",
+        "claim_type": "macro_to_asset",
+    }
+    # R9-A.10 fallback 으로 source ← supporting copy → group_id 에 반영됨
+    c1 = normalize_claim({
+        **same_payload,
+        "supporting_evidence_ids": ["a", "b"],
+    })
+    c2 = normalize_claim({
+        **same_payload,
+        "supporting_evidence_ids": ["a", "b"],
+        "claim_text": "완전히 다른 wording 이지만 같은 evidence/assets/dir",
+    })
+    # 같은 evidence + 같은 assets/dir/hor/type → 같은 group_id
+    assert c1["canonical_group_id"] == c2["canonical_group_id"]
+
+
+def test_r9a12_no_evidence_falls_back_to_empty_sentinel():
+    """evidence 가 없으면 sentinel 'empty' 로 evset_hash 통일 — 같은 group_id.
+
+    과소병합 원칙은 evidence 가 있는 경우에만 의미. evidence 가 없는 (manual /
+    fallback 부재) claim 들끼리는 같은 자산/dir 면 같은 group 으로 묶임 —
+    의도된 동작.
+    """
+    from market_research.analyze.claim_extractor import (
+        compute_canonical_group_id,
+    )
+    g1 = compute_canonical_group_id(
+        "2026-04", "wording A", ["해외채권"],
+        source_evidence_ids=None,
+    )
+    g2 = compute_canonical_group_id(
+        "2026-04", "wording B", ["해외채권"],
+        source_evidence_ids=[],
+    )
+    assert g1 == g2
+
+
+def test_r9a12_backward_compat_positional_call():
+    """compute_canonical_group_id(period, text, assets) 기존 호출 패턴 유지.
+
+    source_evidence_ids 미지정 → empty sentinel → claim_text 무관 동일 group.
+    R9-A.8 의 R9-A.8 group_id 6 tests 가 모두 이 패턴 — 회귀 보호.
+    """
+    from market_research.analyze.claim_extractor import (
+        compute_canonical_group_id,
+    )
+    g1 = compute_canonical_group_id("2026-04", "anything", ["국내주식"])
+    g2 = compute_canonical_group_id("2026-04", "different text", ["국내주식"])
+    # text 무관, evidence 둘 다 default empty, assets 같음 → 같은 group
+    assert g1 == g2
+    # 그러나 assets 가 다르면 distinct
+    g3 = compute_canonical_group_id("2026-04", "anything", ["해외주식"])
+    assert g1 != g3
 
 
 # ──────────────────────────────────────────────────────────────────

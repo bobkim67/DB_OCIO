@@ -4,14 +4,30 @@
 LLM 호출 0. Phase 0 범위는 "데이터 형상의 단일 source-of-truth" 만 정의한다.
 실제 LLM extractor 는 Phase 1 (claim_extractor_pilot) 에서 별도 GO 후 추가.
 
-R9-A.8 — Canonical claim identity 재설계 (LLM 0). R9-A.7 fresh N=7 에서
-21 pair claim_id Jaccard=0.0 이슈 해결. layered identity:
+R9-A.8/A.10/A.12 — Canonical claim identity 재설계 (LLM 0).
 
+R9-A.8 layered identity:
     _normalize_claim_text  (NFKC + ws + lower + trailing/multi punct squash)
     _build_evidence_set_hash  (sorted unique md5[:10])
     _build_content_signature  (norm_text + assets + dir/hor/type, md5[:12])
     compute_claim_id          (period + ev_hash + content_sig, md5[:10])
-    compute_canonical_group_id  (period + content_sig, evidence 무관, md5[:10])
+
+R9-A.10 fallback: normalize_claim() 에서 source_evidence_ids 비어있고
+supporting_evidence_ids 있으면 copy (운영 prompt schema 누락 보정, LLM 0).
+
+R9-A.12 group_id 재정의 (text-based 폐기):
+    _build_canonical_group_signature
+        (evidence_set_hash + assets + dir/hor/type, md5[:12])
+        ← claim_text/normalized_text 미포함
+    compute_canonical_group_id
+        (period + group_signature → md5[:10])
+        ← Haiku wording variance 와 무관, 같은 evidence/assets/dir 면 동일
+
+원칙 (사용자 design):
+    - LLM claim 은 후보 생성, group_id 가 운영 identity
+    - claim_text 는 display only
+    - 과소병합 > 과대병합 (다른 evidence set 이면 다른 group)
+    - 1차 deterministic, 2차 entity/topic/embedding 은 별 단계
 
 format 은 backward-compat: claim_id "claim:{period}:{md5[:10]}", group_id
 "group:{period}:{md5[:10]}". 다운스트림 `_hash10_of`, `_wiki_page_filename`,
@@ -26,7 +42,8 @@ Public API:
     compute_claim_id(period, claim_text, source_evidence_ids,
                      affected_assets, *, direction, horizon, claim_type) -> str
     compute_canonical_group_id(period, claim_text, affected_assets, *,
-                               direction, horizon, claim_type) -> str
+                               source_evidence_ids, direction, horizon,
+                               claim_type) -> str
     normalize_claim(raw: dict) -> dict
     validate_claim(claim: dict) -> dict
     serialize_claim(claim: dict) -> dict
@@ -257,32 +274,76 @@ def compute_claim_id(
     return f"claim:{p}:{h}"
 
 
-def compute_canonical_group_id(
-    period: str,
-    claim_text: str,
-    affected_assets: list[Any] | None,
+def _build_canonical_group_signature(
+    source_evidence_ids: list[Any] | None,
+    affected_assets: Any,
     *,
     direction: Any = "unknown",
     horizon: Any = "unknown",
     claim_type: Any = "outlook_view",
 ) -> str:
-    """Canonical group_id — evidence 무관, 같은 경제 claim 개념을 묶는다.
+    """R9-A.12 canonical group signature — evidence + assets + dir/hor/type.
 
-    layered: period + content_signature → md5[:10]. evidence_set 이 달라도
-    같은 normalize(claim_text) + 같은 assets + 같은 direction/horizon/
-    claim_type 이면 같은 group.
+    claim_text 는 입력 X (의도적). R9-A.11 fresh N=5 검증에서 Haiku 의
+    어휘/문장 구조 variance 가 normalize_claim_text 한계를 초과해 텍스트
+    기반 group_id 가 mean 0.0 으로 죽는 것을 확인 → text 폐기, evidence/
+    assets/direction 기반 deterministic grouping 으로 전환.
 
-    Output format `group:{period}:{md5_hex10}` — claim_id (`claim:...`) 와
-    prefix 로 구분.
+    포함 재료:
+        - evidence_set_hash (sorted+unique evidence_ids → md5[:10])
+        - sorted affected_assets (asset_class strings)
+        - direction / horizon / claim_type (taxonomy enum)
 
-    Use cases:
-        - N-run claim identity overlap 측정 (R9-A.7 후속)
-        - repeat claim vs unstable claim 자동 분류
-        - wiki promote 후보 N-run 누적
+    제외 재료:
+        - claim_text / normalized_text (LLM wording variance 회피)
+        - causal_chain natural language 부분
+    """
+    payload = {
+        "evset": _build_evidence_set_hash(source_evidence_ids),
+        "assets": _extract_asset_class_strings(affected_assets),
+        "direction": str(direction or "unknown"),
+        "horizon": str(horizon or "unknown"),
+        "claim_type": str(claim_type or "outlook_view"),
+    }
+    blob = json.dumps(payload, ensure_ascii=False, sort_keys=True)\
+        .encode("utf-8")
+    return hashlib.md5(blob).hexdigest()[:12]
+
+
+def compute_canonical_group_id(
+    period: str,
+    claim_text: str,           # backward compat (사용 X, signature 보존)
+    affected_assets: list[Any] | None,
+    *,
+    source_evidence_ids: list[Any] | None = None,
+    direction: Any = "unknown",
+    horizon: Any = "unknown"
+    ,
+    claim_type: Any = "outlook_view",
+) -> str:
+    """Canonical group_id (R9-A.12) — evidence/assets/dir 기반 deterministic.
+
+    layered: period + canonical_group_signature → md5[:10]. signature 는
+    evidence_set_hash + sorted affected_assets + direction + horizon +
+    claim_type. **claim_text 는 group_id 산정에 미사용** (R9-A.12 전환).
+
+    backward compat:
+        - 시그니처는 (period, claim_text, affected_assets) positional + kwargs
+        - claim_text 는 인수로만 받고 group_id 계산에 안 씀 (call site 호환)
+        - source_evidence_ids 신규 kwarg (default None = empty evidence)
+
+    Output format `group:{period}:{md5_hex10}` — 동일 (다운스트림 무영향).
+
+    Use cases (R9-A.12 design):
+        - 같은 evidence subset + 같은 assets/direction → 같은 group_id
+          (Haiku wording variance 와 무관)
+        - LLM claim 은 후보, group_id 가 운영 identity
+        - claim_text 는 display only
+        - 과소병합 > 과대병합 원칙 (다른 evidence set 이면 다른 group)
     """
     p = period if isinstance(period, str) and period else "unknown"
-    sig = _build_content_signature(
-        claim_text, affected_assets,
+    sig = _build_canonical_group_signature(
+        source_evidence_ids, affected_assets,
         direction=direction, horizon=horizon, claim_type=claim_type,
     )
     payload = f"{p}|{sig}"
@@ -347,14 +408,15 @@ def normalize_claim(raw: dict | None) -> dict:
             horizon=out.get("horizon") or "unknown",
             claim_type=out.get("claim_type") or "outlook_view",
         )
-    # R9-A.8 — canonical_group_id 자동 부착 (optional field).
-    # 기존 운영 데이터에 group_id 가 없으면 normalize_claim 통과 시 계산되며,
-    # 운영 file 직접 write 없으면 md5 변경 0.
+    # R9-A.8/A.12 — canonical_group_id 자동 부착 (optional field).
+    # R9-A.12 — source_evidence_ids 도 입력. fallback 이 위에서 supporting 의
+    # copy 로 채워지므로 본 시점에서는 evidence layer 가 살아있음.
     if not out.get("canonical_group_id"):
         out["canonical_group_id"] = compute_canonical_group_id(
             out.get("period") or "unknown",
             out.get("claim_text") or "",
             out.get("affected_assets") or [],
+            source_evidence_ids=out.get("source_evidence_ids") or [],
             direction=out.get("direction") or "unknown",
             horizon=out.get("horizon") or "unknown",
             claim_type=out.get("claim_type") or "outlook_view",
