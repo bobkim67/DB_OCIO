@@ -288,6 +288,13 @@ def step_claim_extract(
     canonical_existing: list[dict] | None = None,
     ledger_path_override: str | Path | None = None,
     llm_call=None,
+    # R9-A.22B — Group monitoring traceability passthrough.
+    # 모두 default None — 미전달 시 ledger row 33필드 default 보존.
+    group_monitoring_summary_path: str | Path | None = None,
+    related_group_ids: list[str] | None = None,
+    linked_wiki_claim_ids: list[str] | None = None,
+    monitoring_mode: str | None = None,
+    stable_candidate_counts: dict | None = None,
 ) -> dict[str, Any]:
     """daily_update Step 2.7 진입점 (Commit 3).
 
@@ -435,6 +442,12 @@ def step_claim_extract(
             monthly_cost_after_estimate=monthly_so_far + est_cost,
             candidate_count=0,
             canonical_existing_conflict_count=0,
+            # R9-A.22B — group monitoring traceability passthrough
+            group_monitoring_summary_path=group_monitoring_summary_path,
+            related_group_ids=related_group_ids,
+            linked_wiki_claim_ids=linked_wiki_claim_ids,
+            monitoring_mode=monitoring_mode,
+            stable_candidate_counts=stable_candidate_counts,
         )
         return {
             **base,
@@ -523,6 +536,12 @@ def step_claim_extract(
             monthly_cost_after_estimate=monthly_so_far + actual_cost,
             candidate_count=0,
             canonical_existing_conflict_count=0,
+            # R9-A.22B — group monitoring traceability passthrough
+            group_monitoring_summary_path=group_monitoring_summary_path,
+            related_group_ids=related_group_ids,
+            linked_wiki_claim_ids=linked_wiki_claim_ids,
+            monitoring_mode=monitoring_mode,
+            stable_candidate_counts=stable_candidate_counts,
         )
         return {
             **base,
@@ -697,6 +716,12 @@ def step_claim_extract(
         monthly_cost_after_estimate=monthly_so_far + actual_cost,
         candidate_count=valid_count,
         canonical_existing_conflict_count=len((plan or {}).get("merge_conflicts", [])),
+        # R9-A.22B — group monitoring traceability passthrough
+        group_monitoring_summary_path=group_monitoring_summary_path,
+        related_group_ids=related_group_ids,
+        linked_wiki_claim_ids=linked_wiki_claim_ids,
+        monitoring_mode=monitoring_mode,
+        stable_candidate_counts=stable_candidate_counts,
     )
 
     would_save = _build_would_save(

@@ -406,3 +406,84 @@ def test_c4_monitoring_fields_present_on_all_paths():
         llm_call=lambda p: _raw([_PROMOTABLE]),
     )
     assert expected_fields <= set(out.keys())
+
+
+# ──────────────────────────────────────────────────────────────────
+# R9-A.22B — group monitoring traceability passthrough
+# ──────────────────────────────────────────────────────────────────
+
+def test_r9a22b_step_default_does_not_emit_optional_fields():
+    """default 호출 — ledger_row_preview 에 R9-A.22B optional field 미포함."""
+    out = ces.step_claim_extract(
+        "2026-04",
+        enabled=True,
+        evidence_items=_evidence(3),
+        llm_call=lambda p: _raw([_PROMOTABLE]),
+    )
+    preview = out["ledger_row_preview"]
+    for opt in (
+        "group_monitoring_summary_path", "related_group_ids",
+        "linked_wiki_claim_ids", "monitoring_mode",
+        "stable_candidate_counts",
+    ):
+        assert opt not in preview, (
+            f"R9-A.22B optional {opt} must not leak into default preview"
+        )
+
+
+def test_r9a22b_step_threads_optional_fields_into_ledger_preview():
+    """5종 metadata 를 step_claim_extract 에 전달하면 ledger_row_preview 에
+    실린다."""
+    out = ces.step_claim_extract(
+        "2026-04",
+        enabled=True,
+        evidence_items=_evidence(3),
+        llm_call=lambda p: _raw([_PROMOTABLE]),
+        group_monitoring_summary_path=(
+            "debug/claims/out/claim_group_monitoring_2026-04_daily.json"),
+        related_group_ids=["group:2026-04:cfee0ff342"],
+        linked_wiki_claim_ids=["de1729b413", "e78dc83a1e"],
+        monitoring_mode="single_batch",
+        stable_candidate_counts={
+            "total_groups": 57, "stable_candidates": 12,
+            "strong_stable_candidates": 4, "within_run_duplicate_count": 0,
+        },
+    )
+    preview = out["ledger_row_preview"]
+    assert preview["group_monitoring_summary_path"].endswith(
+        "_2026-04_daily.json")
+    assert preview["related_group_ids"] == ["group:2026-04:cfee0ff342"]
+    assert preview["linked_wiki_claim_ids"] == ["de1729b413", "e78dc83a1e"]
+    assert preview["monitoring_mode"] == "single_batch"
+    assert preview["stable_candidate_counts"]["total_groups"] == 57
+
+
+def test_r9a22b_step_threads_optional_fields_on_monthly_cap_pre_abort(
+    tmp_path,
+):
+    """Monthly cap pre-abort 경로에서도 optional field 가 ledger preview 에
+    반영된다 (3 call site 중 첫 번째)."""
+    # 운영 ledger 와 격리 — tmp_path 에 cap 초과 row 미리 적재
+    ledger = tmp_path / "_promotion_quality.jsonl"
+    ledger.write_text(
+        json.dumps({
+            "period": "2026-04",
+            "source": "daily_update_r9a4",
+            "extractor_version": "r9a.4-haiku",
+            "cost_usd": 1.5,  # cap 초과
+        }) + "\n",
+        encoding="utf-8",
+    )
+    out = ces.step_claim_extract(
+        "2026-04",
+        enabled=True,
+        evidence_items=_evidence(3),
+        ledger_path_override=ledger,
+        related_group_ids=["group:2026-04:cfee0ff342"],
+        monitoring_mode="multi_run",
+        llm_call=lambda p: _raw([_PROMOTABLE]),
+    )
+    assert out["status"] == ces.STATUS_COST_CAP_MONTHLY_PRE_ABORT
+    preview = out["ledger_row_preview"]
+    assert preview["related_group_ids"] == ["group:2026-04:cfee0ff342"]
+    assert preview["monitoring_mode"] == "multi_run"

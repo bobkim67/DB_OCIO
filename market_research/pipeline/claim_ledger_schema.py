@@ -75,6 +75,29 @@ LEDGER_ROW_FIELDS: tuple[str, ...] = LEDGER_ROW_FIELDS_C4_INITIAL + (
     "isolated_write",                   # target_suffix 가 None 이 아닐 때 True
 )
 
+# R9-A.22B — Group monitoring traceability optional fields.
+# 본 5 필드는 **strict required set 에 포함되지 않는다** (LEDGER_ROW_FIELDS 미수정).
+# build_ledger_row_preview 에 명시 인자로 전달된 경우에만 row dict 에 추가됨 —
+# default 호출 시 33필드 출력이 보존되어 기존 소비자 / 회귀 테스트 무영향.
+LEDGER_ROW_OPTIONAL_FIELDS_R9A22: tuple[str, ...] = (
+    "group_monitoring_summary_path",     # str — Step 2.8 / promotion_monthly_summary 산출 경로
+    "related_group_ids",                 # list[str] — 예: ["group:2026-04:cfee0ff342"]
+    "linked_wiki_claim_ids",             # list[str] — wiki anchor 의 hash10 (예: ["de1729b413"])
+    "monitoring_mode",                   # "single_batch" | "multi_run"
+    "stable_candidate_counts",           # dict (total_groups / stable / strong / within_run_dup)
+)
+
+# R9-A.19 monitoring_mode allowed values — invalid 값은 validate 에서 errors.
+MONITORING_MODE_VALUES: frozenset[str] = frozenset({"single_batch", "multi_run"})
+
+# stable_candidate_counts dict 의 권장 sub-key (참고용, 강제 X)
+STABLE_CANDIDATE_COUNT_KEYS: tuple[str, ...] = (
+    "total_groups",
+    "stable_candidates",
+    "strong_stable_candidates",
+    "within_run_duplicate_count",
+)
+
 # Monthly cap — workorder §5 D-4. Commit 4 에서 CLI override 가능 예정.
 MONTHLY_CAP_USD: float = 1.0
 
@@ -189,6 +212,14 @@ def build_ledger_row_preview(
     canonical_existing_conflict_count: int = 0,
     # Commit 4.1 — target_suffix isolation 표시
     isolated_write: bool | None = None,
+    # R9-A.22B — Group monitoring traceability optional fields.
+    # 모두 default None — 명시 인자 전달이 없으면 row dict 에 포함하지 않음
+    # (33필드 default contract 보존).
+    group_monitoring_summary_path: str | Path | None = None,
+    related_group_ids: list[str] | None = None,
+    linked_wiki_claim_ids: list[str] | None = None,
+    monitoring_mode: str | None = None,
+    stable_candidate_counts: dict | None = None,
 ) -> dict[str, Any]:
     """Commit 3 단계의 ledger row preview.
 
@@ -198,6 +229,14 @@ def build_ledger_row_preview(
 
     type coercion 은 보수적으로 — int/float/str 타입 안정성 보장 (jsonl
     serialization 회귀 방지).
+
+    R9-A.22B 옵셔널 group monitoring traceability:
+      - `group_monitoring_summary_path` / `related_group_ids` /
+        `linked_wiki_claim_ids` / `monitoring_mode` /
+        `stable_candidate_counts` 5종
+      - 모두 default None — 미전달 시 row 에 키 자체가 없음 (33필드 그대로)
+      - 전달 시 row 에 키 추가 (소비자는 unknown key 에 graceful 해야 함 —
+        json.dumps sort_keys 출력이므로 마지막 정렬 위치)
     """
     if ts is None:
         ts = datetime.now().isoformat(timespec="seconds")
@@ -214,7 +253,7 @@ def build_ledger_row_preview(
         else _to_float(_before + cost_usd)
     )
 
-    return {
+    row: dict[str, Any] = {
         "ts": ts,
         "period": str(period or ""),
         "source": str(source or ""),
@@ -256,6 +295,27 @@ def build_ledger_row_preview(
             else bool(target_suffix)
         ),
     }
+
+    # R9-A.22B — Optional group monitoring traceability.
+    # 명시 인자가 None 이 아닐 때만 row 에 키 추가. None 만 받은 호출은 33필드
+    # default 그대로 (LEDGER_ROW_FIELDS 회귀 검증 통과 보장).
+    if group_monitoring_summary_path is not None:
+        row["group_monitoring_summary_path"] = str(group_monitoring_summary_path)
+    if related_group_ids is not None:
+        row["related_group_ids"] = [str(x) for x in related_group_ids]
+    if linked_wiki_claim_ids is not None:
+        row["linked_wiki_claim_ids"] = [str(x) for x in linked_wiki_claim_ids]
+    if monitoring_mode is not None:
+        row["monitoring_mode"] = str(monitoring_mode)
+    if stable_candidate_counts is not None:
+        # 권장 sub-key 는 int coercion, 그 외는 원형 보존 (소비자 확장 여지).
+        coerced: dict[str, Any] = dict(stable_candidate_counts)
+        for k in STABLE_CANDIDATE_COUNT_KEYS:
+            if k in coerced:
+                coerced[k] = _to_int(coerced[k])
+        row["stable_candidate_counts"] = coerced
+
+    return row
 
 
 def validate_ledger_row_preview(
@@ -301,4 +361,28 @@ def validate_ledger_row_preview(
               "write_claims", "isolated_write"):
         if f in row and not isinstance(row[f], bool):
             errors.append(f"type_error:{f}_not_bool")
+
+    # R9-A.22B — optional traceability fields, type-check only when present.
+    if "group_monitoring_summary_path" in row:
+        if not isinstance(row["group_monitoring_summary_path"], str):
+            errors.append(
+                "type_error:group_monitoring_summary_path_not_str")
+    if "related_group_ids" in row:
+        v = row["related_group_ids"]
+        if not isinstance(v, list) or not all(isinstance(x, str) for x in v):
+            errors.append("type_error:related_group_ids_not_list_str")
+    if "linked_wiki_claim_ids" in row:
+        v = row["linked_wiki_claim_ids"]
+        if not isinstance(v, list) or not all(isinstance(x, str) for x in v):
+            errors.append("type_error:linked_wiki_claim_ids_not_list_str")
+    if "monitoring_mode" in row:
+        v = row["monitoring_mode"]
+        if not isinstance(v, str):
+            errors.append("type_error:monitoring_mode_not_str")
+        elif v not in MONITORING_MODE_VALUES:
+            errors.append(f"value_error:monitoring_mode_invalid:{v}")
+    if "stable_candidate_counts" in row:
+        if not isinstance(row["stable_candidate_counts"], dict):
+            errors.append("type_error:stable_candidate_counts_not_dict")
+
     return errors

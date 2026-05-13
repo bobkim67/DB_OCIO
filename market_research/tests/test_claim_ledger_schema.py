@@ -10,7 +10,10 @@ import json
 from market_research.pipeline.claim_ledger_schema import (
     LEDGER_ROW_FIELDS,
     LEDGER_ROW_FIELDS_C3,
+    LEDGER_ROW_OPTIONAL_FIELDS_R9A22,
+    MONITORING_MODE_VALUES,
     MONTHLY_CAP_USD,
+    STABLE_CANDIDATE_COUNT_KEYS,
     build_ledger_row_preview,
     compute_monthly_cost_usd,
     validate_ledger_row_preview,
@@ -280,3 +283,204 @@ def test_c4_validate_invalid_legacy_field_still_errors():
     assert "missing_field:source" in errs
     # 신규 C4 필드 누락은 graceful (legacy 모드)
     assert not any("missing_field:write_allowed" in e for e in errs)
+
+
+# ──────────────────────────────────────────────────────────────────
+# R9-A.22B — Group monitoring traceability optional fields
+# ──────────────────────────────────────────────────────────────────
+
+def test_r9a22b_default_call_excludes_optional_fields():
+    """default 호출은 33필드만 — optional field 키 자체가 row 에 없음.
+
+    이 회귀가 깨지면 기존 `_promotion_quality.jsonl` 소비자 / 33필드 strict
+    검증이 깨진다. 강조 항목: 기본 실행 시 기존 row 구조와 호환.
+    """
+    row = build_ledger_row_preview(period="2026-04")
+    assert set(row.keys()) == set(LEDGER_ROW_FIELDS)
+    assert len(row) == 33
+    for opt in LEDGER_ROW_OPTIONAL_FIELDS_R9A22:
+        assert opt not in row, (
+            f"optional field {opt} must not appear in default row"
+        )
+
+
+def test_r9a22b_group_monitoring_summary_path_recorded():
+    """group_monitoring_summary_path 전달 시 row 에 추가."""
+    row = build_ledger_row_preview(
+        period="2026-04",
+        group_monitoring_summary_path=(
+            "debug/claims/out/claim_group_monitoring_2026-04_daily.json"
+        ),
+    )
+    assert "group_monitoring_summary_path" in row
+    assert row["group_monitoring_summary_path"].endswith(
+        "_2026-04_daily.json")
+    # 다른 optional 은 여전히 부재
+    for other in (
+        "related_group_ids", "linked_wiki_claim_ids",
+        "monitoring_mode", "stable_candidate_counts",
+    ):
+        assert other not in row
+
+
+def test_r9a22b_related_group_ids_recorded():
+    row = build_ledger_row_preview(
+        period="2026-04",
+        related_group_ids=["group:2026-04:cfee0ff342"],
+    )
+    assert row["related_group_ids"] == ["group:2026-04:cfee0ff342"]
+    # str coercion 검증 (input 이 비-str 이라도 변환)
+    row2 = build_ledger_row_preview(
+        period="2026-04",
+        related_group_ids=[1, "group:2026-04:cfee0ff342"],
+    )
+    assert row2["related_group_ids"] == ["1", "group:2026-04:cfee0ff342"]
+
+
+def test_r9a22b_linked_wiki_claim_ids_recorded():
+    row = build_ledger_row_preview(
+        period="2026-04",
+        linked_wiki_claim_ids=["de1729b413", "e78dc83a1e"],
+    )
+    assert row["linked_wiki_claim_ids"] == ["de1729b413", "e78dc83a1e"]
+
+
+def test_r9a22b_monitoring_mode_recorded_and_validated():
+    row = build_ledger_row_preview(
+        period="2026-04",
+        monitoring_mode="multi_run",
+    )
+    assert row["monitoring_mode"] == "multi_run"
+    assert validate_ledger_row_preview(row) == []
+
+    row2 = build_ledger_row_preview(
+        period="2026-04",
+        monitoring_mode="single_batch",
+    )
+    assert validate_ledger_row_preview(row2) == []
+
+
+def test_r9a22b_stable_candidate_counts_recorded():
+    counts = {
+        "total_groups": "57",   # str → int coercion 검증
+        "stable_candidates": 12,
+        "strong_stable_candidates": 4,
+        "within_run_duplicate_count": 0,
+    }
+    row = build_ledger_row_preview(
+        period="2026-04",
+        stable_candidate_counts=counts,
+    )
+    assert isinstance(row["stable_candidate_counts"], dict)
+    # 권장 sub-key 는 int 로 coerce
+    for k in STABLE_CANDIDATE_COUNT_KEYS:
+        assert isinstance(row["stable_candidate_counts"][k], int)
+    assert row["stable_candidate_counts"]["total_groups"] == 57
+
+
+def test_r9a22b_full_traceability_payload_recorded():
+    """5 field 모두 전달 — 38필드 (33 strict + 5 optional)."""
+    row = build_ledger_row_preview(
+        period="2026-04",
+        group_monitoring_summary_path="debug/claims/out/x.json",
+        related_group_ids=["group:2026-04:cfee0ff342"],
+        linked_wiki_claim_ids=["de1729b413", "e78dc83a1e"],
+        monitoring_mode="multi_run",
+        stable_candidate_counts={"total_groups": 57},
+    )
+    assert set(row.keys()) >= set(LEDGER_ROW_FIELDS)
+    assert set(row.keys()) - set(LEDGER_ROW_FIELDS) == set(
+        LEDGER_ROW_OPTIONAL_FIELDS_R9A22)
+    assert len(row) == 38
+    assert validate_ledger_row_preview(row) == []
+
+
+def test_r9a22b_validator_type_errors_on_bad_optional():
+    """optional field 가 잘못된 타입이면 validate 가 errors 반환."""
+    base = build_ledger_row_preview(period="2026-04")
+    bad1 = {**base, "group_monitoring_summary_path": 42}
+    assert any(
+        e.startswith("type_error:group_monitoring_summary_path")
+        for e in validate_ledger_row_preview(bad1)
+    )
+    bad2 = {**base, "related_group_ids": "not-a-list"}
+    assert any(
+        e.startswith("type_error:related_group_ids")
+        for e in validate_ledger_row_preview(bad2)
+    )
+    bad3 = {**base, "linked_wiki_claim_ids": [1, 2, 3]}
+    assert any(
+        e.startswith("type_error:linked_wiki_claim_ids")
+        for e in validate_ledger_row_preview(bad3)
+    )
+    bad4 = {**base, "monitoring_mode": "unknown_mode"}
+    errs = validate_ledger_row_preview(bad4)
+    assert any(e.startswith("value_error:monitoring_mode_invalid") for e in errs)
+    bad5 = {**base, "stable_candidate_counts": "not a dict"}
+    assert any(
+        e.startswith("type_error:stable_candidate_counts")
+        for e in validate_ledger_row_preview(bad5)
+    )
+
+
+def test_r9a22b_unknown_consumer_fields_pass_through_validator():
+    """현재 _promotion_quality.jsonl 소비자가 unknown 키를 만났을 때 graceful
+    해야 함. validate_ledger_row_preview 도 unknown 키는 무시한다."""
+    row = build_ledger_row_preview(period="2026-04")
+    row["future_metadata"] = {"foo": "bar"}
+    assert validate_ledger_row_preview(row) == []
+    # legacy 모드도 unknown 키 무시
+    assert validate_ledger_row_preview(row, allow_legacy_c3=True) == []
+
+
+def test_r9a22b_optional_fields_set_introspection():
+    """LEDGER_ROW_OPTIONAL_FIELDS_R9A22 5종이 strict required 와 disjoint."""
+    assert len(LEDGER_ROW_OPTIONAL_FIELDS_R9A22) == 5
+    assert set(LEDGER_ROW_OPTIONAL_FIELDS_R9A22).isdisjoint(
+        set(LEDGER_ROW_FIELDS))
+    assert MONITORING_MODE_VALUES == frozenset({"single_batch", "multi_run"})
+
+
+def test_r9a22b_jsonl_serialization_with_optional_fields(tmp_path):
+    """append → read → 동일 row. unknown 소비자가 graceful 해야 한다는 정신
+    검증 (file write 격리, 운영 ledger 무영향)."""
+    row = build_ledger_row_preview(
+        period="2026-04",
+        group_monitoring_summary_path="debug/claims/out/x.json",
+        monitoring_mode="single_batch",
+        stable_candidate_counts={"total_groups": 5},
+    )
+    path = tmp_path / "_promotion_quality.test.jsonl"
+    path.write_text(
+        json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    line = path.read_text(encoding="utf-8").strip()
+    restored = json.loads(line)
+    assert restored["group_monitoring_summary_path"] == row[
+        "group_monitoring_summary_path"]
+    assert restored["monitoring_mode"] == "single_batch"
+    assert restored["stable_candidate_counts"]["total_groups"] == 5
+
+
+def test_r9a22b_compute_monthly_cost_unaffected_by_optional_fields(tmp_path):
+    """optional field 가 채워진 row 들이 ledger 에 섞여 있어도 cost 합산은
+    동일. _promotion_quality.jsonl 소비자 (compute_monthly_cost_usd) 가 unknown
+    key 에 graceful 한지 검증."""
+    ledger = tmp_path / "_promotion_quality.jsonl"
+    rows = [
+        build_ledger_row_preview(
+            period="2026-04", cost_usd=0.014, status="ok_plan_ready",
+        ),
+        build_ledger_row_preview(
+            period="2026-04", cost_usd=0.020, status="ok_plan_ready",
+            group_monitoring_summary_path="debug/claims/out/x.json",
+            related_group_ids=["group:2026-04:cfee0ff342"],
+            monitoring_mode="multi_run",
+        ),
+    ]
+    with ledger.open("w", encoding="utf-8") as f:
+        for r in rows:
+            f.write(json.dumps(r, ensure_ascii=False, sort_keys=True) + "\n")
+    total = compute_monthly_cost_usd("2026-04", ledger_path=ledger)
+    assert total == 0.034  # 0.014 + 0.020, optional fields 무관
