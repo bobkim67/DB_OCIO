@@ -24,6 +24,7 @@ from pathlib import Path
 
 from market_research.report.report_store import (
     save_draft, append_evidence_quality,
+    sanitize_target_suffix,
     STATUS_DRAFT,
 )
 
@@ -468,19 +469,44 @@ def renumber_refs(comment: str, annotations: list) -> tuple[str, list, list]:
 # ══════════════════════════════════════════
 
 def run_debate_and_save(mode: str, year: int, period_num: int,
-                        fund_code: str, period_key: str) -> dict:
+                        fund_code: str, period_key: str,
+                        *,
+                        target_suffix: str | None = None,
+                        use_wiki_context_pack: bool = False,
+                        wiki_context_pack: dict | None = None,
+                        wiki_context_max_pages: int = 12) -> dict:
     """debate 엔진 호출 → 후처리 → draft 저장 → evidence log append.
 
     Streamlit 의존성 없음. tabs/admin.py에서 이 함수를 호출한다.
     현재는 input.json 없이 debate 엔진이 직접 컨텍스트를 빌드한다 (과도기 fallback).
+
+    R9-B.3.1 — target_suffix opt-in (default None):
+      None 이면 기존 운영 경로 그대로. suffix 명시 시 draft / final / evidence
+      ledger 모두 isolated path. catalog 기본 리스트도 제외 (운영 final 보호).
+
+    R9-B.3 — use_wiki_context_pack opt-in (default OFF):
+      run_market_debate / run_quarterly_debate 에 그대로 전달.
     """
+    # report_store sanitizer 가 invalid suffix 면 ValueError 를 던지므로
+    # save 단계가 아니라 진입 시점에 빨리 가드한다.
+    target_suffix = sanitize_target_suffix(target_suffix)
     if mode == "월별":
         from market_research.report.debate_engine import run_market_debate
-        result = run_market_debate(year, period_num)
+        result = run_market_debate(
+            year, period_num,
+            use_wiki_context_pack=use_wiki_context_pack,
+            wiki_context_pack=wiki_context_pack,
+            wiki_context_max_pages=wiki_context_max_pages,
+        )
         months = [period_num]
     else:
         from market_research.report.debate_engine import run_quarterly_debate
-        result = run_quarterly_debate(year, period_num)
+        result = run_quarterly_debate(
+            year, period_num,
+            use_wiki_context_pack=use_wiki_context_pack,
+            wiki_context_pack=wiki_context_pack,
+            wiki_context_max_pages=wiki_context_max_pages,
+        )
         months = result.get('months', [(period_num - 1) * 3 + i for i in range(1, 4)])
 
     synthesis = result.get('synthesis', {})
@@ -563,7 +589,12 @@ def run_debate_and_save(mode: str, year: int, period_num: int,
         if _key in result:
             draft_data[_key] = result[_key]
 
-    save_draft(period_key, fund_code, draft_data)
+    # R9-B.3 trace: prompt_context_mode / wiki_context_pack_enabled 등
+    # _debug_trace 가 있으면 draft 에도 보존 (admin/debug viewer 용).
+    if isinstance(result.get('_debug_trace'), dict):
+        draft_data['_debug_trace'] = result['_debug_trace']
+
+    save_draft(period_key, fund_code, draft_data, target_suffix=target_suffix)
 
     eq_record = {
         'period': period_key,
@@ -573,7 +604,7 @@ def run_debate_and_save(mode: str, year: int, period_num: int,
         **evidence_quality,
         'critical_warnings': warning_counts['critical'],
     }
-    append_evidence_quality(eq_record)
+    append_evidence_quality(eq_record, target_suffix=target_suffix)
 
     # 06_Debate_Memory/ 페이지 생성 (canonical regime은 건드리지 않음)
     try:

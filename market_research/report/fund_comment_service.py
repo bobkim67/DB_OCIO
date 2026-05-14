@@ -23,6 +23,7 @@ from datetime import date
 
 from market_research.report.report_store import (
     save_draft, load_draft, load_final,
+    sanitize_target_suffix,
     STATUS_DRAFT,
 )
 
@@ -282,6 +283,8 @@ def generate_fund_comment_and_save(
     mode: str, year: int, period_num: int,
     fund_code: str, period_key: str,
     market_payload: dict,
+    *,
+    target_suffix: str | None = None,
 ) -> dict:
     """펀드 코멘트 생성: 데이터 로딩 → 시장 payload 변환 → Opus 호출 → fund draft 저장.
 
@@ -294,7 +297,11 @@ def generate_fund_comment_and_save(
     fund_code : 펀드코드 (e.g. '08P22')
     period_key : 기간 키 (e.g. '2026-04', '2026-Q1')
     market_payload : 시장 debate final/edited draft (load_final 또는 load_draft 결과)
+    target_suffix : R9-B.3.1 opt-in. None → 운영 draft 경로. suffix 명시 시
+        `{period}/{fund}.{suffix}.draft.json` 으로 isolated 저장.
+        호출자가 동일 suffix 의 _market.final 을 load 해야 lineage 가 맞다.
     """
+    target_suffix = sanitize_target_suffix(target_suffix)
     data_warnings = []
 
     # 1. 영업일 범위
@@ -473,5 +480,5 @@ def generate_fund_comment_and_save(
         'edit_history': [],
     }
 
-    save_draft(period_key, fund_code, draft_data)
+    save_draft(period_key, fund_code, draft_data, target_suffix=target_suffix)
     return draft_data

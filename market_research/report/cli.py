@@ -59,10 +59,16 @@ _RELATED_FUNDS = {
 # 유틸리티
 # ═══════════════════════════════════════════════════════
 
-def _cache_path(period_label, fund_code):
-    """캐시 JSON 경로. period_label 예: '2026Q1', '202603-202603', 'YTD2026'"""
+def _cache_path(period_label, fund_code, *, target_suffix: str | None = None):
+    """캐시 JSON 경로. period_label 예: '2026Q1', '202603-202603', 'YTD2026'.
+
+    R9-B.3.1 — target_suffix 가 주어지면 `{fund_code}.{suffix}.json` 으로
+    isolated. None 이면 기존 `{fund_code}.json` 그대로.
+    """
     d = CACHE_DIR / period_label
     d.mkdir(parents=True, exist_ok=True)
+    if target_suffix:
+        return d / f'{fund_code}.{target_suffix}.json'
     return d / f'{fund_code}.json'
 
 
@@ -519,9 +525,14 @@ def _debate_to_inputs(debate_result):
 # ═══════════════════════════════════════════════════════
 
 def _save_report_json(fund_code, period_label, start_dt, end_dt, quarter,
-                      data_ctx, inputs, output=None):
-    """보고서 JSON 저장."""
-    path = _cache_path(period_label, fund_code)
+                      data_ctx, inputs, output=None,
+                      *, target_suffix: str | None = None):
+    """보고서 JSON 저장.
+
+    R9-B.3.1 — target_suffix 시 isolated path `{fund}.{suffix}.json` + payload
+    에 target_suffix 필드 추가. default None 동작 완전 불변.
+    """
+    path = _cache_path(period_label, fund_code, target_suffix=target_suffix)
 
     payload = {
         'version': 4,
@@ -542,6 +553,8 @@ def _save_report_json(fund_code, period_label, start_dt, end_dt, quarter,
             'holdings_diff': data_ctx.get('holdings_diff', []),
         },
     }
+    if target_suffix:
+        payload['target_suffix'] = target_suffix
 
     if output:
         payload['output'] = {
@@ -558,9 +571,10 @@ def _save_report_json(fund_code, period_label, start_dt, end_dt, quarter,
     return path
 
 
-def _load_report_json(period_label, fund_code):
-    """기존 보고서 JSON 로드."""
-    path = _cache_path(period_label, fund_code)
+def _load_report_json(period_label, fund_code,
+                       *, target_suffix: str | None = None):
+    """기존 보고서 JSON 로드. R9-B.3.1 — target_suffix 시 isolated path."""
+    path = _cache_path(period_label, fund_code, target_suffix=target_suffix)
     if not path.exists():
         return None
     with open(path, 'r', encoding='utf-8') as f:
@@ -739,7 +753,8 @@ def build_report(fund_code, period_info, mode='auto', detail=False,
                  *,
                  use_wiki_context_pack: bool = False,
                  wiki_context_pack: dict | None = None,
-                 wiki_context_max_pages: int = 12):
+                 wiki_context_max_pages: int = 12,
+                 target_suffix: str | None = None):
     """단일 펀드 보고서 생성 → JSON 저장.
 
     period_info: dict with _start_dt, _end_dt, _label, _quarter
@@ -749,7 +764,13 @@ def build_report(fund_code, period_info, mode='auto', detail=False,
     use_wiki_context_pack: R9-B.3 opt-in (default OFF)
     wiki_context_pack: opt-in 시 외부에서 load 된 pack (None 이면 builder 호출)
     wiki_context_max_pages: opt-in builder 의 cap (default 12)
+    target_suffix: R9-B.3.1 opt-in. None → 운영 cache path. suffix 명시 시
+        report_cache 의 산출물명에 `.{suffix}` 가 prefix 되어 isolated.
     """
+    # sanitize 는 일찍 — 잘못된 suffix 면 실행 전에 SystemExit/ValueError 로
+    # 중단해 LLM 호출/디스크 write 비용을 막는다.
+    from market_research.report.report_store import sanitize_target_suffix
+    target_suffix = sanitize_target_suffix(target_suffix)
     start_dt = period_info['_start_dt']
     end_dt = period_info['_end_dt']
     label = period_info['_label']
@@ -757,9 +778,9 @@ def build_report(fund_code, period_info, mode='auto', detail=False,
 
     # ── from-json: 기존 JSON에서 inputs 읽고 코멘트만 재생성 ──
     if mode == 'from-json':
-        existing = _load_report_json(label, fund_code)
+        existing = _load_report_json(label, fund_code, target_suffix=target_suffix)
         if not existing:
-            print(f'  [오류] 캐시 없음: {_cache_path(label, fund_code)}')
+            print(f'  [오류] 캐시 없음: {_cache_path(label, fund_code, target_suffix=target_suffix)}')
             return None
         data_ctx = existing.get('data', {})
         inputs = existing.get('inputs', {})
@@ -772,7 +793,8 @@ def build_report(fund_code, period_info, mode='auto', detail=False,
             start_date=start_dt, end_date=end_dt,
         )
         path = _save_report_json(fund_code, label, start_dt, end_dt, quarter,
-                                 data_ctx, inputs, output)
+                                 data_ctx, inputs, output,
+                                 target_suffix=target_suffix)
         _print_result(output, path)
         return output
 
@@ -795,7 +817,8 @@ def build_report(fund_code, period_info, mode='auto', detail=False,
     # ── edit 모드: draft 저장 → 사용자 수정 → 재읽기 ──
     if mode == 'edit':
         draft_path = _save_report_json(fund_code, label, start_dt, end_dt, quarter,
-                                       data_ctx, inputs)
+                                       data_ctx, inputs,
+                                       target_suffix=target_suffix)
         print(f'\n  {"─" * 50}')
         print(f'  Draft 저장: {draft_path}')
         print(f'  VS Code에서 "inputs" 섹션을 수정한 후 저장(Ctrl+S) → 여기서 Enter')
@@ -808,7 +831,7 @@ def build_report(fund_code, period_info, mode='auto', detail=False,
             return None
 
         # 수정된 JSON 재읽기
-        edited = _load_report_json(label, fund_code)
+        edited = _load_report_json(label, fund_code, target_suffix=target_suffix)
         if edited:
             inputs = edited.get('inputs', inputs)
             inputs['source'] = 'user'
@@ -831,7 +854,8 @@ def build_report(fund_code, period_info, mode='auto', detail=False,
 
     # ── 저장 ──
     path = _save_report_json(fund_code, label, start_dt, end_dt, quarter,
-                             data_ctx, inputs, output)
+                             data_ctx, inputs, output,
+                             target_suffix=target_suffix)
     _print_result(output, path)
     return output
 
@@ -935,6 +959,13 @@ def main():
                               'period_key / stage 검증 후 사용.')
     build_p.add_argument('--wiki-context-max-pages', type=int, default=12,
                          help='opt-in builder 의 max_pages (default 12).')
+    # R9-B.3.1 isolated output target (default OFF — legacy unchanged)
+    build_p.add_argument('--target-suffix', type=str, default=None,
+                         help='R9-B.3.1: isolated 산출물 경로. 명시 시 '
+                              'report_cache 및 report_output (debate_service '
+                              '경유) 가 `{fund}.{suffix}.json` 으로 저장된다. '
+                              '예: r9b3-smoke. 운영 final/draft/input 덮어쓰기 '
+                              '방지용. 허용 [A-Za-z0-9_-], 1~40자.')
 
     # list
     sub.add_parser('list', help='캐시된 보고서 목록')
@@ -995,6 +1026,19 @@ def main():
             _, _end_m = _quarter_dates(_y, _q)
             forced_window_ids = _load_forced_bew_json(forced_json_path, _y, _end_m)
 
+        # R9-B.3.1 — target_suffix 검증 (잘못된 값이면 즉시 종료)
+        target_suffix = getattr(args, 'target_suffix', None)
+        if target_suffix is not None:
+            from market_research.report.report_store import (
+                sanitize_target_suffix,
+            )
+            try:
+                target_suffix = sanitize_target_suffix(target_suffix)
+            except ValueError as e:
+                raise SystemExit(f'[target-suffix] {e}')
+            print(f'  [target-suffix] isolated output: '
+                  f'{{fund}}.{target_suffix}.json')
+
         # R9-B.3 opt-in pack: flag/path 조합 validation. path 만 주면 에러.
         wcp_use = bool(getattr(args, 'use_wiki_context_pack', False))
         wcp_path = getattr(args, 'wiki_context_pack_path', None)
@@ -1025,7 +1069,8 @@ def main():
                                   force_window_ids=forced_window_ids,
                                   use_wiki_context_pack=wcp_use,
                                   wiki_context_pack=wcp_preloaded,
-                                  wiki_context_max_pages=wcp_max_pages)
+                                  wiki_context_max_pages=wcp_max_pages,
+                                  target_suffix=target_suffix)
             if result:
                 total_cost += result.get('cost', 0)
 
