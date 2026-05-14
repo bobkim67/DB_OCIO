@@ -125,19 +125,49 @@ def _get_api_key():
 
 
 def _call_llm(model: str, system: str, prompt: str, max_tokens: int = 1500,
-              log_label: str = '') -> str:
+              log_label: str = '',
+              *, stream: bool = False) -> str:
+    """Anthropic Messages API wrapper.
+
+    R9-B.4.1 hotfix — ``stream=True`` 사용 시 ``messages.stream()`` 으로
+    누적 응답을 만든 후 동일 ``text`` 문자열을 반환한다. non-streaming
+    Opus 호출이 10분 한계를 초과하는 quarterly synthesis 회귀를 해결.
+    default ``stream=False`` 는 기존 ``messages.create()`` 동작 그대로
+    (binary-identical 행동). 토큰/cost 로깅 schema 도 동일.
+    """
     import anthropic
     client = anthropic.Anthropic(api_key=_get_api_key())
-    response = client.messages.create(
-        model=model,
-        max_tokens=max_tokens,
-        system=system,
-        messages=[{'role': 'user', 'content': prompt}],
-    )
-    text = response.content[0].text.strip()
-    usage = response.usage
+    if not stream:
+        response = client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            system=system,
+            messages=[{'role': 'user', 'content': prompt}],
+        )
+        text = response.content[0].text.strip()
+        usage = response.usage
+        input_tokens = usage.input_tokens
+        output_tokens = usage.output_tokens
+    else:
+        # streaming: 청크를 누적해 동일한 text 를 만든다. final message 에서
+        # usage 를 가져와 기존 로깅 schema 그대로 유지.
+        parts: list[str] = []
+        with client.messages.stream(
+            model=model,
+            max_tokens=max_tokens,
+            system=system,
+            messages=[{'role': 'user', 'content': prompt}],
+        ) as s:
+            for chunk in s.text_stream:
+                parts.append(chunk)
+            final_message = s.get_final_message()
+        text = ''.join(parts).strip()
+        usage = final_message.usage
+        input_tokens = usage.input_tokens
+        output_tokens = usage.output_tokens
     _log('llm_call', label=log_label, model=model, max_tokens=max_tokens,
-         input_tokens=usage.input_tokens, output_tokens=usage.output_tokens,
+         input_tokens=input_tokens, output_tokens=output_tokens,
+         stream=bool(stream),
          system_preview=system[:200], prompt_preview=prompt[:500],
          response_preview=text[:500])
     return text
@@ -1612,12 +1642,16 @@ def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> 
     # 분기 32K / 월별 16K 로 상향. 자연 종료(마침표)는 system message 에서 강제.
     comment_max_tokens = 32000 if is_quarterly else 16000
     try:
+        # R9-B.4.1 — Opus synthesis 는 stream 사용. quarterly + wiki primary
+        # context 조합에서 prompt 가 길어져 non-streaming 10분 한계를 초과한
+        # 회귀 (R9-B.4 backtest 2026-Q1 fail) 해결.
         customer_comment = _call_llm(
             model='claude-opus-4-6',
             system=system_msg,
             prompt=comment_prompt,
             max_tokens=comment_max_tokens,
             log_label='synthesis_step1_comment',
+            stream=True,
         )
     except Exception as exc:
         customer_comment = f'코멘트 생성 실패: {exc}'
@@ -1649,12 +1683,14 @@ def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> 
 
     analysis = {}
     try:
+        # R9-B.4.1 — Step 2 도 Opus. Step 1 과 동일 prompt 사이즈 누적 위험.
         text = _call_llm(
             model='claude-opus-4-6',
             system=system_msg,
             prompt=analysis_prompt,
             max_tokens=2500,
             log_label='synthesis_step2_analysis',
+            stream=True,
         )
         analysis = _parse_json_response(text) or {}
         if not analysis:
@@ -2267,15 +2303,23 @@ def run_quarterly_debate(year: int, quarter: int,
         '_debug_trace': debug_trace,                    # Q-FIX-1
     }
 
+    # R9-B.4.1 — monthly log schema 와 일치시켜 llm_calls 포함. 분기 비용
+    # 추적이 가능하도록. monthly run_market_debate 와 동일 패턴.
     log_file = DEBATE_LOG_DIR / f'{year}-Q{quarter}.json'
+    log_payload = {
+        'debated_at': result['debated_at'],
+        'result': result,
+        'llm_calls': _debug_log.copy(),
+    }
     try:
         log_file.write_text(
-            json.dumps(result, ensure_ascii=False, indent=2, default=str),
+            json.dumps(log_payload, ensure_ascii=False, indent=2, default=str),
             encoding='utf-8',
         )
         print(f'  로그 저장: {log_file}')
     except Exception as exc:
         print(f'  [경고] 로그 저장 실패: {exc}')
+    _debug_log.clear()
 
     return result
 
