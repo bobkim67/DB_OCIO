@@ -594,6 +594,17 @@ def run_debate_and_save(mode: str, year: int, period_num: int,
     if isinstance(result.get('_debug_trace'), dict):
         draft_data['_debug_trace'] = result['_debug_trace']
 
+    # R9-B.3.1 hotfix — target_suffix 가 있으면 운영 wiki 06_Debate_Memory/
+    # 에 직접 쓰지 않는다. R9-B.3.1 의 "isolated run" 보장의 마지막 구멍.
+    # report_output 만 분리하고 wiki memory 가 운영 디렉토리에 들어가면
+    # smoke 가 실제로 isolated 가 아님.
+    debate_memory_skipped = bool(target_suffix)
+    if debate_memory_skipped:
+        draft_data['debate_memory_write_skipped'] = True
+        draft_data['debate_memory_write_skip_reason'] = (
+            'target_suffix_isolated_run'
+        )
+
     save_draft(period_key, fund_code, draft_data, target_suffix=target_suffix)
 
     eq_record = {
@@ -606,13 +617,19 @@ def run_debate_and_save(mode: str, year: int, period_num: int,
     }
     append_evidence_quality(eq_record, target_suffix=target_suffix)
 
-    # 06_Debate_Memory/ 페이지 생성 (canonical regime은 건드리지 않음)
-    try:
-        from market_research.wiki.debate_memory import write_debate_memory_page
-        regime_file = Path(__file__).resolve().parent.parent / 'data' / 'regime_memory.json'
-        wiki_path = write_debate_memory_page(draft_data, regime_file)
-        print(f'  [wiki] debate memory 기록: {wiki_path.name}')
-    except Exception as exc:
-        print(f'  [wiki] debate memory 기록 실패: {exc}')
+    # 06_Debate_Memory/ 페이지 생성 (canonical regime은 건드리지 않음).
+    # R9-B.3.1 — target_suffix isolated run 에서는 운영 wiki 를 건드리지
+    # 않도록 writer 호출 자체를 skip.
+    if debate_memory_skipped:
+        print(f'  [wiki] debate memory 기록 skip '
+              f'(target_suffix={target_suffix})')
+    else:
+        try:
+            from market_research.wiki.debate_memory import write_debate_memory_page
+            regime_file = Path(__file__).resolve().parent.parent / 'data' / 'regime_memory.json'
+            wiki_path = write_debate_memory_page(draft_data, regime_file)
+            print(f'  [wiki] debate memory 기록: {wiki_path.name}')
+        except Exception as exc:
+            print(f'  [wiki] debate memory 기록 실패: {exc}')
 
     return draft_data

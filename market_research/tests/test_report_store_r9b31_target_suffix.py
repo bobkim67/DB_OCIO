@@ -384,11 +384,8 @@ def test_cli_cache_path_suffix_kwarg():
 # 11. opt-in compatibility — debate_service kwarg pass-through
 # ──────────────────────────────────────────────────────────────────
 
-def test_debate_service_accepts_target_suffix_with_wcp(monkeypatch, tmp_output):
-    """run_debate_and_save 가 target_suffix + use_wiki_context_pack 양쪽 OK."""
-    from market_research.report import debate_service, debate_engine
-
-    fake_result = {
+def _stub_debate_result():
+    return {
         "year": 2026, "month": 4,
         "debate_run_id": "fake_run_id",
         "debated_at": "2026-05-14T00:00:00",
@@ -406,6 +403,13 @@ def test_debate_service_accepts_target_suffix_with_wcp(monkeypatch, tmp_output):
             "wiki_pages_selected": 12,
         },
     }
+
+
+def test_debate_service_accepts_target_suffix_with_wcp(monkeypatch, tmp_output):
+    """run_debate_and_save 가 target_suffix + use_wiki_context_pack 양쪽 OK."""
+    from market_research.report import debate_service, debate_engine
+
+    fake_result = _stub_debate_result()
     seen: dict = {}
 
     def _fake_run_market_debate(year, month, **kw):
@@ -445,3 +449,130 @@ def test_debate_service_accepts_target_suffix_with_wcp(monkeypatch, tmp_output):
     legacy_eq = tmp_output / "_evidence_quality.jsonl"
     assert suffix_eq.exists()
     assert legacy_eq.exists() is False
+
+
+# ──────────────────────────────────────────────────────────────────
+# 12. debate_memory writer skip in isolated runs (HOLD fix)
+#
+# R9-B.3.1 의 "isolated run" 보장: target_suffix 모드에서 운영 wiki
+# 06_Debate_Memory 가 절대 건드려지면 안 된다. R9-B.4 LLM smoke 가 실제로
+# 운영 wiki 를 오염하지 않도록 writer 호출 자체를 skip.
+# ──────────────────────────────────────────────────────────────────
+
+def _make_debate_service_monkeypatches(monkeypatch, writer_calls: list):
+    """공통 fixture — run_market_debate stub + writer call counter."""
+    from market_research.report import debate_engine
+
+    fake_result = _stub_debate_result()
+    monkeypatch.setattr(
+        debate_engine, "run_market_debate", lambda y, m, **kw: fake_result,
+    )
+
+    def _record_writer(draft, regime_file):
+        writer_calls.append({"fund_code": draft.get("fund_code"),
+                              "period": draft.get("period")})
+        return Path("/tmp/dummy.md")
+
+    monkeypatch.setattr(
+        "market_research.wiki.debate_memory.write_debate_memory_page",
+        _record_writer,
+    )
+
+
+def test_debate_memory_writer_called_for_legacy_run(monkeypatch, tmp_output):
+    """target_suffix=None → 기존 운영 동작 그대로 — writer 호출됨."""
+    from market_research.report import debate_service
+    writer_calls: list = []
+    _make_debate_service_monkeypatches(monkeypatch, writer_calls)
+
+    draft = debate_service.run_debate_and_save(
+        mode="월별", year=2026, period_num=4,
+        fund_code="_market", period_key="2026-04",
+    )
+    assert len(writer_calls) == 1
+    assert writer_calls[0]["fund_code"] == "_market"
+    # legacy 모드 → skip 필드 부재 (기존 draft schema 그대로)
+    assert "debate_memory_write_skipped" not in draft
+    assert "debate_memory_write_skip_reason" not in draft
+
+
+def test_debate_memory_writer_skipped_for_suffix_run(monkeypatch, tmp_output):
+    """target_suffix 명시 → writer 호출 0 (운영 wiki 보호)."""
+    from market_research.report import debate_service
+    writer_calls: list = []
+    _make_debate_service_monkeypatches(monkeypatch, writer_calls)
+
+    draft = debate_service.run_debate_and_save(
+        mode="월별", year=2026, period_num=4,
+        fund_code="_market", period_key="2026-04",
+        target_suffix="r9b4-smoke",
+    )
+    assert writer_calls == []
+    # draft 에 skip 메타 surface
+    assert draft["debate_memory_write_skipped"] is True
+    assert draft["debate_memory_write_skip_reason"] == (
+        "target_suffix_isolated_run"
+    )
+    # suffix draft file 안에도 그대로 직렬화
+    suffix_path = tmp_output / "2026-04" / "_market.r9b4-smoke.draft.json"
+    saved = json.loads(suffix_path.read_text(encoding="utf-8"))
+    assert saved["debate_memory_write_skipped"] is True
+    assert saved["debate_memory_write_skip_reason"] == (
+        "target_suffix_isolated_run"
+    )
+
+
+def test_debate_memory_writer_skipped_for_quarterly_suffix_run(
+    monkeypatch, tmp_output,
+):
+    """quarterly debate 도 동일 skip 보장 — R9-B.4 Q모드 smoke 안전성."""
+    from market_research.report import debate_service, debate_engine
+    writer_calls: list = []
+
+    fake_result = _stub_debate_result()
+    fake_result["months"] = [4, 5, 6]
+    monkeypatch.setattr(
+        debate_engine, "run_quarterly_debate",
+        lambda y, q, **kw: fake_result,
+    )
+
+    def _record_writer(draft, regime_file):
+        writer_calls.append(draft.get("fund_code"))
+        return Path("/tmp/dummy.md")
+
+    monkeypatch.setattr(
+        "market_research.wiki.debate_memory.write_debate_memory_page",
+        _record_writer,
+    )
+
+    draft = debate_service.run_debate_and_save(
+        mode="분기", year=2026, period_num=2,
+        fund_code="_market", period_key="2026-Q2",
+        target_suffix="r9b4-smoke",
+    )
+    assert writer_calls == []
+    assert draft["debate_memory_write_skipped"] is True
+
+
+def test_debate_memory_writer_skip_does_not_affect_other_writes(
+    monkeypatch, tmp_output,
+):
+    """writer skip 이 draft / evidence ledger 저장 자체는 막지 않는다."""
+    from market_research.report import debate_service
+    writer_calls: list = []
+    _make_debate_service_monkeypatches(monkeypatch, writer_calls)
+
+    debate_service.run_debate_and_save(
+        mode="월별", year=2026, period_num=4,
+        fund_code="_market", period_key="2026-04",
+        target_suffix="r9b4-smoke",
+    )
+    # suffix draft 와 suffix ledger 는 둘 다 생성
+    suffix_draft = tmp_output / "2026-04" / "_market.r9b4-smoke.draft.json"
+    suffix_eq = tmp_output / "_evidence_quality.r9b4-smoke.jsonl"
+    assert suffix_draft.exists()
+    assert suffix_eq.exists()
+    # 운영 wiki / 운영 ledger / 운영 draft 모두 변경 0
+    assert writer_calls == []
+    assert (tmp_output / "_evidence_quality.jsonl").exists() is False
+    assert (tmp_output / "2026-04" / "_market.draft.json").exists() is False
