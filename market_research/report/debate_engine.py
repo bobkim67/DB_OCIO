@@ -1014,6 +1014,229 @@ _CLAIM_CITATION_INSTRUCTION = (
 )
 
 
+# ──────────────────────────────────────────────────────────────────
+# R9-B.3 — Wiki Context Pack opt-in injection
+#
+# default OFF. opt-in 시 wiki_context_pack_builder 의 결과를 "primary
+# context" 로 prompt 상단에 추가하고, 기존 raw evidence/news/graph/regime
+# context 는 "validation/fallback" 으로 위계만 명시한다. raw block 제거 0.
+# ──────────────────────────────────────────────────────────────────
+
+WIKI_CONTEXT_PACK_SCHEMA_VERSION = "r9b-context-pack-1.0.0"
+WIKI_CONTEXT_PRIMARY_HEADING = "## A. Wiki Primary Context (R9-B.3 opt-in)"
+WIKI_CONTEXT_RAW_HEADING = "## B. Raw Validation / Fallback Context"
+
+_WIKI_CONTEXT_HIERARCHY_NOTE = (
+    "> **위계 안내** — A. Wiki Primary Context (canonical wiki 메모) 가 "
+    "기본 해석 베이스입니다. B. Raw Validation/Fallback 은 최신성·수치 "
+    "검증 자료이며, A 와 명백한 수치/시계열 충돌이 있을 때만 raw 를 "
+    "우선합니다. 일반 해석은 A 를, 단정 수치 인용은 B 의 indicators/PA "
+    "를 사용하세요.\n"
+)
+
+
+class WikiContextPackError(ValueError):
+    """opt-in path load 시 schema_version / period_key / stage 불일치."""
+
+
+def _validate_wiki_context_pack(
+    pack: dict, *,
+    expected_period: str | None = None,
+    expected_stage: str | None = None,
+) -> None:
+    """opt-in 으로 외부에서 load 된 pack 의 contract 확인. 통과 시 None,
+    위반 시 WikiContextPackError. fields 누락도 동일 에러로 묶는다.
+    """
+    if not isinstance(pack, dict):
+        raise WikiContextPackError(
+            f"wiki_context_pack must be a dict, got {type(pack).__name__}")
+    sv = pack.get("schema_version")
+    if sv != WIKI_CONTEXT_PACK_SCHEMA_VERSION:
+        raise WikiContextPackError(
+            f"wiki_context_pack schema_version mismatch: "
+            f"got {sv!r}, expected {WIKI_CONTEXT_PACK_SCHEMA_VERSION!r}")
+    pk = pack.get("period_key")
+    if expected_period is not None and pk != expected_period:
+        raise WikiContextPackError(
+            f"wiki_context_pack period_key mismatch: "
+            f"got {pk!r}, expected {expected_period!r}")
+    st = pack.get("stage")
+    if expected_stage is not None and st != expected_stage:
+        raise WikiContextPackError(
+            f"wiki_context_pack stage mismatch: "
+            f"got {st!r}, expected {expected_stage!r}")
+
+
+def _build_wiki_context_pack_for_debate(
+    *,
+    period_key: str,
+    stage: str,
+    fund_code: str | None,
+    max_pages: int,
+) -> dict:
+    """R9-B.3 — opt-in builder 호출 wrapper. read-only, LLM 0.
+
+    Lazy import — builder 가 wiki/paths.py 만 의존하므로 무거운 사이드
+    이펙트 없음. failure 는 caller 에서 WikiContextPackError 로 묶지
+    않고 그대로 surface (builder 내부 ValueError 도 옵션 OFF 회귀 0).
+    """
+    from market_research.report.wiki_context_pack_builder import (
+        build_wiki_context_pack,
+    )
+    return build_wiki_context_pack(
+        period_key=period_key,
+        stage=stage,
+        fund_code=fund_code,
+        max_pages=max_pages,
+    )
+
+
+def _excerpt(text: str | None, limit: int) -> str:
+    if not text:
+        return ""
+    t = str(text).strip()
+    if len(t) <= limit:
+        return t
+    return t[: max(0, limit - 1)].rstrip() + "…"
+
+
+def _format_wiki_primary_context_for_prompt(
+    pack: dict | None, *,
+    excerpt_per_entry: int = 240,
+    claim_excerpt: int = 200,
+) -> str:
+    """wiki_context_pack → A. Wiki Primary Context 블록 (markdown).
+
+    빈 pack 이면 빈 문자열 반환 — caller 가 block 자체를 skip 한다.
+    """
+    if not isinstance(pack, dict):
+        return ""
+    market = pack.get("market_context") or {}
+    fund_ctx = pack.get("fund_context") or {}
+    fund_page = fund_ctx.get("fund_page") if isinstance(fund_ctx, dict) else None
+    claims = market.get("claims") or []
+    graph = market.get("graph_evidence") or []
+    regime = market.get("regime") or []
+    events = market.get("events") or []
+    entities = market.get("entities") or []
+    assets = market.get("assets") or []
+
+    has_any = bool(
+        claims or graph or regime or events or entities or assets or fund_page
+    )
+    if not has_any:
+        return ""
+
+    lines: list[str] = [WIKI_CONTEXT_PRIMARY_HEADING]
+    lines.append(
+        f"_pack_period={pack.get('period_key')} stage={pack.get('stage')} "
+        f"window={pack.get('window_start')}~{pack.get('window_end')} "
+        f"as_of={pack.get('as_of_date')} pages_selected="
+        f"{(pack.get('source_trace') or {}).get('wiki_pages_selected', 0)}_"
+    )
+    lines.append("")
+
+    if fund_page:
+        lines.append("### A.0 Fund Pinned Page")
+        title = fund_page.get("title") or fund_page.get("path")
+        lines.append(
+            f"- `{fund_page.get('path')}` — {title}"
+        )
+        body = _excerpt(fund_page.get("excerpt"), excerpt_per_entry)
+        if body:
+            lines.append(f"  > {body}")
+        lines.append("")
+
+    if claims:
+        lines.append("### A.1 Canonical Claims (08_Claims, joined)")
+        for c in claims:
+            cid = c.get("claim_id") or "?"
+            h10 = cid.rsplit(":", 1)[-1] if cid.startswith("claim:") else cid
+            text = _excerpt(c.get("title") or c.get("excerpt"), claim_excerpt)
+            ac = ", ".join(c.get("affected_assets") or []) or "(없음)"
+            rule = c.get("promotion_rule") or "?"
+            related = c.get("related_group_ids") or []
+            related_s = f" related={','.join(related)}" if related else ""
+            lines.append(
+                f"- `[claim:{h10}]` ({rule}) assets=[{ac}]{related_s} — {text}"
+            )
+        lines.append("")
+
+    if graph:
+        lines.append("### A.2 Graph Evidence (07_Graph_Evidence)")
+        for g in graph:
+            title = g.get("title") or g.get("path")
+            lines.append(f"- `{g.get('path')}` — {title}")
+            body = _excerpt(g.get("excerpt"), excerpt_per_entry)
+            if body:
+                lines.append(f"  > {body}")
+        lines.append("")
+
+    if regime:
+        lines.append("### A.3 Regime Canonical (05_Regime_Canonical)")
+        for r in regime:
+            title = r.get("title") or r.get("path")
+            lines.append(f"- `{r.get('path')}` — {title}")
+            body = _excerpt(r.get("excerpt"), excerpt_per_entry)
+            if body:
+                lines.append(f"  > {body}")
+        lines.append("")
+
+    if events:
+        lines.append("### A.4 Events (01_Events)")
+        for e in events:
+            title = e.get("title") or e.get("path")
+            lines.append(f"- `{e.get('path')}` — {title}")
+            body = _excerpt(e.get("excerpt"), excerpt_per_entry)
+            if body:
+                lines.append(f"  > {body}")
+        lines.append("")
+
+    if entities:
+        lines.append("### A.5 Entities (02_Entities)")
+        for e in entities:
+            title = e.get("title") or e.get("path")
+            lines.append(f"- `{e.get('path')}` — {title}")
+        lines.append("")
+
+    if assets:
+        lines.append("### A.6 Assets (03_Assets)")
+        for a in assets:
+            title = a.get("title") or a.get("path")
+            lines.append(f"- `{a.get('path')}` — {title}")
+            body = _excerpt(a.get("excerpt"), excerpt_per_entry)
+            if body:
+                lines.append(f"  > {body}")
+        lines.append("")
+
+    lines.append(_WIKI_CONTEXT_HIERARCHY_NOTE)
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _wiki_context_pack_trace(pack: dict | None) -> dict:
+    """opt-in trace 필드만 추출. legacy mode 에선 호출 X — 호출자가 분기."""
+    if not isinstance(pack, dict):
+        return {}
+    st = pack.get("source_trace") or {}
+    return {
+        "wiki_context_pack_enabled": True,
+        "wiki_context_pack_schema_version": pack.get("schema_version"),
+        "wiki_context_pack_period_key": pack.get("period_key"),
+        "wiki_context_pack_stage": pack.get("stage"),
+        "wiki_pages_selected": st.get("wiki_pages_selected", 0),
+        "selected_wiki_paths": list(st.get("selected_wiki_paths") or []),
+        "wiki_source_type_counts": dict(st.get("source_type_counts") or {}),
+        "selected_claim_ids": list(st.get("selected_claim_ids") or []),
+        "selected_related_group_ids": list(
+            st.get("selected_related_group_ids") or []
+        ),
+        "claim_store_to_wiki_join_rate": st.get(
+            "claim_store_to_wiki_join_rate"
+        ),
+        "source_cutoff_violations": st.get("source_cutoff_violations", 0),
+    }
+
+
 def _format_claims_for_context(
     claims: list[dict] | None,
     *, max_claims: int = 8, text_truncate: int = 180,
@@ -1069,10 +1292,16 @@ def _build_agent_prompt(agent_type: str, context: dict) -> str:
     # R8-B-impl: Asset Movement Anchors 가 가장 윗단 (자산군 1차 unit).
     # R9-A.3: anchor 직후 Canonical Claims 블록 (있을 때만, 빈 문자열이면 skip).
     # R9-A.3.x: claims block 이 있을 때만 _CLAIM_CITATION_INSTRUCTION 도 inline.
+    # R9-B.3: wiki_primary_context_text (opt-in) 가 있으면 A 블록으로 prepend,
+    #         기존 raw blocks 는 B 블록 heading 으로 라벨링. raw block 제거 0.
     anchor_block = context.get('asset_movement_anchors_text') or ''
     claims_block = context.get('claims_text') or ''
+    wiki_primary_block = context.get('wiki_primary_context_text') or ''
+    raw_heading = (WIKI_CONTEXT_RAW_HEADING + '\n\n') if wiki_primary_block else ''
     shared = (
         f'## {context["year"]}년 {context["month"]}월 시장 분석\n\n'
+        + (wiki_primary_block + '\n' if wiki_primary_block else '')
+        + raw_heading
         + (anchor_block + '\n\n' if anchor_block else '')
         + (claims_block + '\n\n' if claims_block else '')
         + (_CLAIM_CITATION_INSTRUCTION + '\n' if claims_block else '')
@@ -1297,13 +1526,18 @@ def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> 
 
     # P3: synthesis 단계에도 graph/wiki context 주입
     # R9-A.3.x: synthesis 단계에도 Canonical Claims block + 인용 규칙 주입.
+    # R9-B.3: opt-in 시 wiki_primary_context_text 가 synthesis prompt 에도 들어감.
     graph_block = context.get("graph_paths_text", "") or ""
     wiki_block = context.get("wiki_context_text", "") or ""
     coverage_block = context.get("asset_coverage_text", "") or ""
     claims_block = context.get("claims_text", "") or ""
+    wiki_primary_block = context.get("wiki_primary_context_text", "") or ""
+    raw_heading = (WIKI_CONTEXT_RAW_HEADING + '\n\n') if wiki_primary_block else ''
     comment_prompt = (
         '4명의 분석가가 각각 다른 시각에서 시장을 분석했습니다.\n\n'
-        f'## 분석가별 의견\n{debate_text}\n\n'
+        + (wiki_primary_block + '\n' if wiki_primary_block else '')
+        + raw_heading
+        + f'## 분석가별 의견\n{debate_text}\n\n'
         f'## 뉴스 evidence\n{context.get("news_summary_text", "")}\n\n'
         + (f'{claims_block}\n\n' if claims_block else '')
         + (_CLAIM_CITATION_INSTRUCTION + '\n' if claims_block else '')
@@ -1529,19 +1763,63 @@ def _summarize_debate_narrative(agent_responses: dict) -> dict:
 
 def run_market_debate(year: int, month: int,
                       *,
-                      force_window_ids: set[str] | None = None) -> dict:
+                      force_window_ids: set[str] | None = None,
+                      use_wiki_context_pack: bool = False,
+                      wiki_context_pack: dict | None = None,
+                      wiki_context_max_pages: int = 12) -> dict:
     """
     시장 전체 debate (월 1회, 펀드 무관).
     4인 에이전트 병렬 실행 -> Opus 2단계 종합 -> 자산군별 분석 결과.
     펀드별 캐시에서는 이 결과를 참조하여 보유 비중에 맞는 코멘트만 사용.
 
     force_window_ids: BEW viewer 에서 선택된 window_id set (None=전체 BEW 사용).
+
+    R9-B.3 opt-in (default OFF, legacy behavior unchanged):
+      use_wiki_context_pack: True 일 때 wiki_context_pack_builder 의 결과를
+        prompt 의 "A. Wiki Primary Context" 블록으로 prepend. 기존 raw
+        evidence/news/graph/regime block 은 "B. Raw Validation/Fallback"
+        으로 라벨링만 변경 (raw 제거 0).
+      wiki_context_pack: opt-in 일 때 외부에서 미리 build/load 된 pack 을
+        그대로 사용. None 이면 builder 를 inline 호출. 외부 pack 은
+        schema_version / period_key 일치 검증 후 사용 (mismatch 시
+        WikiContextPackError).
+      wiki_context_max_pages: opt-in builder 의 max_pages (default 12).
     """
     print(f'\n-- Market Debate: {year}-{month:02d} --')
     if force_window_ids:
         print(f'  [forced BEW] {len(force_window_ids)}개 window_id 만 evidence lane 에 허용')
 
+    # R9-B.3 — opt-in wiki_context_pack 준비. 기존 path 와 격리.
+    prompt_context_mode = 'legacy'
+    wcp_trace_fields: dict = {'wiki_context_pack_enabled': False}
+    wiki_primary_text = ''
+    wcp_used: dict | None = None
+    if use_wiki_context_pack:
+        period_key = f'{year}-{month:02d}'
+        if wiki_context_pack is not None:
+            _validate_wiki_context_pack(
+                wiki_context_pack,
+                expected_period=period_key,
+                expected_stage='market_debate',
+            )
+            wcp_used = wiki_context_pack
+        else:
+            wcp_used = _build_wiki_context_pack_for_debate(
+                period_key=period_key,
+                stage='market_debate',
+                fund_code=None,
+                max_pages=wiki_context_max_pages,
+            )
+        wiki_primary_text = _format_wiki_primary_context_for_prompt(wcp_used)
+        wcp_trace_fields = _wiki_context_pack_trace(wcp_used)
+        prompt_context_mode = 'wiki_context_pack_opt_in'
+        print(f'  [wiki_context_pack] enabled, pages='
+              f'{wcp_trace_fields.get("wiki_pages_selected", 0)}')
+
     context = _build_shared_context(year, month, force_window_ids=force_window_ids)
+    context['wiki_primary_context_text'] = wiki_primary_text
+    context['_wiki_context_pack'] = wcp_used
+    context['_prompt_context_mode'] = prompt_context_mode
     print(f'  컨텍스트 빌드 완료')
 
     # 4인 에이전트 병렬 실행
@@ -1618,6 +1896,20 @@ def run_market_debate(year: int, month: int,
         'prompt_asset_coverage_chars': len(context.get('asset_coverage_text') or ''),
         'final_comment_asset_mentions': asset_mentions,
         'asset_coverage_pass': asset_pass,
+        # R9-B.3 — wiki context pack trace (legacy 시 'wiki_context_pack_enabled'=False)
+        'prompt_context_mode': prompt_context_mode,
+        'wiki_context_pack_enabled': bool(use_wiki_context_pack),
+        'wiki_primary_context_chars': len(wiki_primary_text or ''),
+        'raw_validation_context_chars': (
+            len(context.get('news_summary_text') or '')
+            + len(context.get('indicators_text') or '')
+            + len(context.get('timeseries_narrative_text') or '')
+            + len(context.get('graph_paths_text') or '')
+            + len(context.get('wiki_context_text') or '')
+            + len(context.get('asset_coverage_text') or '')
+        ),
+        **{k: v for k, v in wcp_trace_fields.items()
+           if k != 'wiki_context_pack_enabled'},
     }
 
     # R8-B-impl: agent 측 asset_movement_commentary union (dedupe by asset_class,
@@ -1742,7 +2034,10 @@ def _evidence_month_distribution(evidence_ids: list, year: int,
 
 def run_quarterly_debate(year: int, quarter: int,
                          *,
-                         force_window_ids: set[str] | None = None) -> dict:
+                         force_window_ids: set[str] | None = None,
+                         use_wiki_context_pack: bool = False,
+                         wiki_context_pack: dict | None = None,
+                         wiki_context_max_pages: int = 12) -> dict:
     """
     분기 통합 debate.
     해당 분기 3개월의 뉴스/지표를 종합하여 debate 실행.
@@ -1750,11 +2045,43 @@ def run_quarterly_debate(year: int, quarter: int,
     force_window_ids: BEW viewer 에서 선택된 window_id set. 3개월 컨텍스트 각각에
     동일 set 이 전달되며, 월과 실제로 매칭되는 wid 만 해당 월 BEW lane 에 적용된다
     (다른 월의 contract 에는 매칭 안 되므로 자연스럽게 무효화 됨).
+
+    R9-B.3 opt-in: market_debate 와 동일 시맨틱. period_key = 분기 마지막 월
+    (e.g. Q1 → "{year}-03"). stage = "quarterly_debate". default OFF.
     """
     months = [(quarter - 1) * 3 + i for i in range(1, 4)]
     print(f'\n-- Quarterly Debate: {year}Q{quarter} ({months[0]}~{months[2]}월) --')
     if force_window_ids:
         print(f'  [forced BEW] {len(force_window_ids)}개 window_id 만 evidence lane 에 허용')
+
+    # R9-B.3 — opt-in wiki_context_pack 준비 (quarterly).
+    prompt_context_mode = 'legacy'
+    wcp_trace_fields: dict = {'wiki_context_pack_enabled': False}
+    wiki_primary_text_q = ''
+    wcp_used_q: dict | None = None
+    if use_wiki_context_pack:
+        # 분기 end-month 를 period_key 로 사용 — wiki retriever / wiki page period
+        # filter 와 일관 (Q-FIX-1 last_ctx 시맨틱과 동일).
+        period_key = f'{year}-{months[-1]:02d}'
+        if wiki_context_pack is not None:
+            _validate_wiki_context_pack(
+                wiki_context_pack,
+                expected_period=period_key,
+                expected_stage='quarterly_debate',
+            )
+            wcp_used_q = wiki_context_pack
+        else:
+            wcp_used_q = _build_wiki_context_pack_for_debate(
+                period_key=period_key,
+                stage='quarterly_debate',
+                fund_code=None,
+                max_pages=wiki_context_max_pages,
+            )
+        wiki_primary_text_q = _format_wiki_primary_context_for_prompt(wcp_used_q)
+        wcp_trace_fields = _wiki_context_pack_trace(wcp_used_q)
+        prompt_context_mode = 'wiki_context_pack_opt_in'
+        print(f'  [wiki_context_pack] enabled, pages='
+              f'{wcp_trace_fields.get("wiki_pages_selected", 0)}')
 
     # 3개월 컨텍스트 병합
     merged_context = {
@@ -1814,6 +2141,11 @@ def run_quarterly_debate(year: int, quarter: int,
         merged_context['_asset_coverage'] = last_ctx.get('_asset_coverage', {})
         merged_context['wiki_context_text'] = last_ctx.get('wiki_context_text', '')
         merged_context['asset_coverage_text'] = last_ctx.get('asset_coverage_text', '')
+
+    # R9-B.3 — quarterly wiki primary context (last month period_key 사용)
+    merged_context['wiki_primary_context_text'] = wiki_primary_text_q
+    merged_context['_wiki_context_pack'] = wcp_used_q
+    merged_context['_prompt_context_mode'] = prompt_context_mode
 
     print(f'  컨텍스트 빌드 완료 (3개월 병합)')
 
@@ -1896,6 +2228,19 @@ def run_quarterly_debate(year: int, quarter: int,
         'missing_asset_classes': coverage.get('missing_asset_classes', []),
         'final_comment_asset_mentions': asset_mentions,
         'asset_coverage_pass': asset_pass,
+        # R9-B.3 — quarterly wiki context pack trace
+        'prompt_context_mode': prompt_context_mode,
+        'wiki_context_pack_enabled': bool(use_wiki_context_pack),
+        'wiki_primary_context_chars': len(wiki_primary_text_q or ''),
+        'raw_validation_context_chars': (
+            len(merged_context.get('news_summary_text') or '')
+            + len(merged_context.get('indicators_text') or '')
+            + len(merged_context.get('graph_paths_text') or '')
+            + len(merged_context.get('wiki_context_text') or '')
+            + len(merged_context.get('asset_coverage_text') or '')
+        ),
+        **{k: v for k, v in wcp_trace_fields.items()
+           if k != 'wiki_context_pack_enabled'},
     }
 
     # evidence_annotations — debate_service 의 함수 재사용 (지연 import 로 circular 회피)

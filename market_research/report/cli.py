@@ -339,11 +339,20 @@ def _load_past_comments(fund_code):
 # Debate 연동
 # ═══════════════════════════════════════════════════════
 
-def _run_debate(year, quarter, force_window_ids: set[str] | None = None):
+def _run_debate(year, quarter, force_window_ids: set[str] | None = None,
+                *,
+                use_wiki_context_pack: bool = False,
+                wiki_context_pack: dict | None = None,
+                wiki_context_max_pages: int = 12):
     """debate 엔진 실행 → 분기 마지막 월 기준.
 
     force_window_ids: BEW viewer 에서 export 된 forced window_id set.
     None 이면 기존 동작(전체 BEW contract).
+
+    R9-B.3 opt-in (default OFF, legacy unchanged):
+      use_wiki_context_pack / wiki_context_pack / wiki_context_max_pages
+      → run_market_debate 로 그대로 전달. 기본 OFF 면 wiki primary block
+      미주입 (raw-source-first 그대로).
     """
     _, end_month = _quarter_dates(year, quarter)
     try:
@@ -353,13 +362,49 @@ def _run_debate(year, quarter, force_window_ids: set[str] | None = None):
                   f'forced BEW: {len(force_window_ids)}개 window)...', flush=True)
         else:
             print(f'\n  debate 실행 중 ({year}-{end_month:02d})...', flush=True)
-        result = run_market_debate(year, end_month,
-                                   force_window_ids=force_window_ids)
+        if use_wiki_context_pack:
+            print(f'  [wiki_context_pack] opt-in '
+                  f'(max_pages={wiki_context_max_pages})')
+        result = run_market_debate(
+            year, end_month,
+            force_window_ids=force_window_ids,
+            use_wiki_context_pack=use_wiki_context_pack,
+            wiki_context_pack=wiki_context_pack,
+            wiki_context_max_pages=wiki_context_max_pages,
+        )
         print(f'  debate 완료')
         return result
     except Exception as e:
         print(f'  [경고] debate 실행 실패: {e}')
         return None
+
+
+def _load_wiki_context_pack_from_path(path_str: str, *,
+                                       expected_period: str,
+                                       expected_stage: str) -> dict:
+    """R9-B.3 — opt-in pack path load + schema/period/stage 검증.
+
+    실패 시 SystemExit (CLI fatal, fallback 하지 않음).
+    """
+    p = Path(path_str)
+    if not p.exists():
+        raise SystemExit(f'[wiki-context-pack] 파일 없음: {p}')
+    try:
+        pack = json.loads(p.read_text(encoding='utf-8'))
+    except Exception as e:
+        raise SystemExit(f'[wiki-context-pack] JSON 파싱 실패: {p} — {e}')
+    from market_research.report.debate_engine import (
+        _validate_wiki_context_pack, WikiContextPackError,
+    )
+    try:
+        _validate_wiki_context_pack(
+            pack,
+            expected_period=expected_period,
+            expected_stage=expected_stage,
+        )
+    except WikiContextPackError as e:
+        raise SystemExit(f'[wiki-context-pack] {e}')
+    return pack
 
 
 def _load_forced_bew_json(path_str: str, year: int, end_month: int) -> set[str]:
@@ -690,13 +735,20 @@ def _step_select_mode():
 
 def build_report(fund_code, period_info, mode='auto', detail=False,
                  model=None, fx_split=False,
-                 force_window_ids: set[str] | None = None):
+                 force_window_ids: set[str] | None = None,
+                 *,
+                 use_wiki_context_pack: bool = False,
+                 wiki_context_pack: dict | None = None,
+                 wiki_context_max_pages: int = 12):
     """단일 펀드 보고서 생성 → JSON 저장.
 
     period_info: dict with _start_dt, _end_dt, _label, _quarter
     mode: 'auto' | 'edit' | 'from-json'
     fx_split: True면 증권/FX 분리 (R FX_split=TRUE 동일)
     force_window_ids: BEW viewer 에서 export 된 forced window_id set (None=기본)
+    use_wiki_context_pack: R9-B.3 opt-in (default OFF)
+    wiki_context_pack: opt-in 시 외부에서 load 된 pack (None 이면 builder 호출)
+    wiki_context_max_pages: opt-in builder 의 cap (default 12)
     """
     start_dt = period_info['_start_dt']
     end_dt = period_info['_end_dt']
@@ -729,8 +781,13 @@ def build_report(fund_code, period_info, mode='auto', detail=False,
 
     # ── debate 실행 → inputs 생성 ──
     print('\n  debate 엔진 실행 중...')
-    debate_result = _run_debate(end_dt.year, quarter,
-                                force_window_ids=force_window_ids)
+    debate_result = _run_debate(
+        end_dt.year, quarter,
+        force_window_ids=force_window_ids,
+        use_wiki_context_pack=use_wiki_context_pack,
+        wiki_context_pack=wiki_context_pack,
+        wiki_context_max_pages=wiki_context_max_pages,
+    )
     inputs = _debate_to_inputs(debate_result)
     if not inputs:
         inputs = {'source': 'auto'}
@@ -868,6 +925,16 @@ def main():
     build_p.add_argument('--forced-bew-json', type=str, default=None,
                          help='BEW viewer 에서 export 된 forced-BEW JSON 경로. '
                               '해당 월 window_id 만 debate evidence lane 에 허용.')
+    # R9-B.3 opt-in flags (default OFF — legacy unchanged)
+    build_p.add_argument('--use-wiki-context-pack', action='store_true',
+                         help='R9-B.3 opt-in: debate prompt 의 A. Wiki Primary '
+                              'Context 블록에 wiki_context_pack 주입. default OFF.')
+    build_p.add_argument('--wiki-context-pack-path', type=str, default=None,
+                         help='opt-in 시 외부 pack JSON 경로. '
+                              '없으면 builder 가 즉시 생성. schema_version / '
+                              'period_key / stage 검증 후 사용.')
+    build_p.add_argument('--wiki-context-max-pages', type=int, default=12,
+                         help='opt-in builder 의 max_pages (default 12).')
 
     # list
     sub.add_parser('list', help='캐시된 보고서 목록')
@@ -928,6 +995,25 @@ def main():
             _, _end_m = _quarter_dates(_y, _q)
             forced_window_ids = _load_forced_bew_json(forced_json_path, _y, _end_m)
 
+        # R9-B.3 opt-in pack: flag/path 조합 validation. path 만 주면 에러.
+        wcp_use = bool(getattr(args, 'use_wiki_context_pack', False))
+        wcp_path = getattr(args, 'wiki_context_pack_path', None)
+        wcp_max_pages = int(getattr(args, 'wiki_context_max_pages', 12))
+        if wcp_path and not wcp_use:
+            raise SystemExit(
+                '[wiki-context-pack] --wiki-context-pack-path 는 '
+                '--use-wiki-context-pack 와 함께 사용해야 합니다.')
+        wcp_preloaded: dict | None = None
+        if wcp_use and wcp_path:
+            _y = period_info.get('year') or period_info['_end_dt'].year
+            _q = period_info['_quarter']
+            _, _end_m = _quarter_dates(_y, _q)
+            wcp_preloaded = _load_wiki_context_pack_from_path(
+                wcp_path,
+                expected_period=f'{_y}-{_end_m:02d}',
+                expected_stage='market_debate',
+            )
+
         # 실행
         total_cost = 0
         for fc in fund_codes:
@@ -936,7 +1022,10 @@ def main():
             result = build_report(fc, period_info, mode=mode,
                                   detail=args.detail, model=args.model,
                                   fx_split=fx_split,
-                                  force_window_ids=forced_window_ids)
+                                  force_window_ids=forced_window_ids,
+                                  use_wiki_context_pack=wcp_use,
+                                  wiki_context_pack=wcp_preloaded,
+                                  wiki_context_max_pages=wcp_max_pages)
             if result:
                 total_cost += result.get('cost', 0)
 
