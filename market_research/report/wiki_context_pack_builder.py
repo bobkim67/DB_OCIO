@@ -352,6 +352,58 @@ def _parse_affected_assets_from_body(body: str) -> list[str]:
     return out
 
 
+# Body 에 들어오는 group_id pattern. R9-A.14 G1 정의: group:{period}:{md5[:10]}.
+_RELATED_GROUP_ID_RE = re.compile(r"group:\d{4}-\d{2}:[0-9a-f]{10}")
+
+
+def _parse_related_group_ids_from_body(body: str) -> list[str]:
+    """`## Related Stable Lineage` 섹션의 `- related_group_id[s]: ...` 추출.
+
+    R9-A.21A dual-anchor lineage linking 이 도입한 body 블록 컨벤션을 위한
+    fallback parser. frontmatter `related_group_ids` 가 비어 있을 때만
+    호출되도록 caller 가 분기 (frontmatter 우선 원칙).
+
+    지원 형태:
+      - `- related_group_id: group:2026-04:cfee0ff342`        (singular)
+      - `- related_group_ids: ["group:...", "group:..."]`     (plural list)
+      - `- related_group_ids: group:..., group:...`           (plural CSV)
+
+    section 안에 등장한 모든 `group:YYYY-MM:hash10` 패턴을 dedup 보존순으로
+    반환. section 외부의 group_id 는 무시 (대량 graph excerpt 가 noise 가
+    되지 않도록).
+    """
+    if not body:
+        return []
+    in_section = False
+    out: list[str] = []
+    seen: set[str] = set()
+    for line in body.splitlines():
+        s = line.strip()
+        if not in_section:
+            # heading match: "## Related Stable Lineage" — case insensitive,
+            # tolerate trailing spaces/anchors.
+            if s.lower().startswith("## related stable lineage"):
+                in_section = True
+            continue
+        # in section
+        if s.startswith("## "):
+            break
+        if not s.startswith("- "):
+            continue
+        item = s[2:].lstrip()
+        key, _, _ = item.partition(":")
+        key_l = key.strip().lower()
+        if key_l not in ("related_group_id", "related_group_ids"):
+            continue
+        # Pattern match instead of structured parse — Robust to JSON-ish,
+        # CSV, single-quoted, or bare values.
+        for m in _RELATED_GROUP_ID_RE.findall(item):
+            if m not in seen:
+                seen.add(m)
+                out.append(m)
+    return out
+
+
 def parse_wiki_page(
     path: Path, *,
     body_excerpt_chars: int = DEFAULT_BODY_EXCERPT_CHARS,
@@ -419,13 +471,20 @@ def parse_wiki_page(
 
     claim_id = fm.get("claim_id")
     canonical_group_id = fm.get("canonical_group_id")
+    # frontmatter 우선 — `related_group_ids` (plural) / `related_group_id`
+    # (singular) 둘 다 인식. 비어 있고 08_Claims 페이지면 R9-A.21A 의 body
+    # `## Related Stable Lineage` 블록을 fallback 으로 파싱.
     related = fm.get("related_group_ids")
+    if related is None:
+        related = fm.get("related_group_id")
     if isinstance(related, list):
-        related_ids = [str(r) for r in related]
+        related_ids = [str(r) for r in related if r]
     elif isinstance(related, str) and related:
         related_ids = [related]
     else:
         related_ids = []
+    if not related_ids and directory == "08_Claims":
+        related_ids = _parse_related_group_ids_from_body(body)
     promotion_rule = fm.get("promotion_rule")
 
     affected: list[str] = []

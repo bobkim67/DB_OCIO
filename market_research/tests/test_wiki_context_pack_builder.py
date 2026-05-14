@@ -715,3 +715,163 @@ def test_fund_pinned_reserved_before_filldirs(
     assert st["selected_by_directory"].get("07_Graph_Evidence") == 1
     assert pack["fund_context"]["fund_page"] is not None
     assert pack["fund_context"]["fund_page"]["fund_code"] == "07G04"
+
+
+# ──────────────────────────────────────────────────────────────────
+# R9-B.2 hotfix (R9-B.3 HOLD): body-level `## Related Stable Lineage`
+# parsing (R9-A.21A dual-anchor lineage convention)
+# ──────────────────────────────────────────────────────────────────
+
+def test_body_related_group_id_singular_parsed():
+    body = (
+        "# Claim\n## Summary\n- x\n\n"
+        "## Related Stable Lineage\n\n"
+        "- related_group_id: group:2026-04:cfee0ff342\n"
+        "- source: R9-A.16 strong stable\n"
+        "- run_count: 3\n"
+    )
+    out = wcp._parse_related_group_ids_from_body(body)
+    assert out == ["group:2026-04:cfee0ff342"]
+
+
+def test_body_related_group_ids_plural_list_parsed():
+    body = (
+        "## Related Stable Lineage\n"
+        "- related_group_ids: [\"group:2026-04:aaaaaaaaaa\", "
+        "\"group:2026-04:bbbbbbbbbb\"]\n"
+    )
+    out = wcp._parse_related_group_ids_from_body(body)
+    assert out == ["group:2026-04:aaaaaaaaaa", "group:2026-04:bbbbbbbbbb"]
+
+
+def test_body_related_group_ids_csv_parsed():
+    body = (
+        "## Related Stable Lineage\n"
+        "- related_group_ids: group:2026-04:aaaaaaaaaa, group:2026-04:bbbbbbbbbb\n"
+    )
+    out = wcp._parse_related_group_ids_from_body(body)
+    assert "group:2026-04:aaaaaaaaaa" in out
+    assert "group:2026-04:bbbbbbbbbb" in out
+    assert len(out) == 2
+
+
+def test_body_related_group_id_outside_section_ignored():
+    """section 외부의 group:... 패턴은 noise 로 간주 — graph excerpt 등."""
+    body = (
+        "## Other Section\n- related_group_id: group:2026-04:cccccccccc\n"
+        "Some text mentions group:2026-04:dddddddddd in body.\n"
+        "## Related Stable Lineage\n"
+        "- related_group_id: group:2026-04:cfee0ff342\n"
+    )
+    out = wcp._parse_related_group_ids_from_body(body)
+    assert out == ["group:2026-04:cfee0ff342"]
+
+
+def test_body_related_group_id_dedupes():
+    body = (
+        "## Related Stable Lineage\n"
+        "- related_group_id: group:2026-04:cfee0ff342\n"
+        "- related_group_id: group:2026-04:cfee0ff342\n"
+        "- related_group_id: group:2026-04:dddddddddd\n"
+    )
+    out = wcp._parse_related_group_ids_from_body(body)
+    assert out == ["group:2026-04:cfee0ff342", "group:2026-04:dddddddddd"]
+
+
+def test_body_related_group_id_no_section_returns_empty():
+    body = "# Claim\n## Summary\n- claim text\n"
+    assert wcp._parse_related_group_ids_from_body(body) == []
+
+
+def test_body_related_group_id_empty_body():
+    assert wcp._parse_related_group_ids_from_body("") == []
+
+
+def test_parse_wiki_page_body_lineage_fallback_for_claims(tmp_path):
+    """frontmatter 에 related_group_ids 가 없고 08_Claims 페이지면
+    body `## Related Stable Lineage` 블록을 fallback 으로 읽는다.
+    R9-A.21A dual-anchor 컨벤션 회귀 방어."""
+    wiki = tmp_path / "wiki"
+    (wiki / "08_Claims").mkdir(parents=True)
+    fp = wiki / "08_Claims" / "2026-04_claim_e78dc83a1e.md"
+    fp.write_text(
+        "---\n"
+        "type: claim\n"
+        "claim_id: claim:2026-04:e78dc83a1e\n"
+        "period: 2026-04\n"
+        "promoted_at: 2026-05-08T09:21:04\n"
+        "promotion_rule: B\n"
+        "---\n\n"
+        "# 중동 휴전\n## Summary\n- claim text\n\n"
+        "## Related Stable Lineage\n\n"
+        "- related_group_id: group:2026-04:cfee0ff342\n"
+        "- source: R9-A.20\n",
+        encoding="utf-8",
+    )
+    rec = wcp.parse_wiki_page(fp, wiki_root=wiki)
+    assert rec is not None
+    assert rec.claim_id == "claim:2026-04:e78dc83a1e"
+    assert rec.related_group_ids == ["group:2026-04:cfee0ff342"]
+
+
+def test_parse_wiki_page_frontmatter_wins_when_both_present(tmp_path):
+    """frontmatter 가 비어있지 않으면 body fallback 호출 X (우선순위)."""
+    wiki = tmp_path / "wiki"
+    (wiki / "08_Claims").mkdir(parents=True)
+    fp = wiki / "08_Claims" / "2026-04_claim_x.md"
+    fp.write_text(
+        "---\n"
+        "claim_id: claim:2026-04:xxxxxxxxxx\n"
+        "period: 2026-04\n"
+        "promoted_at: 2026-05-08T00:00:00\n"
+        "related_group_ids: [\"group:2026-04:fm0000aaaa\"]\n"
+        "---\n\n"
+        "## Related Stable Lineage\n"
+        "- related_group_id: group:2026-04:body00bbbb\n",
+        encoding="utf-8",
+    )
+    rec = wcp.parse_wiki_page(fp, wiki_root=wiki)
+    assert rec is not None
+    assert rec.related_group_ids == ["group:2026-04:fm0000aaaa"]
+    # body 값은 무시됨
+    assert "group:2026-04:body00bbbb" not in rec.related_group_ids
+
+
+def test_parse_wiki_page_singular_frontmatter_key_also_accepted(tmp_path):
+    """frontmatter 가 plural 이 아니라 singular `related_group_id` 만 있는
+    경우도 인식 — backward-compat (frontmatter 단수형은 발견되지 않았지만
+    parser 가 더 안전한 쪽으로)."""
+    wiki = tmp_path / "wiki"
+    (wiki / "08_Claims").mkdir(parents=True)
+    fp = wiki / "08_Claims" / "2026-04_claim_y.md"
+    fp.write_text(
+        "---\n"
+        "claim_id: claim:2026-04:yyyyyyyyyy\n"
+        "period: 2026-04\n"
+        "promoted_at: 2026-05-08T00:00:00\n"
+        "related_group_id: group:2026-04:fm0000cccc\n"
+        "---\n\n# Claim\nbody\n",
+        encoding="utf-8",
+    )
+    rec = wcp.parse_wiki_page(fp, wiki_root=wiki)
+    assert rec is not None
+    assert rec.related_group_ids == ["group:2026-04:fm0000cccc"]
+
+
+def test_body_fallback_only_for_claims_directory(tmp_path):
+    """fallback 은 08_Claims 디렉토리에서만 동작 — graph evidence 등은
+    body 에 group:... 가 들어가도 reverse-leak 안 되어야 한다."""
+    wiki = tmp_path / "wiki"
+    (wiki / "07_Graph_Evidence").mkdir(parents=True)
+    fp = wiki / "07_Graph_Evidence" / "2026-04_transmission_paths_draft.md"
+    fp.write_text(
+        "---\nperiod: 2026-04\n---\n\n"
+        "## Related Stable Lineage\n"
+        "- related_group_id: group:2026-04:noisexxxxx\n",
+        encoding="utf-8",
+    )
+    rec = wcp.parse_wiki_page(fp, wiki_root=wiki)
+    assert rec is not None
+    assert rec.directory == "07_Graph_Evidence"
+    # 08_Claims 가 아니므로 body fallback 미작동
+    assert rec.related_group_ids == []
