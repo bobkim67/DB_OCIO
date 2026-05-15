@@ -288,7 +288,7 @@ export interface paths {
         };
         /**
          * Wiki context pack 미리보기 (R9-B, read-only)
-         * @description `build_wiki_context_pack` 산출물을 그대로 노출. LLM 호출 0, 운영 wiki/claims/report_output 변경 0. admin/debug 전용.
+         * @description `build_wiki_context_pack` 산출물을 그대로 노출. LLM 호출 0, 운영 wiki/claims/report_output 변경 0. admin/debug 전용. R9-B.5 — period_type='quarterly' 시 period_key 가 YYYY-QX 형식이면 자동 unpacking, 또는 period_keys CSV (예 '2026-01,2026-02,2026-03') 로 명시 가능. monthly path 는 회귀 없음.
          */
         get: operations["get_wiki_context_pack_api_admin_wiki_context_pack_get"];
         put?: never;
@@ -1577,6 +1577,16 @@ export interface components {
             /** Period Key */
             period_key: string;
             /**
+             * Period Keys
+             * @default []
+             */
+            period_keys: string[];
+            /**
+             * Period Type
+             * @default monthly
+             */
+            period_type: string;
+            /**
              * Stage
              * @enum {string}
              */
@@ -2149,6 +2159,8 @@ export interface operations {
             query: {
                 period_key: string;
                 stage?: "market_debate" | "fund_comment" | "quarterly_debate" | "admin_preview";
+                period_type?: string;
+                period_keys?: string | null;
                 fund_code?: string | null;
                 max_pages?: number;
                 body_excerpt_chars?: number;

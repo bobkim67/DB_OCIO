@@ -61,6 +61,10 @@ class WikiContextPackResponseDTO(BaseModel):
     """
     meta: BaseMeta
     period_key: str
+    # R9-B.5 — quarterly union 일 때 unpacked monthly keys 노출 (예 ['2026-01',
+    # '2026-02','2026-03']). monthly path 는 [period_key] 단일 원소 list.
+    period_keys: list[str] = []
+    period_type: str = "monthly"
     stage: WikiPackStage
     fund_code: str | None = None
     summary: WikiContextPackSummaryDTO

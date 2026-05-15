@@ -237,6 +237,26 @@ def _month_start_date(period_key: str) -> str | None:
     return f"{y:04d}-{mo:02d}-01"
 
 
+# R9-B.5 — quarter label → 3 monthly period_keys.
+_QUARTER_RE = re.compile(r"^(\d{4})-Q([1-4])$")
+
+
+def _quarter_to_period_keys(quarter_label: str) -> list[str]:
+    """'2026-Q1' → ['2026-01', '2026-02', '2026-03'].
+
+    Raises ValueError on bad input. R9-B.5 quarterly stage 의 유일한
+    label→monthly unpacking 진입점.
+    """
+    m = _QUARTER_RE.match(quarter_label or "")
+    if not m:
+        raise ValueError(
+            f"invalid quarter label {quarter_label!r}: expected YYYY-Q[1-4]"
+        )
+    y, q = int(m.group(1)), int(m.group(2))
+    months = [(q - 1) * 3 + i for i in (1, 2, 3)]
+    return [f"{y:04d}-{mo:02d}" for mo in months]
+
+
 def _resolve_request_window(
     *,
     period_key: str,
@@ -244,24 +264,52 @@ def _resolve_request_window(
     window_start: str | None,
     window_end: str | None,
     as_of_date: str | None,
+    period_keys: list[str] | None = None,
 ) -> dict:
-    """Fill defaults for a monthly request. period_type='custom' 은
-    caller 가 window_start/end/as_of_date 를 명시해야 한다."""
+    """Fill defaults for monthly / quarterly / custom request.
+
+    monthly: period_key='YYYY-MM' single month window.
+    quarterly (R9-B.5): period_key='YYYY-QX' label + period_keys=['YYYY-MM',
+      ...] (1~3개). window = [첫 month 1일, 마지막 month 말일].
+    custom: caller 가 window_start/end/as_of_date 를 명시해야 한다.
+    """
     if period_type == "monthly":
         ws = window_start or _month_start_date(period_key) or ""
         we = window_end or _month_end_date(period_key) or ""
         aod = as_of_date or we
+        resolved_keys = [period_key]
+    elif period_type == "quarterly":
+        # period_keys 명시 우선, 없으면 period_key (예 '2026-Q1') 로부터 자동
+        # 도출. 둘 다 부재 → 에러.
+        if period_keys:
+            resolved_keys = list(period_keys)
+        else:
+            resolved_keys = _quarter_to_period_keys(period_key)
+        if not resolved_keys:
+            raise ValueError(
+                "quarterly period_type requires non-empty period_keys"
+            )
+        # sort for deterministic window. month start of first, month end of last.
+        sorted_keys = sorted(resolved_keys)
+        first, last = sorted_keys[0], sorted_keys[-1]
+        ws = window_start or _month_start_date(first) or ""
+        we = window_end or _month_end_date(last) or ""
+        aod = as_of_date or we
+        resolved_keys = sorted_keys
     elif period_type == "custom":
         ws = window_start or ""
         we = window_end or ""
         aod = as_of_date or we
+        resolved_keys = period_keys or ([period_key] if period_key else [])
     else:
         raise ValueError(
-            f"unsupported period_type: {period_type!r} (expected 'monthly' or 'custom')"
+            f"unsupported period_type: {period_type!r} "
+            f"(expected 'monthly' | 'quarterly' | 'custom')"
         )
     return {
         "period_type": period_type,
         "period_key": period_key,
+        "period_keys": resolved_keys,
         "window_start": ws,
         "window_end": we,
         "as_of_date": aod,
@@ -843,7 +891,7 @@ def _claim_id_to_filename(claim_id: str) -> str | None:
 
 def _build_claim_section(
     *,
-    period_key: str,
+    period_keys: list[str],
     wiki_root: Path,
     claims_dir: Path | None = None,
     body_excerpt_chars: int,
@@ -852,18 +900,35 @@ def _build_claim_section(
 ) -> tuple[list[dict], dict]:
     """claim_store selected + wiki 08_Claims 매칭 → claim entries + trace.
 
+    R9-B.5 multi-month union: period_keys list 의 각 monthly store 를 순차
+    load 하고, dedup-by-claim_id 보존순으로 합친다. monthly path 도
+    동일 코드를 거치며 (period_keys=[그 month]) regression-free.
+
     Returns (claim_entries, trace_dict). trace 는 selected/matched count,
     join rate, related_group_ids, source_cutoff_violations 포함.
     """
-    selected = _load_claim_store_passing(period_key, claims_dir=claims_dir)
-    selected_ids = [c.get("claim_id") for c in selected if c.get("claim_id")]
+    # Phase 1 — load + dedup per (period, claim_id).
+    selected_all: list[dict] = []
+    seen_claim_ids: set[str] = set()
+    per_period_selected_counts: dict[str, int] = {}
+    for pk in period_keys:
+        store = _load_claim_store_passing(pk, claims_dir=claims_dir)
+        per_period_selected_counts[pk] = len(store)
+        for c in store:
+            cid = c.get("claim_id")
+            if not cid or cid in seen_claim_ids:
+                continue
+            seen_claim_ids.add(cid)
+            selected_all.append(c)
+
+    selected_ids = [c.get("claim_id") for c in selected_all if c.get("claim_id")]
     claim_entries: list[dict] = []
     matched = 0
     related_group_ids: list[str] = []
     cutoff_violations = 0
     warnings: list[dict] = []
 
-    for c in selected:
+    for c in selected_all:
         cid = c.get("claim_id")
         if not cid:
             continue
@@ -914,8 +979,10 @@ def _build_claim_section(
             })
         related_group_ids.extend(rec.related_group_ids)
         matched += 1
+        # page_id 의 period 는 claim_id 에 내장된 period (cid 의 가운데 토큰).
+        claim_period = cid.split(":")[1] if cid.count(":") == 2 else "?"
         claim_entries.append({
-            "page_id": f"claim:{period_key}:{cid.rsplit(':', 1)[-1]}",
+            "page_id": f"claim:{claim_period}:{cid.rsplit(':', 1)[-1]}",
             "path": rec.path,
             "claim_id": cid,
             "canonical_group_id": rec.canonical_group_id,
@@ -941,7 +1008,7 @@ def _build_claim_section(
         join_rate = None  # n/a
         warnings.append({
             "warning_type": "claim_store_zero_selected",
-            "period": period_key,
+            "period_keys": list(period_keys),
             "note": (
                 "claim_store 에서 Rule A/B 통과 claim 0. join rate 계산 불가. "
                 "기존 운영 wiki 8개 page 와 무관 — store/promotion threshold "
@@ -961,6 +1028,8 @@ def _build_claim_section(
         "selected_related_group_ids": dedup_related,
         "source_cutoff_violations": cutoff_violations,
         "warnings": warnings,
+        # R9-B.5 per-period claim_store selection counts.
+        "claim_store_selected_count_by_period": per_period_selected_counts,
     }
     return claim_entries, trace
 
@@ -986,6 +1055,7 @@ def build_wiki_context_pack(
     *,
     period_key: str,
     period_type: str = "monthly",
+    period_keys: list[str] | None = None,
     window_start: str | None = None,
     window_end: str | None = None,
     as_of_date: str | None = None,
@@ -999,6 +1069,18 @@ def build_wiki_context_pack(
 ) -> dict:
     """Build the wiki context pack (read-only).
 
+    R9-B.5 — period_type='quarterly' 일 때:
+      - period_key 가 'YYYY-QX' 면 _quarter_to_period_keys 로 자동 unpacking.
+      - period_keys 가 명시되면 그 list 를 그대로 사용 (custom 범위).
+      - window = [첫 month 1일, 마지막 month 말일].
+      - claim_store 는 각 period_key 별 monthly store 를 union (dedup by
+        claim_id, 보존순).
+      - 01_Events/02_Entities/03_Assets/07_Graph_Evidence 는 분기 window
+        overlap 기준으로 selection (기존 monthly window 로직 그대로).
+      - 04_Funds pinned 은 fund_comment stage 에서만 — quarterly stage 는
+        04_Funds 미허용.
+
+    monthly path (default) 는 regression-free.
     See ``r9b_wiki_first_debate_architecture.md`` §8 for the schema.
     """
     root = wiki_root or WIKI_ROOT
@@ -1008,6 +1090,7 @@ def build_wiki_context_pack(
         window_start=window_start,
         window_end=window_end,
         as_of_date=as_of_date,
+        period_keys=period_keys,
     )
     run_time = builder_run_time or datetime.now(timezone.utc).isoformat(timespec="seconds")
     allowed = _allowed_dirs(stage)
@@ -1111,7 +1194,7 @@ def build_wiki_context_pack(
     }
     if "08_Claims" in allowed:
         claims_section_entries, claim_trace = _build_claim_section(
-            period_key=period_key,
+            period_keys=request_window["period_keys"],
             wiki_root=root,
             claims_dir=(root.parent / "claims"),
             body_excerpt_chars=body_excerpt_chars,
@@ -1165,6 +1248,9 @@ def build_wiki_context_pack(
         "schema_version": SCHEMA_VERSION,
         "period_type": request_window["period_type"],
         "period_key": request_window["period_key"],
+        # R9-B.5 — quarterly union 일 때 unpacked monthly keys 노출. monthly
+        # path 도 [period_key] 형태로 일관 노출.
+        "period_keys": request_window["period_keys"],
         "window_start": request_window["window_start"],
         "window_end": request_window["window_end"],
         "as_of_date": request_window["as_of_date"],
@@ -1208,6 +1294,10 @@ def build_wiki_context_pack(
             "claim_store_to_wiki_join_rate": claim_trace["claim_store_to_wiki_join_rate"],
             "source_cutoff_violations": cutoff_violations_total,
             "per_dir_stats": per_dir_stats,
+            # R9-B.5 — per-period claim_store size (quarterly union 분포).
+            "claim_store_selected_count_by_period": claim_trace.get(
+                "claim_store_selected_count_by_period", {},
+            ),
         },
         "warnings": overall_warnings,
     }

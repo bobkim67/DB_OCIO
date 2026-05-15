@@ -29,7 +29,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="R9-B.2 wiki context pack builder (read-only / debug-only)"
     )
     p.add_argument("--period", required=True,
-                   help="YYYY-MM, e.g. 2026-04 (monthly only in R9-B.2)")
+                   help="period_key. monthly: YYYY-MM (e.g. 2026-04). "
+                        "quarterly: YYYY-QX (e.g. 2026-Q1) — R9-B.5.")
+    p.add_argument("--period-type", default="monthly",
+                   choices=("monthly", "quarterly"),
+                   help="R9-B.5: 'quarterly' 시 period 가 YYYY-QX 형식이면 "
+                        "자동 unpacking, 또는 --period-keys 로 명시.")
+    p.add_argument("--period-keys", default=None,
+                   help="R9-B.5 quarterly: monthly period_keys CSV "
+                        "(예 '2026-01,2026-02,2026-03'). --period-type=monthly "
+                        "와 함께 사용 불가.")
     p.add_argument("--stage", default="market_debate",
                    choices=("market_debate", "fund_comment",
                             "quarterly_debate", "admin_preview"),
@@ -129,8 +138,20 @@ def main(argv: list[str] | None = None) -> int:
         build_wiki_context_pack,
     )
 
+    # R9-B.5 period_keys CSV parsing + 정합성 가드
+    pk_csv = getattr(args, "period_keys", None)
+    pk_list: list[str] | None = None
+    if pk_csv:
+        pk_list = [s.strip() for s in pk_csv.split(",") if s.strip()]
+    ptype = getattr(args, "period_type", "monthly")
+    if ptype == "monthly" and pk_list:
+        raise SystemExit(
+            "[period_keys] --period-keys 는 --period-type=quarterly 와만 사용 가능"
+        )
     pack = build_wiki_context_pack(
         period_key=args.period,
+        period_type=ptype,
+        period_keys=pk_list,
         stage=args.stage,
         fund_code=args.fund_code,
         max_pages=args.max_pages,

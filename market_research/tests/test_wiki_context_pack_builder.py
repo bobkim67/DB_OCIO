@@ -875,3 +875,272 @@ def test_body_fallback_only_for_claims_directory(tmp_path):
     assert rec.directory == "07_Graph_Evidence"
     # 08_Claims 가 아니므로 body fallback 미작동
     assert rec.related_group_ids == []
+
+
+# ──────────────────────────────────────────────────────────────────
+# R9-B.5 — multi-month quarterly pack
+# ──────────────────────────────────────────────────────────────────
+
+def test_quarter_to_period_keys_basic():
+    assert wcp._quarter_to_period_keys("2026-Q1") == [
+        "2026-01", "2026-02", "2026-03",
+    ]
+    assert wcp._quarter_to_period_keys("2026-Q4") == [
+        "2026-10", "2026-11", "2026-12",
+    ]
+
+
+@pytest.mark.parametrize("bad", ["", "2026-Q5", "2026-01", "Q1-2026", "abc"])
+def test_quarter_to_period_keys_rejects_bad(bad: str):
+    with pytest.raises(ValueError):
+        wcp._quarter_to_period_keys(bad)
+
+
+def test_resolve_quarterly_window_auto_unpacks_period_key():
+    w = wcp._resolve_request_window(
+        period_key="2026-Q1", period_type="quarterly",
+        window_start=None, window_end=None, as_of_date=None,
+    )
+    assert w["period_type"] == "quarterly"
+    assert w["period_key"] == "2026-Q1"
+    assert w["period_keys"] == ["2026-01", "2026-02", "2026-03"]
+    assert w["window_start"] == "2026-01-01"
+    assert w["window_end"] == "2026-03-31"
+    assert w["as_of_date"] == "2026-03-31"
+    assert w["source_cutoff_date"] == "2026-03-31"
+
+
+def test_resolve_quarterly_window_period_keys_take_precedence():
+    """명시 period_keys 가 있으면 그 list 를 그대로 사용 (sorted)."""
+    w = wcp._resolve_request_window(
+        period_key="2026-Q9-ignored",
+        period_type="quarterly",
+        period_keys=["2026-03", "2026-01", "2026-02"],
+        window_start=None, window_end=None, as_of_date=None,
+    )
+    assert w["period_keys"] == ["2026-01", "2026-02", "2026-03"]
+    assert w["window_start"] == "2026-01-01"
+    assert w["window_end"] == "2026-03-31"
+
+
+def test_resolve_quarterly_window_partial_two_months():
+    w = wcp._resolve_request_window(
+        period_key="Q-ignored", period_type="quarterly",
+        period_keys=["2026-02", "2026-03"],
+        window_start=None, window_end=None, as_of_date=None,
+    )
+    assert w["period_keys"] == ["2026-02", "2026-03"]
+    assert w["window_start"] == "2026-02-01"
+    assert w["window_end"] == "2026-03-31"
+
+
+def test_resolve_monthly_window_period_keys_single():
+    """monthly path 도 응답 schema 의 period_keys 가 [period_key] 단일 원소."""
+    w = wcp._resolve_request_window(
+        period_key="2026-04", period_type="monthly",
+        window_start=None, window_end=None, as_of_date=None,
+    )
+    assert w["period_keys"] == ["2026-04"]
+
+
+@pytest.fixture
+def synthetic_quarterly_claims_store(tmp_path: Path) -> Path:
+    """3 monthly claim_store JSONs (2026-01/02/03) — 각 1개 Rule-A claim."""
+    claims = tmp_path / "claims"
+    claims.mkdir(parents=True, exist_ok=True)
+    base_claim_template = {
+        "schema_version": "1.0.0",
+        "supporting_evidence_ids": ["ev1"],
+        "claim_text": "rule A",
+        "claim_type": "macro_to_asset",
+        "affected_assets": [
+            {"asset_class": "국내주식", "direction": "negative"},
+            {"asset_class": "해외주식", "direction": "negative"},
+            {"asset_class": "환율(FX)", "direction": "positive"},
+        ],
+        "causal_chain": [
+            {"source": "s", "target": "t", "relation": "raises"},
+        ],
+        "direction": "negative",
+        "horizon": "short",
+        "confidence": 0.95,
+        "salience": 0.90,
+        "linked_wiki_pages": [],
+        "extractor_version": "test",
+        "extraction_method": "test",
+    }
+    for month, hash10 in (("01", "aaaaaaaaaa"),
+                          ("02", "bbbbbbbbbb"),
+                          ("03", "cccccccccc")):
+        period = f"2026-{month}"
+        claim = {**base_claim_template,
+                 "claim_id": f"claim:{period}:{hash10}",
+                 "period": period}
+        store = {
+            "schema_version": "1.0.0",
+            "period": period,
+            "saved_at": f"{period}-28T00:00:00",
+            "source": "synthetic",
+            "extractor_version": "test",
+            "claims": [claim],
+            "stats": {},
+        }
+        (claims / f"{period}.json").write_text(
+            json.dumps(store, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    return claims
+
+
+@pytest.fixture
+def synthetic_quarterly_wiki(tmp_path: Path) -> Path:
+    """3 monthly 08_Claims wiki pages matching the synthetic claim_store."""
+    wiki = tmp_path / "wiki"
+    for d in ("00_Index", "01_Events", "02_Entities", "03_Assets",
+              "05_Regime_Canonical", "07_Graph_Evidence", "08_Claims"):
+        (wiki / d).mkdir(parents=True, exist_ok=True)
+    for month, hash10 in (("01", "aaaaaaaaaa"),
+                          ("02", "bbbbbbbbbb"),
+                          ("03", "cccccccccc")):
+        period = f"2026-{month}"
+        (wiki / "08_Claims" / f"{period}_claim_{hash10}.md").write_text(
+            f"---\ntype: claim\nsource_type: claim_wiki\n"
+            f"schema_version: r9a-claim-1.0.0\n"
+            f"claim_id: claim:{period}:{hash10}\nperiod: {period}\n"
+            f"promoted_at: {period}-28T00:00:00+09:00\npromotion_rule: A\n"
+            f"canonical_group_id: group:{period}:gggg{hash10[:6]}\n"
+            f"related_group_ids: [\"group:{period}:gggg{hash10[:6]}\"]\n"
+            f"---\n# Claim {hash10}\nbody\n",
+            encoding="utf-8",
+        )
+    return wiki
+
+
+def test_quarterly_pack_unions_three_period_claim_stores(
+    synthetic_quarterly_wiki: Path,
+    synthetic_quarterly_claims_store: Path,
+    tmp_path: Path,
+):
+    """R9-B.5 핵심 — quarterly stage 에서 3개월 claim_store 가 union 되어
+    selected_claim_ids 에 모두 surface."""
+    pack = wcp.build_wiki_context_pack(
+        period_key="2026-Q1",
+        period_type="quarterly",
+        stage="quarterly_debate",
+        wiki_root=synthetic_quarterly_wiki,
+        max_pages=20,
+        builder_run_time="2026-04-30T00:00:00+00:00",
+    )
+    assert pack["period_type"] == "quarterly"
+    assert pack["period_keys"] == ["2026-01", "2026-02", "2026-03"]
+    assert pack["window_start"] == "2026-01-01"
+    assert pack["window_end"] == "2026-03-31"
+    st = pack["source_trace"]
+    # 3 claims surface (1 per month) — join 1.0, cutoff 0
+    assert st["selected_claim_ids"] == [
+        "claim:2026-01:aaaaaaaaaa",
+        "claim:2026-02:bbbbbbbbbb",
+        "claim:2026-03:cccccccccc",
+    ]
+    assert st["matched_wiki_claim_count"] == 3
+    assert st["claim_store_to_wiki_join_rate"] == 1.0
+    assert st["source_cutoff_violations"] == 0
+    assert st["claim_store_selected_count_by_period"] == {
+        "2026-01": 1, "2026-02": 1, "2026-03": 1,
+    }
+
+
+def test_quarterly_pack_dedups_claim_id_across_period_stores(
+    synthetic_quarterly_wiki: Path, tmp_path: Path,
+):
+    """동일 claim_id 가 두 monthly store 에 모두 들어 있어도 한 번만 surface."""
+    claims = tmp_path / "claims"
+    claims.mkdir(parents=True, exist_ok=True)
+    dup_claim = {
+        "schema_version": "1.0.0",
+        "claim_id": "claim:2026-02:bbbbbbbbbb",
+        "period": "2026-02",
+        "supporting_evidence_ids": ["ev1"],
+        "claim_text": "dup",
+        "claim_type": "macro_to_asset",
+        "affected_assets": [
+            {"asset_class": "국내주식", "direction": "negative"},
+            {"asset_class": "해외주식", "direction": "negative"},
+            {"asset_class": "환율(FX)", "direction": "positive"},
+        ],
+        "causal_chain": [{"source": "s", "target": "t", "relation": "raises"}],
+        "direction": "negative", "horizon": "short",
+        "confidence": 0.95, "salience": 0.90,
+        "linked_wiki_pages": [], "extractor_version": "test",
+        "extraction_method": "test",
+    }
+    for month in ("01", "02"):
+        (claims / f"2026-{month}.json").write_text(
+            json.dumps({
+                "schema_version": "1.0.0", "period": f"2026-{month}",
+                "saved_at": "2026-02-28T00:00:00",
+                "source": "synthetic", "extractor_version": "test",
+                "claims": [dup_claim],
+            }, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+    pack = wcp.build_wiki_context_pack(
+        period_key="2026-Q1",
+        period_type="quarterly",
+        period_keys=["2026-01", "2026-02"],
+        stage="quarterly_debate",
+        wiki_root=synthetic_quarterly_wiki,
+        max_pages=10,
+        builder_run_time="2026-03-31T00:00:00+00:00",
+    )
+    st = pack["source_trace"]
+    # dedup → 1 surface (matches the bbbbbbbbbb wiki page)
+    assert st["selected_claim_ids"] == ["claim:2026-02:bbbbbbbbbb"]
+    assert st["matched_wiki_claim_count"] == 1
+    assert st["claim_store_to_wiki_join_rate"] == 1.0
+
+
+def test_monthly_path_period_keys_in_pack_is_single_element_list(
+    synthetic_wiki: Path, synthetic_claims_store: Path,
+):
+    """monthly path regression — period_keys 가 [period_key] 단일 원소."""
+    pack = wcp.build_wiki_context_pack(
+        period_key="2026-04",
+        stage="market_debate",
+        wiki_root=synthetic_wiki,
+        max_pages=20,
+        builder_run_time="2026-05-01T00:00:00+00:00",
+    )
+    assert pack["period_type"] == "monthly"
+    assert pack["period_keys"] == ["2026-04"]
+
+
+def test_quarterly_pack_includes_wiki_layers_alongside_claims(
+    synthetic_quarterly_wiki: Path,
+    synthetic_quarterly_claims_store: Path,
+):
+    """claim_memory 외 wiki 레이어가 분기 window 로 selection 되는지 확인."""
+    # synthetic_quarterly_wiki 는 8_Claims 만 채움. 01_Events 페이지를 추가.
+    (synthetic_quarterly_wiki / "01_Events" / "2026-02_event_zzzzzzzzzz.md"
+     ).write_text(
+        "---\ntype: event\nstatus: draft\nevent_id: zzzzzzzzzz\n"
+        "period: 2026-02\nwindow_start: 2026-02-01\nwindow_end: 2026-02-28\n"
+        "source_cutoff_date: 2026-02-28\n"
+        "promoted_at: 2026-03-01T00:00:00+09:00\n"
+        "top_topics: [\"환율_FX\"]\n---\n# Event z\nbody",
+        encoding="utf-8",
+    )
+    pack = wcp.build_wiki_context_pack(
+        period_key="2026-Q1",
+        period_type="quarterly",
+        stage="quarterly_debate",
+        wiki_root=synthetic_quarterly_wiki,
+        max_pages=20,
+        builder_run_time="2026-04-01T00:00:00+00:00",
+    )
+    selected_paths = pack["source_trace"]["selected_wiki_paths"]
+    assert "01_Events/2026-02_event_zzzzzzzzzz.md" in selected_paths
+    counts = pack["source_trace"]["source_type_counts"]
+    assert counts.get("claim_memory", 0) == 3
+    assert counts.get("wiki_event_memory", 0) >= 1

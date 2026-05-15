@@ -26,8 +26,11 @@ from market_research.report.wiki_context_pack_builder import (
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CLAIMS_DIR = PROJECT_ROOT / "market_research" / "data" / "claims"
 
-# YYYY-MM
-PERIOD_RE = re.compile(r"^\d{4}-(?:0[1-9]|1[0-2])$")
+# YYYY-MM / YYYY-QX
+PERIOD_MONTHLY_RE = re.compile(r"^\d{4}-(?:0[1-9]|1[0-2])$")
+PERIOD_QUARTER_RE = re.compile(r"^\d{4}-Q[1-4]$")
+# 통합 — admin 라우터의 query regex 도 동일 패턴 사용.
+PERIOD_RE = re.compile(r"^\d{4}-(?:(?:0[1-9]|1[0-2])|Q[1-4])$")
 
 
 VALID_STAGES: frozenset[str] = frozenset({
@@ -35,10 +38,15 @@ VALID_STAGES: frozenset[str] = frozenset({
 })
 
 
+VALID_PERIOD_TYPES: frozenset[str] = frozenset({
+    "monthly", "quarterly",
+})
+
+
 def validate_period_key(period: str) -> str:
     if not period or not PERIOD_RE.fullmatch(period):
         raise ValueError(
-            f"invalid period_key {period!r}: expected YYYY-MM"
+            f"invalid period_key {period!r}: expected YYYY-MM or YYYY-QX"
         )
     return period
 
@@ -49,6 +57,30 @@ def validate_stage(stage: str) -> str:
             f"invalid stage {stage!r}: expected one of {sorted(VALID_STAGES)}"
         )
     return stage
+
+
+def parse_period_keys_csv(csv: str | None) -> list[str] | None:
+    """'2026-01,2026-02,2026-03' → ['2026-01','2026-02','2026-03'].
+
+    None / 빈 문자열 → None. 각 항목은 monthly (YYYY-MM) 만 허용 — quarterly
+    union 의 monthly 구성 요소 list 이므로.
+    """
+    if csv is None:
+        return None
+    txt = csv.strip()
+    if not txt:
+        return None
+    out: list[str] = []
+    for raw in txt.split(","):
+        item = raw.strip()
+        if not item:
+            continue
+        if not PERIOD_MONTHLY_RE.fullmatch(item):
+            raise ValueError(
+                f"invalid period_keys item {item!r}: expected YYYY-MM"
+            )
+        out.append(item)
+    return out or None
 
 
 def list_periods() -> list[dict[str, Any]]:
@@ -89,15 +121,22 @@ def build_pack(
     *,
     period_key: str,
     stage: str,
+    period_type: str = "monthly",
+    period_keys: list[str] | None = None,
     fund_code: str | None = None,
     max_pages: int = DEFAULT_MAX_PAGES,
     body_excerpt_chars: int = DEFAULT_BODY_EXCERPT_CHARS,
     include_debate_memory: bool = False,
 ) -> dict[str, Any]:
-    """builder thin wrapper. 입력 검증은 router 가 수행."""
+    """builder thin wrapper. 입력 검증은 router 가 수행.
+
+    R9-B.5 — period_type='quarterly' 일 때 period_keys 자동 unpacking
+    (YYYY-QX 입력) 또는 명시 list 사용. 'monthly' 는 기존 그대로.
+    """
     return build_wiki_context_pack(
         period_key=period_key,
-        period_type="monthly",
+        period_type=period_type,
+        period_keys=period_keys,
         stage=stage,
         fund_code=fund_code,
         max_pages=max_pages,

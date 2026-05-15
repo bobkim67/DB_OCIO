@@ -305,12 +305,20 @@ def list_wiki_context_pack_periods() -> WikiContextPackPeriodsResponseDTO:
     summary="Wiki context pack 미리보기 (R9-B, read-only)",
     description=(
         "`build_wiki_context_pack` 산출물을 그대로 노출. LLM 호출 0, "
-        "운영 wiki/claims/report_output 변경 0. admin/debug 전용."
+        "운영 wiki/claims/report_output 변경 0. admin/debug 전용. "
+        "R9-B.5 — period_type='quarterly' 시 period_key 가 YYYY-QX 형식이면 "
+        "자동 unpacking, 또는 period_keys CSV (예 '2026-01,2026-02,2026-03') "
+        "로 명시 가능. monthly path 는 회귀 없음."
     ),
 )
 def get_wiki_context_pack(
-    period_key: str = Query(..., pattern=r"^\d{4}-(?:0[1-9]|1[0-2])$"),
+    period_key: str = Query(
+        ..., pattern=r"^\d{4}-(?:(?:0[1-9]|1[0-2])|Q[1-4])$",
+    ),
     stage: WikiPackStage = Query("market_debate"),
+    period_type: str = Query("monthly",
+                              pattern=r"^(?:monthly|quarterly)$"),
+    period_keys: str | None = Query(default=None, max_length=256),
     fund_code: str | None = Query(default=None, max_length=32,
                                    pattern=r"^[A-Za-z0-9_]+$"),
     max_pages: int = Query(12, ge=1, le=64),
@@ -328,10 +336,45 @@ def get_wiki_context_pack(
                 "message": "fund_code is required when stage='fund_comment'",
             },
         )
+    # R9-B.5 — period_type / period_keys 정합성 가드
+    try:
+        keys_list = _wcp.parse_period_keys_csv(period_keys)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "WIKI_PACK_INVALID_PERIOD_KEYS",
+                     "message": str(exc)},
+        )
+    if period_type == "monthly":
+        if not _wcp.PERIOD_MONTHLY_RE.fullmatch(period_key):
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "WIKI_PACK_INVALID_REQUEST",
+                         "message": f"period_type='monthly' requires "
+                                    f"period_key YYYY-MM (got {period_key!r})"},
+            )
+        if keys_list:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "WIKI_PACK_INVALID_REQUEST",
+                         "message": "period_keys is only valid when "
+                                    "period_type='quarterly'"},
+            )
+    else:  # quarterly
+        if not (_wcp.PERIOD_QUARTER_RE.fullmatch(period_key) or keys_list):
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "WIKI_PACK_INVALID_REQUEST",
+                         "message": "period_type='quarterly' requires "
+                                    "period_key YYYY-QX OR period_keys CSV "
+                                    "(e.g. '2026-01,2026-02,2026-03')"},
+            )
     try:
         pack = _wcp.build_pack(
             period_key=period_key,
             stage=stage,
+            period_type=period_type,
+            period_keys=keys_list,
             fund_code=fc,
             max_pages=max_pages,
             body_excerpt_chars=body_excerpt_chars,
@@ -346,6 +389,8 @@ def get_wiki_context_pack(
     return WikiContextPackResponseDTO(
         meta=_wc_meta(),
         period_key=period_key,
+        period_keys=pack.get("period_keys") or [period_key],
+        period_type=pack.get("period_type") or period_type,
         stage=stage,
         fund_code=fc,
         summary=WikiContextPackSummaryDTO(**summary_dict),
