@@ -398,7 +398,7 @@ def _stub_debate_result():
                               "diverges_from_canonical": False},
         "_evidence_ids": [],
         "_debug_trace": {
-            "prompt_context_mode": "wiki_context_pack_opt_in",
+            "prompt_context_mode": "wiki_context_pack_default",
             "wiki_context_pack_enabled": True,
             "wiki_pages_selected": 12,
         },

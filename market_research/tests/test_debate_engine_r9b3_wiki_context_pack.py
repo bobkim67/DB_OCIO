@@ -191,8 +191,8 @@ def test_legacy_empty_string_primary_text_is_skipped_cleanly():
     assert de.WIKI_CONTEXT_RAW_HEADING not in prompt
 
 
-def test_run_market_debate_default_flag_does_not_invoke_builder(monkeypatch):
-    """use_wiki_context_pack=False (default) → builder 호출 0."""
+def test_run_market_debate_opt_out_flag_does_not_invoke_builder(monkeypatch):
+    """WIKI-DEFAULT.1 opt-out: use_wiki_context_pack=False → builder 호출 0."""
     called = {"count": 0}
 
     def _fake_build(**kw):  # pragma: no cover — should NOT be called
@@ -228,14 +228,71 @@ def test_run_market_debate_default_flag_does_not_invoke_builder(monkeypatch):
                        "diverges_from_canonical": False},
     )
 
-    result = de.run_market_debate(2026, 4)
+    result = de.run_market_debate(2026, 4, use_wiki_context_pack=False)
     assert called["count"] == 0
     trace = result["_debug_trace"]
-    assert trace["prompt_context_mode"] == "legacy"
+    assert trace["prompt_context_mode"] == "legacy_raw_first_opt_out"
     assert trace["wiki_context_pack_enabled"] is False
     assert trace["wiki_primary_context_chars"] == 0
     # legacy trace 필드는 키 자체가 들어가지만 enabled=False 분기
     assert "wiki_context_pack_schema_version" not in trace
+
+
+# ──────────────────────────────────────────────────────────────────
+# WIKI-DEFAULT.1: no flag → builder called (default ON)
+# ──────────────────────────────────────────────────────────────────
+
+def test_run_market_debate_no_flag_uses_wiki_default(monkeypatch):
+    """WIKI-DEFAULT.1: 기본값(use_wiki_context_pack=True) → builder 호출 + trace.
+
+    test_run_market_debate_opt_in_invokes_builder 와 동일 환경이지만
+    *명시 플래그 없이* 호출했을 때 wiki-first default 가 적용되는지를 잠근다.
+    """
+    pack = _make_pack()
+    seen: dict = {}
+
+    def _fake_build(*, period_key, stage, fund_code, max_pages, **_extra):
+        seen.update(period_key=period_key, stage=stage,
+                    fund_code=fund_code, max_pages=max_pages)
+        return pack
+
+    monkeypatch.setattr(
+        "market_research.report.wiki_context_pack_builder.build_wiki_context_pack",
+        _fake_build,
+    )
+    monkeypatch.setattr(
+        de, "_build_shared_context",
+        lambda y, m, **kw: _bare_context(year=y, month=m),
+    )
+    monkeypatch.setattr(
+        de, "_run_agent",
+        lambda agent, context: {
+            "agent": agent, "stance": "neutral", "key_points": [],
+            "asset_movement_commentary": [],
+        },
+    )
+    monkeypatch.setattr(
+        de, "_synthesize_debate",
+        lambda agents, fund, ctx: {
+            "customer_comment": "ok.", "consensus_points": [],
+            "disagreements": [], "tail_risks": [], "admin_summary": "",
+        },
+    )
+    monkeypatch.setattr(
+        de, "_summarize_debate_narrative",
+        lambda resp: {"debate_narrative": "n", "canonical_snapshot": {},
+                       "diverges_from_canonical": False},
+    )
+
+    # NB: use_wiki_context_pack 미지정. WIKI-DEFAULT.1 default True 가 적용돼야.
+    result = de.run_market_debate(2026, 4)
+    assert seen["period_key"] == "2026-04"
+    assert seen["stage"] == "market_debate"
+    trace = result["_debug_trace"]
+    assert trace["prompt_context_mode"] == "wiki_context_pack_default"
+    assert trace["wiki_context_pack_enabled"] is True
+    assert trace["wiki_context_pack_schema_version"] == \
+        de.WIKI_CONTEXT_PACK_SCHEMA_VERSION
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -292,7 +349,7 @@ def test_run_market_debate_opt_in_invokes_builder(monkeypatch):
         "max_pages": 5,
     }
     trace = result["_debug_trace"]
-    assert trace["prompt_context_mode"] == "wiki_context_pack_opt_in"
+    assert trace["prompt_context_mode"] == "wiki_context_pack_default"
     assert trace["wiki_context_pack_enabled"] is True
     assert trace["wiki_context_pack_schema_version"] == \
         de.WIKI_CONTEXT_PACK_SCHEMA_VERSION
@@ -593,7 +650,7 @@ def test_quarterly_opt_in_uses_end_month_period_key(monkeypatch):
     assert seen["period_key"] == "2026-03"
     assert seen["stage"] == "quarterly_debate"
     trace = result["_debug_trace"]
-    assert trace["prompt_context_mode"] == "wiki_context_pack_opt_in"
+    assert trace["prompt_context_mode"] == "wiki_context_pack_default"
     assert trace["wiki_context_pack_period_key"] == "2026-03"
 
 
@@ -657,9 +714,10 @@ def test_cli_parser_accepts_r9b3_flags():
     cli_text = (
         Path(__file__).resolve().parent.parent / "report" / "cli.py"
     ).read_text(encoding="utf-8")
-    assert "--use-wiki-context-pack" in cli_text
+    assert "--use-wiki-context-pack" in cli_text  # deprecated, backward-compat
+    assert "--no-wiki-context-pack" in cli_text     # WIKI-DEFAULT.1 opt-out
     assert "--wiki-context-pack-path" in cli_text
     assert "--wiki-context-max-pages" in cli_text
-    # build_report signature 에 kwarg 추가됨
-    assert "use_wiki_context_pack: bool = False" in cli_text
+    # build_report signature default flipped to True under WIKI-DEFAULT.1
+    assert "use_wiki_context_pack: bool = True" in cli_text
     assert "wiki_context_pack: dict | None = None" in cli_text

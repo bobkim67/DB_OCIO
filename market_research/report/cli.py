@@ -347,7 +347,7 @@ def _load_past_comments(fund_code):
 
 def _run_debate(year, quarter, force_window_ids: set[str] | None = None,
                 *,
-                use_wiki_context_pack: bool = False,
+                use_wiki_context_pack: bool = True,
                 wiki_context_pack: dict | None = None,
                 wiki_context_max_pages: int = 12):
     """debate 엔진 실행 → 분기 마지막 월 기준.
@@ -355,10 +355,9 @@ def _run_debate(year, quarter, force_window_ids: set[str] | None = None,
     force_window_ids: BEW viewer 에서 export 된 forced window_id set.
     None 이면 기존 동작(전체 BEW contract).
 
-    R9-B.3 opt-in (default OFF, legacy unchanged):
-      use_wiki_context_pack / wiki_context_pack / wiki_context_max_pages
-      → run_market_debate 로 그대로 전달. 기본 OFF 면 wiki primary block
-      미주입 (raw-source-first 그대로).
+    WIKI-DEFAULT.1 — wiki_context_pack default ON:
+      use_wiki_context_pack=True (default) → wiki primary block 주입.
+      False (opt-out) → legacy raw-first 그대로.
     """
     _, end_month = _quarter_dates(year, quarter)
     try:
@@ -369,8 +368,10 @@ def _run_debate(year, quarter, force_window_ids: set[str] | None = None,
         else:
             print(f'\n  debate 실행 중 ({year}-{end_month:02d})...', flush=True)
         if use_wiki_context_pack:
-            print(f'  [wiki_context_pack] opt-in '
+            print(f'  [wiki_context_pack] enabled (default) '
                   f'(max_pages={wiki_context_max_pages})')
+        else:
+            print(f'  [wiki_context_pack] DISABLED (opt-out, legacy raw-first)')
         result = run_market_debate(
             year, end_month,
             force_window_ids=force_window_ids,
@@ -751,7 +752,7 @@ def build_report(fund_code, period_info, mode='auto', detail=False,
                  model=None, fx_split=False,
                  force_window_ids: set[str] | None = None,
                  *,
-                 use_wiki_context_pack: bool = False,
+                 use_wiki_context_pack: bool = True,
                  wiki_context_pack: dict | None = None,
                  wiki_context_max_pages: int = 12,
                  target_suffix: str | None = None):
@@ -761,9 +762,9 @@ def build_report(fund_code, period_info, mode='auto', detail=False,
     mode: 'auto' | 'edit' | 'from-json'
     fx_split: True면 증권/FX 분리 (R FX_split=TRUE 동일)
     force_window_ids: BEW viewer 에서 export 된 forced window_id set (None=기본)
-    use_wiki_context_pack: R9-B.3 opt-in (default OFF)
-    wiki_context_pack: opt-in 시 외부에서 load 된 pack (None 이면 builder 호출)
-    wiki_context_max_pages: opt-in builder 의 cap (default 12)
+    use_wiki_context_pack: WIKI-DEFAULT.1 default True (legacy 회피는 False).
+    wiki_context_pack: 외부에서 load 된 pack (None 이면 builder 호출)
+    wiki_context_max_pages: builder 의 cap (default 12)
     target_suffix: R9-B.3.1 opt-in. None → 운영 cache path. suffix 명시 시
         report_cache 의 산출물명에 `.{suffix}` 가 prefix 되어 isolated.
     """
@@ -949,16 +950,23 @@ def main():
     build_p.add_argument('--forced-bew-json', type=str, default=None,
                          help='BEW viewer 에서 export 된 forced-BEW JSON 경로. '
                               '해당 월 window_id 만 debate evidence lane 에 허용.')
-    # R9-B.3 opt-in flags (default OFF — legacy unchanged)
+    # WIKI-DEFAULT.1 — wiki_context_pack default ON.
+    # `--use-wiki-context-pack` 는 backward-compat 보존(no-op, deprecated).
+    # `--no-wiki-context-pack` 는 legacy raw-first 로 opt-out.
     build_p.add_argument('--use-wiki-context-pack', action='store_true',
-                         help='R9-B.3 opt-in: debate prompt 의 A. Wiki Primary '
-                              'Context 블록에 wiki_context_pack 주입. default OFF.')
+                         help='[deprecated, no-op] wiki_context_pack 은 default ON. '
+                              '명시해도 동작 동일. opt-out 은 '
+                              '--no-wiki-context-pack.')
+    build_p.add_argument('--no-wiki-context-pack', dest='no_wiki_context_pack',
+                         action='store_true',
+                         help='WIKI-DEFAULT.1 opt-out: wiki_context_pack 주입을 '
+                              '끄고 legacy raw-first prompt 그대로 사용한다.')
     build_p.add_argument('--wiki-context-pack-path', type=str, default=None,
-                         help='opt-in 시 외부 pack JSON 경로. '
-                              '없으면 builder 가 즉시 생성. schema_version / '
-                              'period_key / stage 검증 후 사용.')
+                         help='외부 pack JSON 경로. 없으면 builder 가 즉시 생성. '
+                              'schema_version / period_key / stage 검증 후 사용. '
+                              '--no-wiki-context-pack 과 함께 사용 불가.')
     build_p.add_argument('--wiki-context-max-pages', type=int, default=12,
-                         help='opt-in builder 의 max_pages (default 12).')
+                         help='builder 의 max_pages (default 12).')
     # R9-B.3.1 isolated output target (default OFF — legacy unchanged)
     build_p.add_argument('--target-suffix', type=str, default=None,
                          help='R9-B.3.1: isolated 산출물 경로. 명시 시 '
@@ -1039,14 +1047,16 @@ def main():
             print(f'  [target-suffix] isolated output: '
                   f'{{fund}}.{target_suffix}.json')
 
-        # R9-B.3 opt-in pack: flag/path 조합 validation. path 만 주면 에러.
-        wcp_use = bool(getattr(args, 'use_wiki_context_pack', False))
+        # WIKI-DEFAULT.1 — default ON. opt-out flag 검사.
+        # `--use-wiki-context-pack` 는 deprecated, no-op (default 가 ON).
+        wcp_optout = bool(getattr(args, 'no_wiki_context_pack', False))
+        wcp_use = not wcp_optout
         wcp_path = getattr(args, 'wiki_context_pack_path', None)
         wcp_max_pages = int(getattr(args, 'wiki_context_max_pages', 12))
-        if wcp_path and not wcp_use:
+        if wcp_path and wcp_optout:
             raise SystemExit(
-                '[wiki-context-pack] --wiki-context-pack-path 는 '
-                '--use-wiki-context-pack 와 함께 사용해야 합니다.')
+                '[wiki-context-pack] --wiki-context-pack-path 와 '
+                '--no-wiki-context-pack 는 동시에 사용할 수 없습니다.')
         wcp_preloaded: dict | None = None
         if wcp_use and wcp_path:
             _y = period_info.get('year') or period_info['_end_dt'].year

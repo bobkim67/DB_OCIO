@@ -472,7 +472,7 @@ def run_debate_and_save(mode: str, year: int, period_num: int,
                         fund_code: str, period_key: str,
                         *,
                         target_suffix: str | None = None,
-                        use_wiki_context_pack: bool = False,
+                        use_wiki_context_pack: bool = True,
                         wiki_context_pack: dict | None = None,
                         wiki_context_max_pages: int = 12) -> dict:
     """debate 엔진 호출 → 후처리 → draft 저장 → evidence log append.
@@ -484,8 +484,9 @@ def run_debate_and_save(mode: str, year: int, period_num: int,
       None 이면 기존 운영 경로 그대로. suffix 명시 시 draft / final / evidence
       ledger 모두 isolated path. catalog 기본 리스트도 제외 (운영 final 보호).
 
-    R9-B.3 — use_wiki_context_pack opt-in (default OFF):
-      run_market_debate / run_quarterly_debate 에 그대로 전달.
+    WIKI-DEFAULT.1 — use_wiki_context_pack default ON:
+      True (default) → wiki primary context block prepend.
+      False → legacy raw-first prompt 그대로 (opt-out).
     """
     # report_store sanitizer 가 invalid suffix 면 ValueError 를 던지므로
     # save 단계가 아니라 진입 시점에 빨리 가드한다.

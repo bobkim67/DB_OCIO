@@ -1800,7 +1800,7 @@ def _summarize_debate_narrative(agent_responses: dict) -> dict:
 def run_market_debate(year: int, month: int,
                       *,
                       force_window_ids: set[str] | None = None,
-                      use_wiki_context_pack: bool = False,
+                      use_wiki_context_pack: bool = True,
                       wiki_context_pack: dict | None = None,
                       wiki_context_max_pages: int = 12) -> dict:
     """
@@ -1810,23 +1810,23 @@ def run_market_debate(year: int, month: int,
 
     force_window_ids: BEW viewer 에서 선택된 window_id set (None=전체 BEW 사용).
 
-    R9-B.3 opt-in (default OFF, legacy behavior unchanged):
-      use_wiki_context_pack: True 일 때 wiki_context_pack_builder 의 결과를
+    WIKI-DEFAULT.1 — wiki_context_pack 이 default ON:
+      use_wiki_context_pack=True (default) 시 wiki_context_pack_builder 결과를
         prompt 의 "A. Wiki Primary Context" 블록으로 prepend. 기존 raw
         evidence/news/graph/regime block 은 "B. Raw Validation/Fallback"
-        으로 라벨링만 변경 (raw 제거 0).
-      wiki_context_pack: opt-in 일 때 외부에서 미리 build/load 된 pack 을
-        그대로 사용. None 이면 builder 를 inline 호출. 외부 pack 은
-        schema_version / period_key 일치 검증 후 사용 (mismatch 시
+        라벨로 보존 (raw 제거 0).
+      use_wiki_context_pack=False (opt-out) 시 legacy raw-first prompt 그대로.
+      wiki_context_pack: 외부에서 미리 build/load 된 pack. None 이면 builder
+        를 inline 호출. schema_version / period_key 일치 검증 (mismatch 시
         WikiContextPackError).
-      wiki_context_max_pages: opt-in builder 의 max_pages (default 12).
+      wiki_context_max_pages: builder 의 max_pages (default 12).
     """
     print(f'\n-- Market Debate: {year}-{month:02d} --')
     if force_window_ids:
         print(f'  [forced BEW] {len(force_window_ids)}개 window_id 만 evidence lane 에 허용')
 
-    # R9-B.3 — opt-in wiki_context_pack 준비. 기존 path 와 격리.
-    prompt_context_mode = 'legacy'
+    # WIKI-DEFAULT.1 — wiki_context_pack default ON. opt-out 시 raw-first.
+    prompt_context_mode = 'legacy_raw_first_opt_out'
     wcp_trace_fields: dict = {'wiki_context_pack_enabled': False}
     wiki_primary_text = ''
     wcp_used: dict | None = None
@@ -1848,8 +1848,8 @@ def run_market_debate(year: int, month: int,
             )
         wiki_primary_text = _format_wiki_primary_context_for_prompt(wcp_used)
         wcp_trace_fields = _wiki_context_pack_trace(wcp_used)
-        prompt_context_mode = 'wiki_context_pack_opt_in'
-        print(f'  [wiki_context_pack] enabled, pages='
+        prompt_context_mode = 'wiki_context_pack_default'
+        print(f'  [wiki_context_pack] enabled (default), pages='
               f'{wcp_trace_fields.get("wiki_pages_selected", 0)}')
 
     context = _build_shared_context(year, month, force_window_ids=force_window_ids)
@@ -2071,7 +2071,7 @@ def _evidence_month_distribution(evidence_ids: list, year: int,
 def run_quarterly_debate(year: int, quarter: int,
                          *,
                          force_window_ids: set[str] | None = None,
-                         use_wiki_context_pack: bool = False,
+                         use_wiki_context_pack: bool = True,
                          wiki_context_pack: dict | None = None,
                          wiki_context_max_pages: int = 12) -> dict:
     """
@@ -2082,16 +2082,16 @@ def run_quarterly_debate(year: int, quarter: int,
     동일 set 이 전달되며, 월과 실제로 매칭되는 wid 만 해당 월 BEW lane 에 적용된다
     (다른 월의 contract 에는 매칭 안 되므로 자연스럽게 무효화 됨).
 
-    R9-B.3 opt-in: market_debate 와 동일 시맨틱. period_key = 분기 마지막 월
-    (e.g. Q1 → "{year}-03"). stage = "quarterly_debate". default OFF.
+    WIKI-DEFAULT.1 — wiki_context_pack default ON. market_debate 와 동일 시맨틱.
+    period_key = 분기 마지막 월 (e.g. Q1 → "{year}-03"). stage = "quarterly_debate".
     """
     months = [(quarter - 1) * 3 + i for i in range(1, 4)]
     print(f'\n-- Quarterly Debate: {year}Q{quarter} ({months[0]}~{months[2]}월) --')
     if force_window_ids:
         print(f'  [forced BEW] {len(force_window_ids)}개 window_id 만 evidence lane 에 허용')
 
-    # R9-B.3 — opt-in wiki_context_pack 준비 (quarterly).
-    prompt_context_mode = 'legacy'
+    # WIKI-DEFAULT.1 — wiki_context_pack default ON (quarterly).
+    prompt_context_mode = 'legacy_raw_first_opt_out'
     wcp_trace_fields: dict = {'wiki_context_pack_enabled': False}
     wiki_primary_text_q = ''
     wcp_used_q: dict | None = None
@@ -2115,8 +2115,8 @@ def run_quarterly_debate(year: int, quarter: int,
             )
         wiki_primary_text_q = _format_wiki_primary_context_for_prompt(wcp_used_q)
         wcp_trace_fields = _wiki_context_pack_trace(wcp_used_q)
-        prompt_context_mode = 'wiki_context_pack_opt_in'
-        print(f'  [wiki_context_pack] enabled, pages='
+        prompt_context_mode = 'wiki_context_pack_default'
+        print(f'  [wiki_context_pack] enabled (default), pages='
               f'{wcp_trace_fields.get("wiki_pages_selected", 0)}')
 
     # 3개월 컨텍스트 병합
