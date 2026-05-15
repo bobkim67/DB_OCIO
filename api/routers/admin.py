@@ -261,3 +261,122 @@ def get_wiki_coverage_report(
     return WikiCoverageReportFullResponseDTO(
         meta=_wc_meta(), report_id=report_id, payload=payload,
     )
+
+
+# ──────────────────────────────────────────────────────────────────
+# R9-B: Wiki Context Pack viewer + raw wiki page reader (read-only)
+# ──────────────────────────────────────────────────────────────────
+
+from ..schemas.wiki_context_pack import (
+    WikiContextPackPeriodItemDTO,
+    WikiContextPackPeriodsResponseDTO,
+    WikiContextPackResponseDTO,
+    WikiContextPackSummaryDTO,
+    WikiPackStage,
+)
+from ..schemas.wiki_page import WikiPageResponseDTO
+from ..services import wiki_context_pack_gateway as _wcp
+from ..services import wiki_page_gateway as _wpg
+
+
+@router.get(
+    "/admin/wiki-context-pack/periods",
+    response_model=WikiContextPackPeriodsResponseDTO,
+    tags=["admin"],
+    summary="Wiki context pack monthly period 후보 목록 (R9-B)",
+)
+def list_wiki_context_pack_periods() -> WikiContextPackPeriodsResponseDTO:
+    items_raw = _wcp.list_periods()
+    items = [
+        WikiContextPackPeriodItemDTO(
+            period_key=r["period_key"],
+            claim_store_exists=bool(r["claim_store_exists"]),
+            claim_count=r.get("claim_count"),
+        )
+        for r in items_raw
+    ]
+    return WikiContextPackPeriodsResponseDTO(meta=_wc_meta(), periods=items)
+
+
+@router.get(
+    "/admin/wiki-context-pack",
+    response_model=WikiContextPackResponseDTO,
+    tags=["admin"],
+    summary="Wiki context pack 미리보기 (R9-B, read-only)",
+    description=(
+        "`build_wiki_context_pack` 산출물을 그대로 노출. LLM 호출 0, "
+        "운영 wiki/claims/report_output 변경 0. admin/debug 전용."
+    ),
+)
+def get_wiki_context_pack(
+    period_key: str = Query(..., pattern=r"^\d{4}-(?:0[1-9]|1[0-2])$"),
+    stage: WikiPackStage = Query("market_debate"),
+    fund_code: str | None = Query(default=None, max_length=32,
+                                   pattern=r"^[A-Za-z0-9_]+$"),
+    max_pages: int = Query(12, ge=1, le=64),
+    body_excerpt_chars: int = Query(700, ge=80, le=4000),
+    include_debate_memory: bool = Query(False),
+) -> WikiContextPackResponseDTO:
+    fc = fund_code.strip() if fund_code else None
+    if fc == "":
+        fc = None
+    if stage == "fund_comment" and not fc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "WIKI_PACK_FUND_REQUIRED",
+                "message": "fund_code is required when stage='fund_comment'",
+            },
+        )
+    try:
+        pack = _wcp.build_pack(
+            period_key=period_key,
+            stage=stage,
+            fund_code=fc,
+            max_pages=max_pages,
+            body_excerpt_chars=body_excerpt_chars,
+            include_debate_memory=include_debate_memory,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "WIKI_PACK_INVALID_REQUEST", "message": str(exc)},
+        )
+    summary_dict = _wcp.extract_summary(pack)
+    return WikiContextPackResponseDTO(
+        meta=_wc_meta(),
+        period_key=period_key,
+        stage=stage,
+        fund_code=fc,
+        summary=WikiContextPackSummaryDTO(**summary_dict),
+        pack=pack,
+    )
+
+
+@router.get(
+    "/admin/wiki-page",
+    response_model=WikiPageResponseDTO,
+    tags=["admin"],
+    summary="Wiki page raw markdown 본문 조회 (R9-B, read-only)",
+    description=(
+        "WIKI_ROOT 산하 .md 파일 1건을 frontmatter + body 로 반환. "
+        "path traversal 차단."
+    ),
+)
+def get_wiki_page(
+    path: str = Query(..., min_length=1, max_length=512),
+) -> WikiPageResponseDTO:
+    try:
+        page = _wpg.load_page(path)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "WIKI_PAGE_INVALID_PATH", "message": str(exc)},
+        )
+    if page is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "WIKI_PAGE_NOT_FOUND",
+                     "message": f"page {path!r} not found"},
+        )
+    return WikiPageResponseDTO(meta=_wc_meta(), **page)

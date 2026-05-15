@@ -3,8 +3,14 @@ import AdminEvidenceQualityPanel from "./AdminEvidenceQualityPanel";
 import AdminDebateStatusPanel from "./AdminDebateStatusPanel";
 import AdminReportEnrichmentPanel from "./AdminReportEnrichmentPanel";
 import AdminCommentTracePanel from "./AdminCommentTracePanel";
+import AdminWikiContextPackPanel from "./AdminWikiContextPackPanel";
 
-type SubView = "evidence" | "debate" | "report-enrichment" | "comment-trace";
+type SubView =
+  | "evidence"
+  | "debate"
+  | "report-enrichment"
+  | "comment-trace"
+  | "wiki-pack";
 
 const TAB_BTN_BASE: CSSProperties = {
   padding: "6px 14px",
@@ -60,12 +66,19 @@ export default function AdminTab() {
         >
           Comment Trace
         </button>
+        <button
+          style={view === "wiki-pack" ? TAB_BTN_ACTIVE : TAB_BTN_BASE}
+          onClick={() => setView("wiki-pack")}
+        >
+          Wiki Context Pack
+        </button>
       </div>
 
       {view === "evidence" && <AdminEvidenceQualityPanel />}
       {view === "debate" && <AdminDebateStatusPanel />}
       {view === "report-enrichment" && <AdminReportEnrichmentPanel />}
       {view === "comment-trace" && <AdminCommentTracePanel />}
+      {view === "wiki-pack" && <AdminWikiContextPackPanel />}
     </section>
   );
 }

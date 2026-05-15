@@ -76,6 +76,15 @@ export type CommentTraceListItemDTO = S["CommentTraceListItemDTO"];
 export type CommentTraceListResponseDTO = S["CommentTraceListResponseDTO"];
 export type CommentTraceFullResponseDTO = S["CommentTraceFullResponseDTO"];
 
+// === Wiki Context Pack (R9-B) ===
+export type WikiContextPackPeriodItemDTO = S["WikiContextPackPeriodItemDTO"];
+export type WikiContextPackPeriodsResponseDTO =
+  S["WikiContextPackPeriodsResponseDTO"];
+export type WikiContextPackSummaryDTO = S["WikiContextPackSummaryDTO"];
+export type WikiContextPackResponseDTO = S["WikiContextPackResponseDTO"];
+export type WikiPackStage = WikiContextPackResponseDTO["stage"];
+export type WikiPageResponseDTO = S["WikiPageResponseDTO"];
+
 // === Brinson ===
 export type BrinsonAssetRowDTO = S["BrinsonAssetRowDTO"];
 export type BrinsonSecContribDTO = S["BrinsonSecContribDTO"];
@@ -281,6 +290,55 @@ export const fetchCommentTraceById = async (
   const r = await api.get<CommentTraceFullResponseDTO>(
     `/admin/comment-trace/${traceId}`,
   );
+  return r.data;
+};
+
+// ----------------------------------------------------------------------
+// R9-B — Wiki Context Pack viewer (read-only)
+// ----------------------------------------------------------------------
+export const fetchWikiContextPackPeriods =
+  async (): Promise<WikiContextPackPeriodsResponseDTO> => {
+    const r = await api.get<WikiContextPackPeriodsResponseDTO>(
+      "/admin/wiki-context-pack/periods",
+    );
+    return r.data;
+  };
+
+export interface FetchWikiContextPackOptions {
+  fundCode?: string;
+  maxPages?: number;
+  bodyExcerptChars?: number;
+  includeDebateMemory?: boolean;
+}
+
+export const fetchWikiContextPack = async (
+  periodKey: string,
+  stage: WikiPackStage,
+  opts: FetchWikiContextPackOptions = {},
+): Promise<WikiContextPackResponseDTO> => {
+  const params: Record<string, string | number | boolean> = {
+    period_key: periodKey,
+    stage,
+  };
+  if (opts.fundCode) params.fund_code = opts.fundCode;
+  if (opts.maxPages !== undefined) params.max_pages = opts.maxPages;
+  if (opts.bodyExcerptChars !== undefined)
+    params.body_excerpt_chars = opts.bodyExcerptChars;
+  if (opts.includeDebateMemory !== undefined)
+    params.include_debate_memory = opts.includeDebateMemory;
+  const r = await api.get<WikiContextPackResponseDTO>(
+    "/admin/wiki-context-pack",
+    { params },
+  );
+  return r.data;
+};
+
+export const fetchWikiPage = async (
+  path: string,
+): Promise<WikiPageResponseDTO> => {
+  const r = await api.get<WikiPageResponseDTO>("/admin/wiki-page", {
+    params: { path },
+  });
   return r.data;
 };
 

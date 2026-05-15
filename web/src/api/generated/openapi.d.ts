@@ -262,6 +262,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/wiki-context-pack/periods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Wiki context pack monthly period 후보 목록 (R9-B) */
+        get: operations["list_wiki_context_pack_periods_api_admin_wiki_context_pack_periods_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/wiki-context-pack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Wiki context pack 미리보기 (R9-B, read-only)
+         * @description `build_wiki_context_pack` 산출물을 그대로 노출. LLM 호출 0, 운영 wiki/claims/report_output 변경 0. admin/debug 전용.
+         */
+        get: operations["get_wiki_context_pack_api_admin_wiki_context_pack_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/wiki-page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Wiki page raw markdown 본문 조회 (R9-B, read-only)
+         * @description WIKI_ROOT 산하 .md 파일 1건을 frontmatter + body 로 반환. path traversal 차단.
+         */
+        get: operations["get_wiki_page_api_admin_wiki_page_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/market-report": {
         parameters: {
             query?: never;
@@ -1419,6 +1476,10 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
         /**
          * ValidationSummaryDTO
@@ -1485,6 +1546,82 @@ export interface components {
             coverage_ratio: number;
         };
         /**
+         * WikiContextPackPeriodItemDTO
+         * @description Claim store JSON (period 별) discovery 결과 1 row.
+         *
+         *     builder 는 monthly period_key (YYYY-MM) 만 받는다. UI 선택지 채우기용.
+         */
+        WikiContextPackPeriodItemDTO: {
+            /** Period Key */
+            period_key: string;
+            /** Claim Store Exists */
+            claim_store_exists: boolean;
+            /** Claim Count */
+            claim_count?: number | null;
+        };
+        /** WikiContextPackPeriodsResponseDTO */
+        WikiContextPackPeriodsResponseDTO: {
+            meta: components["schemas"]["BaseMeta"];
+            /** Periods */
+            periods: components["schemas"]["WikiContextPackPeriodItemDTO"][];
+        };
+        /**
+         * WikiContextPackResponseDTO
+         * @description Full pack response.
+         *
+         *     - ``summary`` — source_trace 의 핵심 필드 (UI 가 자주 쓰는 것)
+         *     - ``pack`` — builder 가 만든 raw dict 그대로
+         */
+        WikiContextPackResponseDTO: {
+            meta: components["schemas"]["BaseMeta"];
+            /** Period Key */
+            period_key: string;
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "market_debate" | "fund_comment" | "quarterly_debate" | "admin_preview";
+            /** Fund Code */
+            fund_code?: string | null;
+            summary: components["schemas"]["WikiContextPackSummaryDTO"];
+            /** Pack */
+            pack: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * WikiContextPackSummaryDTO
+         * @description source_trace 의 핵심 카운터만 추려 dashboard 용으로 노출.
+         */
+        WikiContextPackSummaryDTO: {
+            /** Wiki Pages Considered */
+            wiki_pages_considered: number;
+            /** Wiki Pages Selected */
+            wiki_pages_selected: number;
+            /** Selected Wiki Paths */
+            selected_wiki_paths: string[];
+            /** Selected By Directory */
+            selected_by_directory: {
+                [key: string]: number;
+            };
+            /** Source Type Counts */
+            source_type_counts: {
+                [key: string]: number;
+            };
+            /** Selected Claim Ids */
+            selected_claim_ids: string[];
+            /** Selected Related Group Ids */
+            selected_related_group_ids: string[];
+            /** Claim Store Selected Count */
+            claim_store_selected_count: number;
+            /** Matched Wiki Claim Count */
+            matched_wiki_claim_count: number;
+            /** Claim Store To Wiki Join Rate */
+            claim_store_to_wiki_join_rate?: number | null;
+            /** Source Cutoff Violations */
+            source_cutoff_violations: number;
+        };
+        /**
          * WikiCoverageReportFullResponseDTO
          * @description Full report — payload 는 도구 생성 JSON 그대로 (schema 진화 호환).
          *
@@ -1531,6 +1668,28 @@ export interface components {
             meta: components["schemas"]["BaseMeta"];
             /** Reports */
             reports: components["schemas"]["WikiCoverageReportListItemDTO"][];
+        };
+        /** WikiPageResponseDTO */
+        WikiPageResponseDTO: {
+            meta: components["schemas"]["BaseMeta"];
+            /** Path */
+            path: string;
+            /** Directory */
+            directory: string;
+            /** Page Type */
+            page_type: string;
+            /** Source Type */
+            source_type: string;
+            /** Title */
+            title: string;
+            /** Frontmatter */
+            frontmatter: {
+                [key: string]: unknown;
+            };
+            /** Body */
+            body: string;
+            /** Byte Size */
+            byte_size: number;
         };
     };
     responses: never;
@@ -1952,6 +2111,93 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WikiCoverageReportFullResponseDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_wiki_context_pack_periods_api_admin_wiki_context_pack_periods_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiContextPackPeriodsResponseDTO"];
+                };
+            };
+        };
+    };
+    get_wiki_context_pack_api_admin_wiki_context_pack_get: {
+        parameters: {
+            query: {
+                period_key: string;
+                stage?: "market_debate" | "fund_comment" | "quarterly_debate" | "admin_preview";
+                fund_code?: string | null;
+                max_pages?: number;
+                body_excerpt_chars?: number;
+                include_debate_memory?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiContextPackResponseDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_wiki_page_api_admin_wiki_page_get: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiPageResponseDTO"];
                 };
             };
             /** @description Validation Error */
