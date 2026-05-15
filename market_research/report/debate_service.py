@@ -468,13 +468,20 @@ def renumber_refs(comment: str, annotations: list) -> tuple[str, list, list]:
 # Debate 실행 + 저장 오케스트레이션
 # ══════════════════════════════════════════
 
+# R9-B.5.6 — mode 별 wiki_context_pack builder max_pages default.
+# monthly: 12 (claim 3~7 + wiki layer 5종 ≈ 12 cap 충분)
+# quarterly: 30 (3개월 union claim 4~16 + wiki layer 14, cap=12 시 wiki layer 밀림)
+DEFAULT_WIKI_CONTEXT_MAX_PAGES_MONTHLY = 12
+DEFAULT_WIKI_CONTEXT_MAX_PAGES_QUARTERLY = 30
+
+
 def run_debate_and_save(mode: str, year: int, period_num: int,
                         fund_code: str, period_key: str,
                         *,
                         target_suffix: str | None = None,
                         use_wiki_context_pack: bool = True,
                         wiki_context_pack: dict | None = None,
-                        wiki_context_max_pages: int = 12) -> dict:
+                        wiki_context_max_pages: int | None = None) -> dict:
     """debate 엔진 호출 → 후처리 → draft 저장 → evidence log append.
 
     Streamlit 의존성 없음. tabs/admin.py에서 이 함수를 호출한다.
@@ -487,10 +494,18 @@ def run_debate_and_save(mode: str, year: int, period_num: int,
     WIKI-DEFAULT.1 — use_wiki_context_pack default ON:
       True (default) → wiki primary context block prepend.
       False → legacy raw-first prompt 그대로 (opt-out).
+
+    R9-B.5.6 — wiki_context_max_pages None 이면 mode 별 default 자동 선택:
+      monthly=12 / quarterly=30. int 명시 시 그대로 통과.
     """
     # report_store sanitizer 가 invalid suffix 면 ValueError 를 던지므로
     # save 단계가 아니라 진입 시점에 빨리 가드한다.
     target_suffix = sanitize_target_suffix(target_suffix)
+    if wiki_context_max_pages is None:
+        wiki_context_max_pages = (
+            DEFAULT_WIKI_CONTEXT_MAX_PAGES_QUARTERLY if mode == "분기"
+            else DEFAULT_WIKI_CONTEXT_MAX_PAGES_MONTHLY
+        )
     if mode == "월별":
         from market_research.report.debate_engine import run_market_debate
         result = run_market_debate(

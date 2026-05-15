@@ -1103,18 +1103,25 @@ def _build_wiki_context_pack_for_debate(
     stage: str,
     fund_code: str | None,
     max_pages: int,
+    period_type: str = "monthly",
+    period_keys: list[str] | None = None,
 ) -> dict:
-    """R9-B.3 — opt-in builder 호출 wrapper. read-only, LLM 0.
+    """R9-B.3 — builder 호출 wrapper. read-only, LLM 0.
+
+    R9-B.5.6 — period_type='quarterly' + period_keys=list[str] 를 받아 그대로
+    builder 에 전달. monthly default 는 회귀 없음.
 
     Lazy import — builder 가 wiki/paths.py 만 의존하므로 무거운 사이드
     이펙트 없음. failure 는 caller 에서 WikiContextPackError 로 묶지
-    않고 그대로 surface (builder 내부 ValueError 도 옵션 OFF 회귀 0).
+    않고 그대로 surface (builder 내부 ValueError 도 회귀 0).
     """
     from market_research.report.wiki_context_pack_builder import (
         build_wiki_context_pack,
     )
     return build_wiki_context_pack(
         period_key=period_key,
+        period_type=period_type,
+        period_keys=period_keys,
         stage=stage,
         fund_code=fund_code,
         max_pages=max_pages,
@@ -1244,7 +1251,11 @@ def _format_wiki_primary_context_for_prompt(
 
 
 def _wiki_context_pack_trace(pack: dict | None) -> dict:
-    """opt-in trace 필드만 추출. legacy mode 에선 호출 X — 호출자가 분기."""
+    """opt-in trace 필드만 추출. legacy mode 에선 호출 X — 호출자가 분기.
+
+    R9-B.5.6 — quarterly union 시 period_type/period_keys/by_period 도
+    surface (monthly 는 단일 원소 list / 빈 by_period 로 일관 노출).
+    """
     if not isinstance(pack, dict):
         return {}
     st = pack.get("source_trace") or {}
@@ -1252,6 +1263,8 @@ def _wiki_context_pack_trace(pack: dict | None) -> dict:
         "wiki_context_pack_enabled": True,
         "wiki_context_pack_schema_version": pack.get("schema_version"),
         "wiki_context_pack_period_key": pack.get("period_key"),
+        "wiki_context_pack_period_type": pack.get("period_type"),
+        "wiki_context_pack_period_keys": list(pack.get("period_keys") or []),
         "wiki_context_pack_stage": pack.get("stage"),
         "wiki_pages_selected": st.get("wiki_pages_selected", 0),
         "selected_wiki_paths": list(st.get("selected_wiki_paths") or []),
@@ -1264,6 +1277,9 @@ def _wiki_context_pack_trace(pack: dict | None) -> dict:
             "claim_store_to_wiki_join_rate"
         ),
         "source_cutoff_violations": st.get("source_cutoff_violations", 0),
+        "claim_store_selected_count_by_period": dict(
+            st.get("claim_store_selected_count_by_period") or {}
+        ),
     }
 
 
@@ -2083,7 +2099,9 @@ def run_quarterly_debate(year: int, quarter: int,
     (다른 월의 contract 에는 매칭 안 되므로 자연스럽게 무효화 됨).
 
     WIKI-DEFAULT.1 — wiki_context_pack default ON. market_debate 와 동일 시맨틱.
-    period_key = 분기 마지막 월 (e.g. Q1 → "{year}-03"). stage = "quarterly_debate".
+    R9-B.5.6 — period_type="quarterly", period_key="YYYY-QX", period_keys=[3개월].
+    builder 가 분기 전체 month 의 claim_store 를 union 하고 wiki page selection 도
+    분기 window 기준으로 수행.
     """
     months = [(quarter - 1) * 3 + i for i in range(1, 4)]
     print(f'\n-- Quarterly Debate: {year}Q{quarter} ({months[0]}~{months[2]}월) --')
@@ -2096,19 +2114,23 @@ def run_quarterly_debate(year: int, quarter: int,
     wiki_primary_text_q = ''
     wcp_used_q: dict | None = None
     if use_wiki_context_pack:
-        # 분기 end-month 를 period_key 로 사용 — wiki retriever / wiki page period
-        # filter 와 일관 (Q-FIX-1 last_ctx 시맨틱과 동일).
-        period_key = f'{year}-{months[-1]:02d}'
+        # R9-B.5.6 — quarterly union pack.
+        # period_key: YYYY-QX label (display + pack identifier)
+        # period_keys: 분기 3개월 — builder 가 monthly claim_store 를 union.
+        quarter_label = f'{year}-Q{quarter}'
+        quarter_period_keys = [f'{year}-{m:02d}' for m in months]
         if wiki_context_pack is not None:
             _validate_wiki_context_pack(
                 wiki_context_pack,
-                expected_period=period_key,
+                expected_period=quarter_label,
                 expected_stage='quarterly_debate',
             )
             wcp_used_q = wiki_context_pack
         else:
             wcp_used_q = _build_wiki_context_pack_for_debate(
-                period_key=period_key,
+                period_key=quarter_label,
+                period_type='quarterly',
+                period_keys=quarter_period_keys,
                 stage='quarterly_debate',
                 fund_code=None,
                 max_pages=wiki_context_max_pages,
@@ -2116,8 +2138,9 @@ def run_quarterly_debate(year: int, quarter: int,
         wiki_primary_text_q = _format_wiki_primary_context_for_prompt(wcp_used_q)
         wcp_trace_fields = _wiki_context_pack_trace(wcp_used_q)
         prompt_context_mode = 'wiki_context_pack_default'
-        print(f'  [wiki_context_pack] enabled (default), pages='
-              f'{wcp_trace_fields.get("wiki_pages_selected", 0)}')
+        print(f'  [wiki_context_pack] enabled (default, quarterly union), '
+              f'period_keys={quarter_period_keys}, '
+              f'pages={wcp_trace_fields.get("wiki_pages_selected", 0)}')
 
     # 3개월 컨텍스트 병합
     merged_context = {

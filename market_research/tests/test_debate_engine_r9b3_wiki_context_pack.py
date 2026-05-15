@@ -610,11 +610,77 @@ def test_wiki_context_pack_schema_version_is_aligned_with_builder():
 
 
 # ──────────────────────────────────────────────────────────────────
-# 9. quarterly opt-in (end-month period_key)
+# 9. R9-B.5.6 — quarterly union (period_keys = 3 months)
 # ──────────────────────────────────────────────────────────────────
 
-def test_quarterly_opt_in_uses_end_month_period_key(monkeypatch):
-    pack = _make_pack(period_key="2026-03", stage="quarterly_debate")
+def _make_quarterly_pack(quarter_label: str = "2026-Q1",
+                          period_keys: list[str] | None = None) -> dict:
+    """quarterly pack stub — 1 claim per month, period_keys 명시."""
+    pks = period_keys or ["2026-01", "2026-02", "2026-03"]
+    claims = []
+    cids = []
+    by_period = {}
+    for pk in pks:
+        h = (pk.replace("-", "") + "0000000000")[:10]
+        cid = f"claim:{pk}:{h}"
+        cids.append(cid)
+        by_period[pk] = 1
+        claims.append({
+            "page_id": cid,
+            "path": f"08_Claims/{pk}_claim_{h}.md",
+            "claim_id": cid,
+            "title": f"q-claim {pk}",
+            "source_type": "claim_memory",
+            "excerpt": "",
+        })
+    return {
+        "schema_version": de.WIKI_CONTEXT_PACK_SCHEMA_VERSION,
+        "period_type": "quarterly",
+        "period_key": quarter_label,
+        "period_keys": pks,
+        "window_start": f"{pks[0]}-01",
+        "window_end": f"{pks[-1]}-28",
+        "as_of_date": f"{pks[-1]}-28",
+        "stage": "quarterly_debate",
+        "fund_code": None,
+        "mode": "wiki_first_debug",
+        "generated_at": "2026-05-15T00:00:00+00:00",
+        "debate_run_id": None,
+        "market_context": {
+            "events": [], "entities": [], "assets": [], "regime": [],
+            "graph_evidence": [], "claims": claims,
+        },
+        "fund_context": {"fund_page": None, "fund_claims": [],
+                          "fund_asset_exposures": []},
+        "prior_memory": {"debate_memory": [], "include_policy": "disabled"},
+        "validation_pack": {"raw_sources_used": [], "numeric_guardrails": [],
+                            "source_cutoff_date": f"{pks[-1]}-28"},
+        "source_trace": {
+            "wiki_pages_considered": len(claims) * 5,
+            "wiki_pages_selected": len(claims),
+            "selected_wiki_paths": [c["path"] for c in claims],
+            "selected_by_directory": {"08_Claims": len(claims)},
+            "source_type_counts": {"claim_memory": len(claims)},
+            "selected_claim_ids": cids,
+            "selected_related_group_ids": [],
+            "claim_store_selected_count": len(claims),
+            "matched_wiki_claim_count": len(claims),
+            "claim_store_to_wiki_join_rate": 1.0,
+            "source_cutoff_violations": 0,
+            "per_dir_stats": {},
+            "claim_store_selected_count_by_period": by_period,
+        },
+        "warnings": [],
+    }
+
+
+def test_quarterly_calls_builder_with_quarter_label_and_period_keys(monkeypatch):
+    """R9-B.5.6 — run_quarterly_debate 는 build_wiki_context_pack 을
+    period_type='quarterly', period_keys=[3개월], period_key='YYYY-QX' 로
+    호출해야 한다. trace 에도 동일 값이 surface.
+    """
+    pack = _make_quarterly_pack("2026-Q1",
+                                  ["2026-01", "2026-02", "2026-03"])
     seen: dict = {}
     monkeypatch.setattr(
         "market_research.report.wiki_context_pack_builder.build_wiki_context_pack",
@@ -639,19 +705,73 @@ def test_quarterly_opt_in_uses_end_month_period_key(monkeypatch):
         lambda resp: {"debate_narrative": "n", "canonical_snapshot": {},
                        "diverges_from_canonical": False},
     )
-    # debate_service.build_evidence_annotations 도 stub 안 하면 운영 file read.
-    # 분기 흐름에서만 호출되므로 monkeypatch (LLM 0 + IO 0).
     monkeypatch.setattr(
         "market_research.report.debate_service.build_evidence_annotations",
         lambda evs, y, ms: [],
     )
 
     result = de.run_quarterly_debate(2026, 1, use_wiki_context_pack=True)
-    assert seen["period_key"] == "2026-03"
+    assert seen["period_key"] == "2026-Q1"
+    assert seen["period_type"] == "quarterly"
+    assert seen["period_keys"] == ["2026-01", "2026-02", "2026-03"]
     assert seen["stage"] == "quarterly_debate"
     trace = result["_debug_trace"]
     assert trace["prompt_context_mode"] == "wiki_context_pack_default"
-    assert trace["wiki_context_pack_period_key"] == "2026-03"
+    assert trace["wiki_context_pack_period_key"] == "2026-Q1"
+    assert trace["wiki_context_pack_period_type"] == "quarterly"
+    assert trace["wiki_context_pack_period_keys"] == [
+        "2026-01", "2026-02", "2026-03",
+    ]
+    # quarterly union 전체 claim ID가 surface
+    assert trace["selected_claim_ids"] == [
+        "claim:2026-01:2026010000",
+        "claim:2026-02:2026020000",
+        "claim:2026-03:2026030000",
+    ]
+    assert trace["claim_store_selected_count_by_period"] == {
+        "2026-01": 1, "2026-02": 1, "2026-03": 1,
+    }
+
+
+def test_monthly_path_trace_has_single_period_key(monkeypatch):
+    """monthly 회귀 — period_keys 는 [period_key] 단일 원소."""
+    pack = _make_pack()  # period_key=2026-04 monthly
+    pack["period_type"] = "monthly"
+    pack["period_keys"] = ["2026-04"]
+    seen: dict = {}
+    monkeypatch.setattr(
+        "market_research.report.wiki_context_pack_builder.build_wiki_context_pack",
+        lambda **kw: (seen.update(kw) or pack),
+    )
+    monkeypatch.setattr(
+        de, "_build_shared_context",
+        lambda y, m, **kw: _bare_context(year=y, month=m),
+    )
+    monkeypatch.setattr(
+        de, "_run_agent",
+        lambda agent, context: {"agent": agent, "stance": "neutral",
+                                  "key_points": [],
+                                  "asset_movement_commentary": []},
+    )
+    monkeypatch.setattr(
+        de, "_synthesize_debate",
+        lambda *a, **kw: {"customer_comment": "ok.", "consensus_points": [],
+                          "disagreements": [], "tail_risks": [],
+                          "admin_summary": ""},
+    )
+    monkeypatch.setattr(
+        de, "_summarize_debate_narrative",
+        lambda resp: {"debate_narrative": "n", "canonical_snapshot": {},
+                       "diverges_from_canonical": False},
+    )
+    result = de.run_market_debate(2026, 4, use_wiki_context_pack=True)
+    # monthly path 는 period_type / period_keys 가 명시되지 않거나 monthly.
+    # 호출 시 period_type / period_keys 미주입 (기본 monthly).
+    assert seen.get("period_type", "monthly") == "monthly"
+    assert seen.get("period_keys") is None
+    trace = result["_debug_trace"]
+    assert trace["wiki_context_pack_period_type"] == "monthly"
+    assert trace["wiki_context_pack_period_keys"] == ["2026-04"]
 
 
 # ──────────────────────────────────────────────────────────────────
