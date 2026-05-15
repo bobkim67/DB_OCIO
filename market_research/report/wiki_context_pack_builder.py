@@ -25,7 +25,7 @@ import calendar
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
 
@@ -45,6 +45,48 @@ SCHEMA_VERSION = "r9b-context-pack-1.0.0"
 MODE = "wiki_first_debug"
 DEFAULT_MAX_PAGES = 12
 DEFAULT_BODY_EXCERPT_CHARS = 700
+
+# R9-B.6C — Project local timezone for timestamp-naive frontmatter values.
+# Existing production wiki pages (R9-A.1 pilot, R9-A.21A dual-anchor) store
+# `promoted_at` as KST timestamp without offset; new pages may include
+# `+09:00` or UTC `Z`. _parse_timestamp normalizes both to tz-aware datetime.
+_PROJECT_LOCAL_TZ = timezone(timedelta(hours=9))
+
+
+def _parse_timestamp(s: str | None) -> datetime | None:
+    """ISO-8601 timestamp string → timezone-aware datetime.
+
+    naive (no tz offset) 값은 project local (Asia/Seoul, UTC+9) 으로 해석.
+    parse 실패 → None.
+    """
+    if not isinstance(s, str) or not s.strip():
+        return None
+    txt = s.strip()
+    if txt.endswith("Z"):
+        txt = txt[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(txt)
+    except (ValueError, TypeError):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=_PROJECT_LOCAL_TZ)
+    return dt
+
+
+def _is_future_relative(available_from: str | None,
+                        builder_run_time: str) -> bool:
+    """available_from 이 builder_run_time 이후이면 True.
+
+    timezone-aware datetime 비교. naive 입력은 KST(UTC+9) 로 해석. 둘 다
+    parse 실패하면 안전하게 lex string 비교 (legacy 회귀 방지).
+    """
+    if not available_from:
+        return False
+    af = _parse_timestamp(available_from)
+    rt = _parse_timestamp(builder_run_time)
+    if af is None or rt is None:
+        return bool(available_from > builder_run_time)
+    return af > rt
 
 # Global selection priority (workorder §"권장 selection priority").
 # 1. 08_Claims (joined) → reserved phase
@@ -599,7 +641,7 @@ def _select_pages_for_window(
             if rec.source_cutoff_date and rec.source_cutoff_date > request_window["as_of_date"]:
                 stats["skipped_cutoff_violation"] += 1
                 continue
-        if rec.available_from and rec.available_from > builder_run_time:
+        if _is_future_relative(rec.available_from, builder_run_time):
             stats["skipped_available_from_future"] += 1
             continue
         if rec.used_filename_fallback:
@@ -776,6 +818,13 @@ def _load_claim_store_passing(
             continue
         if _meets_rule_a_local(c) or _meets_rule_b_local(c):
             out.append(c)
+            continue
+        # R9-B.6C — Rule C (force) surface. canonical store metadata 의
+        # optional `promotion_rule` 필드가 "C" 인 경우 read-side 도 인정
+        # (claim_store.select_promoted_claims_for_period 와 동일 정책).
+        pr = c.get("promotion_rule")
+        if isinstance(pr, str) and pr.strip().upper() == "C":
+            out.append(c)
     return out
 
 
@@ -850,7 +899,7 @@ def _build_claim_section(
                 "request_as_of": request_window["as_of_date"],
             })
             continue
-        if rec.available_from and rec.available_from > builder_run_time:
+        if _is_future_relative(rec.available_from, builder_run_time):
             warnings.append({
                 "warning_type": "available_from_future",
                 "path": rec.path,
@@ -1023,7 +1072,7 @@ def build_wiki_context_pack(
                     cutoff_violations_total += 1
                     per_dir_stats["04_Funds"]["skipped_cutoff_violation"] += 1
                     ok = False
-                if ok and rec.available_from and rec.available_from > run_time:
+                if ok and _is_future_relative(rec.available_from, run_time):
                     per_dir_stats["04_Funds"]["skipped_available_from_future"] += 1
                     ok = False
                 if ok:

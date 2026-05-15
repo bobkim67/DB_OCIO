@@ -1,0 +1,305 @@
+{
+  "schema_version": "1.0.0",
+  "period": "2026-02",
+  "saved_at": "2026-05-15T09:11:40",
+  "source": "daily_update_r9a4_r9b6c_backfill",
+  "extractor_version": "r9a.4-haiku",
+  "target_suffix": null,
+  "claims": [
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-02:585f5a00a5",
+      "period": "2026-02",
+      "source_evidence_ids": [
+        "b05e7902349b",
+        "650e2e191c02",
+        "1ce27c186287"
+      ],
+      "claim_text": "반도체 수출 호조로 한은이 2026년 성장률을 2.0%로 상향(기저 2.0%, 반도체 호조 시 2.2%)",
+      "claim_type": "macro_to_asset",
+      "affected_assets": [
+        {
+          "asset_class": "국내주식",
+          "direction": "positive"
+        },
+        {
+          "asset_class": "국내채권",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "현금성",
+          "direction": "negative"
+        }
+      ],
+      "causal_chain": [
+        {
+          "source": "반도체 경기 개선",
+          "target": "성장률 상향",
+          "relation": "supports"
+        },
+        {
+          "source": "성장률 상향",
+          "target": "국내주식",
+          "relation": "raises"
+        },
+        {
+          "source": "성장률 상향",
+          "target": "금리 인상 압력",
+          "relation": "pressures"
+        }
+      ],
+      "direction": "positive",
+      "horizon": "medium",
+      "confidence": 0.93,
+      "salience": 0.93,
+      "supporting_evidence_ids": [
+        "b05e7902349b",
+        "650e2e191c02",
+        "1ce27c186287"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.4-haiku",
+      "extraction_method": "llm",
+      "warnings": [],
+      "canonical_group_id": "group:2026-02:c63c80e7e0"
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-02:540fb98a2f",
+      "period": "2026-02",
+      "source_evidence_ids": [
+        "db40b1782f97",
+        "a677225c9963",
+        "f00d4039ef33",
+        "92706748e2c3",
+        "50ea9e0c44bf"
+      ],
+      "claim_text": "한은이 기준금리 2.5%에서 6연속 동절을 결정, 환율·부동산 리스크로 추가 인상 우려 완화",
+      "claim_type": "macro_to_asset",
+      "affected_assets": [
+        {
+          "asset_class": "국내채권",
+          "direction": "positive"
+        },
+        {
+          "asset_class": "국내주식",
+          "direction": "positive"
+        },
+        {
+          "asset_class": "환율(FX)",
+          "direction": "negative"
+        }
+      ],
+      "causal_chain": [
+        {
+          "source": "기준금리 동절",
+          "target": "금리 인상 우려 완화",
+          "relation": "offsets"
+        },
+        {
+          "source": "금리 인상 우려 완화",
+          "target": "국내채권",
+          "relation": "supports"
+        },
+        {
+          "source": "금리 인상 우려 완화",
+          "target": "국내주식",
+          "relation": "supports"
+        }
+      ],
+      "direction": "mixed",
+      "horizon": "medium",
+      "confidence": 0.93,
+      "salience": 0.93,
+      "supporting_evidence_ids": [
+        "db40b1782f97",
+        "a677225c9963",
+        "f00d4039ef33",
+        "92706748e2c3",
+        "50ea9e0c44bf"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.4-haiku",
+      "extraction_method": "llm",
+      "warnings": [],
+      "canonical_group_id": "group:2026-02:d37a458523"
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-02:60cac0908e",
+      "period": "2026-02",
+      "source_evidence_ids": [
+        "92706748e2c3",
+        "0aec29e47be1",
+        "67e99f5ab140"
+      ],
+      "claim_text": "K점도표 첫 공개, 향후 6개월 내 동절 16개·인하 4개로 금리 인상 1개보다 압도적으로 더 예상",
+      "claim_type": "outlook_view",
+      "affected_assets": [
+        {
+          "asset_class": "국내채권",
+          "direction": "positive"
+        },
+        {
+          "asset_class": "현금성",
+          "direction": "positive"
+        },
+        {
+          "asset_class": "국내주식",
+          "direction": "positive"
+        }
+      ],
+      "causal_chain": [
+        {
+          "source": "점도표 동절 우위",
+          "target": "금리 상승 기대 약화",
+          "relation": "weakens"
+        },
+        {
+          "source": "금리 상승 기대 약화",
+          "target": "국내채권",
+          "relation": "supports"
+        }
+      ],
+      "direction": "positive",
+      "horizon": "medium",
+      "confidence": 0.93,
+      "salience": 0.93,
+      "supporting_evidence_ids": [
+        "92706748e2c3",
+        "0aec29e47be1",
+        "67e99f5ab140"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.4-haiku",
+      "extraction_method": "llm",
+      "warnings": [],
+      "canonical_group_id": "group:2026-02:35232125a6"
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-02:c337a44152",
+      "period": "2026-02",
+      "source_evidence_ids": [
+        "6fe8895bc077"
+      ],
+      "claim_text": "기준금리 동절 장기화 전망 속에서도 시중 대출금리는 계속 상승세, 금융 부문 신용리스크 부재 아님",
+      "claim_type": "risk",
+      "affected_assets": [
+        {
+          "asset_class": "국내채권",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "크레딧",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "국내주식",
+          "direction": "negative"
+        }
+      ],
+      "causal_chain": [
+        {
+          "source": "대출금리 상승",
+          "target": "차입 부담 증가",
+          "relation": "pressures"
+        },
+        {
+          "source": "차입 부담 증가",
+          "target": "신용리스크",
+          "relation": "raises"
+        }
+      ],
+      "direction": "negative",
+      "horizon": "medium",
+      "confidence": 0.9,
+      "salience": 0.9,
+      "supporting_evidence_ids": [
+        "6fe8895bc077"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.4-haiku",
+      "extraction_method": "llm",
+      "warnings": [],
+      "canonical_group_id": "group:2026-02:7467e01aaa"
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-02:03cc51a72e",
+      "period": "2026-02",
+      "source_evidence_ids": [
+        "b6b61c1a67e7",
+        "fdb059426409",
+        "12545103c82a"
+      ],
+      "claim_text": "환율·부동산 변수가 지속적 불확실성으로 작용하며 한은의 향후 통화정책 의사결정 제약",
+      "claim_type": "risk",
+      "affected_assets": [
+        {
+          "asset_class": "환율(FX)",
+          "direction": "unknown"
+        },
+        {
+          "asset_class": "국내주식",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "국내채권",
+          "direction": "negative"
+        }
+      ],
+      "causal_chain": [
+        {
+          "source": "환율·부동산 불안",
+          "target": "금리 정책 유연성 제약",
+          "relation": "weakens"
+        },
+        {
+          "source": "정책 불확실성",
+          "target": "자산 변동성",
+          "relation": "increases_volatility"
+        }
+      ],
+      "direction": "negative",
+      "horizon": "medium",
+      "confidence": 0.93,
+      "salience": 0.93,
+      "supporting_evidence_ids": [
+        "b6b61c1a67e7",
+        "fdb059426409",
+        "12545103c82a"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.4-haiku",
+      "extraction_method": "llm",
+      "warnings": [],
+      "canonical_group_id": "group:2026-02:92e395b1b6"
+    }
+  ],
+  "stats": {
+    "total": 5,
+    "promoted": 5,
+    "skipped": 7,
+    "by_asset_class": {
+      "국내주식": 5,
+      "국내채권": 5,
+      "크레딧": 1,
+      "현금성": 2,
+      "환율(FX)": 2
+    },
+    "by_horizon": {
+      "medium": 5
+    },
+    "by_claim_type": {
+      "macro_to_asset": 2,
+      "outlook_view": 1,
+      "risk": 2
+    }
+  }
+}

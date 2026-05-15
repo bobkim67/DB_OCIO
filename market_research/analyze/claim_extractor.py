@@ -135,8 +135,14 @@ REQUIRED_FIELDS: tuple[str, ...] = (
 # (R9-A.1 manual pilot 22 claim 등) 가 validate_claim 에서 미존재로 fail 되지
 # 않는다. normalize_claim() 통과 시 자동 부착되지만, 운영 파일을 그대로 read
 # 만 하면 md5 변경 0.
+#
+# R9-B.6C — `promotion_rule` 추가. Rule A/B 자연 통과는 read-side
+# (`select_promoted_claims_for_period`) 가 룰 평가로 surface 하지만, Rule C
+# (force) 는 룰 평가만으로 surface 되지 않으므로 canonical store metadata
+# 에 명시. 값: "A" | "B" | "C" (대소문자 무관). 미설정 → 룰 평가만.
 OPTIONAL_FIELDS: tuple[str, ...] = (
     "canonical_group_id",
+    "promotion_rule",
 )
 
 # Threshold heuristics (validator soft warnings)

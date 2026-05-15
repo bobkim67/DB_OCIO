@@ -1,0 +1,241 @@
+{
+  "schema_version": "1.0.0",
+  "period": "2026-01",
+  "saved_at": "2026-05-15T09:11:40",
+  "source": "daily_update_r9a4_r9b6c_backfill",
+  "extractor_version": "r9a.4-haiku",
+  "target_suffix": null,
+  "claims": [
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-01:5575cf43c9",
+      "period": "2026-01",
+      "source_evidence_ids": [
+        "bcaec12ec168",
+        "afaefae5c528",
+        "e5b4c0dd119e",
+        "9c9626187b69",
+        "d1f44b83ba73",
+        "a5a74336428e",
+        "3ab294284256",
+        "c3f661d0e554",
+        "9669c42a7804"
+      ],
+      "claim_text": "금값이 사상 최초로 5,000달러를 돌파하고 5,300달러까지 상승하며 연내 5,400달러 목표 제시",
+      "claim_type": "asset_to_fund",
+      "affected_assets": [
+        {
+          "asset_class": "원자재금",
+          "direction": "positive"
+        }
+      ],
+      "causal_chain": [
+        {
+          "source": "트럼프 리스크·지정학 긴장",
+          "target": "안전자산 수요",
+          "relation": "raises"
+        },
+        {
+          "source": "안전자산 수요",
+          "target": "금값",
+          "relation": "raises"
+        }
+      ],
+      "direction": "positive",
+      "horizon": "medium",
+      "confidence": 0.95,
+      "salience": 0.95,
+      "supporting_evidence_ids": [
+        "bcaec12ec168",
+        "afaefae5c528",
+        "e5b4c0dd119e",
+        "9c9626187b69",
+        "d1f44b83ba73",
+        "a5a74336428e",
+        "3ab294284256",
+        "c3f661d0e554",
+        "9669c42a7804"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.4-haiku",
+      "extraction_method": "llm",
+      "warnings": [],
+      "canonical_group_id": "group:2026-01:a429d4986a",
+      "promotion_rule": "C"
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-01:86b93443ad",
+      "period": "2026-01",
+      "source_evidence_ids": [
+        "c3f661d0e554",
+        "9669c42a7804",
+        "fad4ecf86d91"
+      ],
+      "claim_text": "트럼프의 '달러가 제 값을 찾아야 한다' 발언이 달러 약세 공식화 신호, 금·원자재 상승 가속",
+      "claim_type": "event_to_macro",
+      "affected_assets": [
+        {
+          "asset_class": "환율(FX)",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "원자재금",
+          "direction": "positive"
+        }
+      ],
+      "causal_chain": [
+        {
+          "source": "트럼프 달러 약세 발언",
+          "target": "달러 평가절하 기대",
+          "relation": "raises"
+        },
+        {
+          "source": "달러 약세 기대",
+          "target": "금·원자재 가격",
+          "relation": "pressures"
+        }
+      ],
+      "direction": "mixed",
+      "horizon": "medium",
+      "confidence": 0.9,
+      "salience": 0.85,
+      "supporting_evidence_ids": [
+        "c3f661d0e554",
+        "9669c42a7804",
+        "fad4ecf86d91"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.4-haiku",
+      "extraction_method": "llm",
+      "warnings": [],
+      "canonical_group_id": "group:2026-01:c882fb211e",
+      "promotion_rule": "C"
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-01:57c1b1bc8e",
+      "period": "2026-01",
+      "source_evidence_ids": [
+        "803d165aef7a",
+        "4cb3f4575532"
+      ],
+      "claim_text": "한국 시장의 WGBI 편입 기대에 환율·인플레 안정화 전망으로 외국인 투자 매력도 증대",
+      "claim_type": "outlook_view",
+      "affected_assets": [
+        {
+          "asset_class": "국내주식",
+          "direction": "positive"
+        },
+        {
+          "asset_class": "국내채권",
+          "direction": "positive"
+        },
+        {
+          "asset_class": "환율(FX)",
+          "direction": "neutral"
+        }
+      ],
+      "causal_chain": [
+        {
+          "source": "WGBI 편입 가능성",
+          "target": "시장 신인도",
+          "relation": "raises"
+        },
+        {
+          "source": "시장 신인도",
+          "target": "외국인 자본 유입",
+          "relation": "strengthens"
+        }
+      ],
+      "direction": "positive",
+      "horizon": "medium",
+      "confidence": 0.8,
+      "salience": 0.72,
+      "supporting_evidence_ids": [
+        "803d165aef7a",
+        "4cb3f4575532"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.4-haiku",
+      "extraction_method": "llm",
+      "warnings": [],
+      "canonical_group_id": "group:2026-01:898ff0ed52"
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-01:650dbef400",
+      "period": "2026-01",
+      "source_evidence_ids": [
+        "73828fffb0d7",
+        "aeff41cdb548"
+      ],
+      "claim_text": "연준 금리 결정과 빅테크 실적 발표 시즌이 주식시장 변동성 가중, 정책 불확실성 심화",
+      "claim_type": "event_to_macro",
+      "affected_assets": [
+        {
+          "asset_class": "국내주식",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "해외주식",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "원자재금",
+          "direction": "positive"
+        }
+      ],
+      "causal_chain": [
+        {
+          "source": "연준 금리 결정",
+          "target": "금리 경로 불확실성",
+          "relation": "increases_volatility"
+        },
+        {
+          "source": "정책 불확실성",
+          "target": "위험자산 회피",
+          "relation": "weakens"
+        }
+      ],
+      "direction": "negative",
+      "horizon": "short",
+      "confidence": 0.78,
+      "salience": 0.75,
+      "supporting_evidence_ids": [
+        "73828fffb0d7",
+        "aeff41cdb548"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.4-haiku",
+      "extraction_method": "llm",
+      "warnings": [],
+      "canonical_group_id": "group:2026-01:59e51ba3e1"
+    }
+  ],
+  "stats": {
+    "total": 4,
+    "promoted": 4,
+    "skipped": 20,
+    "by_asset_class": {
+      "국내주식": 2,
+      "국내채권": 1,
+      "원자재금": 3,
+      "해외주식": 1,
+      "환율(FX)": 2
+    },
+    "by_horizon": {
+      "medium": 3,
+      "short": 1
+    },
+    "by_claim_type": {
+      "asset_to_fund": 1,
+      "event_to_macro": 2,
+      "outlook_view": 1
+    }
+  }
+}

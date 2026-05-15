@@ -270,9 +270,20 @@ def select_promoted_claims_for_period(
     except Exception:
         return []
 
-    promoted = [c for c in claims
-                if isinstance(c, dict)
-                and (_meets_rule_a(c) or _meets_rule_b(c))]
+    def _is_promoted(c: dict) -> bool:
+        if not isinstance(c, dict):
+            return False
+        # Rule A / B — 자연 promotion (룰 평가).
+        if _meets_rule_a(c) or _meets_rule_b(c):
+            return True
+        # R9-B.6C — Rule C (force) surface. canonical store 의 optional
+        # `promotion_rule` 필드가 "C" 인 경우 read-side 에도 등록.
+        pr = c.get("promotion_rule")
+        if isinstance(pr, str) and pr.strip().upper() == "C":
+            return True
+        return False
+
+    promoted = [c for c in claims if _is_promoted(c)]
 
     if asset_class:
         target = asset_class

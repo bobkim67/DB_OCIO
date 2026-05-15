@@ -1,0 +1,463 @@
+{
+  "schema_version": "1.0.0",
+  "period": "2026-03",
+  "saved_at": "2026-05-15T09:11:40",
+  "source": "daily_update_r9a4_r9b6c_backfill",
+  "extractor_version": "r9a.4-haiku",
+  "target_suffix": null,
+  "claims": [
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-03:12ad0d860b",
+      "period": "2026-03",
+      "source_evidence_ids": [
+        "9b44658c63c0",
+        "53c5b1776cf5",
+        "80d5fb1e6ee5",
+        "f52833579706",
+        "9a0bad8c5608",
+        "b9dc577450ba"
+      ],
+      "claim_text": "호르무즈 해협 봉쇄에 따른 원유 공급 충격으로 국제유가가 4년만에 배럴당 100달러를 돌파하며 글로벌 에너지 위기 심화",
+      "claim_type": "event_to_macro",
+      "affected_assets": [
+        {
+          "asset_class": "원자재금",
+          "direction": "positive"
+        },
+        {
+          "asset_class": "국내주식",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "해외주식",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "국내채권",
+          "direction": "negative"
+        }
+      ],
+      "causal_chain": [
+        {
+          "source": "중동 지정학 위기",
+          "target": "호르무즈 해협 봉쇄",
+          "relation": "causes"
+        },
+        {
+          "source": "호르무즈 해협 봉쇄",
+          "target": "원유 공급 부족",
+          "relation": "causes"
+        },
+        {
+          "source": "원유 공급 부족",
+          "target": "유가 급등",
+          "relation": "pressures"
+        }
+      ],
+      "direction": "negative",
+      "horizon": "medium",
+      "confidence": 0.98,
+      "salience": 0.97,
+      "supporting_evidence_ids": [
+        "9b44658c63c0",
+        "53c5b1776cf5",
+        "80d5fb1e6ee5",
+        "f52833579706",
+        "9a0bad8c5608",
+        "b9dc577450ba"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.4-haiku",
+      "extraction_method": "llm",
+      "warnings": [],
+      "canonical_group_id": "group:2026-03:1d623d6339"
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-03:d0824ae1bf",
+      "period": "2026-03",
+      "source_evidence_ids": [
+        "31b18f52424b",
+        "42cf3b5de84b",
+        "d79e7a31251d"
+      ],
+      "claim_text": "유가 100달러 돌파로 인한 스태그플레이션 공포가 확산되며 미국 경제 둔화 우려와 글로벌 금리인상 압박 동시 발생",
+      "claim_type": "macro_to_asset",
+      "affected_assets": [
+        {
+          "asset_class": "국내채권",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "해외채권",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "국내주식",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "해외주식",
+          "direction": "negative"
+        }
+      ],
+      "causal_chain": [
+        {
+          "source": "유가 100달러 이상",
+          "target": "인플레이션 상승압력",
+          "relation": "pressures"
+        },
+        {
+          "source": "인플레이션 상승압력",
+          "target": "글로벌 금리인상 기대",
+          "relation": "raises"
+        },
+        {
+          "source": "글로벌 금리인상 기대",
+          "target": "채권수익률 상승",
+          "relation": "pressures"
+        }
+      ],
+      "direction": "negative",
+      "horizon": "medium",
+      "confidence": 0.95,
+      "salience": 0.97,
+      "supporting_evidence_ids": [
+        "31b18f52424b",
+        "42cf3b5de84b",
+        "d79e7a31251d"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.4-haiku",
+      "extraction_method": "llm",
+      "warnings": [],
+      "canonical_group_id": "group:2026-03:bfbffe2efc"
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-03:078c6ad66e",
+      "period": "2026-03",
+      "source_evidence_ids": [
+        "12cf7d186a4a",
+        "a23d2ec473df",
+        "53c5b1776cf5",
+        "80d5fb1e6ee5",
+        "a3fbebb048f0",
+        "71ac905d9156"
+      ],
+      "claim_text": "중동 전쟁 확전 우려로 한국 증시가 3거래일만에 서킷브레이커 발동, 코스피 5~6% 급락으로 금융시장 변동성 극대화",
+      "claim_type": "event_to_macro",
+      "affected_assets": [
+        {
+          "asset_class": "국내주식",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "환율(FX)",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "현금성",
+          "direction": "positive"
+        }
+      ],
+      "causal_chain": [
+        {
+          "source": "중동 지정학 위기 격화",
+          "target": "글로벌 위험회피",
+          "relation": "pressures"
+        },
+        {
+          "source": "글로벌 위험회피",
+          "target": "신흥국 주식 매도",
+          "relation": "pressures"
+        },
+        {
+          "source": "신흥국 주식 매도",
+          "target": "코스피 급락",
+          "relation": "pressures"
+        }
+      ],
+      "direction": "negative",
+      "horizon": "short",
+      "confidence": 0.98,
+      "salience": 0.97,
+      "supporting_evidence_ids": [
+        "12cf7d186a4a",
+        "a23d2ec473df",
+        "53c5b1776cf5",
+        "80d5fb1e6ee5",
+        "a3fbebb048f0",
+        "71ac905d9156"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.4-haiku",
+      "extraction_method": "llm",
+      "warnings": [],
+      "canonical_group_id": "group:2026-03:5801605b59"
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-03:8ee3996b1a",
+      "period": "2026-03",
+      "source_evidence_ids": [
+        "a3ea290bc16e",
+        "940ba3f23198"
+      ],
+      "claim_text": "중동 위기에 따른 안전자산 선호 현상이 약화되며 금값이 오히려 7.9% 폭락, 금리인상 공포가 안전자산 심리를 압도",
+      "claim_type": "risk",
+      "affected_assets": [
+        {
+          "asset_class": "원자재금",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "국내채권",
+          "direction": "negative"
+        }
+      ],
+      "causal_chain": [
+        {
+          "source": "유가 상승으로 인한 금리인상 예상",
+          "target": "실질금리 상승기대",
+          "relation": "pressures"
+        },
+        {
+          "source": "실질금리 상승기대",
+          "target": "금(비수익자산) 매도",
+          "relation": "pressures"
+        },
+        {
+          "source": "금(비수익자산) 매도",
+          "target": "금값 하락",
+          "relation": "pressures"
+        }
+      ],
+      "direction": "negative",
+      "horizon": "short",
+      "confidence": 0.93,
+      "salience": 0.95,
+      "supporting_evidence_ids": [
+        "a3ea290bc16e",
+        "940ba3f23198"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.4-haiku",
+      "extraction_method": "llm",
+      "warnings": [],
+      "canonical_group_id": "group:2026-03:3a8858c4e0"
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-03:dad691fe88",
+      "period": "2026-03",
+      "source_evidence_ids": [
+        "6b9769a6e5ee",
+        "5a146c0d8d28",
+        "2bac344feec9",
+        "0f3f586d78a6",
+        "b2490e869839",
+        "3bf582b8e541",
+        "d8c0b53ffac4"
+      ],
+      "claim_text": "원화 약세(환율 1,500원 돌파)가 지속되며 17년만의 최저 수준 기록, 신흥국 통화 약세와 글로벌 달러 강세 심화",
+      "claim_type": "macro_to_asset",
+      "affected_assets": [
+        {
+          "asset_class": "환율(FX)",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "국내주식",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "국내채권",
+          "direction": "negative"
+        }
+      ],
+      "causal_chain": [
+        {
+          "source": "글로벌 위험회피 심화",
+          "target": "달러 선호 강화",
+          "relation": "raises"
+        },
+        {
+          "source": "달러 선호 강화",
+          "target": "원화 약세 압력",
+          "relation": "pressures"
+        },
+        {
+          "source": "원화 약세",
+          "target": "수입가격 상승·수출경쟁력 악화",
+          "relation": "pressures"
+        }
+      ],
+      "direction": "negative",
+      "horizon": "short",
+      "confidence": 0.96,
+      "salience": 0.97,
+      "supporting_evidence_ids": [
+        "6b9769a6e5ee",
+        "5a146c0d8d28",
+        "2bac344feec9",
+        "0f3f586d78a6",
+        "b2490e869839",
+        "3bf582b8e541",
+        "d8c0b53ffac4"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.4-haiku",
+      "extraction_method": "llm",
+      "warnings": [],
+      "canonical_group_id": "group:2026-03:bf93127af4"
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-03:830211f9fd",
+      "period": "2026-03",
+      "source_evidence_ids": [
+        "9fcf6fc7acbd",
+        "8462c455d84d",
+        "a3b2009155f9",
+        "8285008a578f",
+        "5a5ab9b603f5"
+      ],
+      "claim_text": "트럼프의 이란 폭격 유예 발표로 중동 긴장 일시 완화되며 아시아 증시가 반등, 단기 정치적 변수가 시장 변동성 급증 촉발",
+      "claim_type": "event_to_macro",
+      "affected_assets": [
+        {
+          "asset_class": "국내주식",
+          "direction": "positive"
+        },
+        {
+          "asset_class": "해외주식",
+          "direction": "positive"
+        },
+        {
+          "asset_class": "환율(FX)",
+          "direction": "positive"
+        }
+      ],
+      "causal_chain": [
+        {
+          "source": "트럼프 폭격 유예 발표",
+          "target": "중동 긴장 완화 기대",
+          "relation": "offsets"
+        },
+        {
+          "source": "중동 긴장 완화 기대",
+          "target": "글로벌 위험회피 진정",
+          "relation": "weakens"
+        },
+        {
+          "source": "글로벌 위험회피 진정",
+          "target": "신흥국 주식 반등",
+          "relation": "supports"
+        }
+      ],
+      "direction": "positive",
+      "horizon": "short",
+      "confidence": 0.92,
+      "salience": 0.95,
+      "supporting_evidence_ids": [
+        "9fcf6fc7acbd",
+        "8462c455d84d",
+        "a3b2009155f9",
+        "8285008a578f",
+        "5a5ab9b603f5"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.4-haiku",
+      "extraction_method": "llm",
+      "warnings": [],
+      "canonical_group_id": "group:2026-03:551a99453d"
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-03:d50b9568e0",
+      "period": "2026-03",
+      "source_evidence_ids": [
+        "6f2836136ea9",
+        "4f4b6f69618c"
+      ],
+      "claim_text": "고유가(배럴당 100달러 이상) 장기화 시 한국 경제성장률 0.55%p 하락 우려, 원유 수입비용 급증으로 경상수지 악화 리스크",
+      "claim_type": "macro_to_asset",
+      "affected_assets": [
+        {
+          "asset_class": "국내주식",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "국내채권",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "환율(FX)",
+          "direction": "negative"
+        }
+      ],
+      "causal_chain": [
+        {
+          "source": "고유가 장기화",
+          "target": "원유 수입비용 증가",
+          "relation": "pressures"
+        },
+        {
+          "source": "원유 수입비용 증가",
+          "target": "경상수지 악화",
+          "relation": "pressures"
+        },
+        {
+          "source": "경상수지 악화",
+          "target": "경제성장률 하락",
+          "relation": "lowers"
+        }
+      ],
+      "direction": "negative",
+      "horizon": "medium",
+      "confidence": 0.9,
+      "salience": 0.95,
+      "supporting_evidence_ids": [
+        "6f2836136ea9",
+        "4f4b6f69618c"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.4-haiku",
+      "extraction_method": "llm",
+      "warnings": [],
+      "canonical_group_id": "group:2026-03:227d1e44e0"
+    }
+  ],
+  "stats": {
+    "total": 7,
+    "promoted": 7,
+    "skipped": 0,
+    "by_asset_class": {
+      "국내주식": 6,
+      "국내채권": 5,
+      "원자재금": 2,
+      "해외주식": 3,
+      "해외채권": 1,
+      "현금성": 1,
+      "환율(FX)": 4
+    },
+    "by_horizon": {
+      "medium": 3,
+      "short": 4
+    },
+    "by_claim_type": {
+      "event_to_macro": 3,
+      "macro_to_asset": 3,
+      "risk": 1
+    }
+  }
+}
