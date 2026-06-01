@@ -70,28 +70,53 @@ export default function BrinsonTab({ fundCode }: Props) {
   const defaultEnd = useMemo(() => yesterday(), []);
   const defaultMethod = FUND_DEFAULT_MAPPING_METHOD[fundCode] ?? "방법3";
 
+  // 입력(draft) 상태 — 사용자가 컨트롤을 만질 때 바뀜
   const [startDate, setStartDate] = useState(defaultStart);
   const [endDate, setEndDate] = useState(defaultEnd);
   const [method, setMethod] = useState<BrinsonMappingMethod>(defaultMethod);
   const [fxSplit, setFxSplit] = useState(true);
 
+  // 적용(applied) 상태 — 실제 조회를 구동. "조회" 버튼을 눌러야 draft → applied 반영.
+  const [applied, setApplied] = useState({
+    startDate: defaultStart,
+    endDate: defaultEnd,
+    method: defaultMethod,
+    fxSplit: true,
+  });
+
   // 종목표 정렬 상태
   const [secSortKey, setSecSortKey] = useState<SecSortKey>("contrib_pct");
   const [secSortDir, setSecSortDir] = useState<"asc" | "desc">("desc");
 
+  // 펀드(또는 설정일) 변경 시에는 draft·applied 모두 기본값으로 리셋 → 자동 조회.
   useEffect(() => {
-    setStartDate(ytdStartFor(inception));
-    setEndDate(yesterday());
-    setMethod(FUND_DEFAULT_MAPPING_METHOD[fundCode] ?? "방법3");
+    const s = ytdStartFor(inception);
+    const e = yesterday();
+    const m = FUND_DEFAULT_MAPPING_METHOD[fundCode] ?? "방법3";
+    setStartDate(s);
+    setEndDate(e);
+    setMethod(m);
+    setFxSplit(true);
+    setApplied({ startDate: s, endDate: e, method: m, fxSplit: true });
   }, [fundCode, inception]);
+
+  // draft 가 applied 와 다르면 "조회" 대기 상태.
+  const isDirty =
+    startDate !== applied.startDate ||
+    endDate !== applied.endDate ||
+    method !== applied.method ||
+    fxSplit !== applied.fxSplit;
+
+  const onApply = () =>
+    setApplied({ startDate, endDate, method, fxSplit });
 
   const { data, isLoading, error, isFetching } = useBrinson({
     code: fundCode,
-    startDate,
-    endDate,
-    mappingMethod: method,
+    startDate: applied.startDate,
+    endDate: applied.endDate,
+    mappingMethod: applied.method,
     paMethod: "8", // 8분류 고정 (사용자 요구사항 1)
-    fxSplit,
+    fxSplit: applied.fxSplit,
   });
 
   if (isLoading) return <LoadingBar label="loading brinson... (≈15s on first call)" />;
@@ -220,6 +245,23 @@ export default function BrinsonTab({ fundCode }: Props) {
           />
           FX 분리
         </label>
+        <button
+          type="button"
+          onClick={onApply}
+          disabled={!isDirty || isFetching}
+          style={{
+            ...btn,
+            opacity: !isDirty || isFetching ? 0.5 : 1,
+            cursor: !isDirty || isFetching ? "default" : "pointer",
+          }}
+        >
+          {isFetching ? "조회 중…" : "조회"}
+        </button>
+        {isDirty && !isFetching && (
+          <span style={{ fontSize: 11, color: "#b45309" }}>
+            변경됨 — 조회를 눌러 갱신
+          </span>
+        )}
       </div>
 
       {/* 합계 카드 */}
@@ -492,6 +534,16 @@ const inp: CSSProperties = {
   fontSize: 13,
   padding: "4px 6px",
   border: "1px solid #d1d5db",
+  borderRadius: 4,
+};
+const btn: CSSProperties = {
+  alignSelf: "flex-end",
+  fontSize: 13,
+  fontWeight: 600,
+  padding: "6px 16px",
+  color: "#fff",
+  background: "#2563eb",
+  border: "1px solid #2563eb",
   borderRadius: 4,
 };
 const th: CSSProperties = {
