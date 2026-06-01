@@ -7,6 +7,9 @@ Thumbs.db
 .bkit/
 .claude/
 
+# launcher runtime — picked free ports for FastAPI/Vite
+.runtime_ports.json
+
 # market_research — 재생성 가능 대용량 데이터
 market_research/data/news_vectordb/
 market_research/data/news_content_pool/

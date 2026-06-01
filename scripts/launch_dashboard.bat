@@ -1,4 +1,5 @@
 @echo off
+setlocal EnableDelayedExpansion
 title DB OCIO Dashboard Launcher
 
 echo ====================================
@@ -21,11 +22,26 @@ choice /C YN /T 10 /D N /M "Run daily_update now? Default N in 10s"
 set "RUN_DU=%errorlevel%"
 echo.
 
+REM ----- pre-pick ports so child launchers and browser stay in sync -----
+pushd "%~dp0.."
+for /f "tokens=1,2" %%A in ('api\.venv\Scripts\python.exe scripts\pick_free_port.py --start 8000 --start 5173 --write .runtime_ports.json --keys api web') do (
+    set "OCIO_API_PORT=%%A"
+    set "OCIO_WEB_PORT=%%B"
+)
+popd
+
+if not defined OCIO_API_PORT set "OCIO_API_PORT=8000"
+if not defined OCIO_WEB_PORT set "OCIO_WEB_PORT=5173"
+
+echo  FastAPI port : !OCIO_API_PORT!  ^(default 8000^)
+echo  Vite port    : !OCIO_WEB_PORT!  ^(default 5173^)
+echo.
+
 echo [1/4] Starting FastAPI ...
-start "FastAPI :8000" "%~dp0launch_fastapi.bat"
+start "FastAPI :!OCIO_API_PORT!" "%~dp0launch_fastapi.bat"
 
 echo [2/4] Starting Vite ...
-start "Vite :5173" "%~dp0launch_vite.bat"
+start "Vite :!OCIO_WEB_PORT!" "%~dp0launch_vite.bat"
 
 if "%RUN_DU%"=="1" (
     echo [3/4] Starting Daily Update ...
@@ -36,15 +52,24 @@ if "%RUN_DU%"=="1" (
 
 echo [4/4] Opening browser in 5 seconds ...
 timeout /t 5 /nobreak >nul
-start "" "http://127.0.0.1:5173"
+REM child launchers may have shifted to a different free port if the pre-picked
+REM one was grabbed by a stale process. Re-read the actual port from runtime json.
+pushd "%~dp0.."
+for /f "tokens=1" %%P in ('api\.venv\Scripts\python.exe -c "import json; print(json.load(open('.runtime_ports.json'))['web'])" 2^>nul') do set "FINAL_WEB=%%P"
+for /f "tokens=1" %%P in ('api\.venv\Scripts\python.exe -c "import json; print(json.load(open('.runtime_ports.json'))['api'])" 2^>nul') do set "FINAL_API=%%P"
+popd
+if not defined FINAL_WEB set "FINAL_WEB=%OCIO_WEB_PORT%"
+if not defined FINAL_API set "FINAL_API=%OCIO_API_PORT%"
+start "" "http://127.0.0.1:!FINAL_WEB!"
 
 echo.
 echo Done.
-echo  - FastAPI window  (port 8000)
-echo  - Vite window     (port 5173)
+echo  - FastAPI window  ^(port !FINAL_API!^)
+echo  - Vite window     ^(port !FINAL_WEB!^)
 if "%RUN_DU%"=="1" echo  - Daily Update    (running in background)
-echo  - Browser opened  http://127.0.0.1:5173
+echo  - Browser opened  http://127.0.0.1:!FINAL_WEB!
 echo.
 echo This launcher window will close in 3 seconds.
 echo Stop servers with Ctrl+C in each window.
 timeout /t 3 /nobreak >nul
+endlocal
