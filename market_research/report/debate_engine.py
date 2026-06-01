@@ -255,6 +255,7 @@ def _build_evidence_candidates(year: int, month: int, target_count: int,
                                start_idx: int,
                                *,
                                force_window_ids: set[str] | None = None,
+                               research_only: bool = False,
                                ) -> tuple[list, list, list, dict]:
     """source-aware evidence 선발.
 
@@ -297,9 +298,10 @@ def _build_evidence_candidates(year: int, month: int, target_count: int,
     research_pool.sort(key=lambda x: -float(x.get('_event_salience', 0) or 0))
 
     # ── Lane B: news corroboration (primary + intensity>=6 + filter) ──
+    # research_only: news lane 전면 차단 (research_pool 만으로 evidence 구성).
     news_pool: list[dict] = []
     news_file = BASE_DIR / 'data' / 'news' / f'{year}-{month:02d}.json'
-    if news_file.exists():
+    if not research_only and news_file.exists():
         data = json.loads(news_file.read_text(encoding='utf-8'))
         for a in data.get('articles', []):
             if not a.get('_classified_topics'):
@@ -599,7 +601,8 @@ def _build_evidence_candidates(year: int, month: int, target_count: int,
 def _build_shared_context(year: int, month: int, fund_code: str = None,
                           start_idx: int = 1, target_count: int = 15,
                           *,
-                          force_window_ids: set[str] | None = None) -> dict:
+                          force_window_ids: set[str] | None = None,
+                          research_only: bool = False) -> dict:
     """4인 에이전트 공유 컨텍스트 빌드.
 
     start_idx: evidence 번호 시작값 (분기 통번호용)
@@ -643,7 +646,8 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
         # 주요 뉴스: source-aware two-lane selection (research 70% / news 30%)
         high_impact, lane_evidence_ids, card_lines, _sel_debug = \
             _build_evidence_candidates(year, month, target_count, start_idx,
-                                       force_window_ids=force_window_ids)
+                                       force_window_ids=force_window_ids,
+                                       research_only=research_only)
         lines.extend(card_lines)
         evidence_ids.extend(lane_evidence_ids)
         if high_impact:
@@ -1816,6 +1820,7 @@ def _summarize_debate_narrative(agent_responses: dict) -> dict:
 def run_market_debate(year: int, month: int,
                       *,
                       force_window_ids: set[str] | None = None,
+                      research_only: bool = False,
                       use_wiki_context_pack: bool = True,
                       wiki_context_pack: dict | None = None,
                       wiki_context_max_pages: int = 12) -> dict:
@@ -1868,7 +1873,8 @@ def run_market_debate(year: int, month: int,
         print(f'  [wiki_context_pack] enabled (default), pages='
               f'{wcp_trace_fields.get("wiki_pages_selected", 0)}')
 
-    context = _build_shared_context(year, month, force_window_ids=force_window_ids)
+    context = _build_shared_context(year, month, force_window_ids=force_window_ids,
+                                    research_only=research_only)
     context['wiki_primary_context_text'] = wiki_primary_text
     context['_wiki_context_pack'] = wcp_used
     context['_prompt_context_mode'] = prompt_context_mode
