@@ -11,6 +11,7 @@ from ..schemas.holdings import (
     HoldingAssetClassDTO,
     HoldingItemDTO,
     HoldingsResponseDTO,
+    PortfolioMixSummaryDTO,
     WeightedDurationDTO,
 )
 from ..schemas.meta import BaseMeta, SourceBreakdown
@@ -31,6 +32,61 @@ _ASSET_COLORS = {
     "모펀드": "#FF6692",
     "유동성": "#B6E880",
 }
+
+
+# 종목코드 기반 식별 (사용자 합의, 2026-05-28).
+_GOLD_ITEM_CDS = {
+    "KR7411060007",   # ACE KRX금현물
+    "US92189F1066",   # VanEck Gold Miners (GDX)
+    "US46436F1030",   # iShares Gold Micro (IAUM)
+}
+_USHY_ITEM_CDS = {
+    "US46435U8532",   # iShares Broad USD High Yield (USHY 본 ETF)
+    "KR7468380001",   # KODEX iShares 미국하이일드액티브
+}
+_CASH_USD_DEPOSIT_CDS = {"USMUSD022001"}
+_EQUITY_ACS = {"국내주식", "해외주식"}
+_BOND_ACS = {"국내채권", "해외채권"}
+
+
+def _is_gold_item(it: HoldingItemDTO) -> bool:
+    return it.item_cd.upper() in _GOLD_ITEM_CDS
+
+
+def _is_ushy_item(it: HoldingItemDTO) -> bool:
+    return it.item_cd.upper() in _USHY_ITEM_CDS
+
+
+def _is_cash_item(it: HoldingItemDTO) -> bool:
+    """USD Deposit 종목코드 OR item_nm에 '예금' 포함."""
+    if it.item_cd.upper() in _CASH_USD_DEPOSIT_CDS:
+        return True
+    return "예금" in (it.item_nm or "")
+
+
+def _build_portfolio_mix(items: list[HoldingItemDTO]) -> PortfolioMixSummaryDTO:
+    # 합집합 가산 — GDX 등 해외주식 ACS에 이미 들어간 금 종목 이중계산 방지.
+    equity_w = sum(
+        it.weight for it in items
+        if it.asset_class in _EQUITY_ACS or _is_gold_item(it)
+    )
+    bond_w = sum(it.weight for it in items if it.asset_class in _BOND_ACS)
+    risk_w = sum(
+        it.weight for it in items
+        if it.asset_class in _EQUITY_ACS
+        or _is_gold_item(it)
+        or _is_ushy_item(it)
+    )
+    cash_items = [it for it in items if _is_cash_item(it)]
+    cash_w = sum(it.weight for it in cash_items)
+    cash_amt = sum(it.evl_amt for it in cash_items)
+    return PortfolioMixSummaryDTO(
+        equity_weight=equity_w,
+        bond_weight=bond_w,
+        risk_asset_weight=risk_w,
+        cash_weight=cash_w,
+        cash_amount=cash_amt,
+    )
 
 
 def _reclassify_fx_deposit(item_cd: str, item_nm: str, ac: str) -> str:
@@ -87,6 +143,35 @@ def _load_nast(fund_code: str, as_of: date | None) -> float | None:
     except Exception:
         return None
     return None
+
+
+def _load_opng(fund_code: str, as_of: date | None) -> float | None:
+    """해당 기준일의 OPNG_AMT (펀드 설정금액). DWPM10510 직접 쿼리."""
+    if as_of is None:
+        return None
+    try:
+        from modules.data_loader import get_connection
+        std_dt = int(as_of.strftime("%Y%m%d"))
+        conn = get_connection("dt")
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT OPNG_AMT FROM DWPM10510 "
+                    "WHERE FUND_CD = %s AND STD_DT = %s LIMIT 1",
+                    (fund_code, std_dt),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    return None
+                v = row.get("OPNG_AMT") if isinstance(row, dict) else row[0]
+                if v is None:
+                    return None
+                f = float(v)
+                return f if f > 0 else None
+        finally:
+            conn.close()
+    except Exception:
+        return None
 
 
 def _val(row: pd.Series, *names: str, default: Any = None) -> Any:
@@ -193,8 +278,9 @@ def build_holdings(
     #    (lookthrough 경로는 STD_DT/기준일자 컬럼이 유실되므로 fallback 필수)
     as_of = _extract_as_of(df) or _resolve_as_of_from_db(fund_code, as_of_param)
 
-    # 3) NAST_AMT
+    # 3) NAST_AMT + OPNG_AMT
     nast = _load_nast(fund_code, as_of)
+    opng = _load_opng(fund_code, as_of)
     if nast is None or nast <= 0:
         warnings.append("NAST_AMT 미확보, 평가금액 비율로 대체")
         sources.append(SourceBreakdown(
@@ -330,6 +416,9 @@ def build_holdings(
     except Exception as exc:
         warnings.append(f"듀레이션 fetch 실패: {type(exc).__name__}")
 
+    # 9) 포트폴리오 mix 카드 (주식/채권/위험자산/현금)
+    portfolio_mix = _build_portfolio_mix(items)
+
     return HoldingsResponseDTO(
         meta=BaseMeta(
             as_of_date=as_of,
@@ -344,8 +433,10 @@ def build_holdings(
         as_of_date=as_of,
         lookthrough_applied=lookthrough,
         nast_amt=nast,
+        opng_amt=opng,
         asset_class_weights=asset_class_weights,
         holdings_items=items,
         fx_hedge=fx_hedge,
         duration_summary=duration_summary,
+        portfolio_mix=portfolio_mix,
     )

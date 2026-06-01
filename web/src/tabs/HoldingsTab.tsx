@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { useHoldings } from "../hooks/useHoldings";
 import MetaBadge from "../components/common/MetaBadge";
 import AssetClassPie from "../components/charts/AssetClassPie";
@@ -24,9 +24,18 @@ function fmtKrw(v: number): string {
   );
 }
 
+function fmtKrwExact(v: number): string {
+  return Math.round(v).toLocaleString("ko-KR") + "원";
+}
+
 function fmtNum(v: number | null | undefined, digits = 2, suffix = ""): string {
   if (v === null || v === undefined) return "—";
   return v.toFixed(digits) + suffix;
+}
+
+function fmtPctOrDash(v: number | null | undefined): string {
+  if (v === null || v === undefined) return "—";
+  return fmtPct(v);
 }
 
 // 유동성 자산군 내부에서 예금/USD Deposit 외 종목은 "기타 (N종목)" 1행으로 병합.
@@ -76,6 +85,8 @@ export default function HoldingsTab({ fundCode }: Props) {
 
   const isEmpty = data.holdings_items.length === 0;
   const displayItems = collapseLiquidityOthers(data.holdings_items);
+  const mix = data.portfolio_mix ?? null;
+  const opngAmt = data.opng_amt ?? null;
 
   return (
     <section>
@@ -116,78 +127,101 @@ export default function HoldingsTab({ fundCode }: Props) {
         </label>
       </div>
 
-      {/* 듀레이션·YTM 요약 카드 (5개) */}
-      {!isEmpty && data.duration_summary &&
-        data.duration_summary.covered_weight > 0 && (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(5, 1fr)",
-              gap: 8,
-              marginBottom: 16,
-            }}
-          >
-            {[
+      {/* 요약 카드 6개: 순자산 · Duration · YTM · 주식/채권 · 위험자산 · 현금 */}
+      {!isEmpty && (mix || data.duration_summary || data.nast_amt != null) && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(6, 1fr)",
+            gap: 8,
+            marginBottom: 16,
+          }}
+        >
+          {(
+            [
               {
-                label: "Duration (채권만)",
-                value: fmtNum(data.duration_summary.duration_bond, 2, "년"),
-                hint: "매핑 종목만 분모",
+                label: "NAV",
+                value:
+                  data.nast_amt != null ? fmtKrw(data.nast_amt) : "—",
+                hint: opngAmt != null ? `설정액: ${fmtKrw(opngAmt)}` : "",
               },
               {
-                label: "YTM (채권만)",
-                value: fmtNum(data.duration_summary.ytm_bond, 2, "%"),
-                hint: "",
+                label: "Duration",
+                value: fmtNum(
+                  data.duration_summary?.duration_overall, 2, "년",
+                ),
+                hint: `채권 Dur: ${fmtNum(
+                  data.duration_summary?.duration_bond, 1, "년",
+                )}`,
               },
               {
-                label: "Duration (전체)",
-                value: fmtNum(data.duration_summary.duration_overall, 2, "년"),
-                hint: "전체 보유비중 분모",
+                label: "YTM",
+                value: fmtNum(data.duration_summary?.ytm_overall, 2, "%"),
+                hint: `채권 YTM: ${fmtNum(
+                  data.duration_summary?.ytm_bond, 2, "%",
+                )}`,
               },
               {
-                label: "YTM (전체)",
-                value: fmtNum(data.duration_summary.ytm_overall, 2, "%"),
-                hint: "",
+                label: "주식·채권 비중",
+                value: `${fmtPctOrDash(mix?.equity_weight)} | ${fmtPctOrDash(
+                  mix?.bond_weight,
+                )}`,
+                hint: "주식+금 | 채권 비중",
               },
               {
-                label: "채권성 비중",
-                value: fmtPct(data.duration_summary.covered_weight),
-                hint: `전체 ${fmtPct(data.duration_summary.total_weight)}`,
+                label: "위험자산 비중",
+                value: fmtPctOrDash(mix?.risk_asset_weight),
+                hint: "주식 + 금 + USHY",
               },
-            ].map((card) => (
+              {
+                label: "유동성",
+                value: fmtPctOrDash(mix?.cash_weight),
+                hint:
+                  mix && mix.cash_amount > 0
+                    ? `${fmtKrwExact(mix.cash_amount)} · 예금+USD Deposit`
+                    : "예금+USD Deposit",
+              },
+            ] satisfies { label: string; value: ReactNode; hint: string }[]
+          ).map((card) => (
+            <div
+              key={card.label}
+              style={{
+                padding: "10px 12px",
+                background: "#f9fafb",
+                border: "1px solid #e5e7eb",
+                borderRadius: 6,
+              }}
+            >
               <div
-                key={card.label}
                 style={{
-                  padding: "10px 12px",
-                  background: "#f9fafb",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: 6,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "#374151",
+                  marginBottom: 4,
                 }}
               >
-                <div
-                  style={{ fontSize: 11, color: "#6b7280", marginBottom: 4 }}
-                >
-                  {card.label}
-                </div>
-                <div
-                  style={{
-                    fontSize: 18,
-                    fontWeight: 600,
-                    fontVariantNumeric: "tabular-nums",
-                  }}
-                >
-                  {card.value}
-                </div>
-                {card.hint && (
-                  <div
-                    style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}
-                  >
-                    {card.hint}
-                  </div>
-                )}
+                {card.label}
               </div>
-            ))}
-          </div>
-        )}
+              <div
+                style={{
+                  fontSize: 18,
+                  fontWeight: 600,
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
+                {card.value}
+              </div>
+              {card.hint && (
+                <div
+                  style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}
+                >
+                  {card.hint}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {isEmpty ? (
         <div style={{ color: "#6b7280", padding: 16 }}>

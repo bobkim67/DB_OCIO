@@ -1018,12 +1018,15 @@ export interface components {
             lookthrough_applied: boolean;
             /** Nast Amt */
             nast_amt?: number | null;
+            /** Opng Amt */
+            opng_amt?: number | null;
             /** Asset Class Weights */
             asset_class_weights: components["schemas"]["HoldingAssetClassDTO"][];
             /** Holdings Items */
             holdings_items: components["schemas"]["HoldingItemDTO"][];
             fx_hedge?: components["schemas"]["FxHedgeSummaryDTO"] | null;
             duration_summary?: components["schemas"]["WeightedDurationDTO"] | null;
+            portfolio_mix?: components["schemas"]["PortfolioMixSummaryDTO"] | null;
         };
         /**
          * IndicatorChartDTO
@@ -1350,6 +1353,44 @@ export interface components {
             };
         };
         /**
+         * PortfolioMixSummaryDTO
+         * @description 편입종목 상단 카드용 비중 요약.
+         *
+         *     종목코드 기반 식별 (item_cd 정확 매칭):
+         *       - 금 = {KR7411060007 ACE KRX금현물, US92189F1066 GDX, US46436F1030 IAUM}
+         *       - USHY = {US46435U8532 iShares Broad USD HY, KR7468380001 KODEX 미국HY액티브}
+         *       - 현금 = {USMUSD022001 USD Deposit} ∪ item_nm에 '예금' 포함
+         *
+         *     모든 weight는 raw ratio (NAST 분모, FX 자산군 short 처리 그대로 — abs 안 함).
+         */
+        PortfolioMixSummaryDTO: {
+            /**
+             * Equity Weight
+             * @default 0
+             */
+            equity_weight: number;
+            /**
+             * Bond Weight
+             * @default 0
+             */
+            bond_weight: number;
+            /**
+             * Risk Asset Weight
+             * @default 0
+             */
+            risk_asset_weight: number;
+            /**
+             * Cash Weight
+             * @default 0
+             */
+            cash_weight: number;
+            /**
+             * Cash Amount
+             * @default 0
+             */
+            cash_amount: number;
+        };
+        /**
          * RelatedNewsDTO
          * @description draft.json `related_news` 항목. evidence_annotations와 같은 shape이지만
          *     debate에 직접 인용되지 않은 보조 기사들.
@@ -1476,10 +1517,6 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
-            /** Input */
-            input?: unknown;
-            /** Context */
-            ctx?: Record<string, never>;
         };
         /**
          * ValidationSummaryDTO

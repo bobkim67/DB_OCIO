@@ -32,6 +32,23 @@ class FxHedgeSummaryDTO(BaseModel):
     hedge_ratio: float | None = None  # = usd_short_weight / usd_asset_weight (없으면 None)
 
 
+class PortfolioMixSummaryDTO(BaseModel):
+    """편입종목 상단 카드용 비중 요약.
+
+    종목코드 기반 식별 (item_cd 정확 매칭):
+      - 금 = {KR7411060007 ACE KRX금현물, US92189F1066 GDX, US46436F1030 IAUM}
+      - USHY = {US46435U8532 iShares Broad USD HY, KR7468380001 KODEX 미국HY액티브}
+      - 현금 = {USMUSD022001 USD Deposit} ∪ item_nm에 '예금' 포함
+
+    모든 weight는 raw ratio (NAST 분모, FX 자산군 short 처리 그대로 — abs 안 함).
+    """
+    equity_weight: float = 0.0          # 주식(국내+해외) + 금
+    bond_weight: float = 0.0            # 채권(국내+해외)
+    risk_asset_weight: float = 0.0      # 주식 + 금 + USHY
+    cash_weight: float = 0.0            # USD Deposit + 예금 종목
+    cash_amount: float = 0.0            # 위의 KRW 평가금액 합
+
+
 class WeightedDurationDTO(BaseModel):
     """모듈 duration_fetcher.compute_weighted_duration 결과를 client용으로 노출.
 
@@ -57,7 +74,9 @@ class HoldingsResponseDTO(BaseModel):
     as_of_date: date | None
     lookthrough_applied: bool
     nast_amt: float | None = None
+    opng_amt: float | None = None
     asset_class_weights: list[HoldingAssetClassDTO]
     holdings_items: list[HoldingItemDTO]
     fx_hedge: FxHedgeSummaryDTO | None = None
     duration_summary: WeightedDurationDTO | None = None
+    portfolio_mix: PortfolioMixSummaryDTO | None = None
