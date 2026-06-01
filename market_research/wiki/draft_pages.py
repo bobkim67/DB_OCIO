@@ -380,7 +380,7 @@ def write_fund_page(fund_code: str, fund_meta: dict, month_str: str) -> Path:
 # ══════════════════════════════════════════
 
 def refresh_base_pages_after_refine(month_str: str,
-                                      top_events: int = 5,
+                                      top_events: int = 8,
                                       top_entities: int = 5,
                                       sample_assets: list[str] | None = None,
                                       sample_funds: dict | None = None) -> dict:
@@ -414,18 +414,43 @@ def refresh_base_pages_after_refine(month_str: str,
         print(f'  [wipe] deleted_event_pages={deleted_event_pages} '
               f'samples={deleted_samples}')
 
-    # Event pages (top salience event groups)
+    # Event pages — balanced selection (주차/자산군 quota + topic CAP + 마일스톤 rescue).
+    # 순수 top-salience 는 단발 고-salience 이슈(지정학·에너지)를 독점시켜 01_Events
+    # 가 편향됨 → balanced_selector 로 시간·자산군 커버리지 확보 (B Gate2).
+    from market_research.core.balanced_selector import (
+        balanced_select, SelectionParams,
+    )
+    from market_research.core.asset_taxonomy import (
+        article_primary_asset, article_topic, article_is_milestone,
+    )
+
     by_event = defaultdict(list)
     for a in articles:
         eid = a.get('_event_group_id')
         if eid:
             by_event[eid].append(a)
-    # sort by max salience per group
-    ranked = sorted(by_event.items(),
-                    key=lambda kv: max((a.get('_event_salience', 0) for a in kv[1]), default=0),
-                    reverse=True)
+
+    def _grp_rep(arts_):
+        return max(arts_, key=lambda a: a.get('_event_salience', 0) or 0)
+
+    def _grp_week(arts_):
+        d = _grp_rep(arts_).get('date', '') or ''
+        return (int(d[8:10]) - 1) // 7 + 1 if len(d) >= 10 else 0
+
+    groups = list(by_event.items())  # (eid, [arts])
+    sel_res = balanced_select(
+        groups,
+        SelectionParams(n=top_events, min_per_week=1, min_per_asset=1,
+                        topic_cap_frac=0.4, asset_cap_frac=0.6, milestone_slots=1),
+        salience_of=lambda g: max((a.get('_event_salience', 0) or 0) for a in g[1]),
+        topic_of=lambda g: Counter(article_topic(a) for a in g[1]).most_common(1)[0][0],
+        asset_of=lambda g: article_primary_asset(_grp_rep(g[1])),
+        week_of=lambda g: _grp_week(g[1]),
+        milestone_of=lambda g: any(article_is_milestone(a) for a in g[1]),
+        id_of=lambda g: g[0],
+    )
     event_count = 0
-    for eid, arts in ranked[:top_events]:
+    for eid, arts in sel_res.selected:
         if write_event_page(eid, arts, month_str):
             event_count += 1
 

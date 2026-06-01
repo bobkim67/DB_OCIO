@@ -182,6 +182,36 @@ def _meets_rule_b_local(claim: dict) -> bool:
     return isinstance(sup, list) and len(sup) >= _RULE_B_SUPPORTING_EV_MIN
 
 
+def _reorder_claims_asset_roundrobin(entries: list[dict]) -> list[dict]:
+    """claim entries 를 자산군 round-robin 으로 재배열 (B Gate3).
+
+    입력은 store 우선순위(confidence × salience desc) 순서. 자산군별 버킷으로
+    나눠 conf×sal 순서를 보존한 채 자산군을 번갈아 1개씩 뽑는다. → 자산 다양성이
+    앞쪽에 보존되어, max_pages 트림 후에도 특정 자산(이란·에너지) 독점이 완화되고
+    LLM prompt 가 자산 균형 claim 을 먼저 본다. 멤버십(개수)은 불변.
+
+    affected_assets 추출 불가 entry 는 순서 보존해 뒤로.
+    """
+    from collections import OrderedDict
+    from market_research.core.asset_taxonomy import claim_primary_asset
+
+    buckets: "OrderedDict[str, list[dict]]" = OrderedDict()
+    no_asset: list[dict] = []
+    for e in entries:  # store conf×sal 순서 유지
+        a = claim_primary_asset({"affected_assets": e.get("affected_assets") or []})
+        if a is None:
+            no_asset.append(e)
+        else:
+            buckets.setdefault(a, []).append(e)
+    out: list[dict] = []
+    while any(buckets.values()):
+        for a in list(buckets.keys()):
+            if buckets[a]:
+                out.append(buckets[a].pop(0))
+    out.extend(no_asset)
+    return out
+
+
 # ──────────────────────────────────────────────────────────────────
 # Data classes
 # ──────────────────────────────────────────────────────────────────
@@ -1031,6 +1061,8 @@ def _build_claim_section(
         # R9-B.5 per-period claim_store selection counts.
         "claim_store_selected_count_by_period": per_period_selected_counts,
     }
+    # B Gate3 — 자산군 round-robin 재배열 (멤버십 불변, 순서만; 트림 시 자산 균형 보존).
+    claim_entries = _reorder_claims_asset_roundrobin(claim_entries)
     return claim_entries, trace
 
 
