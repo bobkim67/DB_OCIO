@@ -59,7 +59,12 @@ def _load_month_articles(month_str: str) -> list[dict]:
 def write_event_page(event_id: str, articles: list[dict], month_str: str) -> Path:
     if not articles:
         return None
+    from market_research.core.asset_taxonomy import (
+        article_primary_asset, article_is_milestone,
+    )
     top = max(articles, key=lambda a: a.get('_event_salience', 0))
+    primary_asset = article_primary_asset(top) or ''
+    is_milestone = any(article_is_milestone(a) for a in articles)
     topics = Counter()
     sources = Counter()
     for a in articles:
@@ -81,6 +86,8 @@ def write_event_page(event_id: str, articles: list[dict], month_str: str) -> Pat
         f'source_count: {len(articles)}',
         f'avg_salience: {avg_sal}',
         f'top_topics: [{", ".join(chr(34)+t+chr(34) for t, _ in topics.most_common(3))}]',
+        f'primary_asset: {primary_asset}',
+        f'is_milestone: {str(is_milestone).lower()}',
         'source_of_truth: pipeline_refine',
         f'updated_at: {datetime.now().isoformat(timespec="seconds")}',
         '---',

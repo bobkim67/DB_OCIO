@@ -212,6 +212,50 @@ def _reorder_claims_asset_roundrobin(entries: list[dict]) -> list[dict]:
     return out
 
 
+def _reorder_event_records_asset_stratified(records: list) -> list:
+    """01_Events 레코드를 자산군 round-robin 으로 재배열 (B Gate4).
+
+    알파벳순(파일명) 대신 frontmatter primary_asset 별 버킷 → 버킷 내 milestone 우선
+    + avg_salience desc → 자산 번갈아. 특정 이슈(지정학·에너지) 독점 완화 +
+    주요 자산 이벤트(코스피 record 등 milestone) 가 pack 에 진입하도록.
+    """
+    from collections import OrderedDict
+
+    def _fm(r):
+        return getattr(r, "frontmatter", None) or {}
+
+    def _asset(r):
+        return _fm(r).get("primary_asset") or None
+
+    def _ms(r):
+        v = _fm(r).get("is_milestone")
+        return str(v).strip().lower() == "true" if v is not None else False
+
+    def _sal(r):
+        try:
+            return float(_fm(r).get("avg_salience") or 0.0)
+        except (ValueError, TypeError):
+            return 0.0
+
+    # 버킷 내 정렬: milestone 우선, 그다음 avg_salience desc
+    ordered = sorted(records, key=lambda r: (_ms(r), _sal(r)), reverse=True)
+    buckets: "OrderedDict[str, list]" = OrderedDict()
+    no_asset: list = []
+    for r in ordered:
+        a = _asset(r)
+        if a:
+            buckets.setdefault(a, []).append(r)
+        else:
+            no_asset.append(r)
+    out: list = []
+    while any(buckets.values()):
+        for a in list(buckets.keys()):
+            if buckets[a]:
+                out.append(buckets[a].pop(0))
+    out.extend(no_asset)
+    return out
+
+
 # ──────────────────────────────────────────────────────────────────
 # Data classes
 # ──────────────────────────────────────────────────────────────────
@@ -836,6 +880,9 @@ def _apply_global_cap(
     pools: dict[str, list[WikiPageRecord]] = {
         d: list(candidates_by_dir.get(d, [])) for d in fill_dirs
     }
+    # B Gate4 — 01_Events 는 알파벳 대신 자산군 stratified(milestone 우선)로 재배열.
+    if "01_Events" in pools:
+        pools["01_Events"] = _reorder_event_records_asset_stratified(pools["01_Events"])
     while total < max_pages:
         added_this_round = False
         for d in fill_dirs:
