@@ -460,3 +460,31 @@ def test_existing_r6a_r7_compat(tmp_path, monkeypatch):
     assert "graph_seed_causal" in trace
     assert trace["graph_seed"]["nodes"]
     assert trace["graph_seed_causal"]["nodes"]
+
+
+def test_load_indicator_changes_sparse_weekend_last_row(tmp_path):
+    """월말(5/31)이 주말이라 마지막 row 시장 컬럼이 빈값이어도,
+    컬럼별 last-valid(5/29) 값으로 return_pct 가 계산되어야 한다.
+    (리터럴 last row 사용 시 전 자산군 null 이 되던 버그 회귀 방지.)"""
+    from market_research.report.asset_movement_anchor import load_indicator_changes
+
+    csv_text = (
+        "date,USDKRW,SP500_TR,MSCI_KOREA,GOLD,FED_UPPER,KAP_BOND_TR,HY_TR,UST_7_10Y_TR\n"
+        "2026-04-30,1480.0,1140.0,200.0,4600.0,3.75,272.0,2940.0,178.0\n"
+        "2026-05-29,1507.0,1200.0,250.0,4545.0,3.75,269.0,2960.0,180.0\n"
+        "2026-05-30,,,,,3.75,,,\n"   # 주말 — 시장 컬럼 빈값, 정책금리만 채워짐
+        "2026-05-31,,,,,3.75,,,\n"
+    )
+    fp = tmp_path / "indicators.csv"
+    fp.write_text(csv_text, encoding="utf-8")
+
+    asset_bm, warns = load_indicator_changes("2026-05", fp)
+
+    # 국내주식: (250-200)/200 = +25.0% (5/29 last-valid, 5/31 빈값 무시)
+    assert "국내주식" in asset_bm, f"국내주식 missing — warns={warns}"
+    assert asset_bm["국내주식"]["return_pct"] == 25.0
+    assert asset_bm["국내주식"]["level_end"] == 250.0
+    # 해외주식도 정상
+    assert abs(asset_bm["해외주식"]["return_pct"] - ((1200 - 1140) / 1140 * 100)) < 1e-3
+    # 시장 자산군이 빈 last row 때문에 missing 되지 않아야 함
+    assert "국내주식 (MSCI_KOREA) missing in 2026-05" not in warns

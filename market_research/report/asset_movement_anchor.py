@@ -225,16 +225,12 @@ def load_indicator_changes(
         return out, warnings
 
     rows.sort(key=lambda r: r["date"])
-    first, last = rows[0], rows[-1]
 
     for ac, (col, kind, label) in _ASSET_TO_INDICATOR.items():
-        try:
-            v0 = float(first.get(col, "") or "nan")
-            v1 = float(last.get(col, "") or "nan")
-        except (ValueError, TypeError):
-            warnings.append(f"{ac} ({col}) invalid values")
-            continue
-        if not _isnum(v0) or not _isnum(v1):
+        # 컬럼별 첫/마지막 "비어있지 않은" 값 사용 (월말 주말/휴일 sparse row 대응).
+        v0 = _first_valid_in_col(rows, col)
+        v1 = _last_valid_in_col(rows, col)
+        if v0 is None or v1 is None:
             warnings.append(f"{ac} ({col}) missing in {period}")
             continue
         item: dict[str, Any] = {
@@ -266,6 +262,40 @@ def _isnum(x: Any) -> bool:
         return x == x and abs(x) < 1e15  # NaN check
     except Exception:
         return False
+
+
+def _col_value(row: dict, col: str) -> float | None:
+    """row[col] 을 float 로. 빈값/비수치면 None."""
+    v = row.get(col, "")
+    if v in ("", None):
+        return None
+    try:
+        f = float(v)
+    except (ValueError, TypeError):
+        return None
+    return f if _isnum(f) else None
+
+
+def _first_valid_in_col(rows: list[dict], col: str) -> float | None:
+    """date 오름차순 rows 에서 col 의 첫 비어있지 않은 값."""
+    for r in rows:
+        f = _col_value(r, col)
+        if f is not None:
+            return f
+    return None
+
+
+def _last_valid_in_col(rows: list[dict], col: str) -> float | None:
+    """date 오름차순 rows 에서 col 의 마지막 비어있지 않은 값.
+
+    월말이 주말/휴일이면 indicators.csv 의 리터럴 마지막 row 시장 컬럼이
+    빈값이므로(sparse), 리터럴 last row 대신 컬럼별 last-valid 를 사용한다.
+    """
+    for r in reversed(rows):
+        f = _col_value(r, col)
+        if f is not None:
+            return f
+    return None
 
 
 # ──────────────────────────────────────────────────────────────────
