@@ -1123,3 +1123,133 @@ def test_taxonomy_constants_are_frozensets():
     ):
         assert isinstance(getattr(ce, name), frozenset), \
             f"{name} should be frozenset"
+
+
+# ──────────────────────────────────────────────────────────────────
+# 12. Taxonomy v2 wiring — OPTIONAL 필드 + _remap + md5 drift 0
+# ──────────────────────────────────────────────────────────────────
+
+def test_v2_optional_fields_absent_still_valid():
+    """primary_asset/regions/sectors 없는 기존 claim → valid 불변."""
+    from market_research.analyze.claim_extractor import validate_claim
+    c = _valid_claim()
+    assert "primary_asset" not in c  # normalize 가 강제 부착 안 함
+    r = validate_claim(c)
+    assert r["valid"], r["errors"]
+
+
+def test_v2_optional_fields_not_required():
+    """REQUIRED_FIELDS 에 v2 필드 미포함 (md5 drift 방지 핵심)."""
+    from market_research.analyze.claim_extractor import REQUIRED_FIELDS, OPTIONAL_FIELDS
+    for f in ("primary_asset", "regions", "sectors"):
+        assert f not in REQUIRED_FIELDS
+        assert f in OPTIONAL_FIELDS
+
+
+def test_v2_valid_optional_fields_pass():
+    """valid primary_asset/regions/sectors → valid, region/sector warning 없음."""
+    from market_research.analyze.claim_extractor import normalize_claim, validate_claim
+    c = _valid_claim()
+    c["primary_asset"] = "국내주식"
+    c["regions"] = ["KR", "GLOBAL"]
+    c["sectors"] = ["테크_AI_반도체", "지정학"]
+    c = normalize_claim(c)
+    r = validate_claim(c)
+    assert r["valid"], r["errors"]
+    assert not any("region invalid" in w for w in r["warnings"])
+    assert not any("sector invalid" in w for w in r["warnings"])
+
+
+def test_v2_invalid_primary_asset_warns_not_errors():
+    """잘못된 primary_asset → warning, valid 유지 (soft)."""
+    from market_research.analyze.claim_extractor import validate_claim
+    c = _valid_claim()
+    c["primary_asset"] = "비트코인"  # 8-class 밖
+    r = validate_claim(c)
+    assert r["valid"], r["errors"]
+    assert any("primary_asset" in w for w in r["warnings"])
+
+
+def test_v2_invalid_region_sector_warn_not_error():
+    from market_research.analyze.claim_extractor import validate_claim
+    c = _valid_claim()
+    c["regions"] = ["JP"]        # enum 밖
+    c["sectors"] = ["존재안함"]   # taxonomy 밖
+    r = validate_claim(c)
+    assert r["valid"], r["errors"]
+    assert any("region invalid" in w for w in r["warnings"])
+    assert any("sector invalid" in w for w in r["warnings"])
+
+
+def test_v2_role_count_warns():
+    from market_research.analyze.claim_extractor import validate_claim
+    c = _valid_claim()
+    c["affected_assets"] = [
+        {"asset_class": "국내주식", "direction": "positive", "role": "primary"},
+        {"asset_class": "해외주식", "direction": "positive", "role": "primary"},
+    ]
+    r = validate_claim(c)
+    assert r["valid"], r["errors"]
+    assert any("role=primary count" in w for w in r["warnings"])
+
+
+def test_v2_normalize_remaps_selector_label_to_8class():
+    """normalize 가 selector label(환율/금대체) → 8-class 로 collapse."""
+    from market_research.analyze.claim_extractor import normalize_claim, validate_claim
+    c = normalize_claim({
+        "period": "2026-05",
+        "claim_text": "달러 강세로 환율·금 동반 상승",
+        "claim_type": "macro_to_asset",
+        "affected_assets": [
+            {"asset_class": "환율", "direction": "positive"},   # selector label
+            {"asset_class": "금대체", "direction": "positive"},  # selector label
+        ],
+        "primary_asset": "환율",
+        "direction": "positive", "horizon": "short",
+        "confidence": 0.8, "salience": 0.8,
+        "supporting_evidence_ids": ["aa11bb22cc33"],
+    })
+    assert c["affected_assets"][0]["asset_class"] == "환율(FX)"
+    assert c["affected_assets"][1]["asset_class"] == "원자재금"
+    assert c["primary_asset"] == "환율(FX)"
+    assert validate_claim(c)["valid"]
+
+
+def test_v2_normalize_idempotent_on_8class_md5_drift_0():
+    """이미 8-class 인 claim → normalize 가 claim_id/group_id/serialize 불변."""
+    import hashlib, json
+    from market_research.analyze.claim_extractor import normalize_claim, serialize_claim
+    c1 = _valid_claim()
+    before = hashlib.md5(
+        json.dumps(serialize_claim(c1), ensure_ascii=False, sort_keys=True).encode()
+    ).hexdigest()
+    cid_before, gid_before = c1["claim_id"], c1["canonical_group_id"]
+    # 재-normalize (remap idempotent 검증)
+    c2 = normalize_claim(c1)
+    after = hashlib.md5(
+        json.dumps(serialize_claim(c2), ensure_ascii=False, sort_keys=True).encode()
+    ).hexdigest()
+    assert c2["claim_id"] == cid_before
+    assert c2["canonical_group_id"] == gid_before
+    assert before == after  # serialize byte 동일 = md5 drift 0
+
+
+def test_v2_serialize_excludes_absent_optional_fields():
+    """신규 OPTIONAL 필드 미존재 claim → serialize 에 미포함 (기존 md5 보존)."""
+    from market_research.analyze.claim_extractor import serialize_claim
+    c = _valid_claim()
+    s = serialize_claim(c)
+    for f in ("primary_asset", "regions", "sectors"):
+        assert f not in s
+
+
+def test_v2_serialize_includes_present_optional_fields():
+    from market_research.analyze.claim_extractor import normalize_claim, serialize_claim
+    c = _valid_claim()
+    c["primary_asset"] = "국내주식"
+    c["regions"] = ["KR"]
+    c["sectors"] = ["테크_AI_반도체"]
+    s = serialize_claim(normalize_claim(c))
+    assert s["primary_asset"] == "국내주식"
+    assert s["regions"] == ["KR"]
+    assert s["sectors"] == ["테크_AI_반도체"]

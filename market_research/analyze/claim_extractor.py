@@ -143,6 +143,13 @@ REQUIRED_FIELDS: tuple[str, ...] = (
 OPTIONAL_FIELDS: tuple[str, ...] = (
     "canonical_group_id",
     "promotion_rule",
+    # Taxonomy v2 wiring — region×sector. REQUIRED 승격 금지: 기존 운영 claim
+    # 이 미존재로 validate fail 하지 않고, serialize_claim 이 `if k in claim`
+    # 으로만 dump → 신규필드 없는 기존 claim md5 불변. canonical_group_id /
+    # claim_id 계산 입력에도 미포함 → group identity 무영향.
+    "primary_asset",
+    "regions",
+    "sectors",
 )
 
 # Threshold heuristics (validator soft warnings)
@@ -369,6 +376,35 @@ def compute_canonical_group_id(
 # Normalize (defaults + auto ID)
 # ──────────────────────────────────────────────────────────────────
 
+# ──────────────────────────────────────────────────────────────────
+# Taxonomy v2 wiring — lazy taxonomy lookups (모듈 import-time 순수성 유지)
+# ──────────────────────────────────────────────────────────────────
+
+def _remap_to_8class_lazy():
+    """core.asset_taxonomy._remap_to_8class lazy import (실패 시 None)."""
+    try:
+        from market_research.core.asset_taxonomy import _remap_to_8class
+        return _remap_to_8class
+    except Exception:
+        return None
+
+
+def _region_set() -> frozenset:
+    try:
+        from market_research.core.asset_taxonomy import REGION_SET
+        return REGION_SET
+    except Exception:
+        return frozenset({"KR", "US", "NON_US_OVERSEAS", "GLOBAL", "UNKNOWN"})
+
+
+def _topic_set() -> frozenset:
+    try:
+        from market_research.wiki.taxonomy import TAXONOMY_SET
+        return TAXONOMY_SET
+    except Exception:
+        return frozenset()  # 비면 sector 검증 skip (validator 측 guard)
+
+
 def normalize_claim(raw: dict | None) -> dict:
     """raw partial dict → 기본값 채워진 schema-conformant dict.
 
@@ -411,6 +447,23 @@ def normalize_claim(raw: dict | None) -> dict:
     out.setdefault("horizon", "unknown")
     out.setdefault("confidence", 0.0)
     out.setdefault("salience", 0.0)
+
+    # Taxonomy v2 wiring — claim 진입 경계: affected_assets[].asset_class /
+    # primary_asset 를 8-class 로 collapse (selector label → 8-class). 이미
+    # 8-class 면 idempotent → 기존 운영 claim 의 hash 입력 불변(md5 drift 0).
+    # confidence/role 은 LLM 산출분만 보존 — normalize 에서 default 부여 안 함
+    # (기존 항목 변경 금지).
+    _remap = _remap_to_8class_lazy()
+    if _remap is not None:
+        for a in out.get("affected_assets") or []:
+            if isinstance(a, dict) and a.get("asset_class"):
+                m = _remap(a["asset_class"])
+                if m:
+                    a["asset_class"] = m
+        if out.get("primary_asset"):
+            m = _remap(out["primary_asset"])
+            if m:
+                out["primary_asset"] = m
 
     if not out.get("claim_id"):
         out["claim_id"] = compute_claim_id(
@@ -566,6 +619,20 @@ def validate_claim(claim: Any) -> dict:
                 if ad is not None and ad not in ALLOWED_DIRECTIONS:
                     warnings.append(
                         f"affected_assets[{i}].direction unusual: {ad!r}")
+                # v2 optional: confidence / role (값 있을 때만 soft 검증)
+                acf = a.get("confidence")
+                if acf is not None:
+                    try:
+                        if not (0.0 <= float(acf) <= 1.0):
+                            warnings.append(
+                                f"affected_assets[{i}].confidence out of [0,1]: {acf!r}")
+                    except (TypeError, ValueError):
+                        warnings.append(
+                            f"affected_assets[{i}].confidence non-numeric: {acf!r}")
+                arole = a.get("role")
+                if arole is not None and arole not in ("primary", "secondary"):
+                    warnings.append(
+                        f"affected_assets[{i}].role unusual: {arole!r}")
             elif isinstance(a, str):
                 if a not in ALLOWED_ASSET_CLASSES:
                     errors.append(
@@ -639,6 +706,51 @@ def validate_claim(claim: Any) -> dict:
     w_field = claim.get("warnings")
     if not isinstance(w_field, list):
         errors.append("warnings field must be a list")
+
+    # ── Taxonomy v2 optional fields — soft 검증, 값 없으면 skip (REQUIRED 아님) ──
+    # 전부 warning 만 → 신규필드 없는 기존 claim 은 valid 불변 (회귀 0).
+    pa = claim.get("primary_asset")
+    if pa is not None:
+        if not isinstance(pa, str) or pa not in ALLOWED_ASSET_CLASSES:
+            warnings.append(
+                f"primary_asset invalid: {pa!r}, "
+                f"allowed={sorted(ALLOWED_ASSET_CLASSES)}")
+        elif isinstance(aas, list):
+            asset_set = {
+                (x.get("asset_class") if isinstance(x, dict) else x) for x in aas
+            }
+            if pa not in asset_set:
+                warnings.append(
+                    f"primary_asset {pa!r} not in affected_assets asset_class set")
+
+    rg = claim.get("regions")
+    if rg is not None:
+        if not isinstance(rg, list):
+            warnings.append("regions must be a list")
+        else:
+            _rset = _region_set()
+            for r in rg:
+                if r not in _rset:
+                    warnings.append(f"region invalid: {r!r}")
+
+    sc = claim.get("sectors")
+    if sc is not None:
+        if not isinstance(sc, list):
+            warnings.append("sectors must be a list")
+        else:
+            _tset = _topic_set()
+            if _tset:  # 비면 sector 검증 skip (import 실패 등)
+                for s in sc:
+                    if s not in _tset:
+                        warnings.append(f"sector invalid: {s!r}")
+
+    # role=primary 정확히 1개 (role 부여된 항목이 있을 때만)
+    if isinstance(aas, list):
+        roles = [a.get("role") for a in aas
+                 if isinstance(a, dict) and a.get("role")]
+        if roles and roles.count("primary") != 1:
+            warnings.append(
+                f"role=primary count expected 1, got {roles.count('primary')}")
 
     return {
         "valid": len(errors) == 0,
