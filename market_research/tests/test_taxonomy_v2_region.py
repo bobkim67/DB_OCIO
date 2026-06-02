@@ -19,7 +19,10 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from market_research.core.asset_taxonomy import (  # noqa: E402
     REGION_SET, REGION_TAXONOMY, route_by_region,
-    article_primary_asset, article_primary_asset_v2,
+    article_primary_asset, article_primary_asset_v2, _remap_to_8class,
+)
+from market_research.analyze.claim_extractor import (  # noqa: E402
+    ALLOWED_ASSET_CLASSES,
 )
 from market_research.wiki.taxonomy import (  # noqa: E402
     is_region, validate_regions, REGION_SET as WIKI_REGION_SET,
@@ -150,6 +153,84 @@ def test_v2_region_present_but_unroutable_uses_keyword():
         ],
     }
     assert article_primary_asset_v2(art) == "국내채권"  # _KR_BOND_KW(한국은행)
+
+
+# ── article_primary_asset_auto: flag-gate 디스패처 (Phase W shadow 계약) ──
+
+def _geo_article():
+    """cross-asset(지정학) 기사 — region 無. v1 vector argmax vs v2 routing 분기."""
+    return {
+        "title": "중동 지정학 리스크 고조",
+        "description": "이란 긴장으로 위험회피.",
+        "_classified_topics": [{"topic": "지정학", "intensity": 8}],
+        "_asset_impact_vector": {"해외채권": 0.7, "해외주식": 0.6},
+    }
+
+
+def test_auto_flag_off_equals_v1(monkeypatch):
+    from market_research.core import asset_taxonomy as at
+    monkeypatch.delenv("MR_RESEARCH_REGION_V2", raising=False)
+    art = _geo_article()
+    # flag OFF: auto == v1 (route_by_region 미발동)
+    assert at.article_primary_asset_auto(art) == at.article_primary_asset(art)
+
+
+def test_auto_flag_off_does_not_route_cross_asset(monkeypatch):
+    """지정학 기사: flag OFF 면 v2(원자재에너지) 가 아니라 v1 결과여야 한다."""
+    from market_research.core import asset_taxonomy as at
+    monkeypatch.delenv("MR_RESEARCH_REGION_V2", raising=False)
+    art = _geo_article()
+    v1 = at.article_primary_asset(art)       # 해외채권 (vector argmax)
+    v2 = at.article_primary_asset_v2(art)    # 원자재에너지 (지정학 routing)
+    assert v1 != v2                          # 분기 존재 확인
+    assert at.article_primary_asset_auto(art) == v1   # auto OFF → v1
+
+
+def test_auto_flag_on_uses_v2(monkeypatch):
+    from market_research.core import asset_taxonomy as at
+    monkeypatch.setenv("MR_RESEARCH_REGION_V2", "1")
+    art = _geo_article()
+    assert at.article_primary_asset_auto(art) == at.article_primary_asset_v2(art)
+    assert at.article_primary_asset_auto(art) == "원자재에너지"
+
+
+# ── _remap_to_8class: selector label → claim 8-class collapse ──
+
+def test_remap_collapse():
+    # 환율 → 환율(FX), 금/원자재 → 원자재금
+    assert _remap_to_8class("환율") == "환율(FX)"
+    assert _remap_to_8class("금대체") == "원자재금"
+    assert _remap_to_8class("원자재에너지") == "원자재금"
+
+
+def test_remap_identity_for_plain_8class():
+    # 국내/해외 주식·채권 + 크레딧·현금성 은 그대로
+    for a in ("국내주식", "해외주식", "국내채권", "해외채권", "크레딧", "현금성"):
+        assert _remap_to_8class(a) == a
+
+
+def test_remap_idempotent_on_8class():
+    # 이미 8-class(환율(FX)/원자재금) 입력 → 동일 (idempotent)
+    assert _remap_to_8class("환율(FX)") == "환율(FX)"
+    assert _remap_to_8class("원자재금") == "원자재금"
+
+
+def test_remap_crypto_and_unknown_to_none():
+    assert _remap_to_8class("크립토") is None       # OCIO 8자산 밖
+    assert _remap_to_8class("존재안함") is None      # 매핑 밖
+    assert _remap_to_8class(None) is None
+    assert _remap_to_8class("") is None
+
+
+def test_remap_output_always_in_8class_or_none():
+    # route_by_region 이 emit 하는 모든 라벨 → 8-class 또는 None
+    for region in REGION_TAXONOMY:
+        for sector in (
+            "테크_AI_반도체", "금리_채권", "환율_FX", "에너지_원자재",
+            "귀금속_금", "유동성_크레딧", "크립토", "지정학", "관세_무역",
+        ):
+            out = _remap_to_8class(route_by_region(region, sector))
+            assert out is None or out in ALLOWED_ASSET_CLASSES
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ LLM 0, IO 0 — 순수 함수.
 """
 from __future__ import annotations
 
+import os
 from collections import defaultdict
 from typing import Any
 
@@ -84,6 +85,30 @@ def route_by_region(region: str | None, sector: str | None) -> str | None:
             return "해외채권"
         return None
     return None
+
+
+# selector canonical label → claim 8-class(ALLOWED_ASSET_CLASSES) collapse (§1.A).
+# route_by_region / article path 는 selector label space(환율·금대체·원자재에너지·크립토)
+# 를 쓰지만 claim affected_assets 의 enum 은 8-class. claim 진입 경계에서만 collapse.
+_REMAP_TO_8CLASS: dict[str, str] = {
+    "국내주식": "국내주식", "해외주식": "해외주식",
+    "국내채권": "국내채권", "해외채권": "해외채권",
+    "크레딧": "크레딧", "현금성": "현금성",
+    "환율": "환율(FX)", "환율(FX)": "환율(FX)",
+    "금대체": "원자재금", "원자재에너지": "원자재금", "원자재금": "원자재금",
+    # 크립토 = OCIO 8자산 밖 → drop (claim 미승격). dict 미포함 → .get default None.
+}
+
+
+def _remap_to_8class(asset: str | None) -> str | None:
+    """selector canonical label → claim 8-class collapse (claim 진입 경계 전용).
+
+    환율→환율(FX), 금대체·원자재에너지→원자재금, 크립토 및 매핑 밖 라벨 → None.
+    이미 8-class 면 idempotent. selector article path 에는 적용 금지(label space 유지).
+    """
+    if not asset:
+        return None
+    return _REMAP_TO_8CLASS.get(asset)
 
 # Generic milestone lane — record-high/저 등 "긍정·완만해서 salience 저평가되는"
 # 구조적 마일스톤 보조 rescue용. ★특정 지수 레벨(8000 등) 매직넘버 금지 — 일반
@@ -172,6 +197,26 @@ def article_primary_asset_v2(article: dict) -> str | None:
     if any(k in title for k in _KR_EQ_KW):
         return "국내주식"
     return None
+
+
+def _region_v2_enabled() -> bool:
+    """MR_RESEARCH_REGION_V2 flag (news_classifier._research_region_v2_enabled 동치).
+
+    기본 OFF (shadow). 순수 env 읽기 — heavy import 회피 위해 여기 복제.
+    """
+    return os.getenv('MR_RESEARCH_REGION_V2', '').strip().lower() in (
+        '1', 'true', 'on', 'yes')
+
+
+def article_primary_asset_auto(article: dict) -> str | None:
+    """flag-gate 디스패처 — OFF → v1 (route_by_region 미호출), ON → v2 routing.
+
+    Phase W shadow 계약: MR_RESEARCH_REGION_V2 OFF 에서 article_primary_asset(v1)
+    과 100% 동일. consumer(Gate2 등)는 본 함수만 호출해 v1/v2 분기를 단일화한다.
+    """
+    if _region_v2_enabled():
+        return article_primary_asset_v2(article)
+    return article_primary_asset(article)
 
 
 def article_topic(article: dict) -> str:
