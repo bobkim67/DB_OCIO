@@ -29,6 +29,62 @@ ASSET_IMPACT_TO_CANONICAL: dict[str, str] = {
 _KR_BOND_KW = ("한국은행", "한은", "금통위", "국고채", "기준금리", "통안채")
 _KR_EQ_KW = ("코스피", "코스닥", "삼성전자", "sk하이닉스", "하이닉스", "밸류업", "팔천피", "8천피")
 
+
+# ══════════════════════════════════════════
+# Taxonomy v2 — region × sector 자산 라우팅 (MVP)
+# ══════════════════════════════════════════
+# region 을 1차 분류 차원으로 승격: asset = sector(성격) × route_by_region.
+# 동일 sector 라도 region 이 국내/해외를 가른다 (테크 + KR → 국내주식, + US → 해외주식).
+# dry 검증 logic (debug/claims/may2026_build/region_sector_dry_classify.py) 와 동일.
+
+REGION_TAXONOMY = ("KR", "US", "NON_US_OVERSEAS", "GLOBAL", "UNKNOWN")
+REGION_SET = frozenset(REGION_TAXONOMY)
+
+# sector 성격 분류 — region 라우팅 대상 (주식성 / 금리성).
+# cross-asset 글로벌 sector (환율/원자재/금/크레딧/크립토/지정학) 는 region 무관.
+EQUITY_SECTORS = frozenset({"테크_AI_반도체", "경기_소비", "부동산"})
+RATE_SECTORS = frozenset({"금리_채권", "통화정책", "물가_인플레이션"})
+_OVERSEAS_REGIONS = frozenset({"US", "NON_US_OVERSEAS"})
+
+
+def route_by_region(region: str | None, sector: str | None) -> str | None:
+    """(region, sector) → OCIO canonical 자산군. 매핑 없으면 None.
+
+    region-무관 cross-asset sector 는 region 을 무시하고 직접 매핑.
+    주식성/금리성 sector 는 region 으로 국내/해외를 가른다.
+    GLOBAL 매크로는 해외 자산 default (해외주식 / 해외채권).
+    UNKNOWN region 의 region-의존 sector 는 None (보수적; 라우팅 미정).
+    """
+    # region-무관 cross-asset sector
+    if sector in ("환율_FX", "달러_글로벌유동성"):
+        return "환율"
+    if sector == "에너지_원자재":
+        return "원자재에너지"
+    if sector == "귀금속_금":
+        return "금대체"
+    if sector == "유동성_크레딧":
+        return "크레딧"
+    if sector == "크립토":
+        return "크립토"
+    if sector == "지정학":
+        return "원자재에너지"  # 지정학 → 유가/원자재 전이 경로
+    overseas = region in _OVERSEAS_REGIONS
+    # 주식성 sector + 관세_무역(글로벌 무역=위험자산) → 주식 (region 라우팅)
+    if sector in EQUITY_SECTORS or sector == "관세_무역":
+        if region == "KR":
+            return "국내주식"
+        if overseas or region == "GLOBAL":  # GLOBAL 매크로 → 해외주식 default
+            return "해외주식"
+        return None  # UNKNOWN
+    # 금리성 sector → 채권 (region 라우팅; GLOBAL 금리환경 → 해외채권 default)
+    if sector in RATE_SECTORS:
+        if region == "KR":
+            return "국내채권"
+        if overseas or region == "GLOBAL":
+            return "해외채권"
+        return None
+    return None
+
 # Generic milestone lane — record-high/저 등 "긍정·완만해서 salience 저평가되는"
 # 구조적 마일스톤 보조 rescue용. ★특정 지수 레벨(8000 등) 매직넘버 금지 — 일반
 # record 표현 + 시장/지수 맥락 가드만 사용 (어느 지수/레벨이든 일반화).
@@ -71,6 +127,46 @@ def article_primary_asset(article: dict) -> str | None:
             if best in ("해외주식", "국내주식") and any(k in title for k in _KR_EQ_KW):
                 return "국내주식"
             return best
+    if any(k in title for k in _KR_BOND_KW):
+        return "국내채권"
+    if any(k in title for k in _KR_EQ_KW):
+        return "국내주식"
+    return None
+
+
+def article_primary_asset_v2(article: dict) -> str | None:
+    """Taxonomy v2 자산군 — per-topic (region, sector) 라우팅 argmax.
+
+    `_classified_topics` 의 각 토픽이 region 필드를 가지면 route_by_region 으로
+    canonical 자산군에 매핑, intensity 가중 합의 argmax 를 반환한다.
+    region 필드가 전혀 없거나 (v1 데이터) 라우팅 결과가 비면 v1
+    (article_primary_asset: 벡터 argmax + KR 키워드 fallback) 으로 위임.
+    """
+    ts = article.get("_classified_topics") or []
+    agg: dict[str, float] = defaultdict(float)
+    saw_region = False
+    for t in ts:
+        if not isinstance(t, dict):
+            continue
+        region = t.get("region")
+        if region:
+            saw_region = True
+        sector = t.get("topic")
+        asset = route_by_region(region or "UNKNOWN", sector)
+        if asset is None:
+            continue
+        try:
+            w = abs(float(t.get("intensity", 5))) / 10.0
+        except (ValueError, TypeError):
+            w = 0.5
+        agg[asset] += w
+    if agg:
+        return max(agg, key=agg.get)
+    # region 정보가 없거나 라우팅이 전부 비면 v1 경로로 위임
+    if not saw_region:
+        return article_primary_asset(article)
+    # region 은 있었으나 (UNKNOWN 등) 라우팅 미정 → 키워드 fallback 만
+    title = _text(article)
     if any(k in title for k in _KR_BOND_KW):
         return "국내채권"
     if any(k in title for k in _KR_EQ_KW):
