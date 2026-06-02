@@ -1,0 +1,160 @@
+[
+  {
+    "article_id": "4a9164f26ee8",
+    "title": "국내주식 마감 시황 (26.04.30) - Big-Event Day 종료..",
+    "before_region": "US",
+    "after_region": "KR",
+    "before_primary": "해외주식",
+    "after_primary": "국내주식",
+    "affected_assets_after": [
+      {
+        "asset": "국내주식",
+        "impact": "neutral",
+        "role": "primary"
+      },
+      {
+        "asset": "해외주식",
+        "impact": "neutral",
+        "role": "secondary"
+      }
+    ],
+    "after_route_source": "llm",
+    "after_consistency_warning": null,
+    "warnings": [
+      "asset_reject:금리_채권"
+    ],
+    "pass": true
+  },
+  {
+    "article_id": "a7a46f75c82d",
+    "title": "국내주식 마감 시황 (26.05.06) - 온 세상이 전닉이다",
+    "before_region": "GLOBAL",
+    "after_region": "KR",
+    "before_primary": "해외주식",
+    "after_primary": "국내주식",
+    "affected_assets_after": [
+      {
+        "asset": "국내주식",
+        "impact": "positive",
+        "role": "primary"
+      },
+      {
+        "asset": "해외주식",
+        "impact": "positive",
+        "role": "secondary"
+      },
+      {
+        "asset": "원자재금",
+        "impact": "positive",
+        "role": "secondary"
+      }
+    ],
+    "after_route_source": "llm",
+    "after_consistency_warning": null,
+    "warnings": [],
+    "pass": true
+  },
+  {
+    "article_id": "818a2d4b2cca",
+    "title": "국내주식 마감 시황 (26.05.08) - ‘투톱’ 휴식에도 ..",
+    "before_region": "US",
+    "after_region": "KR",
+    "before_primary": "해외주식",
+    "after_primary": "국내주식",
+    "affected_assets_after": [
+      {
+        "asset": "국내주식",
+        "impact": "negative",
+        "role": "primary"
+      },
+      {
+        "asset": "해외주식",
+        "impact": "negative",
+        "role": "secondary"
+      }
+    ],
+    "after_route_source": "llm",
+    "after_consistency_warning": null,
+    "warnings": [],
+    "pass": true
+  },
+  {
+    "article_id": "0abed20256ab",
+    "title": "국내주식 마감 시황 (26.05.15) - 8천피 돌파 후 후행..",
+    "before_region": "US",
+    "after_region": "KR",
+    "before_primary": "해외주식",
+    "after_primary": "국내주식",
+    "affected_assets_after": [
+      {
+        "asset": "국내주식",
+        "impact": "positive",
+        "role": "primary"
+      },
+      {
+        "asset": "해외주식",
+        "impact": "positive",
+        "role": "secondary"
+      }
+    ],
+    "after_route_source": "llm",
+    "after_consistency_warning": null,
+    "warnings": [],
+    "pass": true
+  },
+  {
+    "article_id": "601cc4a731d2",
+    "title": "국내주식 마감 시황 (26.05.18) - 삼성전자에 쏠리는 ..",
+    "before_region": "GLOBAL",
+    "after_region": "KR",
+    "before_primary": "해외주식",
+    "after_primary": "국내주식",
+    "affected_assets_after": [
+      {
+        "asset": "국내주식",
+        "impact": "negative",
+        "role": "primary"
+      },
+      {
+        "asset": "원자재금",
+        "impact": "positive",
+        "role": "secondary"
+      }
+    ],
+    "after_route_source": "llm",
+    "after_consistency_warning": "rule_conflict",
+    "warnings": [
+      "asset_reject:금리_채권"
+    ],
+    "pass": true
+  },
+  {
+    "article_id": "98be60d90758",
+    "title": "국내주식 마감 시황 (26.05.28) - 이걸 말아 올린 국..",
+    "before_region": "US",
+    "after_region": "KR",
+    "before_primary": "해외주식",
+    "after_primary": "국내주식",
+    "affected_assets_after": [
+      {
+        "asset": "국내주식",
+        "impact": "positive",
+        "role": "primary"
+      },
+      {
+        "asset": "해외주식",
+        "impact": "positive",
+        "role": "secondary"
+      },
+      {
+        "asset": "원자재금",
+        "impact": "negative",
+        "role": "secondary"
+      }
+    ],
+    "after_route_source": "llm",
+    "after_consistency_warning": null,
+    "warnings": [],
+    "pass": true
+  }
+]
