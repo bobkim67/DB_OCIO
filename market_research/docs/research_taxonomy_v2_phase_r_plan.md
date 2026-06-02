@@ -185,6 +185,26 @@ route_by_region §8 보정 적용 (지정학·관세→None, GLOBAL+주식/금�
   `expected_reason` **1차 초안** 생성 → 사용자가 **애매·중요 건만 검수**. 완전 자동
   proxy 단독으로 acceptance 판단 금지(이전 keyword proxy noise 재발 방지).
 
+### 5.3.1 R-3 실행 결과 (2026-06-02, ✅ DONE — dry 100건, ~$0.1, out 16,022 tok)
+harness `debug/taxonomy/phase_r_shadow_measure.py` (production 경로, flag ON 프로세스
+국소, no-overwrite). 2026-05 research 1,142건 → strided 100건.
+
+- **route_source**: llm **97%** / rule 0 / v1 0 / none 3% → LLM affected/primary 가
+  사실상 단독 결정(hybrid priority 1). rule fallback 거의 불필요(§8 None화와 정합).
+- **asset 분포 v1→v2**: 국내주식 26→**61**, 해외채권 23→**3**(v1 과다귀속 교정),
+  해외주식 24→19, 금대체 0→7(에너지·금 8class 병합 후 selector 환원). 
+- **KR-equity recovery**: keyword ref 51건 국내주식 정분류 v1 47.1% → **v2 74.5%**.
+  (단 keyword ref 는 코스피/삼성/반도체/마감만 잡아 KR 섹터리포트 누락 → 실제 더 높음:
+  spotcheck 참조.)
+- **§8 효과**: 지정학 topic 32건 중 v2 가 원자재로 간 건 **5건**(적용 전이면 32/32 강제).
+  나머지 27건은 보고대상/LLM affected 우선 → 국내주식·해외주식 등으로 분산.
+- **multi-asset 42%**, **unknown 3%**(acceptance <30% 충족), enum 위반 0(resolver 보장).
+- **spotcheck 30건** (Claude 초안 라벨 + verdict): **agree 26 / ambiguous 3 / disagree 1**.
+  disagree 1 = "Daily Bond Morning Brief" 가 topic 테크/지정학으로 **오태깅**되어 v2 가
+  해외주식(채권이어야) → routing 아닌 **classification(topic) 단계 오류**. KR 섹터리포트
+  (방산/조선/2차전지/철강/음식료/바이오)는 v1 해외주식/채권 오분류를 v2 가 국내주식으로
+  대거 교정 — keyword ref 가 못 잡는 진짜 recovery 확인.
+
 ### 5.4 게이트 (운영 적용 전)
 acceptance(설계 §classification_v2 §7, dry backtest 기준):
 - asset enum ≥95% (dry 100%), KR-equity ≥90%(dry 82.9% → spotcheck 수동라벨로 실측 확정),

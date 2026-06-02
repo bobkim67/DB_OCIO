@@ -1,0 +1,31 @@
+article_id,title,category,topics,regions_v2,v1_asset,v2_asset,route_source,expected_asset,expected_region,expected_reason,verdict
+a21d4a32d18f,신한 FX Check-up,economy,환율_FX|에너지_원자재|통화정책,GLOBAL|US,원자재에너지,환율,llm,환율,GLOBAL,FX Check-up=환율 리포트. v1(원자재에너지) 오분류를 v2가 환율로 교정,agree
+bb8b82596dcf,"국지적호조, 연준의 긴 호흡",economy,경기_소비,US,,해외주식,llm,해외주식,US,연준+미국 경기 → 미국 위험자산. 채권 가능성도 있으나 주식 타당,agree
+7b6415927ed7,미국 경제성장 특징과 한국 수출 함의,economy,경기_소비|경기_소비,US|KR,해외주식,해외주식,llm,해외주식,US,미국 성장이 주제(한국 수출은 함의). 미국 주식 타당,agree
+ba917693cdda,Market Weekly Check ME up!,economy,물가_인플레이션|경기_소비|경기_소비,KR|US,해외채권,국내주식,llm,국내주식,KR,범용 위클리. region KR 우선이면 국내주식. 다소 모호,ambiguous
+0993cea7849e,5/6 KB 리서치 장마감코멘트,market_info,테크_AI_반도체|에너지_원자재,KR|GLOBAL,국내주식,국내주식,llm,국내주식,KR,장마감코멘트=KR 시황 → 국내주식 (rule9 pinning),agree
+38d7f9ef54fe,"[주식시황 위클리] 주간:知 - 삼성전자, SK하이닉스 ..",market_info,테크_AI_반도체|테크_AI_반도체,KR|US,국내주식,국내주식,llm,국내주식,KR,삼성전자·SK하이닉스 → 국내주식,agree
+4b9b6a5328ef,Daily Bond Morning Brief(2026.05.12),market_info,테크_AI_반도체|지정학,US|GLOBAL,해외채권,해외주식,llm,해외채권,US,"Bond Brief=채권 리포트인데 topic이 테크/지정학으로 오태깅→v2 해외주식 오분류. 명확한 miss",disagree
+e76be316282c,Global 헬스케어 Weekly(5월 3주차); 유럽비만학회는 ..,market_info,테크_AI_반도체,US,해외주식,해외주식,llm,해외주식,US,글로벌/유럽 헬스케어 → 해외주식,agree
+45eede8eedd6,Daily 신한생각 (5월 18일),market_info,물가_인플레이션|에너지_원자재|금리_채권,GLOBAL|US,해외채권,해외채권,llm,해외채권,GLOBAL,매크로 데일리(물가/금리) → 채권. 해외채권 타당,agree
+952705ccc6ef,"국내 주식 마감 시황 - 내우외환, 악화보다 개선에 주..",market_info,경기_소비|테크_AI_반도체|지정학,KR|US,국내주식,국내주식,llm,국내주식,KR,국내 주식 마감 시황 → 국내주식 (pinning),agree
+8eaea5c60220,마켓레이더 - 국민참여형 국민성장펀드 30분 완판→KO..,market_info,경기_소비|테크_AI_반도체|지정학,KR|GLOBAL,해외채권,국내주식,llm,국내주식,KR,KOSPI·국민성장펀드 → 국내주식. v1(해외채권) 오분류 교정,agree
+f112c9c6ba71,5/27 KB 리서치 장마감코멘트,market_info,테크_AI_반도체|테크_AI_반도체,KR|US,국내주식,국내주식,llm,국내주식,KR,장마감코멘트 → 국내주식 (pinning),agree
+08c4d53f8388,[IBKS Global Spot Comment] 비전문가도 쉽게 이해하..,invest,테크_AI_반도체,US,해외주식,해외주식,llm,해외주식,US,Global Spot 테크 → 해외주식,agree
+c890f4812345,"미국 증시, 통화정책보다는 실적을 우선시하는 장세 ..",invest,통화정책|물가_인플레이션|지정학,US|GLOBAL,해외주식,해외주식,llm,해외주식,US,미국 증시 장세 → 해외주식,agree
+fe5f5960132f,"[마켓 준클리] Infinity and Beyond, 구천피를 향하여",invest,테크_AI_반도체,KR,국내주식,국내주식,llm,국내주식,KR,구천피=KOSPI 9000 → 국내주식,agree
+9bf22d9b96b7,"메모리 반도체 1 위 국가의 위엄, KOSPI 8,000 선을 ..",invest,테크_AI_반도체,KR,국내주식,국내주식,llm,국내주식,KR,KOSPI 8000·메모리반도체 → 국내주식,agree
+0f88d57fcdf3,월간 자산배분_실적 모멘텀에 기반한 주식 선호 유지,invest,경기_소비,KR,,국내주식,llm,국내주식,KR,자산배분 리포트(multi-asset)지만 주식 선호 명시·KR → 국내주식 타당. 다소 모호,ambiguous
+650ccfd6d3b4,[Hana China Weekly] 로컬 GPU 공급 확대로 테크 기업..,invest,테크_AI_반도체,NON_US_OVERSEAS,해외주식,해외주식,llm,해외주식,NON_US_OVERSEAS,중국 테크 → 해외주식,agree
+f57113338521,DS Futures Daily,invest,경기_소비,KR,,국내주식,llm,국내주식,KR,선물 데일리(KR 지수선물 추정) → 국내주식. 다소 모호,ambiguous
+b4260327bf3d,"[2H26 퀀트/ETF 전망] 반도체 다음, 주도주의 조건",invest,테크_AI_반도체,KR,해외주식,국내주식,llm,국내주식,KR,KR 반도체 주도주 전망 → 국내주식. v1(해외주식) 교정,agree
+da9996432833,주간 금리·환율 전망,invest,금리_채권|물가_인플레이션,KR|GLOBAL,국내채권,국내채권,llm,국내채권,KR,주간 금리·환율 전망(KR) → 국내채권. 환율 가능성도 있으나 채권 타당,agree
+3e28e74e318f,Steel Weekly (5월 1주차),industry,테크_AI_반도체|에너지_원자재,KR|GLOBAL,해외주식,국내주식,llm,국내주식,KR,KR 철강 섹터 위클리 → 국내주식. v1(해외주식) 교정,agree
+e464995e87fb,"2차전지, 숏티지 롱전략",industry,테크_AI_반도체,KR,해외주식,국내주식,llm,국내주식,KR,KR 2차전지 섹터 → 국내주식. v1(해외주식) 교정,agree
+9eb94f91c267,5월: 계속되는 중동 재건 테마,industry,지정학,KR,국내주식,국내주식,llm,국내주식,KR,지정학 테마지만 보고대상=KR 재건 관련주 → 국내주식. §8 효과(원자재 강제 안 됨),agree
+354d14a2ae19,안녕하세요 위클리에요(로봇/방산/항공/조선/..,industry,테크_AI_반도체,KR,해외주식,국내주식,llm,국내주식,KR,KR 방산/조선 섹터 → 국내주식. v1(해외주식) 교정,agree
+2de42d746ef3,키움 음식료 Weekly (5/18),industry,유동성_크레딧,KR,해외채권,국내주식,llm,국내주식,KR,KR 음식료 섹터(topic 유동성_크레딧 오태깅이나 자산은 국내주식 맞음). v1(해외채권) 교정,agree
+2c8a74bed049,[IBKS Daily] 인터넷/게임,industry,경기_소비,KR,,국내주식,llm,국내주식,KR,KR 인터넷/게임 섹터 → 국내주식,agree
+4fc9ea66026b,안녕하세요 데일리에요(로봇/방산/조선),industry,테크_AI_반도체,KR,해외주식,국내주식,llm,국내주식,KR,KR 방산/조선 → 국내주식. v1(해외주식) 교정,agree
+5c365f9a7db6,안정을 찾는다면 통신으로,industry,경기_소비,KR,국내주식,국내주식,llm,국내주식,KR,KR 통신 섹터 → 국내주식,agree
+25e79520c8c4,Weekly Bio Insight,industry,경기_소비,KR,국내주식,국내주식,llm,국내주식,KR,KR 바이오 섹터 → 국내주식,agree
