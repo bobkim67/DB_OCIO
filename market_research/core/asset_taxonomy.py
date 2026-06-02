@@ -165,13 +165,20 @@ def article_primary_asset(article: dict) -> str | None:
 
 
 def article_primary_asset_v2(article: dict) -> str | None:
-    """Taxonomy v2 자산군 — per-topic (region, sector) 라우팅 argmax.
+    """Taxonomy v2 hybrid 자산군 (설계 §5 resolve priority).
 
-    `_classified_topics` 의 각 토픽이 region 필드를 가지면 route_by_region 으로
-    canonical 자산군에 매핑, intensity 가중 합의 argmax 를 반환한다.
-    region 필드가 전혀 없거나 (v1 데이터) 라우팅 결과가 비면 v1
-    (article_primary_asset: 벡터 argmax + KR 키워드 fallback) 으로 위임.
+    priority 1) LLM 직접 primary `_primary_asset_v2`(research_v2 passthrough, 8-class)
+       → ASSET_IMPACT_TO_CANONICAL 로 selector label 환원 후 반환.
+    priority 2) `_classified_topics` per-topic (region, sector) route_by_region
+       intensity 가중 argmax (selector label).
+    priority 3) v1 article_primary_asset (벡터 argmax + KR 키워드).
+    article path 는 selector label space 유지 (CORE_ASSETS 와 정합).
     """
+    # priority 1 — LLM 직접 primary (flag ON research_v2 에서만 부착됨)
+    llm_pa = article.get("_primary_asset_v2")
+    if llm_pa:
+        return ASSET_IMPACT_TO_CANONICAL.get(llm_pa, llm_pa)
+
     ts = article.get("_classified_topics") or []
     agg: dict[str, float] = defaultdict(float)
     saw_region = False

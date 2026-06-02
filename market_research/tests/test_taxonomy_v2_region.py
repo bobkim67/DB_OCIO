@@ -261,6 +261,79 @@ def test_remap_output_always_in_8class_or_none():
             assert out is None or out in ALLOWED_ASSET_CLASSES
 
 
+# ── WS1: research_v2 asset-layer validator + hybrid resolver ──
+
+def test_v2_validator_remap_and_floor():
+    from market_research.analyze.news_classifier import _validate_v2_asset_layer
+    item = {
+        "affected_assets": [
+            {"asset": "환율", "impact": "positive", "confidence": 0.9, "role": "primary"},
+            {"asset": "금대체", "impact": "positive", "confidence": 0.8, "role": "secondary"},
+            {"asset": "해외주식", "impact": "negative", "confidence": 0.4},  # floor 미달 drop
+            {"asset": "크립토", "impact": "positive", "confidence": 0.9},     # 8자산 밖 reject
+        ],
+        "primary_asset": "환율",
+        "regions": ["US", "GLOBAL", "JP", "KR"],  # JP invalid, cap 2
+    }
+    aa, pa, regions = _validate_v2_asset_layer(item)
+    assets = {a["asset_class"] for a in aa}
+    assert assets == {"환율(FX)", "원자재금"}        # remap + floor drop + crypto reject
+    assert pa == "환율(FX)"                          # primary remap
+    assert sum(1 for a in aa if a["role"] == "primary") == 1
+    assert regions == ["US", "GLOBAL"]               # JP drop, cap 2
+
+
+def test_v2_validator_primary_reassign_when_not_in_affected():
+    from market_research.analyze.news_classifier import _validate_v2_asset_layer
+    item = {
+        "affected_assets": [
+            {"asset": "국내주식", "impact": "positive", "confidence": 0.9},
+            {"asset": "해외주식", "impact": "positive", "confidence": 0.7},
+        ],
+        "primary_asset": "해외채권",  # affected 에 없음 → conf 최고(국내주식)로 재지정
+    }
+    aa, pa, _ = _validate_v2_asset_layer(item)
+    assert pa == "국내주식"
+    assert [a for a in aa if a["role"] == "primary"][0]["asset_class"] == "국내주식"
+
+
+def test_v2_validator_empty_when_no_asset_layer():
+    from market_research.analyze.news_classifier import _validate_v2_asset_layer
+    # research_v1 / news item (affected_assets 없음) → ([],None,[]) (v1 호환)
+    aa, pa, regions = _validate_v2_asset_layer({"topics": [{"topic": "금리_채권"}]})
+    assert aa == [] and pa is None and regions == []
+
+
+def test_v2_resolver_prefers_llm_primary():
+    # priority 1: _primary_asset_v2(8-class) → selector label 환원
+    from market_research.core.asset_taxonomy import article_primary_asset_v2
+    art = {"_primary_asset_v2": "환율(FX)",
+           "_classified_topics": [{"region": "KR", "topic": "테크_AI_반도체", "intensity": 9}]}
+    # LLM primary 우선 → 환율(FX)→환율 (rule 은 국내주식이지만 무시)
+    assert article_primary_asset_v2(art) == "환율"
+    art2 = {"_primary_asset_v2": "국내주식"}
+    assert article_primary_asset_v2(art2) == "국내주식"
+
+
+def test_v2_resolver_falls_to_rule_without_llm_primary():
+    # _primary_asset_v2 없음 → 기존 per-topic rule 라우팅 (priority 2)
+    from market_research.core.asset_taxonomy import article_primary_asset_v2
+    art = {"_classified_topics": [{"region": "US", "topic": "테크_AI_반도체", "intensity": 8}]}
+    assert article_primary_asset_v2(art) == "해외주식"
+
+
+def test_v2_llm_primary_ignored_when_flag_off(monkeypatch):
+    # dispatcher OFF → v1 사용, _primary_asset_v2 무시 (flag OFF inert)
+    from market_research.core import asset_taxonomy as at
+    monkeypatch.delenv("MR_RESEARCH_REGION_V2", raising=False)
+    art = {"_primary_asset_v2": "환율(FX)",
+           "_asset_impact_vector": {"국내주식": 0.9},
+           "title": "코스피 강세", "description": ""}
+    # auto OFF → article_primary_asset(v1) = 국내주식 (LLM primary 무시)
+    assert at.article_primary_asset_auto(art) == at.article_primary_asset(art)
+    assert at.article_primary_asset_auto(art) == "국내주식"
+
+
 if __name__ == "__main__":
     import pytest
     raise SystemExit(pytest.main([__file__, "-q"]))

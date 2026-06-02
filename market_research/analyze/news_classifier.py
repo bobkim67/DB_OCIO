@@ -462,6 +462,10 @@ def _build_research_classification_prompt_v2(articles: list[dict]) -> str:
 - GLOBAL: 지역무관 글로벌·매크로 (유가·금·달러지수·원자재·환율·지정학 등 cross-asset)
 - UNKNOWN: 판단 불가
 
+## asset 체계 (8개 — OCIO 다운스트림 계약, affected_assets 에 이 값만)
+국내주식, 해외주식, 국내채권, 해외채권, 크레딧, 현금성, 환율(FX), 원자재금
+- 에너지·원자재·금은 전부 "원자재금" 하나로. 비트코인/크립토는 자산군 부여 금지(affected_assets 비움).
+
 ## 리서치 분류 규칙
 1. 입력은 증권사 리서치 리포트. 거의 대부분 거시 해석을 담으므로 **빈 배열은 예외적**이어야 한다.
 2. 각 리포트에 1~3개 (region, sector, direction, intensity) 태그를 부여한다 (multi-label).
@@ -472,14 +476,25 @@ def _build_research_classification_prompt_v2(articles: list[dict]) -> str:
    - 환율·유가·금·달러·원자재·지정학 같은 cross-asset 매크로 → GLOBAL.
 5. **리포트 제목에 종목/ETF명이 있어도** 거시 주제가 있으면 태깅. 순수 개별 종목 실적만이면 빈 배열 허용.
 6. direction 이 애매하면 "neutral" + 낮은 intensity(3~5).
+7. **affected_assets**: 영향받는 자산군을 최대 3개. 각 {{asset(8개 중), impact, confidence(0~1), role}}.
+   role=primary 는 정확히 1개, 나머지 secondary. 여러 자산 영향이면 복수 명시(예: 금리충격 →
+   국내채권+해외채권+해외주식). primary_asset 은 affected_assets 의 role=primary 자산과 동일.
+8. **시황/마감/데일리/전략** 리포트는 글로벌 driver(지정학·유가·환율)보다 **보고 대상 시장/자산군**을
+   primary 로 우선하고 driver 는 secondary 로 둔다. 예) "국내주식 마감 — 미·이란 협상에 코스피 급등"
+   → primary=국내주식, 환율(FX)/원자재금=secondary.
+9. 제목/유형이 "국내주식 마감","KOSPI/KOSDAQ 마감","국내 주식시장 데일리"면 본문에 글로벌 driver 가
+   많아도 region·primary_asset 을 보고 대상 시장(KR·국내주식)으로 고정. driver 는 secondary.
 
 ## 리포트 목록
 {chr(10).join(article_lines)}
 
 ## 응답 형식 (JSON 배열만, 설명 없이)
 [
-  {{"id": 1, "topics": [{{"region": "KR", "topic": "테크_AI_반도체", "direction": "positive", "intensity": 8}}]}},
-  {{"id": 2, "topics": []}}
+  {{"id": 1,
+    "topics": [{{"region": "KR", "topic": "테크_AI_반도체", "direction": "positive", "intensity": 8}}],
+    "affected_assets": [{{"asset": "국내주식", "impact": "positive", "confidence": 0.93, "role": "primary"}}],
+    "primary_asset": "국내주식", "regions": ["KR"]}},
+  {{"id": 2, "topics": [], "affected_assets": [], "primary_asset": null, "regions": []}}
 ]"""
 
 
@@ -572,6 +587,63 @@ def _sanitize_topic(raw_topic: str) -> str:
 _TOPIC_SET = set(TOPIC_TAXONOMY)
 
 
+# Taxonomy v2 asset layer — enum/floor (dry validate_item 이식; design §4.3·§6)
+_V2_ALLOWED_ASSET_8 = {
+    "국내주식", "해외주식", "국내채권", "해외채권",
+    "크레딧", "현금성", "환율(FX)", "원자재금",
+}
+_V2_DIRECTIONS = {"positive", "negative", "neutral", "mixed", "unknown"}
+_V2_FLOOR = {"asset": 0.60, "primary": 0.70}
+
+
+def _validate_v2_asset_layer(item: dict) -> tuple[list, str | None, list]:
+    """research_v2 LLM item 의 affected_assets/primary_asset/regions 검증.
+
+    remap→8class / confidence floor / dedupe / cap3 / primary∈affected / role=1.
+    반환: (affected_assets_clean[{asset_class,direction,confidence,role}], primary, regions).
+    LLM 출력에 asset layer 없으면 ([], None, []) → 호출부에서 미부착(v1 호환).
+    """
+    from market_research.core.asset_taxonomy import _remap_to_8class
+
+    clean: list[dict] = []
+    for a in item.get("affected_assets") or []:
+        if not isinstance(a, dict):
+            continue
+        asset = _remap_to_8class(a.get("asset"))
+        if asset is None:
+            continue
+        conf = a.get("confidence")
+        try:
+            cf = float(conf) if conf is not None else 1.0
+        except (TypeError, ValueError):
+            cf = 1.0
+        if cf < _V2_FLOOR["asset"]:
+            continue
+        impact = a.get("impact")
+        if impact not in _V2_DIRECTIONS:
+            impact = "unknown"
+        clean.append({"asset_class": asset, "direction": impact,
+                      "confidence": cf, "role": a.get("role", "secondary")})
+    # dedupe asset keep-max-conf
+    by: dict[str, dict] = {}
+    for c in clean:
+        if c["asset_class"] not in by or c["confidence"] > by[c["asset_class"]]["confidence"]:
+            by[c["asset_class"]] = c
+    clean = list(by.values())
+    if len(clean) > 3:
+        clean = sorted(clean, key=lambda c: -c["confidence"])[:3]
+    # primary ∈ affected, 없으면 conf 최고로 재지정
+    primary = _remap_to_8class(item.get("primary_asset"))
+    aset = {c["asset_class"] for c in clean}
+    if primary not in aset:
+        primary = max(clean, key=lambda c: c["confidence"])["asset_class"] if clean else None
+    for c in clean:
+        c["role"] = "primary" if c["asset_class"] == primary else "secondary"
+    regions = [r for r in (item.get("regions") or [])
+               if isinstance(r, str) and r in _REGION_SET][:2]
+    return clean, primary, regions
+
+
 def _apply_classification_results(to_classify: list[dict], results) -> None:
     """LLM 응답(results) → to_classify 각 기사에 in-place 필드 기록."""
     if not results or not isinstance(results, list):
@@ -616,6 +688,21 @@ def _apply_classification_results(to_classify: list[dict], results) -> None:
             a['primary_topic'] = primary['topic']
             a['direction'] = primary.get('direction', 'neutral')
             a['intensity'] = primary.get('intensity', 5)
+
+        # Taxonomy v2 asset layer (research_v2 LLM 직접 출력) passthrough.
+        # research_v1 / news 경로는 affected_assets 미출력 → ([],None,[]) → 미부착
+        # (v1 호환, flag OFF inert). hybrid resolver(article_primary_asset_v2)가 소비.
+        aa_v2, pa_v2, regions_v2 = _validate_v2_asset_layer(item)
+        if aa_v2:
+            a['_affected_assets_v2'] = aa_v2
+        if pa_v2:
+            a['_primary_asset_v2'] = pa_v2
+        if regions_v2:
+            a['_regions_v2'] = regions_v2
+        if topics:
+            secs = [t.get('topic') for t in topics if t.get('topic')]
+            if secs:
+                a['_sectors_v2'] = list(dict.fromkeys(secs))[:3]
 
 
 def classify_batch(articles: list[dict]) -> list[dict]:

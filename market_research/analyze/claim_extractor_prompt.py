@@ -19,6 +19,8 @@ from market_research.analyze.claim_extractor import (
     ALLOWED_HORIZONS,
     ALLOWED_RELATIONS,
 )
+from market_research.core.asset_taxonomy import REGION_TAXONOMY
+from market_research.wiki.taxonomy import TOPIC_TAXONOMY
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -95,6 +97,8 @@ def build_extraction_prompt(
     dir_list = ", ".join(sorted(ALLOWED_DIRECTIONS))
     hor_list = ", ".join(sorted(ALLOWED_HORIZONS))
     rel_list = ", ".join(sorted(ALLOWED_RELATIONS))
+    region_list = ", ".join(REGION_TAXONOMY)
+    sector_list = ", ".join(TOPIC_TAXONOMY)
 
     evidence_block = _format_evidence_lines(evidence_items, max_items=max_items)
 
@@ -110,13 +114,20 @@ def build_extraction_prompt(
         "4. 자산군 영향이 모호하거나 운용 의사결정 보조가 안 되면 추출 X.\n"
         "5. 여러 자산군에 의미 있는 영향이 있으면 affected_assets 에 3개 이상 "
         "명시 (예: 금리 충격 → 국내채권+해외채권+주식+달러).\n"
-        "6. claim_id 는 출력 X — 시스템에서 deterministic 하게 자동 부여.\n\n"
+        "6. claim_id 는 출력 X — 시스템에서 deterministic 하게 자동 부여.\n"
+        "7. affected_assets 각 항목에 confidence(0~1)·role(primary/secondary) 부여. "
+        "role=primary 는 정확히 1개, primary_asset 은 그 자산과 동일하게 명시.\n"
+        "8. regions(≤2)·sectors(≤3) 는 claim 이 영향을 주는 시장 지역·주제. region 은 "
+        "'영향받는 시장' 기준(발행 매체 아님).\n\n"
         "## 출력 schema (JSON 배열만, 그 외 텍스트 금지)\n"
         "[\n"
         "  {\n"
         '    "claim_text": "한 줄 요약 (≤180자)",\n'
         '    "claim_type": "...",\n'
-        '    "affected_assets": [{"asset_class": "...", "direction": "..."}],\n'
+        '    "affected_assets": [{"asset_class": "...", "direction": "...", '
+        '"confidence": 0.0~1.0, "role": "primary|secondary"}],\n'
+        '    "primary_asset": "affected_assets 의 role=primary 자산",\n'
+        '    "regions": ["..."], "sectors": ["..."],\n'
         '    "causal_chain": [{"source": "...", "target": "...", "relation": "..."}],\n'
         '    "direction": "...",\n'
         '    "horizon": "...",\n'
@@ -133,6 +144,8 @@ def build_extraction_prompt(
         f"- direction:   {dir_list}\n"
         f"- horizon:     {hor_list}\n"
         f"- relation:    {rel_list}\n"
+        f"- region:      {region_list}\n"
+        f"- sector:      {sector_list}\n"
     )
 
     return {

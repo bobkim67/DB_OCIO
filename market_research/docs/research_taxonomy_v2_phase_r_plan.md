@@ -95,6 +95,25 @@ ON 시에만 영향). WS4 만 paid + flag ON.
   claim_pages frontmatter round-trip 단위테스트(Phase W 테스트 확장).
 - 롤백: prompt schema 원복. 스키마는 optional 이라 기존 claim 무영향.
 
+### 3.4 R-2 실행 결과 (2026-06-02, ✅ DONE — 코드만, 무비용)
+WS1+WS2 prompt/resolver/validator 배선. 전부 flag OFF inert (prompt 는 flag ON 에서만
+호출, resolver priority 1 은 `_primary_asset_v2` 부착 시에만 = flag ON).
+
+- **WS1** `news_classifier`: `_build_research_classification_prompt_v2` 에 affected_assets
+  [{asset,impact,confidence,role}]/primary_asset/regions 출력 + rule 7-9(multi-asset/
+  role=1/시황 pinning) 추가(topics[] 유지 = downstream `_classified_topics` 무영향).
+  `_validate_v2_asset_layer`(remap→8class/floor0.6/dedupe/cap3/primary∈affected/role=1)
+  + `_apply_classification_results` passthrough(`_affected_assets_v2`/`_primary_asset_v2`/
+  `_regions_v2`/`_sectors_v2`). `article_primary_asset_v2` hybrid: LLM primary(8class→
+  selector) > rule(route_by_region §8) > v1.
+- **WS2** `claim_extractor_prompt`: affected_assets 에 confidence/role + primary_asset/
+  regions/sectors 출력 + region/sector enum 제약. (스키마 수용·normalize remap·
+  frontmatter 는 Phase W 완료 → prompt 만.)
+- 검증: 통합 passthrough(국내주식 마감 합성) → `_primary_asset_v2`=국내주식, 환율→환율(FX)
+  remap, resolver=국내주식. flag OFF auto==v1 mismatch 0·claim md5 0·shadow 19,286 불변.
+  단위 28 + 회귀 262 통과.
+- 다음 = **R-3 dry 100건**(flag ON harness, ≤$0.2, **paid 첫 단계 — 별 GO**).
+
 ---
 
 ## 4. WS3 — route_by_region §8 보정 (flag ON 전 필수)
