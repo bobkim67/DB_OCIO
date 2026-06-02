@@ -60,10 +60,13 @@ def write_event_page(event_id: str, articles: list[dict], month_str: str) -> Pat
     if not articles:
         return None
     from market_research.core.asset_taxonomy import (
-        article_primary_asset, article_is_milestone,
+        article_primary_asset_auto, article_is_milestone,
     )
     top = max(articles, key=lambda a: a.get('_event_salience', 0))
-    primary_asset = article_primary_asset(top) or ''
+    # flag-gate: MR_RESEARCH_REGION_V2 OFF → v1 (route_by_region 미호출, shadow
+    # inert). ON → v2 routing. Gate2 선택(asset_of)과 동일 attribution 사용 →
+    # frontmatter primary_asset 이 Gate4 층화와 정합.
+    primary_asset = article_primary_asset_auto(top) or ''
     is_milestone = any(article_is_milestone(a) for a in articles)
     topics = Counter()
     sources = Counter()
@@ -428,7 +431,7 @@ def refresh_base_pages_after_refine(month_str: str,
         balanced_select, SelectionParams,
     )
     from market_research.core.asset_taxonomy import (
-        article_primary_asset, article_topic, article_is_milestone,
+        article_primary_asset_auto, article_topic, article_is_milestone,
     )
 
     by_event = defaultdict(list)
@@ -451,7 +454,9 @@ def refresh_base_pages_after_refine(month_str: str,
                         topic_cap_frac=0.4, asset_cap_frac=0.6, milestone_slots=1),
         salience_of=lambda g: max((a.get('_event_salience', 0) or 0) for a in g[1]),
         topic_of=lambda g: Counter(article_topic(a) for a in g[1]).most_common(1)[0][0],
-        asset_of=lambda g: article_primary_asset(_grp_rep(g[1])),
+        # flag-gate: MR_RESEARCH_REGION_V2 OFF → v1 (route_by_region 미호출,
+        # shadow inert), ON → v2 region 라우팅. consumer 단일 분기.
+        asset_of=lambda g: article_primary_asset_auto(_grp_rep(g[1])),
         week_of=lambda g: _grp_week(g[1]),
         milestone_of=lambda g: any(article_is_milestone(a) for a in g[1]),
         id_of=lambda g: g[0],
