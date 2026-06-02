@@ -17,8 +17,37 @@ import json as _json
 from pathlib import Path
 
 from market_research.analyze.news_classifier import TOPIC_TAXONOMY
+from market_research.core.asset_taxonomy import REGION_TAXONOMY, REGION_SET
 
 TAXONOMY_SET = frozenset(TOPIC_TAXONOMY)
+
+# Region taxonomy (v2) — single source in core.asset_taxonomy, re-exported here
+# so the wiki/contract layer can validate region tags alongside sector tags.
+__all_region__ = ("REGION_TAXONOMY", "REGION_SET", "is_region", "validate_regions")
+
+
+def is_region(tag: str) -> bool:
+    return tag in REGION_SET
+
+
+def validate_regions(regions: list[str]) -> tuple[list[str], list[str]]:
+    """(valid_region_tags, invalid_tags) 반환. 중복 제거 (순서 유지).
+
+    sector 의 validate_tags 와 동일 계약. UNKNOWN 도 valid (보수적 fallback enum).
+    """
+    seen: set = set()
+    valid: list[str] = []
+    invalid: list[str] = []
+    for r in regions or []:
+        r = (r or '').strip()
+        if not r or r in seen:
+            continue
+        seen.add(r)
+        if r in REGION_SET:
+            valid.append(r)
+        else:
+            invalid.append(r)
+    return valid, invalid
 
 
 # ══════════════════════════════════════════

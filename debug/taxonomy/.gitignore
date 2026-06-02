@@ -1,0 +1,6 @@
+# transient / heavy raw — .md 리포트만 커밋 (요약·표). raw JSON 은 재현 드라이버로 재생성.
+__pycache__/
+research_v2_backtest_ckpt.json
+research_v2_backtest_result.json
+research_v2_sample_result.json
+research_v2_sample_result_before.json

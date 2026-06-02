@@ -24,6 +24,7 @@ from pathlib import Path
 from market_research.core.json_utils import (
     safe_read_json_list, safe_write_json_list, safe_write_news_json,
 )
+from market_research.core.asset_taxonomy import REGION_SET as _REGION_SET
 
 if sys.stdout.encoding != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -423,6 +424,65 @@ def _build_research_classification_prompt(articles: list[dict]) -> str:
 ]"""
 
 
+def _research_region_v2_enabled() -> bool:
+    """Taxonomy v2 region 출력 flag (research 분류 경로).
+
+    기본 OFF (shadow). `MR_RESEARCH_REGION_V2=1` 일 때만 region 출력 프롬프트 사용.
+    backtest acceptance 통과 전까지 production 기본값은 OFF.
+    """
+    return os.getenv('MR_RESEARCH_REGION_V2', '').strip().lower() in ('1', 'true', 'on', 'yes')
+
+
+def _build_research_classification_prompt_v2(articles: list[dict]) -> str:
+    """리서치 리포트 전용 분류 프롬프트 (Taxonomy v2 — region × sector).
+
+    research_v1 과 동일하되 각 토픽에 region 을 추가로 요구한다.
+    region = "영향받는 시장"의 지역 (발행 매체 아님).
+    dry 검증(region_sector_dry_classify.py) 의 프롬프트 의도와 정합.
+    """
+    topic_list = ', '.join(TOPIC_TAXONOMY)
+
+    article_lines = []
+    for i, a in enumerate(articles):
+        title = _clean_html(a.get('title', ''))[:160]
+        desc = _clean_html(a.get('description', ''))[:400]
+        broker = a.get('_raw_broker') or a.get('source', '')
+        cat = a.get('_raw_category', '')
+        article_lines.append(f'{i+1}. [{broker} / {cat}] {title}\n   {desc}')
+
+    return f"""증권사 리서치 리포트의 거시 관점을 region × sector 로 분류하세요.
+
+## sector 체계 (14개 주제, 뉴스와 동일)
+{topic_list}
+
+## region 체계 (영향받는 시장 기준 — 발행 매체 아님)
+- KR: 한국 (삼성전자·코스피·한은·국고채 등 한국 자산/시장)
+- US: 미국 (Fed·나스닥·S&P·엔비디아·UST 등)
+- NON_US_OVERSEAS: 미국 외 해외 (유럽·일본·중국·신흥국)
+- GLOBAL: 지역무관 글로벌·매크로 (유가·금·달러지수·원자재·환율·지정학 등 cross-asset)
+- UNKNOWN: 판단 불가
+
+## 리서치 분류 규칙
+1. 입력은 증권사 리서치 리포트. 거의 대부분 거시 해석을 담으므로 **빈 배열은 예외적**이어야 한다.
+2. 각 리포트에 1~3개 (region, sector, direction, intensity) 태그를 부여한다 (multi-label).
+3. direction: positive / negative / neutral, intensity: 1~10 (리포트가 다루는 비중·강조도).
+4. region 판정 핵심:
+   - "영향받는 시장"의 지역이다. 발행 증권사·언어가 한국이어도 미국 증시 리포트면 region=US.
+   - 한국 반도체/코스피/수출 → KR (테크라고 무조건 US 아님).
+   - 환율·유가·금·달러·원자재·지정학 같은 cross-asset 매크로 → GLOBAL.
+5. **리포트 제목에 종목/ETF명이 있어도** 거시 주제가 있으면 태깅. 순수 개별 종목 실적만이면 빈 배열 허용.
+6. direction 이 애매하면 "neutral" + 낮은 intensity(3~5).
+
+## 리포트 목록
+{chr(10).join(article_lines)}
+
+## 응답 형식 (JSON 배열만, 설명 없이)
+[
+  {{"id": 1, "topics": [{{"region": "KR", "topic": "테크_AI_반도체", "direction": "positive", "intensity": 8}}]}},
+  {{"id": 2, "topics": []}}
+]"""
+
+
 def _build_narrative_candidate_prompt(articles: list[dict]) -> str:
     """미분류 기사에서 신규 내러티브 후보 키워드 추출"""
     lines = []
@@ -529,6 +589,10 @@ def _apply_classification_results(to_classify: list[dict], results) -> None:
             sanitized = _sanitize_topic(t.get('topic', ''))
             if sanitized:
                 t['topic'] = sanitized
+                # region passthrough (Taxonomy v2). 없으면 미부착 (v1 호환).
+                reg = (t.get('region') or '').strip()
+                if reg:
+                    t['region'] = reg if reg in _REGION_SET else 'UNKNOWN'
                 topics.append(t)
         a['_classified_topics'] = topics
 
@@ -595,9 +659,15 @@ def classify_batch(articles: list[dict]) -> list[dict]:
                 if '_classified_topics' not in a:
                     a['_classify_error'] = str(exc)[:100]
 
-    # 리서치 묶음 — 전용 프롬프트
+    # 리서치 묶음 — 전용 프롬프트 (region v2 flag 에 따라 분기)
     if research_bucket:
-        prompt = _build_research_classification_prompt(research_bucket)
+        region_v2 = _research_region_v2_enabled()
+        if region_v2:
+            prompt = _build_research_classification_prompt_v2(research_bucket)
+            tag = 'research_v2_region'
+        else:
+            prompt = _build_research_classification_prompt(research_bucket)
+            tag = 'research_v1'
         try:
             text = _call_haiku(prompt, max_tokens=3000)
             results = _parse_json_response(text)
@@ -605,7 +675,7 @@ def classify_batch(articles: list[dict]) -> list[dict]:
             # 리서치 소스 분류 경로를 추적 가능하게 마킹
             for a in research_bucket:
                 if '_classified_topics' in a:
-                    a['_classifier_prompt'] = 'research_v1'
+                    a['_classifier_prompt'] = tag
         except Exception as exc:
             print(f'    리서치 배치 분류 실패 ({len(research_bucket)}건): {type(exc).__name__}: {exc}')
             for a in research_bucket:
