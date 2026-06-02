@@ -32,11 +32,12 @@ from market_research.wiki.taxonomy import (  # noqa: E402
 # ── region 라우팅: 주식성 sector × region ──
 
 def test_equity_sector_region_split():
-    # 동일 테크 sector 라도 region 이 자산을 가른다
+    # 동일 테크 sector 라도 region 이 자산을 가른다 (KR/해외만)
     assert route_by_region("KR", "테크_AI_반도체") == "국내주식"
     assert route_by_region("US", "테크_AI_반도체") == "해외주식"
     assert route_by_region("NON_US_OVERSEAS", "테크_AI_반도체") == "해외주식"
-    assert route_by_region("GLOBAL", "테크_AI_반도체") == "해외주식"  # 매크로 default
+    # §8: GLOBAL+주식성 → None (해외자산 default 폐기, LLM 위임)
+    assert route_by_region("GLOBAL", "테크_AI_반도체") is None
     assert route_by_region("UNKNOWN", "테크_AI_반도체") is None  # 보수적
 
 
@@ -45,18 +46,31 @@ def test_rate_sector_region_split():
     assert route_by_region("US", "금리_채권") == "해외채권"
     assert route_by_region("KR", "통화정책") == "국내채권"
     assert route_by_region("US", "통화정책") == "해외채권"
-    assert route_by_region("GLOBAL", "물가_인플레이션") == "해외채권"
+    # §8: GLOBAL+금리성 → None (해외채권 default 폐기)
+    assert route_by_region("GLOBAL", "물가_인플레이션") is None
     assert route_by_region("UNKNOWN", "금리_채권") is None
 
 
-def test_tariff_routes_as_equity():
-    # 관세_무역 = 글로벌 무역(위험자산) → 주식 region 라우팅
-    assert route_by_region("KR", "관세_무역") == "국내주식"
-    assert route_by_region("US", "관세_무역") == "해외주식"
+def test_geopolitics_and_tariff_route_none():
+    # §8 보정: 지정학·관세_무역 = 다발성 → rule fallback None (LLM affected_assets 위임)
+    for region in REGION_TAXONOMY:
+        assert route_by_region(region, "지정학") is None
+        assert route_by_region(region, "관세_무역") is None
+
+
+def test_global_region_dependent_sector_none():
+    # §8: GLOBAL 은 region-free cross-asset sector 에만 직접 route.
+    # region-의존(주식성/금리성)은 None.
+    assert route_by_region("GLOBAL", "경기_소비") is None
+    assert route_by_region("GLOBAL", "통화정책") is None
+    # GLOBAL + cross-asset 은 여전히 직접 매핑
+    assert route_by_region("GLOBAL", "환율_FX") == "환율"
+    assert route_by_region("GLOBAL", "에너지_원자재") == "원자재에너지"
 
 
 def test_cross_asset_sectors_region_invariant():
-    # cross-asset 글로벌 sector 는 region 무관 (어느 region 이든 동일)
+    # cross-asset 글로벌 sector 는 region 무관 (어느 region 이든 동일).
+    # §8 보정으로 지정학은 제외(→None, 위 test_geopolitics_and_tariff_route_none).
     for region in REGION_TAXONOMY:
         assert route_by_region(region, "환율_FX") == "환율"
         assert route_by_region(region, "달러_글로벌유동성") == "환율"
@@ -64,7 +78,6 @@ def test_cross_asset_sectors_region_invariant():
         assert route_by_region(region, "귀금속_금") == "금대체"
         assert route_by_region(region, "유동성_크레딧") == "크레딧"
         assert route_by_region(region, "크립토") == "크립토"
-        assert route_by_region(region, "지정학") == "원자재에너지"
 
 
 def test_unknown_sector_returns_none():
@@ -102,7 +115,7 @@ def test_v2_kr_tech_to_domestic_equity():
             {"region": "GLOBAL", "topic": "지정학", "direction": "positive", "intensity": 4},
         ],
     }
-    # v2: 테크 KR(국내주식, w0.8) vs 지정학(원자재에너지, w0.4) → 국내주식
+    # v2: 테크 KR(국내주식, w0.8) + 지정학(§8 → None, 무기여) → 국내주식
     assert article_primary_asset_v2(art) == "국내주식"
 
 
@@ -157,12 +170,14 @@ def test_v2_region_present_but_unroutable_uses_keyword():
 
 # ── article_primary_asset_auto: flag-gate 디스패처 (Phase W shadow 계약) ──
 
-def _geo_article():
-    """cross-asset(지정학) 기사 — region 無. v1 vector argmax vs v2 routing 분기."""
+def _energy_article():
+    """cross-asset(에너지_원자재) 기사 — region 無. §8 보정 후에도 region-무관
+    직접 매핑이 살아있어 v1 vector argmax vs v2 routing 분기가 유지되는 예시.
+    (지정학은 §8 로 None 화되어 더는 분기 예시로 못 씀.)"""
     return {
-        "title": "중동 지정학 리스크 고조",
-        "description": "이란 긴장으로 위험회피.",
-        "_classified_topics": [{"topic": "지정학", "intensity": 8}],
+        "title": "국제 유가 급등",
+        "description": "OPEC 감산으로 원유 강세.",
+        "_classified_topics": [{"topic": "에너지_원자재", "intensity": 8}],
         "_asset_impact_vector": {"해외채권": 0.7, "해외주식": 0.6},
     }
 
@@ -170,18 +185,18 @@ def _geo_article():
 def test_auto_flag_off_equals_v1(monkeypatch):
     from market_research.core import asset_taxonomy as at
     monkeypatch.delenv("MR_RESEARCH_REGION_V2", raising=False)
-    art = _geo_article()
+    art = _energy_article()
     # flag OFF: auto == v1 (route_by_region 미발동)
     assert at.article_primary_asset_auto(art) == at.article_primary_asset(art)
 
 
 def test_auto_flag_off_does_not_route_cross_asset(monkeypatch):
-    """지정학 기사: flag OFF 면 v2(원자재에너지) 가 아니라 v1 결과여야 한다."""
+    """에너지 기사: flag OFF 면 v2(원자재에너지) 가 아니라 v1 결과여야 한다."""
     from market_research.core import asset_taxonomy as at
     monkeypatch.delenv("MR_RESEARCH_REGION_V2", raising=False)
-    art = _geo_article()
+    art = _energy_article()
     v1 = at.article_primary_asset(art)       # 해외채권 (vector argmax)
-    v2 = at.article_primary_asset_v2(art)    # 원자재에너지 (지정학 routing)
+    v2 = at.article_primary_asset_v2(art)    # 원자재에너지 (에너지 routing)
     assert v1 != v2                          # 분기 존재 확인
     assert at.article_primary_asset_auto(art) == v1   # auto OFF → v1
 
@@ -189,9 +204,22 @@ def test_auto_flag_off_does_not_route_cross_asset(monkeypatch):
 def test_auto_flag_on_uses_v2(monkeypatch):
     from market_research.core import asset_taxonomy as at
     monkeypatch.setenv("MR_RESEARCH_REGION_V2", "1")
-    art = _geo_article()
+    art = _energy_article()
     assert at.article_primary_asset_auto(art) == at.article_primary_asset_v2(art)
     assert at.article_primary_asset_auto(art) == "원자재에너지"
+
+
+def test_geopolitics_article_v2_falls_back_to_v1_after_s8(monkeypatch):
+    """§8 회귀: 지정학 단독 기사(region 無)는 이제 route None → v2 가 v1 로 위임."""
+    from market_research.core import asset_taxonomy as at
+    art = {
+        "title": "중동 지정학 리스크 고조",
+        "description": "이란 긴장으로 위험회피.",
+        "_classified_topics": [{"topic": "지정학", "intensity": 8}],
+        "_asset_impact_vector": {"해외채권": 0.7, "해외주식": 0.6},
+    }
+    # 지정학 → None, region 없음(saw_region False) → v1 위임 → v2 == v1
+    assert at.article_primary_asset_v2(art) == at.article_primary_asset(art)
 
 
 # ── _remap_to_8class: selector label → claim 8-class collapse ──

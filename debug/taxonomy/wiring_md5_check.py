@@ -152,8 +152,9 @@ def _check_dryrun_equivalence() -> bool:
           f"({100*v2_shadow_mismatch/max(total,1):.1f}% — flag ON 시 변경 예상분)")
     print("  shadow top (v1→v2):")
     for (a, b), n in shadow_pairs.most_common(6):
-        flag = "  ★지정학고정매핑(설계 §8 폐기대상)" if b == "원자재에너지" else ""
-        print(f"    {a} → {b}: {n}{flag}")
+        # R-1(§8) 적용 후: 지정학→원자재에너지 고정매핑 제거됨. 남은 원자재에너지
+        # mismatch 는 에너지_원자재 sector 직접매핑(정상 cross-asset).
+        print(f"    {a} → {b}: {n}")
     # 계약: flag OFF 에서 auto==v1. flag 가 ON 이면 이 게이트는 스킵(정상 divergence).
     return (flag_on or auto_off_mismatch == 0)
 

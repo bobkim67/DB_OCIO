@@ -51,12 +51,18 @@ _OVERSEAS_REGIONS = frozenset({"US", "NON_US_OVERSEAS"})
 def route_by_region(region: str | None, sector: str | None) -> str | None:
     """(region, sector) → OCIO canonical 자산군. 매핑 없으면 None.
 
-    region-무관 cross-asset sector 는 region 을 무시하고 직접 매핑.
-    주식성/금리성 sector 는 region 으로 국내/해외를 가른다.
-    GLOBAL 매크로는 해외 자산 default (해외주식 / 해외채권).
-    UNKNOWN region 의 region-의존 sector 는 None (보수적; 라우팅 미정).
+    region-무관 cross-asset sector(환율/달러/에너지/금/크레딧/크립토)는 region 을
+    무시하고 직접 매핑. 주식성/금리성 sector 는 region 으로 국내/해외를 가른다.
+
+    §8 보정 (Phase R-1): rule fallback 은 보수적으로 — 다발성/모호 sector 는 None
+    으로 두고 LLM affected_assets(hybrid resolver priority 1)에 위임한다.
+    - 지정학 → None (원유·금·환율·주식·채권 전반 → 단일 고정 오류였음).
+    - 관세_무역 → None (주식·물가·환율·금리·크레딧 다발).
+    - GLOBAL + 주식성/금리성 → None (해외자산 default 가 해외로 새는 오분류였음).
+      GLOBAL 은 region-free cross-asset sector 에만 직접 route.
+    - UNKNOWN region 의 region-의존 sector 도 None.
     """
-    # region-무관 cross-asset sector
+    # region-무관 cross-asset sector (region 무시 직접 매핑)
     if sector in ("환율_FX", "달러_글로벌유동성"):
         return "환율"
     if sector == "에너지_원자재":
@@ -67,21 +73,20 @@ def route_by_region(region: str | None, sector: str | None) -> str | None:
         return "크레딧"
     if sector == "크립토":
         return "크립토"
-    if sector == "지정학":
-        return "원자재에너지"  # 지정학 → 유가/원자재 전이 경로
+    # 지정학·관세_무역 = 다발성 → rule fallback None (LLM affected_assets 위임). §8
     overseas = region in _OVERSEAS_REGIONS
-    # 주식성 sector + 관세_무역(글로벌 무역=위험자산) → 주식 (region 라우팅)
-    if sector in EQUITY_SECTORS or sector == "관세_무역":
+    # 주식성 sector → 주식 (region 라우팅; KR/해외만, GLOBAL·UNKNOWN → None)
+    if sector in EQUITY_SECTORS:
         if region == "KR":
             return "국내주식"
-        if overseas or region == "GLOBAL":  # GLOBAL 매크로 → 해외주식 default
+        if overseas:
             return "해외주식"
-        return None  # UNKNOWN
-    # 금리성 sector → 채권 (region 라우팅; GLOBAL 금리환경 → 해외채권 default)
+        return None  # GLOBAL / UNKNOWN → 라우팅 미정 (LLM 위임)
+    # 금리성 sector → 채권 (region 라우팅; KR/해외만, GLOBAL·UNKNOWN → None)
     if sector in RATE_SECTORS:
         if region == "KR":
             return "국내채권"
-        if overseas or region == "GLOBAL":
+        if overseas:
             return "해외채권"
         return None
     return None

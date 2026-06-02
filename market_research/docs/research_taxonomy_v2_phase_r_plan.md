@@ -123,6 +123,16 @@ ON 시에만 영향). WS4 만 paid + flag ON.
   9,837건이 v2 에서 사라지고 LLM affected(WS1) 또는 v1 로 분산되는지 확인.
 - 롤백: route_by_region 3개 분기 원복. 단위테스트 동반 원복.
 
+### 4.4 R-1 실행 결과 (2026-06-02, ✅ DONE)
+route_by_region §8 보정 적용 (지정학·관세→None, GLOBAL+주식/금리→None). 검증:
+- **지정학→원자재에너지 = 0건** (운영뉴스 전수; 적용 전 9,837건). 관세→주식·GLOBAL
+  default 도 None.
+- v2 shadow mismatch **22,950 → 19,286**(−3,664). 남은 원자재에너지 route 는 **100%
+  에너지_원자재 sector(6,900건) 직접매핑** = 정상 cross-asset (지정학 0 확인).
+- flag OFF auto==v1 mismatch **0 유지**(dispatcher inert 불변), claim md5 drift **0**.
+- 테스트: `test_taxonomy_v2_region.py` §8 케이스 추가/수정(지정학·관세 None, GLOBAL
+  region-의존 None, 지정학 단독→v1 위임) 전건 통과. 무비용·flag OFF inert.
+
 ---
 
 ## 5. WS4 — flag ON shadow 측정 (no-overwrite harness)
