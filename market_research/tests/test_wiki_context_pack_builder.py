@@ -1144,3 +1144,62 @@ def test_quarterly_pack_includes_wiki_layers_alongside_claims(
     counts = pack["source_trace"]["source_type_counts"]
     assert counts.get("claim_memory", 0) == 3
     assert counts.get("wiki_event_memory", 0) >= 1
+
+
+# ──────────────────────────────────────────────────────────────────
+# Taxonomy v2 wiring — reorder primary_asset 우선 + frontmatter 파싱
+# ──────────────────────────────────────────────────────────────────
+
+def test_reorder_uses_explicit_primary_asset():
+    """명시 primary_asset(8-class) 이 버킷 키 결정에 우선."""
+    # primary_asset=환율(FX) → 버킷 '환율'. affected_assets 는 국내주식이지만
+    # 명시 primary 가 이긴다.
+    entries = [
+        {"claim_id": "c1", "affected_assets": ["국내주식"], "primary_asset": "환율(FX)"},
+        {"claim_id": "c2", "affected_assets": ["국내주식"]},
+    ]
+    out = wcp._reorder_claims_asset_roundrobin(entries)
+    # 멤버십 불변
+    assert {e["claim_id"] for e in out} == {"c1", "c2"}
+
+
+def test_reorder_no_primary_asset_byte_identical():
+    """primary_asset 없는 기존 entry → 기존 동작(순서) 완전 보존."""
+    entries = [
+        {"claim_id": "a", "affected_assets": ["국내주식"]},
+        {"claim_id": "b", "affected_assets": ["해외주식"]},
+        {"claim_id": "c", "affected_assets": ["국내주식"]},
+    ]
+    import copy
+    before = copy.deepcopy(entries)
+    out = wcp._reorder_claims_asset_roundrobin(entries)
+    # round-robin: 국내주식(a), 해외주식(b), 국내주식(c) → a,b,c
+    assert [e["claim_id"] for e in out] == ["a", "b", "c"]
+    # 입력 entry dict 내용 불변 (primary_asset 키 주입 안 함)
+    assert entries == before
+    assert all("primary_asset" not in e for e in out)
+
+
+def test_parse_wiki_page_parses_primary_asset_frontmatter(tmp_path: Path):
+    claims_dir = tmp_path / "08_Claims"
+    claims_dir.mkdir()
+    page = claims_dir / "2026-05_claim_x.md"
+    page.write_text(
+        '---\n'
+        'type: claim\n'
+        'source_type: claim_wiki\n'
+        'claim_id: claim:2026-05:abc1230000\n'
+        'period: 2026-05\n'
+        'promoted_at: 2026-05-31T00:00:00\n'
+        'primary_asset: "환율(FX)"\n'
+        'affected_assets: ["환율(FX)", "해외채권"]\n'
+        'regions: ["US", "GLOBAL"]\n'
+        '---\n'
+        '# claim\n\n## Affected Assets\n- 환율(FX): positive\n',
+        encoding='utf-8',
+    )
+    rec = wcp.parse_wiki_page(page, wiki_root=tmp_path)
+    assert rec is not None
+    assert rec.directory == "08_Claims"
+    assert rec.primary_asset == "환율(FX)"
+    assert rec.affected_assets == ["환율(FX)", "해외채권"]

@@ -319,6 +319,29 @@ def _render_page(claim: dict, promotion_rule: str | None) -> str:
         "---",
         "",
     ]
+    # Taxonomy v2 wiring — region×sector frontmatter. 값 있을 때만 emit →
+    # 신규필드 없는 claim 은 키 생략(불필요 drift 방지). flow-list/quoted scalar
+    # 는 wiki_context_pack_builder._parse_frontmatter 가 수용.
+    v2_fm: list[str] = []
+    pa = claim.get("primary_asset")
+    if pa:
+        v2_fm.append(f"primary_asset: {json.dumps(pa, ensure_ascii=False)}")
+    aa_classes = [
+        (a.get("asset_class") if isinstance(a, dict) else a)
+        for a in (claim.get("affected_assets") or [])
+    ]
+    aa_classes = [str(a) for a in aa_classes if a]
+    if aa_classes:
+        v2_fm.append(
+            f"affected_assets: {json.dumps(aa_classes, ensure_ascii=False)}")
+    regions = [str(r) for r in (claim.get("regions") or []) if r]
+    if regions:
+        v2_fm.append(f"regions: {json.dumps(regions, ensure_ascii=False)}")
+    sectors = [str(s) for s in (claim.get("sectors") or []) if s]
+    if sectors:
+        v2_fm.append(f"sectors: {json.dumps(sectors, ensure_ascii=False)}")
+    if v2_fm:  # 닫는 '---'/'' 앞에 삽입
+        fm = fm[:-2] + v2_fm + fm[-2:]
     body = [
         f"# {heading}",
         "",

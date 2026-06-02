@@ -191,14 +191,25 @@ def _reorder_claims_asset_roundrobin(entries: list[dict]) -> list[dict]:
     LLM prompt 가 자산 균형 claim 을 먼저 본다. 멤버십(개수)은 불변.
 
     affected_assets 추출 불가 entry 는 순서 보존해 뒤로.
+
+    Taxonomy v2 wiring — 명시 `primary_asset`(8-class) 있으면 그것으로 버킷,
+    없으면 기존 `affected_assets[0]` 파생. 두 경로 모두 claim_primary_asset 으로
+    selector label 정규화 → 버킷 키 일관. primary_asset 없는 기존 entry 는
+    완전히 기존 동작(순서 byte 동일).
     """
     from collections import OrderedDict
     from market_research.core.asset_taxonomy import claim_primary_asset
 
+    def _bucket_key(e: dict) -> str | None:
+        pa = e.get("primary_asset")
+        if pa:
+            return claim_primary_asset({"affected_assets": [{"asset_class": pa}]})
+        return claim_primary_asset({"affected_assets": e.get("affected_assets") or []})
+
     buckets: "OrderedDict[str, list[dict]]" = OrderedDict()
     no_asset: list[dict] = []
     for e in entries:  # store conf×sal 순서 유지
-        a = claim_primary_asset({"affected_assets": e.get("affected_assets") or []})
+        a = _bucket_key(e)
         if a is None:
             no_asset.append(e)
         else:
@@ -282,6 +293,7 @@ class WikiPageRecord:
     canonical_group_id: str | None = None
     related_group_ids: list[str] = field(default_factory=list)
     affected_assets: list[str] = field(default_factory=list)
+    primary_asset: str | None = None  # Taxonomy v2 wiring (frontmatter, optional)
     promotion_rule: str | None = None
     # Provenance — fallback warning 발생 여부
     used_filename_fallback: bool = False
@@ -658,6 +670,9 @@ def parse_wiki_page(
     elif directory == "08_Claims":
         affected = _parse_affected_assets_from_body(body)
 
+    fm_pa = fm.get("primary_asset")
+    primary_asset = str(fm_pa) if isinstance(fm_pa, str) and fm_pa else None
+
     return WikiPageRecord(
         path=rel,
         directory=directory,
@@ -676,6 +691,7 @@ def parse_wiki_page(
         canonical_group_id=str(canonical_group_id) if canonical_group_id else None,
         related_group_ids=related_ids,
         affected_assets=affected,
+        primary_asset=primary_asset,
         promotion_rule=str(promotion_rule) if promotion_rule else None,
         used_filename_fallback=used_fallback,
     )
@@ -798,6 +814,8 @@ def _rec_to_entry(directory: str, rec: WikiPageRecord) -> dict:
         entry["canonical_group_id"] = rec.canonical_group_id
         entry["related_group_ids"] = rec.related_group_ids
         entry["affected_assets"] = rec.affected_assets
+        if rec.primary_asset:
+            entry["primary_asset"] = rec.primary_asset
         entry["promotion_rule"] = rec.promotion_rule
     return entry
 
@@ -1058,7 +1076,7 @@ def _build_claim_section(
         matched += 1
         # page_id 의 period 는 claim_id 에 내장된 period (cid 의 가운데 토큰).
         claim_period = cid.split(":")[1] if cid.count(":") == 2 else "?"
-        claim_entries.append({
+        entry = {
             "page_id": f"claim:{claim_period}:{cid.rsplit(':', 1)[-1]}",
             "path": rec.path,
             "claim_id": cid,
@@ -1077,7 +1095,13 @@ def _build_claim_section(
             "source_cutoff_date": rec.source_cutoff_date,
             "excerpt": rec.body_excerpt,
             "source_type": "claim_memory",
-        })
+        }
+        # Taxonomy v2 wiring — 명시 primary_asset (store 우선 → frontmatter).
+        # 값 있을 때만 키 추가 → 신규필드 없는 기존 claim entry/pack md5 불변.
+        entry_primary = c.get("primary_asset") or rec.primary_asset
+        if entry_primary:
+            entry["primary_asset"] = entry_primary
+        claim_entries.append(entry)
 
     selected_count = len(selected_ids)
     join_rate: float | None
