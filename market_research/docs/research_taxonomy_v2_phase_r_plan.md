@@ -211,6 +211,27 @@ acceptance(설계 §classification_v2 §7, dry backtest 기준):
   fallback <30%(dry 6.1%), 국내주식 비중 정상화 유지, **§8 보정 후 지정학 오라우팅 ≈0**.
 - 통과 + 사용자 GO → 운영 flag ON / claim 재추출 / wiki·pack overwrite(별 단계, 목록 제시).
 
+### 5.5 R-4 실행 결과 (✅ DONE — full shadow, paid ~$1.50)
+harness `debug/taxonomy/phase_r4_shadow_full.py`(R-3 일반화 신규 파일; R-3 harness 불변).
+2026-05 재스크래핑 코퍼스(naver_research 웹 재수집 → adapter, desc 보유 **1,142건**, R-3 규모
+일치). flag ON 프로세스 국소, no-overwrite. 출력 `debug/taxonomy/phase_r_shadow_full/`.
+in 504,931 / out 175,690 tok, 760s, Haiku 4.5 → $1.38 (+검증 100건 $0.12).
+
+- **route_source**: llm 96.5% / rule 0.9% / v1 0.7% / none 1.9% → fallback 3.5%(<30% PASS).
+- **asset 분포 v1→v2**: 국내주식 23.1→**52.4%**, 해외채권 21.3→**3.9%**(v1 과대귀속 교정),
+  해외주식 24.3→24.1%, 금대체 1.0→7.7%. (R-3 100건 추세와 정합.)
+- **§8 효과**: 지정학 topic 312건 중 v2 원자재行 36건(11.5%) — None화로 보고대상/LLM affected
+  우선 분산.
+- **consistency(LLM≠rule)**: llm 973건 중 222(22.8%) — trace only.
+- **spotcheck 40건**(Claude 초안): agree 32 / ambiguous 7 / disagree 1. disagree = KR 방산
+  daily 가 region NON_US 오태깅 → classification 단계 오류(R-3 동일 계열).
+- **acceptance(§5.4)**: enum/fallback/국내주식 정상화/§8 = 4/5 명확 PASS. KR-equity 는
+  keyword ref 70.7%(섹터리포트 누락 과소집계)로 조건부 — spotcheck 실측은 더 높음.
+- **신규 발견**: label-space leakage — v2 가 8-class 밖 라벨(크레딧/크립토/현금성, 17건/1.5%)을
+  `_remap_to_8class` 환원 없이 출력. **R-5 전 selector 버킷 매핑 확정 필요.**
+- 다음 = **R-5(운영 적용)**: 사용자가 spotcheck ambiguous/disagree 검수 + label-leakage 매핑
+  결정 후 GO. (flag ON + claim 재추출 + wiki/pack overwrite — paid, 별 단계 목록 제시.)
+
 ---
 
 ## 6. 순서 / GO 게이트 요약
