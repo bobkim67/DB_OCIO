@@ -1,6 +1,31 @@
-﻿# CLAUDE.md
+# CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Purpose
+
+DB형 퇴직연금 OCIO(Outsourced CIO) 운용 현황 웹 대시보드.
+Streamlit 기반 프로토타입으로, R Shiny 기존 시스템(General_Backtest/)을 Python으로 재구현 중.
+9개 펀드의 성과 모니터링, 자산배분, Brinson PA, 매크로 지표 분석 제공 (2026-04-21: 12개 펀드 제거 — 06X08, 07J20/27/34/41, 07J48/49, 07P70, 07W15, 09L94, 1JM96/98).
+
+## Running the App
+
+```bash
+# 프로토타입 실행 (포트 지정)
+streamlit run prototype.py --server.port 8505
+
+# 구문 검증만 (UI 실행 없이)
+python -c "import ast; ast.parse(open('prototype.py', encoding='utf-8').read())"
+
+# 모듈 import 검증
+python -c "from modules.data_loader import parse_data_blob, load_fund_holdings_lookthrough, load_vp_weights_8class, load_vp_nav; print('OK')"
+
+# DB 접속 검증
+python -c "from modules.data_loader import get_connection; c=get_connection('dt'); print(c); c.close()"
+
+# 월별 report cache 재생성
+python -m market_research.report_cache_builder 2026 3
+```
 
 ## Streamlit 자동 리셋 규칙
 
@@ -49,292 +74,6 @@ python tools/weekly_wiki_commit.py
 다른 변경분(코드/설정 등)은 건드리지 않는다.
 
 **침묵 조건**: 7일 이내거나 미커밋 변경 0이면 조용히 건너뛰기 (세션 노이즈 금지).
-
-## 2026-04-14 Status Update
-
-### 탭 구조
-
-```
-[공통] Overview | 편입종목 | 성과분석 | 운용보고(펀드) | 운용보고(매크로)
-[Admin] Admin(운용보고_매크로) | Admin(운용보고_펀드)
-```
-
-상단 펀드 선택: 7개 (07G04, 08K88, 08N33, 08N81, 08P22, 2JM23, 4JM12), 기본값 08K88.
-삭제된 탭: Admin(펀드현황), 매크로지표.
-
-### Architecture: 3-Tier Runtime Boundary
-
-```
-[외부 배치 — market_research]     [Streamlit Admin]              [Client]
- 뉴스 수집/분류/정제/GraphRAG      시장 debate 실행/검수/승인        approved final만 조회
- timeseries narrative             펀드 코멘트 생성/검수/승인
- debate input package             거래내역/비중 변화 테이블
-```
-
-- **시장 debate**: `debate_service.py` → `_market.draft.json`
-- **펀드 코멘트**: `fund_comment_service.py` → `{fund}.draft.json` (시장 debate + PA/보유/거래)
-- legacy `debate_published` fallback 제거
-
-### Current Priorities
-
-- **debate 품질 개선 완료**: evidence card, 분기 월별 quota, coverage rule, 네이버 매체명 복원.
-- **펀드 코멘트 자동생성 완료**: 시장 debate + PA + 보유비중 + 거래내역 결합 → Opus.
-- **UI 대폭 개편 완료**: 탭 구조, Overview MDD, 편입종목 자산군/종목 동시표시, 성과분석 레이아웃.
-- 다음: R과 Brinson residual 비교, 비중추이 override 확인, pilot checklist.
-
-### Important Current State
-
-- **펀드 7개 표시** (상단): 07G04, 08K88, 08N33, 08N81, 08P22, 2JM23, 4JM12.
-- Tab modules: `tabs/overview.py`, `tabs/holdings.py`, `tabs/brinson.py`, `tabs/report.py`, `tabs/admin_macro.py`, `tabs/admin_fund.py`.
-- `tabs/report.py` — 운용보고(매크로): `_market` 고정, 운용보고(펀드): 상단 펀드 연동. client=final만.
-- `tabs/admin_fund.py` — 거래내역/비중변화 테이블 (자산군 소계+종목 상세).
-- `tabs/admin_macro.py` — 시장 debate + evidence + coverage metrics.
-- `tabs/admin.py`는 펀드 현황 + **debate workflow** (생성→검토→수정→승인). 전처리 로직 없음.
-- `prototype.py` 탭 구조: Overview / 편입종목 / 성과분석 / 매크로 / **운용보고** / **운용보고(전체)** / Admin.
-
-### Comment Engine v3 + 3-Tier 파이프라인
-
-```
-[외부 배치 — market_research]
-  [일일 — daily_update.py]
-  Step 0: 매크로 지표 (SCIP/FRED/NYFed/ECOS)
-  Step 1: 뉴스 수집 (네이버 + Finnhub)
-  Step 2: 뉴스 분류 (Haiku 21주제)
-  Step 2.5: 정제 — dedupe → salience(bm_anomaly) → fallback
-  Step 3: GraphRAG 증분 (primary + stratified → TKG decay/merge/prune)
-  Step 4: MTD 델타 (토픽 카운트)
-  Step 5: regime_memory (shift 감지)
-
-  [월별]
-  블로그 digest → enriched_digest_builder → 뉴스 벡터DB 교차검증
-  뉴스 → news_content_pool_builder → KMeans 클러스터링 → Haiku 한국어 요약
-         report_cache_builder → 펀드별 PA cache
-
-  [CLI — report_cli.py]
-  build --prepare: debate input package 생성 → report_output/{period}/{fund}.input.json
-  build: 대화형/자동 모드 — debate + 코멘트 생성 (CLI 직접 실행도 가능)
-
-[Streamlit Admin — tabs/admin.py]
-  debate 실행 버튼 → _run_debate_and_save() → report_store.save_draft()
-  → 후처리(sanitize) + evidence annotations + warning severity
-  → admin 검토 textarea → draft 저장 / 최종 승인
-  → report_store.approve_and_save_final() → .final.json
-
-[Streamlit Client — tabs/report.py]
-  report_store.load_final() → approved 코멘트 표시
-  report_cache → PA 기여도 표시
-  (draft/warning/evidence raw 미노출)
-```
-
-### 저장 구조 (report_output)
-
-```
-market_research/data/report_output/
-├── {period}/
-│   ├── {fund}.input.json      ← 외부 배치 생성
-│   ├── {fund}.draft.json      ← admin debate 결과
-│   └── {fund}.final.json      ← admin 승인 최종본 (client 조회 대상)
-└── _evidence_quality.jsonl    ← 누적 evidence 추적
-```
-
-상태: `not_generated` → `draft_generated` → `edited` → `approved`
-
-### 정제 레이어 핵심 파일
-
-- `market_research/core/dedupe.py` — article_id + 중복제거 + event clustering (TOPIC_NEIGHBORS 8그룹)
-- `market_research/core/salience.py` — bm_anomaly(z>1.5, 7일캡) + 3단계 source + fallback(키워드필수)
-- `market_research/pipeline/daily_update.py` — Step 2.5 `_step_refine()` (정제 오케스트레이션)
-- `market_research/analyze/graph_rag.py` — `_stratified_sample()` (dynamic cap 300~500)
-- `market_research/report/debate_engine.py` — diversity guardrail (토픽5/이벤트2) + evidence_ids
-- `market_research/analyze/news_vectordb.py` — hybrid_score (cosine + salience×0.3)
-
-### 저장/로딩 (report_store)
-
-- `market_research/report/report_store.py` — draft/final JSON 저장·로딩·상태 관리 (IO contract 구현)
-- `market_research/docs/io_contract.md` — 외부 배치 ↔ Streamlit 데이터 인터페이스 정의
-
-### 기존 파일 (comment engine)
-
-- `market_research/pipeline/enriched_digest_builder.py` — 블로그 토픽별 뉴스 교차검증
-- `market_research/pipeline/news_content_pool_builder.py` — 뉴스 클러스터링 + Haiku 요약
-- `market_research/report/report_service.py` — factor_data 생성 (PA용 + 매크로용)
-
-### PA 종목 분류 로직
-
-- **1순위**: `solution.universe_non_derivative` (classification_method='방법3') — R 동일
-- **2순위**: `asset_gb` + 종목명 키워드 fallback
-- 분류 함수: `comment_engine._classify_pa_item()` (v1, 합산용), `_classify_pa_item_v2()` (종목상세용)
-- holdings 분류: `load_fund_holdings_summary()` 내 키워드 매칭
-  - `'금'` 키워드 오매칭 수정 (증권금융/미지급금/미수금 → 유동성)
-
-### market_research Notes
-
-- `market_research/collect/macro_data.py` — 뉴스 3소스(네이버/Finnhub/NewsAPI) + 매크로 지표 수집
-- `market_research/collect/naver_blog.py` — monygeek 블로그 증분 스크래핑
-- `market_research/core/dedupe.py` — article_id + dedup + event clustering (TOPIC_NEIGHBORS)
-- `market_research/core/salience.py` — salience(bm_anomaly+3단계source) + fallback(키워드필수)
-- `market_research/analyze/news_classifier.py` — 21주제 + 13키 자산영향도 (Haiku)
-- `market_research/analyze/graph_rag.py` — stratified sample + Self-Regulating TKG
-- `market_research/analyze/news_vectordb.py` — ChromaDB + hybrid_score
-- `market_research/report/debate_engine.py` — 4인 debate + diversity guardrail + evidence
-- `market_research/report/comment_engine.py` — BM/PA/digest → LLM 프롬프트 + 코멘트 생성
-  - 8개 펀드: A포맷(08P22,08N81,08N33,07G02,07G03), C포맷(07G04), D포맷(2JM23,4JM12)
-- `market_research/report/cli.py` — 통합 CLI (build/list, 대화형/auto/edit)
-- `market_research/tests/ablation_test.py` — 정제 효과 비교 프레임워크
-
-### Known Issues
-
-- `NewsAPI` 무료 플랜 약관 위반 가능성 → 대체 소스 미구현.
-- evidence ref 오매핑률 누적 데이터 부족 (debate 2회+ 필요).
-
-### 해결 완료
-
-- ~~토픽 whitelist~~ → `_sanitize_topic()` + `_TOPIC_ALIAS` (깨진 토픽 0건)
-- ~~영어 전용 임베딩~~ → `paraphrase-multilingual-MiniLM-L12-v2` 전환 완료
-- ~~GraphRAG monthly/daily 불일치~~ → monthly TKG + daily transmission_paths 추가
-- ~~V1/V2 토픽 혼용~~ → 5개 파일 V2 일관성 수정 완료
-- ~~수치 가드레일~~ → debate_engine 연동 + 금리 오판 수정 (키워드 1순위)
-- ~~evidence trace~~ → [ref:N] 프롬프트 + 파싱 유틸 + 누적 추적 체계
-- ~~vectorDB + GraphRAG 리빌드~~ → 4개월 완료
-- ~~아키텍처 정리~~ → 3-Tier (외부 배치/admin/client) + report_store + IO contract
-
-### TODO (P0 — 다음 세션)
-
-1. **debate 재실행 2회+** → `_evidence_quality.jsonl` 누적 기록 확보
-2. **pilot_checklist 13항목 전수 확인** → 전부 PASS 후 파일럿 시작
-
-## Project Purpose
-
-DB형 퇴직연금 OCIO(Outsourced CIO) 운용 현황 웹 대시보드.
-Streamlit 기반 프로토타입으로, R Shiny 기존 시스템(General_Backtest/)을 Python으로 재구현 중.
-9개 펀드의 성과 모니터링, 자산배분, Brinson PA, 매크로 지표 분석 제공 (2026-04-21: 12개 펀드 제거 — 06X08, 07J20/27/34/41, 07J48/49, 07P70, 07W15, 09L94, 1JM96/98).
-
-## Running the App
-
-```bash
-# 프로토타입 실행 (포트 지정)
-streamlit run prototype.py --server.port 8505
-
-# 구문 검증만 (UI 실행 없이)
-python -c "import ast; ast.parse(open('prototype.py', encoding='utf-8').read())"
-
-# 모듈 import 검증
-python -c "from modules.data_loader import parse_data_blob, load_fund_holdings_lookthrough, load_vp_weights_8class, load_vp_nav; print('OK')"
-
-# DB 접속 검증
-python -c "from modules.data_loader import get_connection; c=get_connection('dt'); print(c); c.close()"
-
-# 월별 report cache 재생성
-python -m market_research.report_cache_builder 2026 3
-```
-
-## Architecture
-
-### 프로젝트 구조
-
-```
-DB_OCIO_Webview/
-├── prototype.py           ← 메인 Streamlit 앱 쉘 (탭 모듈 라우팅 + 공통 ctx/cache)
-├── config/
-│   ├── funds.py           ← 9개 펀드 메타정보, BM/MP 매핑, 4개 그룹, DB 설정
-│   └── users.yaml         ← 사용자 인증 정보
-├── modules/
-│   ├── auth.py            ← 로그인 인증 모듈
-│   └── data_loader.py     ← 30+ DB 로딩 함수 (MariaDB) + 자산분류 + look-through + VP + Brinson + 매크로
-├── debug/                 ← R/Python PA 검증용 디버그 파일 (R 스크립트, CSV)
-├── devlog/                ← 일별 개발일지
-└── General_Backtest/      ← R Shiny 원본 (참조용, 수정 금지)
-```
-
-### Report Runtime Boundary (3-Tier)
-
-- **External batch** (`market_research`):
-  - 뉴스 수집/분류/정제/GraphRAG/timeseries narrative
-  - debate input package 생성 → `report_output/{period}/{fund}.input.json`
-  - `transformers`, `sentence_transformers`, `chromadb` 등 무거운 라이브러리는 여기서만 사용
-- **Streamlit admin** (`tabs/admin.py`):
-  - debate 실행 트리거 (service wrapper `_run_debate_and_save()` 경유)
-  - 결과 검토/수정/승인 → `report_output/{period}/{fund}.draft.json` / `.final.json`
-  - evidence quality / warning severity 표시 (계산 아닌 읽기)
-- **Streamlit client** (`tabs/report.py`):
-  - approved final만 조회 → `report_output/{period}/{fund}.final.json`
-  - PA 캐시 뷰어 → `report_cache/{YYYY-MM}/{fund}.json`
-- **저장 관리**: `market_research/report/report_store.py` (draft/final 저장/로딩/상태)
-- **IO Contract**: `market_research/docs/io_contract.md` (input/draft/final 스키마)
-
-### prototype.py 탭 구조
-
-| Tab Index | 탭명 | 핵심 기능 |
-|-----------|------|-----------|
-| tabs[0] | Overview | 설정일, YTD, 기준가, AUM 카드 + 누적수익률 + MDD 차트 |
-| tabs[1] | 편입종목 | 좌=자산군별 도넛+테이블 / 우=종목별 도넛+테이블 + 비중추이(8class) |
-| tabs[2] | 성과분석 | Brinson 3-Factor + 수익률비교 + 개별포트(자산군/지표 필터+약어) |
-| tabs[3] | 운용보고(펀드) | report_output draft/final JSON 뷰어 (상단 펀드 연동) |
-| tabs[4] | 운용보고(매크로) | 시장 debate 코멘트 + 출처 + 관련 지표 차트 (_market 고정) |
-| tabs[5] | DB ALM 적합성 | 적립률/듀레이션/필요수익률 gauge/금리충격/CF bucket (mockup) |
-| tabs[6] | 퇴직연금 DB 현황 | DBO/자산 워터폴 + 5개년 DBO증가분vs운용수익 + 미니바차트 (mockup) |
-| tabs[7] | Peer 비교 | boxplot/scatter/stacked bar/ranking + 필터 (mockup) |
-| tabs[8] | Admin(운용보고_매크로) | 시장 debate 실행/검수/승인 + coverage metrics (admin) |
-| tabs[9] | Admin(운용보고_펀드) | 펀드 코멘트 생성/검수/승인 + 거래내역/비중 테이블 (admin) |
-
-### 데이터 흐름
-
-**DB 연동 완료 (전체 탭)**:
-- NAV/AUM: `dt.DWPM10510` → `load_fund_nav_with_aum()`
-- BM 지수: **DT 우선** (`DWPM10040/10041`) → SCIP fallback (`load_composite_bm_prices()`)
-  - DT BM 매핑: `data_loader.py::_DT_BM_CONFIG` (5개 펀드: 07G02, 07G03, 07G04, 08K88, 4JM12), `load_dt_bm_prices()`
-  - SCIP fallback: 나머지 9개 펀드 (`load_composite_bm_prices()`)
-- 보유종목: `dt.DWPM10530` → `load_fund_holdings_classified()` + `_classify_6class()`
-- Look-through: 모펀드 전개 → `load_fund_holdings_lookthrough()`
-- MP 비중: `solution.sol_MP_released_inform` → `load_mp_weights_8class()` + FUND_MP_DIRECT
-- VP 비중: `solution.sol_DWPM10530` → `load_vp_holdings_8class()` (VP 전용 코드)
-- VP NAV: `solution.sol_DWPM10510` → `load_vp_nav()` (fund_desc → VP 코드 자동변환)
-- VP 리밸런싱: `solution.sol_VP_rebalancing_inform` → `load_vp_rebal_date()`
-- Brinson PA: `dt.MA000410` → `compute_brinson_attribution_v2()` (3-Factor, 종목 기여도, R 완벽 일치)
-- 매크로 지표: `SCIP.back_datapoint` → `load_macro_timeseries()` (PE/EPS/TR/FX/금리)
-- Gap 추이: `dt.DWPM10530` → `load_holdings_history_8class()` (월별 자산군 비중 이력)
-- 전체 펀드 요약: `load_fund_summary()` → Tab 6
-
-**Fallback**: 모든 탭에서 DB 실패 시 mockup 자동 전환 + 실패 원인 표시
-
-**Fallback 패턴**:
-```python
-DB_CONNECTED = True/False  # 앱 시작 시 접속 테스트
-if DB_CONNECTED:
-    try:
-        real_data = cached_load_xxx(...)
-    except Exception:
-        st.toast("DB 오류, 목업 사용", icon="⚠️")
-        # fallback to mockup
-```
-
-### 자산 분류 체계 (8분류)
-
-| 순서 | 자산군 | 색상 | 분류 기준 |
-|------|--------|------|-----------|
-| 0 | 국내주식 | #EF553B | AST에 '주식'/'지수' + KR ISIN |
-| 1 | 해외주식 | #636EFA | AST에 '주식'/'지수' + 해외 |
-| 2 | 국내채권 | #00CC96 | AST에 '채권' + KR ISIN |
-| 3 | 해외채권 | #AB63FA | AST에 '채권' + 해외 |
-| 4 | 대체투자 | #FFA15A | 금/리츠/인프라/부동산 |
-| 5 | FX | #19D3F3 | 달러선물/NDF/통화선물 |
-| 6 | 모펀드 | #FF6692 | ITEM_CD가 '0322800'으로 시작 (자사 모투자신탁) |
-| 7 | 유동성 | #B6E880 | 콜론/예금/MMF/REPO/현금 등 |
-
-정렬 순서: `ASSET_CLASS_ORDER` dict로 관리. 테이블/차트 모두 이 순서 적용.
-
-### Look-through 기능
-
-- 상단 펀드 선택 바에 토글 (모펀드 편입 펀드에서만 표시)
-- 모펀드 ITEM_CD 형식: `03228000{FUND_CD}` (예: `0322800007G02` → `07G02`)
-- `_extract_fund_code_from_item_cd()` → 하위 펀드 보유종목 로드 → 비중 가중 스케일 → 동일 종목 합산
-- 1단계 전개만 (재귀 아님)
-
-### 펀드 선택기
-
-- 상단 바: 펀드 그룹 → 펀드 선택 (코드 오름차순) → Look-through 토글 → 펀드 정보 → 로그아웃
-- 표시 형식: `{코드}  {펀드명}` (AUM 미표시)
-- 정렬: 펀드코드 기준 오름차순
 
 ## Dependencies
 
@@ -478,6 +217,243 @@ _FUND_INCEPTION_BASE = {'4JM12': 1970.76}
 - Brinson PA: `dt.MA000410` 테이블의 컬럼명은 영문(`sec_id`, `modify_unav_chg`), 보유종목(`load_fund_holdings_classified`)의 컬럼명도 영문(`ITEM_CD`, `ITEM_NM`)이므로 매핑 시 영문 컬럼명 사용.
 - 매크로 지표: `data_loader.py::MACRO_DATASETS` dict에 SCIP dataset_id/dataseries_id 매핑.
 
+## Architecture
+
+### 프로젝트 구조
+
+```
+DB_OCIO_Webview/
+├── prototype.py           ← 메인 Streamlit 앱 쉘 (탭 모듈 라우팅 + 공통 ctx/cache)
+├── config/
+│   ├── funds.py           ← 9개 펀드 메타정보, BM/MP 매핑, 4개 그룹, DB 설정
+│   └── users.yaml         ← 사용자 인증 정보
+├── modules/
+│   ├── auth.py            ← 로그인 인증 모듈
+│   └── data_loader.py     ← 30+ DB 로딩 함수 (MariaDB) + 자산분류 + look-through + VP + Brinson + 매크로
+├── debug/                 ← R/Python PA 검증용 디버그 파일 (R 스크립트, CSV)
+├── devlog/                ← 일별 개발일지
+└── General_Backtest/      ← R Shiny 원본 (참조용, 수정 금지)
+```
+
+### Report Runtime Boundary (3-Tier)
+
+- **External batch** (`market_research`):
+  - 뉴스 수집/분류/정제/GraphRAG/timeseries narrative
+  - debate input package 생성 → `report_output/{period}/{fund}.input.json`
+  - `transformers`, `sentence_transformers`, `chromadb` 등 무거운 라이브러리는 여기서만 사용
+- **Streamlit admin** (`tabs/admin.py`):
+  - debate 실행 트리거 (service wrapper `_run_debate_and_save()` 경유)
+  - 시장 debate: `debate_service.py` → `_market.draft.json`
+  - 펀드 코멘트: `fund_comment_service.py` → `{fund}.draft.json` (시장 debate + PA/보유/거래)
+  - legacy `debate_published` fallback 제거
+  - 결과 검토/수정/승인 → `report_output/{period}/{fund}.draft.json` / `.final.json`
+  - evidence quality / warning severity 표시 (계산 아닌 읽기)
+- **Streamlit client** (`tabs/report.py`):
+  - approved final만 조회 → `report_output/{period}/{fund}.final.json`
+  - PA 캐시 뷰어 → `report_cache/{YYYY-MM}/{fund}.json`
+- **저장 관리**: `market_research/report/report_store.py` (draft/final 저장/로딩/상태)
+- **IO Contract**: `market_research/docs/io_contract.md` (input/draft/final 스키마)
+
+### prototype.py 탭 구조
+
+| Tab Index | 탭명 | 핵심 기능 |
+|-----------|------|-----------|
+| tabs[0] | Overview | 설정일, YTD, 기준가, AUM 카드 + 누적수익률 + MDD 차트 |
+| tabs[1] | 편입종목 | 좌=자산군별 도넛+테이블 / 우=종목별 도넛+테이블 + 비중추이(8class) |
+| tabs[2] | 성과분석 | Brinson 3-Factor + 수익률비교 + 개별포트(자산군/지표 필터+약어) |
+| tabs[3] | 운용보고(펀드) | report_output draft/final JSON 뷰어 (상단 펀드 연동) |
+| tabs[4] | 운용보고(매크로) | 시장 debate 코멘트 + 출처 + 관련 지표 차트 (_market 고정) |
+| tabs[5] | DB ALM 적합성 | 적립률/듀레이션/필요수익률 gauge/금리충격/CF bucket (mockup) |
+| tabs[6] | 퇴직연금 DB 현황 | DBO/자산 워터폴 + 5개년 DBO증가분vs운용수익 + 미니바차트 (mockup) |
+| tabs[7] | Peer 비교 | boxplot/scatter/stacked bar/ranking + 필터 (mockup) |
+| tabs[8] | Admin(운용보고_매크로) | 시장 debate 실행/검수/승인 + coverage metrics (admin) |
+| tabs[9] | Admin(운용보고_펀드) | 펀드 코멘트 생성/검수/승인 + 거래내역/비중 테이블 (admin) |
+
+> 정본 충돌 (KEEP — 임의 해소 금지): 아래 "2026-04-14 Status Update > 탭 구조"는
+> `[공통] 5탭 + [Admin] 2탭` 구조로 서술되어 위 11탭(tabs[0]~tabs[10]) 표와 충돌한다.
+> 양쪽 모두 보존한다.
+
+### 데이터 흐름
+
+**DB 연동 완료 (전체 탭)**:
+- NAV/AUM: `dt.DWPM10510` → `load_fund_nav_with_aum()`
+- BM 지수: **DT 우선** (`DWPM10040/10041`) → SCIP fallback (`load_composite_bm_prices()`)
+  - DT BM 매핑: `data_loader.py::_DT_BM_CONFIG` (5개 펀드: 07G02, 07G03, 07G04, 08K88, 4JM12), `load_dt_bm_prices()`
+  - SCIP fallback: 나머지 9개 펀드 (`load_composite_bm_prices()`)
+- 보유종목: `dt.DWPM10530` → `load_fund_holdings_classified()` + `_classify_6class()`
+- Look-through: 모펀드 전개 → `load_fund_holdings_lookthrough()`
+- MP 비중: `solution.sol_MP_released_inform` → `load_mp_weights_8class()` + FUND_MP_DIRECT
+- VP 비중: `solution.sol_DWPM10530` → `load_vp_holdings_8class()` (VP 전용 코드)
+- VP NAV: `solution.sol_DWPM10510` → `load_vp_nav()` (fund_desc → VP 코드 자동변환)
+- VP 리밸런싱: `solution.sol_VP_rebalancing_inform` → `load_vp_rebal_date()`
+- Brinson PA: `dt.MA000410` → `compute_brinson_attribution_v2()` (3-Factor, 종목 기여도, R 완벽 일치)
+- 매크로 지표: `SCIP.back_datapoint` → `load_macro_timeseries()` (PE/EPS/TR/FX/금리)
+- Gap 추이: `dt.DWPM10530` → `load_holdings_history_8class()` (월별 자산군 비중 이력)
+- 전체 펀드 요약: `load_fund_summary()` → Tab 6
+
+**Fallback**: 모든 탭에서 DB 실패 시 mockup 자동 전환 + 실패 원인 표시
+
+**Fallback 패턴**:
+```python
+DB_CONNECTED = True/False  # 앱 시작 시 접속 테스트
+if DB_CONNECTED:
+    try:
+        real_data = cached_load_xxx(...)
+    except Exception:
+        st.toast("DB 오류, 목업 사용", icon="⚠️")
+        # fallback to mockup
+```
+
+### 자산 분류 체계 (8분류)
+
+| 순서 | 자산군 | 색상 | 분류 기준 |
+|------|--------|------|-----------|
+| 0 | 국내주식 | #EF553B | AST에 '주식'/'지수' + KR ISIN |
+| 1 | 해외주식 | #636EFA | AST에 '주식'/'지수' + 해외 |
+| 2 | 국내채권 | #00CC96 | AST에 '채권' + KR ISIN |
+| 3 | 해외채권 | #AB63FA | AST에 '채권' + 해외 |
+| 4 | 대체투자 | #FFA15A | 금/리츠/인프라/부동산 |
+| 5 | FX | #19D3F3 | 달러선물/NDF/통화선물 |
+| 6 | 모펀드 | #FF6692 | ITEM_CD가 '0322800'으로 시작 (자사 모투자신탁) |
+| 7 | 유동성 | #B6E880 | 콜론/예금/MMF/REPO/현금 등 |
+
+정렬 순서: `ASSET_CLASS_ORDER` dict로 관리. 테이블/차트 모두 이 순서 적용.
+
+### Look-through 기능
+
+- 상단 펀드 선택 바에 토글 (모펀드 편입 펀드에서만 표시)
+- 모펀드 ITEM_CD 형식: `03228000{FUND_CD}` (예: `0322800007G02` → `07G02`)
+- `_extract_fund_code_from_item_cd()` → 하위 펀드 보유종목 로드 → 비중 가중 스케일 → 동일 종목 합산
+- 1단계 전개만 (재귀 아님)
+
+### 펀드 선택기
+
+- 상단 바: 펀드 그룹 → 펀드 선택 (코드 오름차순) → Look-through 토글 → 펀드 정보 → 로그아웃
+- 표시 형식: `{코드}  {펀드명}` (AUM 미표시)
+- 정렬: 펀드코드 기준 오름차순
+
+## 2026-04-14 Status Update
+
+### 탭 구조
+
+```
+[공통] Overview | 편입종목 | 성과분석 | 운용보고(펀드) | 운용보고(매크로)
+[Admin] Admin(운용보고_매크로) | Admin(운용보고_펀드)
+```
+
+상단 펀드 선택: 7개 (07G04, 08K88, 08N33, 08N81, 08P22, 2JM23, 4JM12), 기본값 08K88.
+삭제된 탭: Admin(펀드현황), 매크로지표.
+
+> 정본 충돌 (KEEP — 임의 해소 금지): 위 `[공통] 5탭 + [Admin] 2탭` 서술은
+> "Architecture > prototype.py 탭 구조"의 tabs[0]~tabs[10] 11탭 표와 충돌한다.
+> 양쪽 모두 보존한다.
+
+### Current Priorities
+
+- 다음: R과 Brinson residual 비교, 비중추이 override 확인, pilot checklist.
+
+### Important Current State
+
+- **펀드 7개 표시** (상단): 07G04, 08K88, 08N33, 08N81, 08P22, 2JM23, 4JM12.
+- Tab modules: `tabs/overview.py`, `tabs/holdings.py`, `tabs/brinson.py`, `tabs/report.py`, `tabs/admin_macro.py`, `tabs/admin_fund.py`.
+- `tabs/report.py` — 운용보고(매크로): `_market` 고정, 운용보고(펀드): 상단 펀드 연동. client=final만.
+- `tabs/admin_fund.py` — 거래내역/비중변화 테이블 (자산군 소계+종목 상세).
+- `tabs/admin_macro.py` — 시장 debate + evidence + coverage metrics.
+- `tabs/admin.py`는 펀드 현황 + **debate workflow** (생성→검토→수정→승인). 전처리 로직 없음.
+- `prototype.py` 탭 구조: Overview / 편입종목 / 성과분석 / 매크로 / **운용보고** / **운용보고(전체)** / Admin.
+
+### Comment Engine v3 + 3-Tier 파이프라인
+
+```
+[외부 배치 — market_research]
+  [일일 — daily_update.py]
+  Step 0: 매크로 지표 (SCIP/FRED/NYFed/ECOS)
+  Step 1: 뉴스 수집 (네이버 + Finnhub)
+  Step 2: 뉴스 분류 (Haiku 21주제)
+  Step 2.5: 정제 — dedupe → salience(bm_anomaly) → fallback
+  Step 3: GraphRAG 증분 (primary + stratified → TKG decay/merge/prune)
+  Step 4: MTD 델타 (토픽 카운트)
+  Step 5: regime_memory (shift 감지)
+
+  [월별]
+  블로그 digest → enriched_digest_builder → 뉴스 벡터DB 교차검증
+  뉴스 → news_content_pool_builder → KMeans 클러스터링 → Haiku 한국어 요약
+         report_cache_builder → 펀드별 PA cache
+
+  [CLI — report_cli.py]
+  build --prepare: debate input package 생성 → report_output/{period}/{fund}.input.json
+  build: 대화형/자동 모드 — debate + 코멘트 생성 (CLI 직접 실행도 가능)
+
+[Streamlit Admin — tabs/admin.py]
+  debate 실행 버튼 → _run_debate_and_save() → report_store.save_draft()
+  → 후처리(sanitize) + evidence annotations + warning severity
+  → admin 검토 textarea → draft 저장 / 최종 승인
+  → report_store.approve_and_save_final() → .final.json
+
+[Streamlit Client — tabs/report.py]
+  report_store.load_final() → approved 코멘트 표시
+  report_cache → PA 기여도 표시
+  (draft/warning/evidence raw 미노출)
+```
+
+### 저장 구조 (report_output)
+
+```
+market_research/data/report_output/
+├── {period}/
+│   ├── {fund}.input.json      ← 외부 배치 생성
+│   ├── {fund}.draft.json      ← admin debate 결과
+│   └── {fund}.final.json      ← admin 승인 최종본 (client 조회 대상)
+└── _evidence_quality.jsonl    ← 누적 evidence 추적
+```
+
+상태: `not_generated` → `draft_generated` → `edited` → `approved`
+
+### 저장/로딩 (report_store)
+
+- `market_research/report/report_store.py` — draft/final JSON 저장·로딩·상태 관리 (IO contract 구현)
+- `market_research/docs/io_contract.md` — 외부 배치 ↔ Streamlit 데이터 인터페이스 정의
+
+### 기존 파일 (comment engine)
+
+- `market_research/pipeline/enriched_digest_builder.py` — 블로그 토픽별 뉴스 교차검증
+- `market_research/pipeline/news_content_pool_builder.py` — 뉴스 클러스터링 + Haiku 요약
+- `market_research/report/report_service.py` — factor_data 생성 (PA용 + 매크로용)
+
+### PA 종목 분류 로직
+
+- **1순위**: `solution.universe_non_derivative` (classification_method='방법3') — R 동일
+- **2순위**: `asset_gb` + 종목명 키워드 fallback
+- 분류 함수: `comment_engine._classify_pa_item()` (v1, 합산용), `_classify_pa_item_v2()` (종목상세용)
+- holdings 분류: `load_fund_holdings_summary()` 내 키워드 매칭
+  - `'금'` 키워드 오매칭 수정 (증권금융/미지급금/미수금 → 유동성)
+
+### market_research Notes
+
+- `market_research/collect/macro_data.py` — 뉴스 3소스(네이버/Finnhub/NewsAPI) + 매크로 지표 수집
+- `market_research/collect/naver_blog.py` — monygeek 블로그 증분 스크래핑
+- `market_research/core/dedupe.py` — article_id + 중복제거 + event clustering (TOPIC_NEIGHBORS 8그룹)
+- `market_research/core/salience.py` — bm_anomaly(z>1.5, 7일캡) + 3단계 source + fallback(키워드필수)
+- `market_research/pipeline/daily_update.py` — Step 2.5 `_step_refine()` (정제 오케스트레이션)
+- `market_research/analyze/news_classifier.py` — 21주제 + 13키 자산영향도 (Haiku)
+- `market_research/analyze/graph_rag.py` — `_stratified_sample()` (dynamic cap 300~500) + Self-Regulating TKG
+- `market_research/analyze/news_vectordb.py` — ChromaDB + hybrid_score (cosine + salience×0.3)
+- `market_research/report/debate_engine.py` — 4인 debate + diversity guardrail (토픽5/이벤트2) + evidence_ids
+- `market_research/report/comment_engine.py` — BM/PA/digest → LLM 프롬프트 + 코멘트 생성
+  - 8개 펀드: A포맷(08P22,08N81,08N33,07G02,07G03), C포맷(07G04), D포맷(2JM23,4JM12)
+- `market_research/report/cli.py` — 통합 CLI (build/list, 대화형/auto/edit)
+- `market_research/tests/ablation_test.py` — 정제 효과 비교 프레임워크
+
+### Known Issues
+
+- `NewsAPI` 무료 플랜 약관 위반 가능성 → 대체 소스 미구현.
+- evidence ref 오매핑률 누적 데이터 부족 (debate 2회+ 필요).
+
+### TODO (P0 — 다음 세션)
+
+1. **debate 재실행 2회+** → `_evidence_quality.jsonl` 누적 기록 확보
+2. **pilot_checklist 13항목 전수 확인** → 전부 PASS 후 파일럿 시작
+
 ## 연율화 성과지표 (결과4/5/6 — R 동일 로직 구현 완료)
 
 ### 구현 함수 (`modules/data_loader.py`)
@@ -511,13 +487,9 @@ KIS CD Index 총수익 (SCIP dataset_id=194, dataseries_id=33) 사용.
 - ECOS CD(91일) 대비 0.01~0.02bp 차이 (실무상 무시 가능)
 - KAP CD 총수익지수(dataset_id=300)는 ~12bp 차이로 부적합
 
-### Excel 검증 결과 (08N81, end=20260311)
+### Excel 검증 결과
 
-| 항목 | Python | Excel | 차이 |
-|------|--------|-------|------|
-| 결과4 누적 | 0.184514756315 | 0.184515 | <0.001bp |
-| 결과5 누적 | 0.102454989224 | 0.102455 | <0.001bp |
-| 결과6 누적 | 0.027936009744 | 0.027937 | 0.01bp |
+수치표(연율화 결과4/5/6 Excel 검증, 08N81 end=20260311)는 [`docs/pa_validation.md`](docs/pa_validation.md) 참조.
 
 ### 주간수익률 파이프라인 (R 동일)
 
@@ -592,18 +564,9 @@ FX_split=TRUE일 때 증권 수익률에서 환효과 분리:
 - **BM 웜업**: start_date - 45일 로드 (T-1 shift 안정화)
 - **KAP 매핑**: `_map_bm_component_to_asset_class`에 KAP 패턴 추가
 
-### 검증 v2 (08K88, 2026-01-01~2026-04-16)
-| 항목 | Python v2 | R | 차이 |
-|------|-----------|---|------|
-| AP | 17.1928% | 17.1926% | +0.0002%p ✅ |
-| BM | 13.2015% | 13.2015% | 0%p ✅ |
-| **초과** | **3.9913%** | **3.9910%** | **+0.0003%p** ✅ |
-| Alloc | 3.0147% | 3.0206% | -0.006%p ✅ |
-| Select | 0.9177% | 0.8865% | +0.031%p |
-| Cross | 0.0590% | 0.0839% | -0.025%p |
-| Sum | 3.9914% | 3.9910% | +0.0004%p ✅ |
+### 검증 v2
 
-**자산군별 3-Factor**: 국내주식/해외주식/FX의 Allocation **완벽 일치(0bp)**. 국내주식 3-Factor 전체 완벽 일치. FX Select/Cross, 유동성 Cross에서 미세 차이(0.02~0.11%p).
+R↔Python 일치 수치표(08K88, AP/BM/초과/Alloc/Select/Cross/Sum + 자산군별 3-Factor 요약)는 [`docs/pa_validation.md`](docs/pa_validation.md) 참조.
 
 ### FX 자산군 구조 통합 (2026-04-17 추가)
 - 기존: USD(FX) overlay + USMUSD022001 등 직접포지션이 **별도 row**로 분리
@@ -655,57 +618,19 @@ R Shiny UI의 `classification_method` 드롭다운을 Python에 이식. `solutio
 
 ### 검증 (08K88 / 4JM12)
 
-- 08K88 (2026-01-01~04-16): 4개 방법 모두 `AP=17.1926% / BM=13.2015% / 초과=3.9910%` 불변 (R 완벽일치 회귀 없음)
-- 4JM12 (2026-01-01~04-16): 4개 방법 모두 `총초과=-0.5523%` 불변
+- 회귀 검증 수치(08K88/4JM12 4개 방법 불변)는 [`docs/pa_validation.md`](docs/pa_validation.md) 참조.
 - **GDX (US92189F1066) 분류 확인 ✅**:
   - 방법1: 대체 / 방법2: 주식 / **방법3: 대체** / **방법4: 해외주식** / 방법5: NULL
   - `universe_non_derivative` DB 값과 `compute_single_port_pa` 결과 완전 일치
 
-## PDCA Status
+## 도메인 노트 (모펀드 분류 / BM 미설정 / PA 디버그)
 
-- Feature: DB_OCIO_Webview
-- Phase: Do (Phase 5 UI 개선 진행 중)
-- Phase 3 완료: 전체 탭 DB 연동
-- Phase 4.1 완료: 연율화수익률/위험/RF/샤프 (R 동일 로직, Excel 검증 통과)
-- Phase 4.2 완료: PA 정밀화 — FX split R 완벽 일치 (환산_adjust 금액 기반)
-- Phase 4.3 완료: DT BM 연동, 기간수익률 DT 일치, 설정후 수익률 보정
-- Phase 4.4 완료: Brinson PA R일치 — 보정인자1, NAST비중, FX오버레이, 잔차0, BM R동일설정
-- Phase 4.5 완료: Brinson v2 — compute_single_port_pa 재활용, 보정인자2 추가, 초과수익률 R 완벽 일치(+0.0003%p)
-- Phase 4.6 완료 (2026-04-22): 자산군 분류 방법 4종 (방법1~4) 지원, 사용자 드롭다운 선택, 펀드별 기본값 자동
-- Phase 5 진행: UI 개선 — BM 미설정 처리, 모펀드 분류 수정, 변동성 추가, 스파크라인 개선
-- 개발일지: `devlog/` 디렉토리 (일별)
-- 디버그 파일: `debug/` 디렉토리 (R/Python PA 검증용)
-  - `debug_pa_original.R` — R 원본 PA_from_MOS 핵심 파이프라인 (파생 그룹핑 포함, Shiny 제거)
+- **모펀드 분류**: `ITEM_CD.startswith('0322800')` — 자사 모투자신탁만 분류 (`ITEM_NM` '모펀드/모투자' 매칭은 "사모투자신탁" 오분류 유발). 영향: 08P22 월넛은행채플러스일반사모투자신탁 → 국내채권으로 정정.
+- **BM 미설정 펀드 6개**: 07G02, 07G03, 08N33, 08N81, 08P22, 2JM23 → NAV만 표시, BM/초과수익 빈칸.
+- **debug/ 파일 인덱스** (R/Python PA 검증용):
+  - `debug_pa_original.R` — R 원본 PA_from_MOS 핵심 파이프라인 (파생 그룹핑, Shiny 제거)
   - `debug_pa_full.R` — R 간소화 PA (DB 직접 조회)
-  - `debug_pa_R_original_intermediate.csv` — R 원본 파이프라인 중간 데이터 (714rows, 종목별 일별)
-  - `debug_pa_R_intermediate.csv` — R 간소화 버전 중간 데이터 (848rows)
+  - `debug_pa_R_original_intermediate.csv` — R 원본 중간 데이터 (714rows, 종목별 일별)
+  - `debug_pa_R_intermediate.csv` — R 간소화 중간 데이터 (848rows)
   - `debug_fx_*.R` — FX split 환율/환산_adjust 디버깅
   - `debug_nast.R` — NAST_AMT 모자구조 확인
-
-## 2026-03-24 주요 변경사항
-
-### 모펀드 분류 수정
-- 기존: `ITEM_NM`에 '모펀드'/'모투자' 포함 여부 → "사모투자신탁"도 매칭되는 오분류 발생
-- 변경: `ITEM_CD.startswith('0322800')` — 자사 모투자신탁만 정확히 분류
-- 영향: 08P22 월넛은행채플러스일반사모투자신탁 → 모펀드에서 국내채권으로 정정
-
-### BM 미설정 펀드 처리
-- 6개 펀드(07G02, 07G03, 08N33, 08N81, 08P22, 2JM23) BM 미설정
-- 기존: BM 없으면 mockup fallback → 변경: NAV만 표시, BM/초과수익 빈칸
-- 카드: vs BM delta 제거, BM 스파크라인 → "BM 미설정"
-- 기간수익률: BM/초과수익 행 조건부 삭제
-- 누적수익률 차트: BM/초과수익 선 조건부 제거
-
-### Overview 변경
-- 전체 보유종목 테이블 삭제 (편입종목 탭에서 확인)
-- 변동성 행 추가 (주간수익률 표준편차 × √52, R 동일)
-- 미니카드 delta(전월대비 등) 제거
-- 스파크라인 modebar(zoom/download 등) 제거
-- 스파크라인 hovering: 소숫점 둘째자리 + 수익률 % 접미사
-- 스파크라인 y축: 데이터 min/max에 5% 여유로 꽉 맞춤
-
-### 성과분석(Brinson) 변경
-- 분석기간 기본값: YTD (1/1~어제). 설정일이 당해년도면 설정일 시작
-- PA 차트 데이터 레이블: 소숫점 둘째자리
-- PA 종목 테이블: `.round(2)` + `.format`
-- FX 레이블 잘림: 차트 높이 400, margin 확대, automargin
