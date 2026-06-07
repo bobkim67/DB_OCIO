@@ -7,6 +7,10 @@ Thumbs.db
 .bkit/
 .claude/
 
+# 환경변수 / API 키 (커밋 금지)
+.env
+*.env
+
 # launcher runtime — picked free ports for FastAPI/Vite
 .runtime_ports.json
 

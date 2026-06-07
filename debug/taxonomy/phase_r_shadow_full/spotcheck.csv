@@ -1,0 +1,41 @@
+﻿article_id,title,category,topics,regions_v2,v1_asset,v2_asset,rule_asset,route_source,expected_asset,expected_region,expected_reason,verdict
+economy:13276,신한 FX Check-up,economy,환율_FX|에너지_원자재|통화정책,GLOBAL|US,원자재에너지,환율,환율,llm,환율,GLOBAL/US,"FX Check-up=환율 리포트. v1 원자재 오분류, v2 환율 정정",agree
+economy:13305,신한 Econ Check-up,economy,경기_소비|물가_인플레이션,US|NON_US_OVERSEAS,국내채권,해외주식,해외주식,llm,해외주식/해외채권,US/NON_US,Econ Check-up 매크로(경기·물가) — 자산 단일귀속 애매. v2 해외주식 타당하나 채권성도,ambiguous
+economy:13334,"금리 발작=자금 경색, 가능성은 아직 낮다",economy,금리_채권|유동성_크레딧,GLOBAL|US,해외채권,해외채권,크레딧,llm,해외채권,GLOBAL/US,금리발작·자금경색=채권/크레딧. v2 해외채권 적절(rule 크레딧 leakage),agree
+economy:13362,호르무즈 해협이 열린다면 효과는,economy,지정학|에너지_원자재,GLOBAL,해외채권,금대체,원자재에너지,llm,금대체,GLOBAL,호르무즈=유가/에너지 지정학 → 8class 대체(금대체) 버킷. v2 일치,agree
+market_info:35924,실적 시즌 거치면서 주주환원 강자로서의 지위 부각,market_info,경기_소비,KR,,국내주식,국내주식,llm,국내주식,KR,KR 실적·주주환원=국내주식. v1 미분류 → v2 recovery,agree
+market_info:35953,[JAEMINI]중국 장마감 시황,market_info,테크_AI_반도체,NON_US_OVERSEAS,해외주식,해외주식,해외주식,llm,해외주식,NON_US,중국 장마감 시황=해외주식,agree
+market_info:35981,5/8 KB 리서치 장마감코멘트,market_info,테크_AI_반도체|지정학,KR,해외주식,국내주식,국내주식,llm,국내주식,KR,KR 장마감코멘트=국내주식. v1 해외 오분류 → v2 recovery,agree
+market_info:36011,Daily Market Digest (5월 12일),market_info,테크_AI_반도체|테크_AI_반도체|지정학,KR|US,해외주식,국내주식,해외주식,llm,국내주식/해외주식,KR/US,Daily Digest KR·US 혼재 — 단일귀속 애매. v2 국내주식,ambiguous
+market_info:36039,Daily Morning Brief(2026.05.13),market_info,물가_인플레이션|테크_AI_반도체|지정학,US,해외채권,해외주식,해외채권,llm,해외주식,US,US Morning Brief 테크중심=해외주식. v1 해외채권 오분류 정정,agree
+market_info:36068,신한 해외주식 Weekly(5월 15일),market_info,테크_AI_반도체|테크_AI_반도체,US|NON_US_OVERSEAS,해외주식,해외주식,해외주식,llm,해외주식,US/NON_US,제목명시 해외주식 Weekly,agree
+market_info:36096,[DS Defense Daily] 2026-05-19,market_info,지정학,NON_US_OVERSEAS,해외주식,,,v1,국내주식,KR,DS Defense Daily=KR 방산주. region NON_US 오태깅 → v2 none(미스). classification 단계 오류,disagree
+market_info:36125,DS Futures Daily,market_info,유동성_크레딧,KR,,국내주식,크레딧,llm,국내주식,KR,DS Futures Daily=KR 지수선물 → 국내주식. v2 일치(rule 크레딧 leakage),agree
+market_info:36154,"지수가 역사적 고점을 형성할수록, 통신의 주주환원 ..",market_info,,KR,,국내주식,,llm,국내주식,KR,KR 통신 주주환원=국내주식,agree
+market_info:36184,국내 주식 마감 시황 - 75개 종목만 상승한 매수 사이..,market_info,테크_AI_반도체,KR,국내주식,국내주식,국내주식,llm,국내주식,KR,제목명시 국내주식 마감시황,agree
+market_info:36214,Daily Morning Brief(2026.05.28),market_info,테크_AI_반도체|금리_채권|지정학,US|GLOBAL,해외채권,해외주식,해외주식,llm,해외주식,US/GLOBAL,"US Morning Brief 테크+금리 혼재. v2 해외주식 lean, 금리성분 존재",ambiguous
+invest:38739,"05/06 엔화, 되돌림 과정에 하락",invest,환율_FX|지정학|에너지_원자재,GLOBAL,원자재에너지,환율,환율,llm,환율,GLOBAL,"엔화=FX. v1 원자재 오분류, v2 환율 정정",agree
+invest:38767,DS Futures Daily,invest,경기_소비,KR,,국내주식,국내주식,llm,국내주식,KR,DS Futures Daily KR=국내주식,agree
+invest:38795,"[New K-ETF] 현대차 피지컬AI, 코스닥바이오 액티브",invest,테크_AI_반도체,KR,국내주식,국내주식,국내주식,llm,국내주식,KR,K-ETF 현대차/코스닥=국내주식,agree
+invest:38823,"대내외 악재 겹친 코스피, 외국인 순매도 속 6 거래일..",invest,테크_AI_반도체|테크_AI_반도체,KR|US,국내주식,국내주식,국내주식,llm,국내주식,KR,코스피 마감=국내주식,agree
+invest:38852,"[다음주 시장은?] 실적시즌, 미중 정상회담 종료. 다..",invest,테크_AI_반도체|지정학,KR,해외주식,국내주식,국내주식,llm,국내주식,KR,다음주 KR 시장전망=국내주식. v1 해외 오분류 정정,agree
+invest:38880,Tech&Stock Weekly: 800V DC에 집중될 전력 모멘텀,invest,테크_AI_반도체,US,해외주식,해외주식,해외주식,llm,해외주식,US,US 테크(전력/DC)=해외주식,agree
+invest:38911,[IBKS Daily] Start with IBKS(2026.05.20) 美 국채 ..,invest,금리_채권|테크_AI_반도체|경기_소비,KR|NON_US_OVERSEAS,해외채권,국내주식,국내채권,llm,해외채권/국내주식,KR/NON_US,제목 美국채 언급이나 daily 혼재. v2 국내주식 — 美국채면 해외채권 가능,ambiguous
+invest:38939,계량 주보:국민성장펀드 판매 시작: 코스닥 기업 숨통..,invest,경기_소비,KR,국내주식,국내주식,국내주식,llm,국내주식,KR,코스닥/국민성장펀드=국내주식,agree
+invest:38967,[The Market Visualized] 지정학에 쏠린 눈과 불편한 ..,invest,테크_AI_반도체|테크_AI_반도체,KR|US,국내주식,국내주식,국내주식,llm,국내주식,KR/US,"Market Visualized 지정학, KR중심. v2 국내주식 lean",agree
+invest:38995,"05/28, 미 증시, 반도체 차익실현, 미-이란 협상 혼선..",invest,테크_AI_반도체|지정학,US|GLOBAL,국내주식,해외주식,해외주식,llm,해외주식,US/GLOBAL,미 증시 반도체=해외주식. v1 국내 오분류 정정,agree
+industry:44402,클라우드 매출 가속으로 이어진 AI 캐팩스,industry,테크_AI_반도체,US,국내주식,해외주식,해외주식,llm,해외주식,US,클라우드 AI capex=US 빅테크 → 해외주식. v1 국내 정정,agree
+industry:44431,통신 Weekly - 금번 실적 발표에서는 AI에 주..,industry,,KR,,국내주식,,llm,국내주식,KR,통신 Weekly KR=국내주식,agree
+industry:44460,현대차/기아 4월 글로벌 판매,industry,경기_소비|지정학,KR|GLOBAL,해외주식,국내주식,국내주식,llm,국내주식,KR,현대차/기아=국내주식. v1 해외 오분류 → recovery,agree
+industry:44489,CPU에서도 AI 수혜 확인. 메모리도 추가 수혜,industry,테크_AI_반도체|테크_AI_반도체,US|KR,국내주식,해외주식,해외주식,llm,국내주식/해외주식,US/KR,"CPU(US)+메모리(KR) 혼재. v2 해외주식, 메모리수혜면 국내주식",ambiguous
+industry:44519,코닝 Investor Day 자료로 CPO 훑어보기,industry,테크_AI_반도체,US,해외주식,해외주식,해외주식,llm,해외주식,US,코닝=US 해외주식,agree
+industry:44548,Paradigm Shift,industry,테크_AI_반도체,KR,국내주식,국내주식,국내주식,llm,국내주식,KR,KR 테크 Paradigm Shift=국내주식,agree
+industry:44577,2026년 하반기 은행산업 전망 : 기대 요인은 ..,industry,금리_채권,KR,해외채권,국내주식,국내채권,llm,국내주식,KR,KR 은행산업 전망=은행주(국내주식). v1 해외채권 오분류 정정(금리 topic이나 산업=주식),agree
+industry:44606,스프링 점프,industry,금리_채권,KR,해외채권,국내주식,국내채권,llm,국내채권/국내주식,KR,제목 모호 '스프링 점프' topic 금리_채권. v2 국내주식 — 금리리포트면 국내채권,ambiguous
+industry:44634,안정을 찾는다면 통신으로,industry,경기_소비,KR,국내주식,국내주식,국내주식,llm,국내주식,KR,KR 통신주=국내주식,agree
+industry:44662,신한 운송 Weekly T.M.I; 탱커선사 1Q26 실적..,industry,에너지_원자재|에너지_원자재,KR|GLOBAL,해외채권,국내주식,원자재에너지,llm,국내주식,KR/GLOBAL,운송/탱커선사=KR 해운주. v1 해외채권·rule 원자재 오분류 → v2 국내주식 recovery,agree
+industry:44691,SCV-제9회 전국동시지방선거 공약으로 보는 ..,industry,부동산,KR,,국내주식,국내주식,llm,국내주식,KR,지방선거 공약/부동산=KR 정책수혜주. v2 국내주식,agree
+industry:44720,MASH를 오래 지켜보아야 하는 이유,industry,,,,,,none,국내주식,KR,"MASH=간질환 신약, KR 바이오 추정. topic/region 미태깅 → v2 none(under-classified)",ambiguous
+industry:44748,‘영업환경 변화’/ ‘중국’/ ‘배당’,industry,경기_소비,KR,국내주식,국내주식,국내주식,llm,국내주식,KR,중국/배당 KR 산업=국내주식,agree
+debenture:10728,[5월] 유가와 함께 금리 상승도 일단락,debenture,에너지_원자재|금리_채권,KR|GLOBAL,해외채권,국내채권,원자재에너지,llm,국내채권,KR/GLOBAL,"채권리서치, 금리상승 일단락=국내채권. rule 원자재 오분류 → v2 국내채권 정정",agree
+debenture:10765,Eugenes FICC Update,debenture,금리_채권|금리_채권,KR|GLOBAL,해외채권,국내채권,국내채권,llm,국내채권/해외채권,KR/GLOBAL,FICC Update=채권. KR/GLOBAL 혼재로 국내/해외 애매. v2 국내채권 lean,agree
