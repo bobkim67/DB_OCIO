@@ -4,20 +4,20 @@ status: base
 entity_id: graphnode__Fed
 label: "Fed"
 taxonomy_topic: 통화정책
-node_importance: 4.0909
+node_importance: 3.0508
 importance_basis: edge_effective_score_sum
 support_count_sum: 11
-path_count: 2
+path_count: 0
 path_role_hit: false
-unique_article_count: 211
+unique_article_count: 251
 first_seen: 2026-03-16
-last_seen: 2026-05-26
-primary_articles: [52a9b85feb52, 6a3194b9dc6a, a11bb35d9cde, 63e7e5b0e54d, efe6c9e4eb4c]
+last_seen: 2026-05-30
+primary_articles: [52a9b85feb52, 6a3194b9dc6a, a11bb35d9cde, d64692a2ac62, 4c1950201b55]
 graph_node_id: Fed
 period: 2026-05
 has_graph_signal: true
 source_of_truth: pipeline_refine+graphrag
-updated_at: 2026-05-26T16:16:38
+updated_at: 2026-06-01T18:37:13
 ---
 
 # Entity — Fed
@@ -27,25 +27,25 @@ updated_at: 2026-05-26T16:16:38
 
 ## Confirmed facts
 
-- Mention summary: 2026-03-16 ~ 2026-05-26 · 211 articles
-- Linked events: `event_ccac342216`, `event_faf77590fc`, `event_c3f92e4ee2`, `event_5ea2147352`, `event_c0b78257a0`
+- Mention summary: 2026-03-16 ~ 2026-05-30 · 251 articles
+- Linked events: `event_9e62e1b72b`, `event_faf77590fc`, `event_0bba6aae6c`, `event_810589223f`, `event_c3f92e4ee2`
 - Related asset classes (derived): `채권`
 
 ### Recent articles
-- "스페이스X 상장 임박에 금리 변수까지"…증권가, 美 IPO 빅뱅 '촉각' (ref:`52a9b85feb52`)
-- 비트코인, 스트래티지 손실권 공포에 '초긴장'...7만 4,500달러 깨지면 ... (ref:`6a3194b9dc6a`)
-- 뉴욕증시, 메모리얼 데이 맞아 휴장…26일 거래 재개 (ref:`a11bb35d9cde`)
-- [굿모닝 증시]종전 기대감에 코스피 8000선 돌파 시도 전망 (ref:`63e7e5b0e54d`)
-- 신현송 첫 금통위, 동결보다 중요한 건 '인상 신호' (ref:`efe6c9e4eb4c`)
-- 신현송 한은 총재 첫 금통위···매파적 동결, 연내 인상 신호탄 될 것
-- 코스피 8천 돌파 후 '빚투' 경고등…신용융자 36조원 사상 최대
-- [마켓 프리뷰] 국제유가 급락·반도체주 강세…코스피 8000선 돌파 시도...
+- A Deal With Iran Will Not Push The Fed To Cut Policy Rates (ref:`52a9b85feb52`)
+- Weekly Commentary: Party Like It's 1999, 1996 And 2007 (ref:`6a3194b9dc6a`)
+- LIVE: Watch Treasury Secretary Bessent speaks At Reagan National Economic Forum, Asked About Fed, Says We Are Going To Get Back To Basics On Accountability; I Think We Are Going To See More Focus And Credibility (ref:`a11bb35d9cde`)
+- Consumers Flash Some Warning Signs (ref:`d64692a2ac62`)
+- What Might The Federal Reserve Decide After May 2026's Job Report? (ref:`4c1950201b55`)
+- Supply Shocks And AI-Related Demand Blur Inflation Signals For The Fed
+- More Fed policymakers eye possible rate hike as inflation risks rise - Reuters
+- The May Labor Market Likely To Be Weak - Yet The Fed Might Still Need To Hike
 
 ## Graph provenance
 
-- `node_importance`: 4.0909 (edge_effective_score_sum)
+- `node_importance`: 3.0508 (edge_effective_score_sum)
 - `support_count_sum`: 11
-- `path_count`: 2
+- `path_count`: 0
 - `path_role_hit`: false
 
 > Detailed adjacency and transmission paths are available in `07_Graph_Evidence/`. This base page records only summary provenance.

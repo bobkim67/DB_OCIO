@@ -4,9 +4,9 @@ status: base
 entity_id: graphnode__반도체
 label: "반도체"
 taxonomy_topic: 테크_AI_반도체
-node_importance: 2.9047
+node_importance: 1.9948
 importance_basis: edge_effective_score_sum
-support_count_sum: 11
+support_count_sum: 7
 path_count: 0
 path_role_hit: false
 unique_article_count: 226
@@ -17,7 +17,7 @@ graph_node_id: 반도체
 period: 2026-05
 has_graph_signal: true
 source_of_truth: pipeline_refine+graphrag
-updated_at: 2026-05-26T16:16:38
+updated_at: 2026-06-01T18:37:13
 ---
 
 # Entity — 반도체
@@ -28,7 +28,7 @@ updated_at: 2026-05-26T16:16:38
 ## Confirmed facts
 
 - Mention summary: 2026-05-01 ~ 2026-05-26 · 226 articles
-- Linked events: `event_faf77590fc`, `event_1fb3aab1f5`, `event_ccac342216`, `event_1bac92003f`, `event_d885a7a614`
+- Linked events: `event_faf77590fc`, `event_1fb3aab1f5`, `event_9e62e1b72b`, `event_1bac92003f`, `event_d885a7a614`
 - Related asset classes (derived): `해외주식`
 
 ### Recent articles
@@ -43,8 +43,8 @@ updated_at: 2026-05-26T16:16:38
 
 ## Graph provenance
 
-- `node_importance`: 2.9047 (edge_effective_score_sum)
-- `support_count_sum`: 11
+- `node_importance`: 1.9948 (edge_effective_score_sum)
+- `support_count_sum`: 7
 - `path_count`: 0
 - `path_role_hit`: false
 

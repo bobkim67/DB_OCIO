@@ -4,7 +4,7 @@ status: base
 entity_id: graphnode__국채
 label: "국채"
 taxonomy_topic: 금리_채권
-node_importance: 1.4119
+node_importance: 0.7865
 importance_basis: edge_effective_score_sum
 support_count_sum: 4
 path_count: 0
@@ -17,7 +17,7 @@ graph_node_id: 국채
 period: 2026-05
 has_graph_signal: true
 source_of_truth: pipeline_refine+graphrag
-updated_at: 2026-05-26T16:16:38
+updated_at: 2026-06-01T18:37:13
 ---
 
 # Entity — 국채
@@ -28,7 +28,7 @@ updated_at: 2026-05-26T16:16:38
 ## Confirmed facts
 
 - Mention summary: 2026-04-16 ~ 2026-05-26 · 147 articles
-- Linked events: `event_ccac342216`, `event_b22a59d803`, `event_39f06dd7af`, `event_d0b78941ef`, `event_27b5ec44cf`
+- Linked events: `event_9e62e1b72b`, `event_b22a59d803`, `event_160b0b0ade`, `event_d0b78941ef`, `event_27b5ec44cf`
 - Related asset classes (derived): `채권`
 
 ### Recent articles
@@ -43,7 +43,7 @@ updated_at: 2026-05-26T16:16:38
 
 ## Graph provenance
 
-- `node_importance`: 1.4119 (edge_effective_score_sum)
+- `node_importance`: 0.7865 (edge_effective_score_sum)
 - `support_count_sum`: 4
 - `path_count`: 0
 - `path_role_hit`: false

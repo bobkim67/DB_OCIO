@@ -1,6 +1,6 @@
 ---
 type: wiki_index
-updated_at: 2026-05-26T16:16:38
+updated_at: 2026-06-01T18:37:13
 ---
 
 # Wiki Index
@@ -19,8 +19,8 @@ Latest period: **2026-05**
 - **Graph evidence (07)** — `07_Graph_Evidence/` — transmission path draft (not canonical)
 
 ## Latest batch counts (base pages)
-- Events: 5
-- Entities: 9
+- Events: 8
+- Entities: 10
 - Assets: 6
 - Funds: 2
 

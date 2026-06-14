@@ -4,7 +4,7 @@ status: base
 entity_id: graphnode__금통위
 label: "금통위"
 taxonomy_topic: 통화정책
-node_importance: 0.8019
+node_importance: 0.4467
 importance_basis: edge_effective_score_sum
 support_count_sum: 2
 path_count: 0
@@ -12,12 +12,12 @@ path_role_hit: false
 unique_article_count: 67
 first_seen: 2026-05-01
 last_seen: 2026-05-26
-primary_articles: [ee86d8d9029c, cf56973f0b63, 8dfcbcd5da24, 6cc253f5b428, 0f3c90cc88bb]
+primary_articles: [9d602d56ee6a, cf56973f0b63, 8dfcbcd5da24, 6cc253f5b428, 0f3c90cc88bb]
 graph_node_id: 금통위
 period: 2026-05
 has_graph_signal: true
 source_of_truth: pipeline_refine+graphrag
-updated_at: 2026-05-26T16:16:38
+updated_at: 2026-06-01T18:37:13
 ---
 
 # Entity — 금통위
@@ -28,11 +28,11 @@ updated_at: 2026-05-26T16:16:38
 ## Confirmed facts
 
 - Mention summary: 2026-05-01 ~ 2026-05-26 · 67 articles
-- Linked events: `event_c6aa9a9385`, `event_d885a7a614`, `event_b97b246527`, `event_02d77753f8`, `event_87afa5fffb`
+- Linked events: `event_7a90586cf5`, `event_d885a7a614`, `event_b97b246527`, `event_02d77753f8`, `event_87afa5fffb`
 - Related asset classes (derived): `채권`
 
 ### Recent articles
-- 채권전문가 99% "5월 금통위, 기준금리 동결 전망" (ref:`ee86d8d9029c`)
+- 채권전문가 99% "5월 금통위, 기준금리 동결 전망" (ref:`9d602d56ee6a`)
 - [금통위 인터뷰] BNP파리바 "5월 만장일치 동결 전망…7월 인상 유력" (ref:`cf56973f0b63`)
 - 채권 전문가 99% 기준금리 ‘동결‘ 전망…한은, 인상 시그널 내놓을까 (ref:`8dfcbcd5da24`)
 - 금리 인상 우려에 얼어붙은 채권시장…6월 시장 전망 '흐림' (ref:`6cc253f5b428`)
@@ -43,7 +43,7 @@ updated_at: 2026-05-26T16:16:38
 
 ## Graph provenance
 
-- `node_importance`: 0.8019 (edge_effective_score_sum)
+- `node_importance`: 0.4467 (edge_effective_score_sum)
 - `support_count_sum`: 2
 - `path_count`: 0
 - `path_role_hit`: false
