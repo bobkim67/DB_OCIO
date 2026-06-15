@@ -1,14 +1,23 @@
 import { useState } from "react";
 import { useFunds } from "../hooks/useFunds";
 import LoadingBar from "../components/common/LoadingBar";
+import WarmupBanner from "../components/common/WarmupBanner";
 import OverviewTab from "../tabs/OverviewTab";
 import HoldingsTab from "../tabs/HoldingsTab";
+import TransactionsTab from "../tabs/TransactionsTab";
 import BrinsonTab from "../tabs/BrinsonTab";
 import MacroTab from "../tabs/MacroTab";
 import ReportTab from "../tabs/ReportTab";
 import AdminTab from "../tabs/AdminTab";
 
-type TabKey = "overview" | "holdings" | "brinson" | "macro" | "report" | "admin";
+type TabKey =
+  | "overview"
+  | "holdings"
+  | "transactions"
+  | "brinson"
+  | "macro"
+  | "report"
+  | "admin";
 
 export default function DashboardPage() {
   const { data, isLoading, error } = useFunds();
@@ -73,9 +82,12 @@ export default function DashboardPage() {
         </label>
       </header>
 
+      <WarmupBanner />
+
       <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
         {tabBtn("overview", "Overview")}
         {tabBtn("holdings", "편입종목")}
+        {tabBtn("transactions", "거래내역")}
         {tabBtn("brinson", "성과분석")}
         {tabBtn("macro", "Macro")}
         {tabBtn("report", "운용보고")}
@@ -86,6 +98,8 @@ export default function DashboardPage() {
         <OverviewTab fundCode={selected} />
       ) : tab === "holdings" ? (
         <HoldingsTab fundCode={selected} />
+      ) : tab === "transactions" ? (
+        <TransactionsTab fundCode={selected} />
       ) : tab === "brinson" ? (
         <BrinsonTab fundCode={selected} />
       ) : tab === "macro" ? (

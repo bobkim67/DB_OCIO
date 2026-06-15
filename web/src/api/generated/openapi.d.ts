@@ -404,6 +404,113 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/funds/{code}/transactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Transactions */
+        get: operations["get_transactions_api_funds__code__transactions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/funds/{code}/weight-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Weight History */
+        get: operations["get_weight_history_api_funds__code__weight_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/funds/{code}/fx-position": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Fx Position */
+        get: operations["get_fx_position_api_funds__code__fx_position_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/funds/{code}/securities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Securities */
+        get: operations["get_securities_api_funds__code__securities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/funds/{code}/security-returns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Security Returns */
+        get: operations["get_security_returns_api_funds__code__security_returns_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/warmup-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Warmup Status
+         * @description 앱 시작 시 백그라운드 워밍업 진행률.
+         *
+         *     status: idle | running | done | done_with_errors | error
+         */
+        get: operations["warmup_status_api_warmup_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -963,6 +1070,29 @@ export interface components {
             /** Hedge Ratio */
             hedge_ratio?: number | null;
         };
+        /** FxPositionPointDTO */
+        FxPositionPointDTO: {
+            /** Date */
+            date: string;
+            /** Key */
+            key: string;
+            /** Weight */
+            weight: number;
+        };
+        /** FxPositionResponseDTO */
+        FxPositionResponseDTO: {
+            meta: components["schemas"]["BaseMeta"];
+            /** Fund Code */
+            fund_code: string;
+            /** Has Fx */
+            has_fx: boolean;
+            /** Start Date */
+            start_date: string;
+            /** Keys */
+            keys: string[];
+            /** Points */
+            points: components["schemas"]["FxPositionPointDTO"][];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1497,6 +1627,68 @@ export interface components {
             meta: components["schemas"]["BaseMeta"];
             data: components["schemas"]["ReportFinalDTO"];
         };
+        /** SecuritiesResponseDTO */
+        SecuritiesResponseDTO: {
+            meta: components["schemas"]["BaseMeta"];
+            /** Fund Code */
+            fund_code: string;
+            /** Items */
+            items: components["schemas"]["SecurityItemDTO"][];
+        };
+        /** SecurityItemDTO */
+        SecurityItemDTO: {
+            /** Item Cd */
+            item_cd: string;
+            /** Item Nm */
+            item_nm: string;
+            /** Bucket */
+            bucket: string;
+            /** Weight */
+            weight: number;
+            /** Has Price */
+            has_price: boolean;
+        };
+        /** SecurityReturnPointDTO */
+        SecurityReturnPointDTO: {
+            /** Date */
+            date: string;
+            /** Value */
+            value: number;
+        };
+        /** SecurityReturnResponseDTO */
+        SecurityReturnResponseDTO: {
+            meta: components["schemas"]["BaseMeta"];
+            /** Fund Code */
+            fund_code: string;
+            /** Item Cd */
+            item_cd: string;
+            /** Item Nm */
+            item_nm: string;
+            /** Start Date */
+            start_date: string;
+            /** Points */
+            points: components["schemas"]["SecurityReturnPointDTO"][];
+            /** Trades */
+            trades: components["schemas"]["SecurityTradeMarkerDTO"][];
+            /** Weights */
+            weights: components["schemas"]["SecurityWeightPointDTO"][];
+        };
+        /** SecurityTradeMarkerDTO */
+        SecurityTradeMarkerDTO: {
+            /** Date */
+            date: string;
+            /** Side */
+            side: string;
+            /** Amount */
+            amount: number;
+        };
+        /** SecurityWeightPointDTO */
+        SecurityWeightPointDTO: {
+            /** Date */
+            date: string;
+            /** Weight */
+            weight: number;
+        };
         /** SourceBreakdown */
         SourceBreakdown: {
             /** Component */
@@ -1509,6 +1701,37 @@ export interface components {
             /** Note */
             note?: string | null;
         };
+        /** TransactionRowDTO */
+        TransactionRowDTO: {
+            /** Date */
+            date: string;
+            /** Fund Code */
+            fund_code: string;
+            /** Item Nm */
+            item_nm: string;
+            /** Asset Class */
+            asset_class: string;
+            /** Side */
+            side: string;
+            /** Amount Eok */
+            amount_eok: number;
+        };
+        /** TransactionsResponseDTO */
+        TransactionsResponseDTO: {
+            meta: components["schemas"]["BaseMeta"];
+            /** Fund Code */
+            fund_code: string;
+            /** Lookthrough Applied */
+            lookthrough_applied: boolean;
+            /** Funds Queried */
+            funds_queried: string[];
+            /** Start Date */
+            start_date: string;
+            /** End Date */
+            end_date: string;
+            /** Rows */
+            rows: components["schemas"]["TransactionRowDTO"][];
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -1517,6 +1740,10 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
         /**
          * ValidationSummaryDTO
@@ -1546,6 +1773,60 @@ export interface components {
             severity: string;
             /** Ref No */
             ref_no?: number | null;
+        };
+        /** WarmupErrorDTO */
+        WarmupErrorDTO: {
+            /** Step */
+            step: string;
+            /** Error */
+            error: string;
+        };
+        /** WarmupStatusDTO */
+        WarmupStatusDTO: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "idle" | "running" | "done" | "done_with_errors" | "error";
+            /** Total */
+            total: number;
+            /** Done */
+            done: number;
+            /** Error Count */
+            error_count: number;
+            /** Current */
+            current: string;
+            /** Started At */
+            started_at?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Errors */
+            errors: components["schemas"]["WarmupErrorDTO"][];
+        };
+        /** WeightHistoryPointDTO */
+        WeightHistoryPointDTO: {
+            /** Date */
+            date: string;
+            /** Key */
+            key: string;
+            /** Weight */
+            weight: number;
+        };
+        /** WeightHistoryResponseDTO */
+        WeightHistoryResponseDTO: {
+            meta: components["schemas"]["BaseMeta"];
+            /** Fund Code */
+            fund_code: string;
+            /** Level */
+            level: string;
+            /** Lookthrough Applied */
+            lookthrough_applied: boolean;
+            /** Start Date */
+            start_date: string;
+            /** Keys */
+            keys: string[];
+            /** Points */
+            points: components["schemas"]["WeightHistoryPointDTO"][];
         };
         /**
          * WeightedDurationDTO
@@ -2408,6 +2689,203 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_transactions_api_funds__code__transactions_get: {
+        parameters: {
+            query: {
+                /** @description 조회 시작일 YYYY-MM-DD */
+                start: string;
+                /** @description 조회 종료일 YYYY-MM-DD */
+                end: string;
+            };
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransactionsResponseDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_weight_history_api_funds__code__weight_history_get: {
+        parameters: {
+            query: {
+                /** @description 조회 시작일 YYYY-MM-DD */
+                start: string;
+                /** @description security | asset */
+                level?: string;
+            };
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeightHistoryResponseDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_fx_position_api_funds__code__fx_position_get: {
+        parameters: {
+            query: {
+                /** @description 조회 시작일 YYYY-MM-DD */
+                start: string;
+            };
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FxPositionResponseDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_securities_api_funds__code__securities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecuritiesResponseDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_security_returns_api_funds__code__security_returns_get: {
+        parameters: {
+            query: {
+                /** @description 종목코드(ISIN) */
+                item_cd: string;
+                /** @description 종목명(표시용) */
+                item_nm?: string;
+                /** @description 조회 시작일 YYYY-MM-DD */
+                start: string;
+                /** @description 조회 종료일 YYYY-MM-DD */
+                end: string;
+            };
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecurityReturnResponseDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    warmup_status_api_warmup_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WarmupStatusDTO"];
                 };
             };
         };

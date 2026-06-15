@@ -8,8 +8,37 @@ from datetime import datetime, timedelta
 import json
 import warnings
 import logging
+import time
+import functools
 warnings.filterwarnings('ignore')
 logger = logging.getLogger(__name__)
+
+
+# ============================================================
+# 인메모리 TTL 캐시 (FastAPI 로딩 단축용 — 외부 의존성 없음)
+# 데이터는 EOD 1회 갱신 + 캐시 키에 날짜 포함 → 일자 변경 시 자동 무효.
+# ============================================================
+_CACHE_TTL = 21600  # 6시간
+
+
+def _ttl_cache(ttl: int = _CACHE_TTL):
+    def deco(fn):
+        store: dict = {}
+
+        @functools.wraps(fn)
+        def wrap(*args, **kwargs):
+            key = (args, tuple(sorted(kwargs.items())))
+            now = time.monotonic()
+            hit = store.get(key)
+            if hit is not None and (now - hit[0]) < ttl:
+                return hit[1]
+            val = fn(*args, **kwargs)
+            store[key] = (now, val)
+            return val
+
+        wrap.cache_clear = store.clear
+        return wrap
+    return deco
 
 # ============================================================
 # DB 접속
@@ -739,20 +768,47 @@ def load_fund_net_trades(fund_code: str, start_date: int, end_date: int) -> dict
     return result
 
 
-def load_fund_trade_detail(fund_code: str, start_date: int, end_date: int) -> pd.DataFrame:
-    """DWPM10520에서 날짜별 거래내역 상세. 자산군 분류 포함.
+def _derive_trade_side(bs, tr_nm: str) -> str:
+    """거래 방향 라벨. buy_sell_ds_cd(M/D) 우선, 없으면 거래코드명(tr_nm)으로 판별.
 
-    Returns: DataFrame [날짜, 종목명, 자산군, 매수매도, 금액(억)]
+    - M→매수, D→매도
+    - 환전(외화매입/매도원화) → '환전'
+    - ETF발행시장매입 BA정산 → '발행(BA정산)', 발행시장환매 → '환매(BA정산)'
+    - 선물 포지션(신규매수/신규매도/환매수/전매도) → 해당 라벨
+    - 그 외 → '기타'
+    """
+    if bs == 'M':
+        return '매수'
+    if bs == 'D':
+        return '매도'
+    trn = str(tr_nm or '')
+    if '환전' in trn:
+        return '환전'
+    if '발행시장매입' in trn:
+        return '발행(BA정산)'
+    if '발행시장환매' in trn:
+        return '환매(BA정산)'
+    for kw in ['신규매수', '신규매도', '환매수', '전매도']:
+        if kw in trn:
+            return kw
+    return '기타'
+
+
+def load_fund_trade_detail(fund_code: str, start_date: int, end_date: int) -> pd.DataFrame:
+    """DWPM10520에서 날짜별 거래내역 상세. 자산군 분류 + 거래코드(DWCI10160) 라벨 포함.
+
+    Returns: DataFrame [날짜, 종목명, 자산군, 매수매도, 금액(억), item_cd]
     """
     conn = get_pandas_connection('dt')
     try:
         df = pd.read_sql("""
-            SELECT std_dt, item_cd, item_nm, hold_ast_ds_cd, curr_ds_cd,
-                   buy_sell_ds_cd, trd_amt
-            FROM DWPM10520
-            WHERE fund_cd = %s AND std_dt BETWEEN %s AND %s
-              AND imc_cd = '003228'
-            ORDER BY std_dt, item_nm
+            SELECT t.std_dt, t.item_cd, t.item_nm, t.curr_ds_cd,
+                   t.buy_sell_ds_cd, t.trd_amt, t.tr_cd, c.tr_nm
+            FROM DWPM10520 t
+            LEFT JOIN DWCI10160 c ON t.tr_cd = c.tr_cd AND t.synp_cd = c.synp_cd
+            WHERE t.fund_cd = %s AND t.std_dt BETWEEN %s AND %s
+              AND t.imc_cd = '003228'
+            ORDER BY t.std_dt, t.item_nm
         """, conn, params=[fund_code, start_date, end_date])
     finally:
         conn.close()
@@ -775,12 +831,12 @@ def load_fund_trade_detail(fund_code: str, start_date: int, end_date: int) -> pd
         return _classify_6class(row2)
 
     df['자산군'] = df.apply(_classify, axis=1)
-    df['매수매도'] = df['buy_sell_ds_cd'].map({'M': '매수', 'D': '매도'}).fillna(df['buy_sell_ds_cd'])
+    df['매수매도'] = df.apply(lambda r: _derive_trade_side(r['buy_sell_ds_cd'], r['tr_nm']), axis=1)
     df['금액(억)'] = pd.to_numeric(df['trd_amt'], errors='coerce').fillna(0) / 1e8
     df['날짜'] = df['std_dt'].astype(str)
     df['종목명'] = df['item_nm']
 
-    return df[['날짜', '종목명', '자산군', '매수매도', '금액(억)']].round(2)
+    return df[['날짜', '종목명', '자산군', '매수매도', '금액(억)', 'item_cd']].round(2)
 
 
 def load_fund_holdings_weight(fund_code: str, date: int) -> pd.DataFrame:
@@ -894,7 +950,8 @@ def _classify_6class(row) -> str:
     return '유동성'
 
 
-def load_fund_holdings_classified(fund_code: str, date: str = None) -> pd.DataFrame:
+@_ttl_cache()
+def _load_fund_holdings_classified_cached(fund_code: str, date: str = None) -> pd.DataFrame:
     """
     보유종목 로드 + 6분류 매핑.
     미수/미지급 필터 적용.
@@ -935,6 +992,14 @@ def load_fund_holdings_classified(fund_code: str, date: str = None) -> pd.DataFr
     return df
 
 
+def load_fund_holdings_classified(fund_code: str, date: str = None) -> pd.DataFrame:
+    """`_load_fund_holdings_classified_cached`의 공개 래퍼.
+    TTL 캐시된 DataFrame을 호출자가 in-place로 변형해 캐시를 오염시키지 않도록
+    항상 copy를 반환한다."""
+    df = _load_fund_holdings_classified_cached(fund_code, date)
+    return df.copy() if isinstance(df, pd.DataFrame) else df
+
+
 # ============================================================
 # Look-through: 모펀드 → 하위 종목 전개
 # ============================================================
@@ -953,7 +1018,8 @@ def _extract_fund_code_from_item_cd(item_cd: str) -> str:
     return s
 
 
-def load_fund_holdings_lookthrough(fund_code: str, date: str = None) -> pd.DataFrame:
+@_ttl_cache()
+def _load_fund_holdings_lookthrough_cached(fund_code: str, date: str = None) -> pd.DataFrame:
     """
     보유종목 로드 + 모펀드 look-through.
     모펀드 ITEM_CD에서 하위 펀드코드 추출 후 보유종목을 비중 가중하여 전개.
@@ -1025,6 +1091,13 @@ def load_fund_holdings_lookthrough(fund_code: str, date: str = None) -> pd.DataF
     return grp
 
 
+def load_fund_holdings_lookthrough(fund_code: str, date: str = None) -> pd.DataFrame:
+    """`_load_fund_holdings_lookthrough_cached`의 공개 래퍼.
+    캐시 오염 방지를 위해 항상 copy를 반환한다."""
+    df = _load_fund_holdings_lookthrough_cached(fund_code, date)
+    return df.copy() if isinstance(df, pd.DataFrame) else df
+
+
 # ============================================================
 # NAV + AUM 시계열 (확장)
 # ============================================================
@@ -1035,7 +1108,8 @@ _FUND_INCEPTION_BASE = {
 }
 
 
-def load_fund_nav_with_aum(fund_code: str, start_date: str = None) -> pd.DataFrame:
+@_ttl_cache()
+def _load_fund_nav_with_aum_cached(fund_code: str, start_date: str = None) -> pd.DataFrame:
     """
     펀드 NAV(MOD_STPR) + AUM(NAST_AMT) 시계열.
     load_fund_nav의 단일 펀드 확장 버전.
@@ -1047,6 +1121,13 @@ def load_fund_nav_with_aum(fund_code: str, start_date: str = None) -> pd.DataFra
         return df
     df['AUM_억'] = df['NAST_AMT'] / 1e8
     return df[['기준일자', 'MOD_STPR', 'NAST_AMT', 'AUM_억', 'DD1_ERN_RT']].sort_values('기준일자').reset_index(drop=True)
+
+
+def load_fund_nav_with_aum(fund_code: str, start_date: str = None) -> pd.DataFrame:
+    """`_load_fund_nav_with_aum_cached`의 공개 래퍼.
+    캐시 오염 방지를 위해 항상 copy를 반환한다."""
+    df = _load_fund_nav_with_aum_cached(fund_code, start_date)
+    return df.copy() if isinstance(df, pd.DataFrame) else df
 
 
 # ============================================================
@@ -1982,6 +2063,7 @@ def _get_class_mother_fund(fund_code: str) -> str:
         conn.close()
 
 
+@functools.lru_cache(maxsize=64)
 def _get_관련_fund_list(class_m_fund: str) -> list:
     """
     R pulling_모자구조 동등 — class_m_fund 보유 ITEM_CD에서
@@ -3337,6 +3419,362 @@ def load_macro_period_returns(macro_data: dict, reference_date: str = None) -> d
         result[key] = periods
 
     return result
+
+
+def _load_holdings_range(fund_code: str, start_yyyymmdd: str = None) -> pd.DataFrame:
+    """DWPM10530에서 날짜 범위 보유종목 로드 + 6분류. 거래내역 탭 영역차트용.
+
+    Returns: DataFrame [STD_DT(int), ITEM_CD, ITEM_NM, 자산군, EVL_AMT(float)]
+    """
+    conn = get_pandas_connection('dt')
+    try:
+        params = [fund_code]
+        date_filter = ""
+        if start_yyyymmdd:
+            date_filter = " AND STD_DT >= %s"
+            params.append(start_yyyymmdd)
+        sql = f"""
+            SELECT STD_DT, ITEM_CD, ITEM_NM, AST_CLSF_CD_NM, CURR_DS_CD,
+                   SUM(EVL_AMT) AS EVL_AMT
+            FROM DWPM10530
+            WHERE FUND_CD = %s AND IMC_CD = '003228' AND EVL_AMT > 0
+              AND ITEM_NM NOT LIKE '%%미지급%%'
+              AND ITEM_NM NOT LIKE '%%미수%%'
+              {date_filter}
+            GROUP BY STD_DT, ITEM_CD, ITEM_NM, AST_CLSF_CD_NM, CURR_DS_CD
+        """
+        df = pd.read_sql(sql, conn, params=params)
+    finally:
+        conn.close()
+
+    if df.empty:
+        return df
+
+    # 분류는 distinct ITEM_CD 단위로 1회만 (행별 apply 대비 효율)
+    uniq = df[['ITEM_CD', 'ITEM_NM', 'AST_CLSF_CD_NM', 'CURR_DS_CD']].drop_duplicates('ITEM_CD')
+    cls_map = {}
+    for _, r in uniq.iterrows():
+        icd = str(r['ITEM_CD']).strip()
+        cls_map[icd] = _classify_6class({
+            'AST_CLSF_CD_NM': r['AST_CLSF_CD_NM'], 'ITEM_CD': icd,
+            'ITEM_NM': r['ITEM_NM'], 'CURR_DS_CD': r['CURR_DS_CD'],
+        })
+    df['자산군'] = df['ITEM_CD'].astype(str).str.strip().map(cls_map)
+    df['EVL_AMT'] = pd.to_numeric(df['EVL_AMT'], errors='coerce').fillna(0.0)
+    return df[['STD_DT', 'ITEM_CD', 'ITEM_NM', '자산군', 'EVL_AMT']]
+
+
+# 영역차트 6버킷 (사용자 합의 2026-06-15): 1국내주식 2해외주식 3국내채권 4해외채권
+# 5금/대체 6유동성. 1~5 아니면(FX·모펀드·현금성 등) 전부 유동성.
+_SIX_BUCKET_ORDER = ['국내주식', '해외주식', '국내채권', '해외채권', '금/대체', '유동성']
+_EIGHT_TO_SIX = {
+    '국내주식': '국내주식', '해외주식': '해외주식',
+    '국내채권': '국내채권', '해외채권': '해외채권',
+    '대체투자': '금/대체',
+    'FX': '유동성', '모펀드': '유동성', '유동성': '유동성',
+}
+
+
+def _collapse_to_6bucket(ac: str) -> str:
+    return _EIGHT_TO_SIX.get(str(ac), '유동성')
+
+
+@_ttl_cache()
+def load_weight_history_lookthrough(fund_code: str, start_date: str = None,
+                                    level: str = 'security') -> tuple:
+    """일별 비중 시계열 (FoF look-through, 6버킷). 거래내역 탭 영역차트용.
+
+    FoF(예: 07G04)는 모펀드 행을 자펀드(07G02/07G03) 보유종목으로 전개하되,
+    각 자펀드를 모펀드의 편입금액(EVL)으로 스케일 → 편입비율 반영 가중평균.
+
+    6버킷: 자산군은 국내주식/해외주식/국내채권/해외채권/금·대체/유동성으로 축소.
+      - level='asset': key=버킷
+      - level='security': 버킷 1~5 종목은 종목명 개별, 그 외(유동성·FX·모펀드)는 '유동성'으로 묶음
+    FX(달러선물)는 영역에서 유동성으로 흡수되며, 포지션은 load_fx_position_history 로 별도 표시.
+
+    Returns:
+        (DataFrame[date(YYYY-MM-DD), key, weight(%)], is_fof: bool, keys: list[str])
+        keys 는 (버킷 순서, 평균비중 desc) 정렬.
+    """
+    start_yyyymmdd = start_date.replace('-', '') if start_date else None
+    related = _get_관련_fund_list(fund_code)
+    children = [f for f in related if f != fund_code]
+    is_fof = bool(children)
+
+    parent = _load_holdings_range(fund_code, start_yyyymmdd)
+    if parent.empty:
+        return pd.DataFrame(), is_fof, []
+
+    is_mother = parent['ITEM_CD'].astype(str).str.startswith('0322800')
+    frames = [parent.loc[~is_mother, ['STD_DT', 'ITEM_NM', '자산군', 'EVL_AMT']]]
+
+    if is_fof:
+        mother = parent[is_mother].copy()
+        mother['child'] = mother['ITEM_CD'].apply(_extract_fund_code_from_item_cd)
+        mother_evl = (mother.groupby(['STD_DT', 'child'], as_index=False)['EVL_AMT']
+                      .sum().rename(columns={'EVL_AMT': 'mother_evl'}))
+        for child in children:
+            cdf = _load_holdings_range(child, start_yyyymmdd)
+            if cdf.empty:
+                continue
+            ctot = (cdf.groupby('STD_DT', as_index=False)['EVL_AMT']
+                    .sum().rename(columns={'EVL_AMT': 'child_tot'}))
+            me = mother_evl.loc[mother_evl['child'] == child, ['STD_DT', 'mother_evl']]
+            m = cdf.merge(ctot, on='STD_DT').merge(me, on='STD_DT')
+            if m.empty:
+                continue
+            # 자펀드 보유종목 EVL → 모펀드 편입금액 비율로 스케일
+            m['EVL_AMT'] = m['EVL_AMT'] * m['mother_evl'] / m['child_tot']
+            frames.append(m[['STD_DT', 'ITEM_NM', '자산군', 'EVL_AMT']])
+
+    allrows = pd.concat(frames, ignore_index=True)
+    if allrows.empty:
+        return pd.DataFrame(), is_fof, []
+
+    allrows['bucket'] = allrows['자산군'].map(_collapse_to_6bucket)
+    if level == 'asset':
+        allrows['key'] = allrows['bucket']
+    else:
+        # 버킷 1~5 → 종목명 개별, 유동성(=비1~5) → '유동성' 단일 밴드
+        allrows['key'] = allrows.apply(
+            lambda r: r['ITEM_NM'] if r['bucket'] != '유동성' else '유동성', axis=1)
+
+    agg = allrows.groupby(['STD_DT', 'key'], as_index=False)['EVL_AMT'].sum()
+    agg['_tot'] = agg.groupby('STD_DT')['EVL_AMT'].transform('sum')
+    agg = agg[agg['_tot'] > 0].copy()
+    agg['weight'] = (agg['EVL_AMT'] / agg['_tot'] * 100.0).round(3)
+    agg['date'] = pd.to_datetime(agg['STD_DT'].astype(str), format='%Y%m%d').dt.strftime('%Y-%m-%d')
+    out = (agg[['date', 'key', 'weight']]
+           .sort_values(['date', 'key']).reset_index(drop=True))
+
+    # keys 정렬: (버킷 순서, 평균비중 desc)
+    kb = allrows.groupby('key')['bucket'].first()
+    meanw = agg.groupby('key')['weight'].mean()
+
+    def _ord(k):
+        b = kb.get(k, '유동성')
+        bi = _SIX_BUCKET_ORDER.index(b) if b in _SIX_BUCKET_ORDER else 99
+        return (bi, -float(meanw.get(k, 0.0)))
+
+    keys = sorted(meanw.index, key=_ord)
+    return out, is_fof, keys
+
+
+@_ttl_cache()
+def load_fund_trades_lookthrough(fund_code: str, start_date: int, end_date: int) -> tuple:
+    """거래내역 (FoF look-through). 거래내역 탭용.
+
+    FoF(07G04)는 자펀드(07G02/07G03)의 거래내역으로 치환. 그 외는 자기 거래.
+    필터(사용자 합의): 콜론(call loan) 제외, 환전 제외. 발행/환매(BA정산)은 유지.
+
+    Returns:
+        (DataFrame[날짜, 펀드, 종목명, 자산군, 매수매도, 금액(억)],
+         funds_queried: list[str], is_fof: bool)
+    """
+    related = _get_관련_fund_list(fund_code)
+    children = [f for f in related if f != fund_code]
+    is_fof = bool(children)
+    funds_to_query = children if is_fof else [fund_code]
+
+    frames = []
+    for f in funds_to_query:
+        d = load_fund_trade_detail(f, start_date, end_date)
+        if d is None or d.empty:
+            continue
+        d = d.copy()
+        d['펀드'] = f
+        frames.append(d)
+
+    if not frames:
+        return pd.DataFrame(), funds_to_query, is_fof
+
+    out = pd.concat(frames, ignore_index=True)
+    # 콜론(MMF 롤링) + 환전(통화전환) 제외 — 포지션 관련만
+    mask_call = out['종목명'].astype(str).str.contains('콜론', na=False)
+    mask_fx_conv = out['매수매도'] == '환전'
+    out = out[~(mask_call | mask_fx_conv)]
+    out = out[['날짜', '펀드', '종목명', '자산군', '매수매도', '금액(억)']]
+    out = out.sort_values(['날짜', '펀드', '종목명']).reset_index(drop=True)
+    return out, funds_to_query, is_fof
+
+
+@_ttl_cache()
+def load_fx_position_history(fund_code: str, start_date: str = None) -> tuple:
+    """달러선물 등 FX 포지션 일별 순비중(%) 시계열. 매도(숏)=음수.
+
+    DWPM10530의 ast_clsf_cd_nm='달러선물' (또는 종목명 '달러 F') 행을 pos_ds_cd
+    부호 적용해 일별/계약별 합산. NAST_TAMT_AGNST_WGH 를 그대로 비중으로 사용.
+
+    Returns: (DataFrame[date, key(계약명), weight(%)], has_fx: bool)
+    """
+    start_yyyymmdd = start_date.replace('-', '') if start_date else None
+    related = _get_관련_fund_list(fund_code)
+    children = [f for f in related if f != fund_code]
+    funds = children if children else [fund_code]
+
+    conn = get_pandas_connection('dt')
+    try:
+        fmt = ','.join(['%s'] * len(funds))
+        params = list(funds)
+        date_filter = ""
+        if start_yyyymmdd:
+            date_filter = " AND std_dt >= %s"
+            params.append(start_yyyymmdd)
+        df = pd.read_sql(f"""
+            SELECT std_dt, item_nm, pos_ds_cd, nast_tamt_agnst_wgh AS wgh
+            FROM DWPM10530
+            WHERE fund_cd IN ({fmt}) AND imc_cd = '003228' AND evl_amt <> 0
+              AND (ast_clsf_cd_nm LIKE '%%달러선물%%' OR item_nm LIKE '%%달러 F%%')
+              {date_filter}
+        """, conn, params=params)
+    finally:
+        conn.close()
+
+    if df.empty:
+        return pd.DataFrame(), False
+
+    sign = df['pos_ds_cd'].astype(str).str.contains('매도').map({True: -1.0, False: 1.0})
+    df['weight'] = pd.to_numeric(df['wgh'], errors='coerce').fillna(0.0) * sign.fillna(1.0)
+    df['date'] = pd.to_datetime(df['std_dt'].astype(str), format='%Y%m%d').dt.strftime('%Y-%m-%d')
+    agg = (df.groupby(['date', 'item_nm'], as_index=False)['weight'].sum()
+           .rename(columns={'item_nm': 'key'}))
+    agg['weight'] = agg['weight'].round(3)
+    return agg.sort_values(['date', 'key']).reset_index(drop=True), True
+
+
+def _scip_covered_isins(isins: list) -> set:
+    """SCIP back_dataset 에 가격(ISIN)이 있는 종목 집합."""
+    isins = [s for s in isins if s]
+    if not isins:
+        return set()
+    conn = get_pandas_connection('SCIP')
+    try:
+        fmt = ','.join(['%s'] * len(isins))
+        df = pd.read_sql(
+            f"SELECT DISTINCT ISIN FROM back_dataset WHERE ISIN IN ({fmt})",
+            conn, params=isins)
+    finally:
+        conn.close()
+    return set(df['ISIN'].astype(str)) if not df.empty else set()
+
+
+@_ttl_cache()
+def load_fund_securities(fund_code: str) -> pd.DataFrame:
+    """수익률 차트용 보유종목 목록 (버킷 1~5, 최근일, 가격 커버리지 플래그).
+
+    Returns: DataFrame[item_cd, item_nm, bucket, weight, has_price] (버킷·비중 정렬)
+    """
+    df = load_fund_holdings_lookthrough(fund_code)
+    if df is None or df.empty:
+        return pd.DataFrame()
+    df = df.copy()
+    df['bucket'] = df['자산군'].map(_collapse_to_6bucket)
+    df = df[df['bucket'] != '유동성']
+    if df.empty:
+        return pd.DataFrame()
+
+    isins = [str(x).strip() for x in df['ITEM_CD'].dropna().unique()]
+    covered = _scip_covered_isins(isins)
+
+    out = pd.DataFrame({
+        'item_cd': df['ITEM_CD'].astype(str).str.strip(),
+        'item_nm': df['ITEM_NM'].astype(str),
+        'bucket': df['bucket'].astype(str),
+        'weight': pd.to_numeric(df.get('비중(%)'), errors='coerce').fillna(0.0),
+    })
+    out['has_price'] = out['item_cd'].isin(covered)
+    out['_b'] = out['bucket'].map(
+        lambda b: _SIX_BUCKET_ORDER.index(b) if b in _SIX_BUCKET_ORDER else 99)
+    out = (out.sort_values(['_b', 'weight'], ascending=[True, False])
+           .drop(columns='_b').reset_index(drop=True))
+    return out
+
+
+def _load_scip_return_index(item_cd: str, start_date: str = None) -> pd.DataFrame:
+    """SCIP FG Return(6) KRW 지수, 없으면 Total Return(39). 시작일=100 리베이스.
+
+    Returns: DataFrame[date(YYYY-MM-DD), value]
+    """
+    conn = get_pandas_connection('SCIP')
+    try:
+        params = [str(item_cd).strip()]
+        date_filter = ""
+        if start_date:
+            date_filter = " AND dp.timestamp_observation >= %s"
+            params.append(start_date)
+        df = pd.read_sql(f"""
+            SELECT DATE(dp.timestamp_observation) AS date, dp.dataseries_id AS dsid, dp.data
+            FROM back_datapoint dp
+            JOIN back_dataset d ON dp.dataset_id = d.id
+            WHERE d.ISIN = %s AND dp.dataseries_id IN (6, 39){date_filter}
+            ORDER BY dp.timestamp_observation
+        """, conn, params=params)
+    finally:
+        conn.close()
+
+    if df.empty:
+        return pd.DataFrame()
+
+    use = df[df['dsid'] == 6]
+    cur = 'KRW'
+    if use.empty:
+        use = df[df['dsid'] == 39]
+        cur = None
+    use = use.drop_duplicates('date', keep='last').sort_values('date').copy()
+    use['val'] = use['data'].apply(lambda b: _safe_parse_blob(b, cur))
+    use = use.dropna(subset=['val'])
+    if use.empty:
+        return pd.DataFrame()
+    base = float(use['val'].iloc[0])
+    if base == 0:
+        return pd.DataFrame()
+    return pd.DataFrame({
+        'date': pd.to_datetime(use['date']).dt.strftime('%Y-%m-%d'),
+        'value': (use['val'].astype(float) / base * 100.0).round(3),
+    }).reset_index(drop=True)
+
+
+def _safe_parse_blob(blob, currency):
+    try:
+        v = parse_data_blob(blob, currency) if currency else parse_data_blob(blob)
+        return float(v)
+    except Exception:
+        return None
+
+
+@_ttl_cache()
+def load_security_return_with_trades(fund_code: str, item_cd: str,
+                                     start_date: str, end_date: str) -> tuple:
+    """종목 수익률 지수(100 리베이스) + 매수/매도 마커. ('기타'/'환전' 마커 제외)
+
+    Returns: (DataFrame[date, value], trades: list[{date, side, amount}])
+    """
+    price = _load_scip_return_index(item_cd, start_date)
+
+    related = _get_관련_fund_list(fund_code)
+    children = [f for f in related if f != fund_code]
+    funds = children if children else [fund_code]
+    s_int = int(start_date.replace('-', ''))
+    e_int = int(end_date.replace('-', ''))
+
+    target = str(item_cd).strip()
+    trades = []
+    for f in funds:
+        d = load_fund_trade_detail(f, s_int, e_int)
+        if d is None or d.empty:
+            continue
+        d = d[d['item_cd'].astype(str).str.strip() == target]
+        for _, r in d.iterrows():
+            side = str(r['매수매도'])
+            if side in ('기타', '환전'):
+                continue
+            ds = str(r['날짜'])
+            trades.append({
+                'date': f"{ds[:4]}-{ds[4:6]}-{ds[6:8]}" if len(ds) == 8 else ds,
+                'side': side,
+                'amount': float(r['금액(억)']),
+            })
+    return price, trades
 
 
 def load_holdings_history_8class(fund_code: str, start_date: str = None) -> pd.DataFrame:
