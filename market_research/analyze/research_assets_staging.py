@@ -451,6 +451,61 @@ def run_p5_2_final(period: str) -> dict[str, Any]:
     return {"period": period, "traces": traces, "dir": str(STAGING_FINAL_DIR)}
 
 
+# ══════════════════════════════════════════════════════════════════
+# P5 운영 반영(promote) — final staging → 운영 03_Assets (5개만, 원자재금 skip)
+# ══════════════════════════════════════════════════════════════════
+
+OPERATIONAL_ASSETS_DIR = BASE_DIR / 'data' / 'wiki' / '03_Assets'
+
+# (staging_stem, staging_asset_class, 운영 stem, 운영 asset_class)
+# 원자재금 의도적 제외 — 운영 taxonomy 는 금/원유/기타 원자재 (P5.3 별도 정렬).
+PROMOTE_MAP = [
+    ("국내주식", "국내주식", "국내주식", "국내주식"),
+    ("해외주식", "해외주식", "해외주식", "해외주식"),
+    ("국내채권", "국내채권", "국내채권", "국내채권"),
+    ("해외채권", "해외채권", "해외채권", "해외채권"),
+    ("환율FX", "환율(FX)", "환율", "환율"),   # 환율FX → 환율.md overwrite, asset_class=환율
+]
+
+
+def _to_operational(text: str, period: str, st_asset: str, op_asset: str) -> str:
+    """staging 본문 → 운영용 metadata/제목 정리 (provenance 필드는 유지)."""
+    out = text
+    out = out.replace("source_type: asset_staging_clean", "source_type: asset_wiki")
+    out = out.replace("generated_by: research_assets_staging(P5.1)",
+                      "generated_by: research_assets_builder")
+    out = out.replace(" (P5.1 clean staging)", "")
+    if st_asset != op_asset:
+        out = out.replace(f"asset_class: {st_asset}", f"asset_class: {op_asset}")
+        out = out.replace(f"# {period} {st_asset} —", f"# {period} {op_asset} —")
+    return out
+
+
+def run_p5_promote(period: str) -> dict[str, Any]:
+    """final staging 5개 → 운영 03_Assets overwrite. 원자재금 skip. diff 반환."""
+    OPERATIONAL_ASSETS_DIR.mkdir(parents=True, exist_ok=True)
+    rows, diffs = [], []
+    for st_stem, st_asset, op_stem, op_asset in PROMOTE_MAP:
+        src = STAGING_FINAL_DIR / "03_Assets" / f"{period}_{st_stem}.md"
+        if not src.exists():
+            rows.append({"asset": op_asset, "overwritten": False, "note": "staging 없음"})
+            continue
+        new = _to_operational(src.read_text(encoding="utf-8"), period, st_asset, op_asset)
+        dst = OPERATIONAL_ASSETS_DIR / f"{period}_{op_stem}.md"
+        before = dst.read_text(encoding="utf-8") if dst.exists() else ""
+        dst.write_text(new, encoding="utf-8")
+        sec2 = new.split("## 2.")[-1].split("## 3.")[0] if "## 2." in new else ""
+        leak = _MARKET_NUM_RE.findall(sec2)
+        rows.append({"asset": op_asset, "file": dst.name, "overwritten": True,
+                     "source": "p5_assets_staging_final",
+                     "market_num_leak": len(leak)})
+        d = difflib.unified_diff(before.splitlines(), new.splitlines(),
+                                 fromfile=f"BEFORE/{dst.name}", tofile=f"AFTER/{dst.name}",
+                                 lineterm="", n=1)
+        diffs.append((op_asset, "\n".join(d)))
+    return {"period": period, "rows": rows, "diffs": diffs}
+
+
 def main() -> int:
     import argparse
     ap = argparse.ArgumentParser(description="P5 03_Assets staging (no operational write)")
