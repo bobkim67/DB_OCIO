@@ -217,6 +217,97 @@ def build_audit(month: str) -> dict[str, Any]:
             "n_claims": len(claims), "n_assets": len(agg)}
 
 
+_NUM_RE = re.compile(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?")
+
+
+def _nearest_rel_dist(fact_core: str, evidence: str) -> float | None:
+    """evidence 내 숫자 중 fact 와 가장 가까운 것의 상대거리. 없으면 None."""
+    try:
+        fv = float(fact_core)
+    except ValueError:
+        return None
+    if fv == 0:
+        return None
+    best = None
+    for m in _NUM_RE.findall(evidence or ""):
+        try:
+            ev = float(m.replace(",", ""))
+        except ValueError:
+            continue
+        d = abs(ev - fv) / abs(fv)
+        if best is None or d < best:
+            best = d
+    return best
+
+
+def _fact_category(fact: str, sentence: str) -> str:
+    s = sentence
+    # 날짜(YYYY.M / YYYY년 등) 우선 — 지수 맥락에 섞여도 날짜로
+    if re.fullmatch(r"20\d\d(?:\.\d+)?", fact) or any(u in fact for u in ("월", "일", "년")):
+        return "5_날짜이벤트"
+    if any(k in s for k in ("코스피", "코스닥", "지수", "포인트", "선 돌파", "최고치", "신고가", "나스닥", "S&P")) \
+            and ("," in fact or len(_norm_num(fact)) >= 4):
+        return "1_지수레벨"
+    if "%" in fact and any(k in s for k in ("CPI", "물가", "인플레", "금리", "수익률", "국채")):
+        return "2_금리물가"
+    if "%" in fact and any(k in s for k in ("수출", "증가", "성장", "YoY")):
+        return "3_수출성장"
+    if any(k in s for k in ("법안", "법", "규제", "정책", "클래리티", "제도화")):
+        return "4_정책법안"
+    if any(u in fact for u in ("월", "일", "년")) or re.search(r"20\d\d", fact):
+        return "5_날짜이벤트"
+    return "9_기타수치"
+
+
+def unsupported_fact_report(month: str) -> list[dict]:
+    """우선순위 카테고리별 unsupported hard fact 리스트 (실제 과장 후보 중심)."""
+    claims = load_research_claims(month)
+    agg = aggregate_by_asset(claims)
+    ev_index = build_evidence_index(month)
+    # asset 별 표시(displayed) claim_id set (09 §4/§2 노출분)
+    displayed: dict[str, set] = {}
+    asset_of: dict[str, str] = {}
+    for asset, a in agg.items():
+        shown = set()
+        for c in (a.get("broker_claims") or [])[:12] + (a.get("dissent") or [])[:8]:
+            shown.add(c.get("claim_id"))
+        displayed[asset] = shown
+        for c in a.get("broker_claims", []) + a.get("monygeek_claims", []):
+            asset_of[c.get("claim_id")] = asset
+
+    rows: list[dict] = []
+    for c in claims:
+        g = check_claim_grounding(c, ev_index)
+        if not g["unsupported"]:
+            continue
+        sentence = _claim_text_blob(c)
+        ev = " ".join(ev_index.get(str(e), "")
+                      for e in (c.get("supporting_evidence_ids") or []))
+        cid = c.get("claim_id")
+        asset = asset_of.get(cid, "(unrouted)")
+        for fact in g["unsupported"]:
+            rel = _nearest_rel_dist(_norm_num(fact), ev)
+            # near match(≤3%) → 반올림/패러프레이즈 가능성, else 실제 과장 후보
+            if rel is not None and rel <= 0.03:
+                verdict = "LIKELY_ROUNDING"
+            elif rel is None:
+                verdict = "NO_NUM_IN_EV"
+            else:
+                verdict = "REAL_CANDIDATE"
+            rows.append({
+                "category": _fact_category(fact, sentence),
+                "claim_id": (cid or "").split(":")[-1],
+                "asset_class": asset,
+                "fact": fact,
+                "verdict": verdict,
+                "displayed": "Y" if cid in displayed.get(asset, set()) else "N",
+                "sentence": sentence[:120],
+                "evidence": ev[:160],
+            })
+    rows.sort(key=lambda r: (r["category"], r["verdict"] != "REAL_CANDIDATE"))
+    return rows
+
+
 def write_audit_csv(month: str, audit: dict[str, Any]) -> Path:
     AUDIT_DIR.mkdir(parents=True, exist_ok=True)
     p = AUDIT_DIR / f"{month}_audit_sheet.csv"
