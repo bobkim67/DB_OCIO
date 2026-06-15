@@ -388,12 +388,80 @@ def run_p5_1_cleanup(period: str, *, llm_call=None) -> dict[str, Any]:
     return {"period": period, "traces": traces, "dir": str(STAGING_CLEAN_DIR)}
 
 
+# ══════════════════════════════════════════════════════════════════
+# P5.2 deterministic final cleanup — 문자열 치환만(LLM 0, variance 0)
+# ══════════════════════════════════════════════════════════════════
+
+STAGING_FINAL_DIR = BASE_DIR / 'debug' / 'wiki' / 'p5_assets_staging_final'
+
+# (find, replace) — 순서 중요(구체 → 일반). LLM 재작성 없이 deterministic.
+P52_REPLACEMENTS: list[tuple[str, str]] = [
+    # 오타
+    ("포지셍", "포지셔닝"),
+    ("포지셀링", "포지셔닝"),
+    ("프리미염", "프리미엄"),
+    # research-only 표현 정리
+    ("지정학 뉴스 플로우", "지정학 리스크 변화"),
+    ("뉴스 플로우", "리스크 변화"),
+    # §2 수치성 표현 일반화 (국내주식)
+    ("핵심 수출품목의 이중자릿수 증가율 지속", "핵심 수출품목의 개선세 지속"),
+    ("이중자릿수 증가율 지속", "개선세 지속"),
+    ("이중자릿수 증가율", "개선세"),
+    ("무역수지 200억 달러 이상 유지", "무역수지 개선 흐름"),
+    ("200억 달러 이상 유지", "개선 흐름"),
+]
+
+
+def run_p5_2_final(period: str) -> dict[str, Any]:
+    """clean staging → deterministic 치환 → final staging. LLM 0, 운영 미반영."""
+    src = STAGING_CLEAN_DIR / "03_Assets"
+    (STAGING_FINAL_DIR / "03_Assets").mkdir(parents=True, exist_ok=True)
+    traces, diffs = [], []
+    for p in sorted(src.glob(f"{period}_*.md")):
+        before = p.read_text(encoding="utf-8")
+        after = before
+        applied = []
+        for find, repl in P52_REPLACEMENTS:
+            n = after.count(find)
+            if n:
+                after = after.replace(find, repl)
+                applied.append({"find": find, "repl": repl, "n": n})
+        # §2 conviction market-num leak 재검증
+        sec2 = (after.split("## 2.")[-1].split("## 3.")[0]
+                if "## 2." in after else "")
+        leak = _MARKET_NUM_RE.findall(sec2)
+        (STAGING_FINAL_DIR / "03_Assets" / p.name).write_text(after, encoding="utf-8")
+        traces.append({"file": p.name, "replacements": applied,
+                       "conviction_market_num_leak": len(leak)})
+        if before != after:
+            d = difflib.unified_diff(before.splitlines(), after.splitlines(),
+                                     fromfile=f"clean/{p.name}", tofile=f"final/{p.name}",
+                                     lineterm="", n=1)
+            diffs.append("\n".join(d))
+    (STAGING_FINAL_DIR / "p5_assets_final_trace.json").write_text(
+        json.dumps({"period": period, "replacements": P52_REPLACEMENTS, "traces": traces},
+                   ensure_ascii=False, indent=2), encoding="utf-8")
+    (STAGING_FINAL_DIR / "p5_assets_final_diff.md").write_text(
+        f"# P5.2 final deterministic cleanup diff ({period}) — 운영 미반영\n\n"
+        + "\n\n---\n\n".join(f"```diff\n{d}\n```" for d in diffs if d.strip()),
+        encoding="utf-8")
+    return {"period": period, "traces": traces, "dir": str(STAGING_FINAL_DIR)}
+
+
 def main() -> int:
     import argparse
     ap = argparse.ArgumentParser(description="P5 03_Assets staging (no operational write)")
     ap.add_argument("period")
     ap.add_argument("--clean", action="store_true", help="P5.1 cleanup staging")
+    ap.add_argument("--final", action="store_true", help="P5.2 deterministic final cleanup")
     args = ap.parse_args()
+    if args.final:
+        r = run_p5_2_final(args.period)
+        print(f"[P5.2 final] {args.period} → {r['dir']}")
+        for t in r["traces"]:
+            reps = ", ".join(f"{x['find']}→{x['repl']}({x['n']})" for x in t["replacements"])
+            print(f"  {t['file']}: leak={t['conviction_market_num_leak']} | {reps or '(변경없음)'}")
+        return 0
     if args.clean:
         r = run_p5_1_cleanup(args.period)
         print(f"[P5.1 clean] {args.period} → {r['dir']}")
