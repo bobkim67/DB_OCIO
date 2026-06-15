@@ -1,0 +1,290 @@
+{
+  "schema_version": "1.0.0",
+  "period": "2026-05",
+  "saved_at": "2026-06-01T19:11:45",
+  "source": "daily_update_r9a4_may2026_research_only",
+  "extractor_version": "r9a.4-haiku",
+  "target_suffix": null,
+  "claims": [
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-05:1928d333c7",
+      "period": "2026-05",
+      "source_evidence_ids": [
+        "e139211a32cf",
+        "9bf22d9b96b7",
+        "b92aa9a4eea3",
+        "a28c98a818fb",
+        "3246e9910158"
+      ],
+      "claim_text": "반도체 섹터(삼성전자·SK하이닉스) 월초 정기적 강세, 국내 메모리반도체 경쟁력으로 KOSPI 8,000선 상향 견인",
+      "claim_type": "asset_to_fund",
+      "affected_assets": [
+        {
+          "asset_class": "국내주식",
+          "direction": "positive"
+        }
+      ],
+      "causal_chain": [
+        {
+          "source": "AI 수요 증가",
+          "target": "메모리반도체 호황",
+          "relation": "supports"
+        },
+        {
+          "source": "메모리반도체 수익성 개선",
+          "target": "삼성전자·SK하이닉스 주가",
+          "relation": "raises"
+        },
+        {
+          "source": "반도체 대형주 강세",
+          "target": "KOSPI 상승",
+          "relation": "raises"
+        }
+      ],
+      "direction": "positive",
+      "horizon": "medium",
+      "confidence": 0.82,
+      "salience": 0.78,
+      "supporting_evidence_ids": [
+        "e139211a32cf",
+        "9bf22d9b96b7",
+        "b92aa9a4eea3",
+        "a28c98a818fb",
+        "3246e9910158"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.4-haiku",
+      "extraction_method": "llm",
+      "warnings": [],
+      "canonical_group_id": "group:2026-05:842cf4de51",
+      "promotion_rule": "C"
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-05:e406f3369c",
+      "period": "2026-05",
+      "source_evidence_ids": [
+        "3ed936699966",
+        "085099a695f0",
+        "2e92d9f0c7f4"
+      ],
+      "claim_text": "5월 중순부터 수요측 인플레이션 인정으로 금리상승 압력 강화, 긴축 터널 길어질 가능성",
+      "claim_type": "event_to_macro",
+      "affected_assets": [
+        {
+          "asset_class": "국내채권",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "국내주식",
+          "direction": "negative"
+        },
+        {
+          "asset_class": "해외채권",
+          "direction": "negative"
+        }
+      ],
+      "causal_chain": [
+        {
+          "source": "수요측 인플레이션 인정",
+          "target": "금리인상 기대",
+          "relation": "raises"
+        },
+        {
+          "source": "금리인상 기대 강화",
+          "target": "채권가격",
+          "relation": "lowers"
+        },
+        {
+          "source": "금리인상 기대 강화",
+          "target": "주식 PER",
+          "relation": "lowers"
+        }
+      ],
+      "direction": "negative",
+      "horizon": "medium",
+      "confidence": 0.89,
+      "salience": 0.89,
+      "supporting_evidence_ids": [
+        "3ed936699966",
+        "085099a695f0",
+        "2e92d9f0c7f4"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.4-haiku",
+      "extraction_method": "llm",
+      "warnings": [],
+      "canonical_group_id": "group:2026-05:701c952b8a",
+      "promotion_rule": "C"
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-05:ff2b22b021",
+      "period": "2026-05",
+      "source_evidence_ids": [
+        "20d0943c6e3a"
+      ],
+      "claim_text": "영농형 태양광법 통과로 재생에너지 확대, 태양광 연 10GW 시대 진입",
+      "claim_type": "event_to_macro",
+      "affected_assets": [
+        {
+          "asset_class": "원자재금",
+          "direction": "positive"
+        }
+      ],
+      "causal_chain": [
+        {
+          "source": "영농형 태양광법 통과",
+          "target": "재생에너지 투자",
+          "relation": "raises"
+        },
+        {
+          "source": "재생에너지 확대",
+          "target": "실리콘/구리 수요",
+          "relation": "raises"
+        }
+      ],
+      "direction": "positive",
+      "horizon": "long",
+      "confidence": 0.66,
+      "salience": 0.66,
+      "supporting_evidence_ids": [
+        "20d0943c6e3a"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.4-haiku",
+      "extraction_method": "llm",
+      "warnings": [],
+      "canonical_group_id": "group:2026-05:7deee0555b",
+      "promotion_rule": "C"
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-05:4f4afc39ae",
+      "period": "2026-05",
+      "source_evidence_ids": [
+        "7adf114a2f05"
+      ],
+      "claim_text": "미국 CPI 상승에도 금융시장 파급 효과 제한적, 인플레이션 기대심리 아직 관리 중",
+      "claim_type": "counterpoint",
+      "affected_assets": [
+        {
+          "asset_class": "해외주식",
+          "direction": "neutral"
+        },
+        {
+          "asset_class": "해외채권",
+          "direction": "neutral"
+        }
+      ],
+      "causal_chain": [
+        {
+          "source": "미국 CPI 상승",
+          "target": "글로벌 인플레이션 우려",
+          "relation": "pressures"
+        },
+        {
+          "source": "인플레이션 우려",
+          "target": "금융시장 충격",
+          "relation": "weakens"
+        }
+      ],
+      "direction": "neutral",
+      "horizon": "short",
+      "confidence": 0.69,
+      "salience": 0.69,
+      "supporting_evidence_ids": [
+        "7adf114a2f05"
+      ],
+      "counter_evidence_ids": [],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.4-haiku",
+      "extraction_method": "llm",
+      "warnings": [],
+      "canonical_group_id": "group:2026-05:fc339d7da6",
+      "promotion_rule": "C"
+    },
+    {
+      "schema_version": "1.0.0",
+      "claim_id": "claim:2026-05:bdd7f667c8",
+      "period": "2026-05",
+      "source_evidence_ids": [
+        "4770fa4bda7c",
+        "2d013dba702f"
+      ],
+      "claim_text": "중동 불안 및 지정학적 리스크로 달러 상승, 원/달러 환율 추가 상승 압력",
+      "claim_type": "event_to_macro",
+      "affected_assets": [
+        {
+          "asset_class": "환율(FX)",
+          "direction": "positive"
+        },
+        {
+          "asset_class": "국내주식",
+          "direction": "negative"
+        }
+      ],
+      "causal_chain": [
+        {
+          "source": "중동 지정학적 긴장",
+          "target": "안전자산 선호",
+          "relation": "supports"
+        },
+        {
+          "source": "안전자산 선호",
+          "target": "달러 수요",
+          "relation": "raises"
+        },
+        {
+          "source": "달러 강세",
+          "target": "원/달러 환율",
+          "relation": "raises"
+        }
+      ],
+      "direction": "positive",
+      "horizon": "short",
+      "confidence": 0.78,
+      "salience": 0.69,
+      "supporting_evidence_ids": [
+        "4770fa4bda7c",
+        "2d013dba702f"
+      ],
+      "counter_evidence_ids": [
+        "7751b00ef219"
+      ],
+      "linked_wiki_pages": [],
+      "extractor_version": "r9a.4-haiku",
+      "extraction_method": "llm",
+      "warnings": [],
+      "canonical_group_id": "group:2026-05:a2aed8d416",
+      "promotion_rule": "C"
+    }
+  ],
+  "stats": {
+    "total": 5,
+    "promoted": 5,
+    "skipped": 0,
+    "by_asset_class": {
+      "국내주식": 3,
+      "국내채권": 1,
+      "원자재금": 1,
+      "해외주식": 1,
+      "해외채권": 2,
+      "환율(FX)": 1
+    },
+    "by_horizon": {
+      "long": 1,
+      "medium": 2,
+      "short": 2
+    },
+    "by_claim_type": {
+      "asset_to_fund": 1,
+      "counterpoint": 1,
+      "event_to_macro": 3
+    }
+  }
+}
