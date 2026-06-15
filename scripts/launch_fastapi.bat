@@ -20,7 +20,9 @@ echo ====================================
 echo  FastAPI    http://127.0.0.1:!API_PORT!
 echo  Stop with Ctrl+C
 echo ====================================
-api\.venv\Scripts\python.exe -m uvicorn api.main:app --host 127.0.0.1 --port !API_PORT! --reload
+REM Watch only code dirs (api/modules/config) so market_research output churn
+REM does not restart the server and wipe the in-memory warmup/cache.
+api\.venv\Scripts\python.exe -m uvicorn api.main:app --host 127.0.0.1 --port !API_PORT! --reload --reload-dir api --reload-dir modules --reload-dir config
 echo.
 echo [server stopped]
 pause
