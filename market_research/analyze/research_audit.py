@@ -259,19 +259,37 @@ def _fact_category(fact: str, sentence: str) -> str:
     return "9_기타수치"
 
 
+def _search_pool(fact_core: str, pool_norm: dict[str, str]) -> list[str]:
+    """source pool(월 전체 evidence) 에서 fact 숫자코어를 포함한 evidence_id 목록."""
+    if not fact_core or len(fact_core) < 2:
+        return []
+    return [eid for eid, txt in pool_norm.items() if fact_core in txt]
+
+
 def unsupported_fact_report(month: str) -> list[dict]:
-    """우선순위 카테고리별 unsupported hard fact 리스트 (실제 과장 후보 중심)."""
+    """unsupported hard fact triage (citation remap 우선, DROP 최소화).
+
+    판정(사용자 2026-06-15 규칙):
+    - FIX_CITATION       : fact 가 source pool 의 *다른* evidence 에 실재 → 올바른
+                           evidence_id 로 재연결 (DROP 안 함).
+    - NEED_SOURCE_ATTACH : fact 가 pool 어디에도 없음 → 운영 narrative 보류,
+                           source 부착 후 사용 (확인 전 UNSUPPORTED 단정 안 함).
+    - ROUND_UP_REVIEW    : 지수 'N,000선 돌파' 인데 pool 엔 그 레벨 없고 더 낮은
+                           근접 레벨만 → round-up 금지, evidence 표현으로 낮춤.
+    - OK_ROUNDING        : claim 자체 evidence 에 near(≤1%) — 미세 반올림(5.18 vs 5.198).
+    """
     claims = load_research_claims(month)
     agg = aggregate_by_asset(claims)
     ev_index = build_evidence_index(month)
-    # asset 별 표시(displayed) claim_id set (09 §4/§2 노출분)
+    # pool: 월 전체 evidence (콤마/공백 제거 normalized)
+    pool_norm = {eid: re.sub(r"[,\s]", "", txt) for eid, txt in ev_index.items()}
+
     displayed: dict[str, set] = {}
     asset_of: dict[str, str] = {}
     for asset, a in agg.items():
-        shown = set()
-        for c in (a.get("broker_claims") or [])[:12] + (a.get("dissent") or [])[:8]:
-            shown.add(c.get("claim_id"))
-        displayed[asset] = shown
+        displayed[asset] = {c.get("claim_id")
+                            for c in (a.get("broker_claims") or [])[:12]
+                            + (a.get("dissent") or [])[:8]}
         for c in a.get("broker_claims", []) + a.get("monygeek_claims", []):
             asset_of[c.get("claim_id")] = asset
 
@@ -281,30 +299,40 @@ def unsupported_fact_report(month: str) -> list[dict]:
         if not g["unsupported"]:
             continue
         sentence = _claim_text_blob(c)
-        ev = " ".join(ev_index.get(str(e), "")
-                      for e in (c.get("supporting_evidence_ids") or []))
+        own_ev = " ".join(ev_index.get(str(e), "")
+                          for e in (c.get("supporting_evidence_ids") or []))
         cid = c.get("claim_id")
         asset = asset_of.get(cid, "(unrouted)")
         for fact in g["unsupported"]:
-            rel = _nearest_rel_dist(_norm_num(fact), ev)
-            # near match(≤3%) → 반올림/패러프레이즈 가능성, else 실제 과장 후보
-            if rel is not None and rel <= 0.03:
-                verdict = "LIKELY_ROUNDING"
-            elif rel is None:
-                verdict = "NO_NUM_IN_EV"
+            core = _norm_num(fact)
+            cat = _fact_category(fact, sentence)
+            pool_hits = _search_pool(core, pool_norm)
+            rel_own = _nearest_rel_dist(core, own_ev)
+            # 지수 round-number(코스피 7,000/8,000선)는 period 근거 확인 우선 (사용자 규칙4)
+            if cat == "1_지수레벨" and re.fullmatch(r"[78],?000", fact):
+                verdict = "ROUND_UP_REVIEW"
+            elif rel_own is not None and rel_own <= 0.01:
+                verdict = "OK_ROUNDING"
+            elif pool_hits:
+                verdict = "FIX_CITATION"
             else:
-                verdict = "REAL_CANDIDATE"
+                verdict = "NEED_SOURCE_ATTACH"
             rows.append({
-                "category": _fact_category(fact, sentence),
+                "category": cat,
                 "claim_id": (cid or "").split(":")[-1],
                 "asset_class": asset,
                 "fact": fact,
                 "verdict": verdict,
+                "in_pool": "Y" if pool_hits else "N",
+                "candidate_evidence_ids": ";".join(pool_hits[:5]),
                 "displayed": "Y" if cid in displayed.get(asset, set()) else "N",
                 "sentence": sentence[:120],
-                "evidence": ev[:160],
+                "own_evidence": own_ev[:140],
             })
-    rows.sort(key=lambda r: (r["category"], r["verdict"] != "REAL_CANDIDATE"))
+    _vorder = {"FIX_CITATION": 0, "ROUND_UP_REVIEW": 1, "NEED_SOURCE_ATTACH": 2,
+               "OK_ROUNDING": 3}
+    rows.sort(key=lambda r: (r["displayed"] != "Y", r["category"],
+                             _vorder.get(r["verdict"], 9)))
     return rows
 
 
