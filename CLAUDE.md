@@ -634,3 +634,36 @@ R Shiny UI의 `classification_method` 드롭다운을 Python에 이식. `solutio
   - `debug_pa_R_intermediate.csv` — R 간소화 중간 데이터 (848rows)
   - `debug_fx_*.R` — FX split 환율/환산_adjust 디버깅
   - `debug_nast.R` — NAST_AMT 모자구조 확인
+
+## 거래내역 탭 (2026-06-15, React+FastAPI / origin/main 머지)
+
+DashboardPage 신규 탭 "거래내역" — 거래내역 조회 + 일별 비중 영역차트 + FX 포지션 + 종목 수익률을 한 탭에 통합. (Streamlit 무관, web/+api/ 전용)
+
+### API (`api/.../transactions.py` — 라우터/서비스/스키마)
+| 엔드포인트 | 내용 |
+|-----------|------|
+| `GET /funds/{code}/transactions?start&end` | 거래내역. FoF는 자펀드 치환, 콜론·환전 제외, 발행/환매(BA정산) 라벨 |
+| `GET /funds/{code}/weight-history?start&level` | 일별 비중(asset/security), 6버킷, FoF 가중 |
+| `GET /funds/{code}/fx-position?start` | 달러선물 순비중(매도=음수). 4JM12만 has_fx |
+| `GET /funds/{code}/securities` | 보유종목(버킷1~5, 가격커버 플래그) — 수익률 드롭다운용 |
+| `GET /funds/{code}/security-returns?item_cd&item_nm&start&end` | SCIP FG Return 지수(시작=100) + 매수/매도 마커 + 보조축 편입비중 |
+
+### 데이터 로더 (`modules/data_loader.py`)
+- `load_fund_trades_lookthrough`, `load_weight_history_lookthrough`, `load_fx_position_history`,
+  `load_fund_securities`, `load_security_return_with_trades`, `_load_holdings_range`
+- `_derive_trade_side(bs, tr_nm)`: M/D 우선 → DWCI10160 거래코드명으로 발행/환매(BA정산)·환전 판별
+- `_collapse_to_6bucket`: 국내·해외주식 / 국내·해외채권 / 금·대체 / 유동성 (FX·모펀드→유동성)
+- **TTL 캐시**: `@_ttl_cache(6h)` + `_get_관련_fund_list` `lru_cache` → weight-history 3.6s→0.03s.
+  단일 uvicorn 인메모리(워밍업 없음 — 첫 콜드 1회만 느림)
+
+### 거래코드 의미 (DWPM10520 buy_sell_ds_cd=None)
+- B060/B062 = ETF발행/환매 BA정산(qty=0 정산성) → '발행(BA정산)'/'환매(BA정산)' 라벨 유지
+- B650/B652 = 환전, 콜론 = MMF → 포지션 뷰에서 제외
+
+### 프론트 (`web/src/`)
+- `tabs/TransactionsTab.tsx` + charts `WeightAreaChart`/`FxPositionChart`/`SecurityReturnChart`
+- 거래내역: MTD 기본 + radio(1/3/6M·연초)+custom date. 영역차트: 자산군↔종목 토글, YTD 기본, 종목 상위N+유동성묶음
+- 종목 수익률 = **종목 자체 수익률(편입비중 미반영)** + 보조축 비중 파스텔 레이어. 디폴트=비중 최상위 종목
+
+### 미완
+- 콜드 로드 워밍업/사전산출 미구현(옵션3=TTL만). 시각검증 08K88/07G04/4JM12만.
