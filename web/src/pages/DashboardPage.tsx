@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useFunds } from "../hooks/useFunds";
 import LoadingBar from "../components/common/LoadingBar";
+import WarmupBanner from "../components/common/WarmupBanner";
 import OverviewTab from "../tabs/OverviewTab";
 import HoldingsTab from "../tabs/HoldingsTab";
 import TransactionsTab from "../tabs/TransactionsTab";
@@ -80,6 +81,8 @@ export default function DashboardPage() {
           </select>
         </label>
       </header>
+
+      <WarmupBanner />
 
       <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
         {tabBtn("overview", "Overview")}
