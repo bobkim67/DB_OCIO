@@ -46,27 +46,30 @@ def test_claim_grounding_supported():
 
 def test_draft_label_crypto_park():
     from market_research.analyze.research_audit import _draft_label
-    assert _draft_label("기타", ["크립토"], ["US"], set()) == ("기타", "DROP_OR_PARK")
-    assert _draft_label("해외주식", ["크립토"], ["US"], set())[1] == "DROP_OR_PARK"
+    assert _draft_label("기타", ["크립토"], ["US"], set(), set()) == ("기타", "DROP_OR_PARK")
+    assert _draft_label("해외주식", ["크립토"], ["US"], set(), set())[1] == "DROP_OR_PARK"
 
 
 def test_draft_label_region_mismatch():
     from market_research.analyze.research_audit import _draft_label
     # 국내채권인데 KR 없음(US 매크로) → 해외채권 FIX_ASSET
-    assert _draft_label("국내채권", ["금리_채권"], ["US"], set()) == ("해외채권", "FIX_ASSET")
+    assert _draft_label("국내채권", ["금리_채권"], ["US"], set(), set()) == ("해외채권", "FIX_ASSET")
     # 해외주식인데 KR 단독 → 국내주식 FIX_ASSET
-    assert _draft_label("해외주식", [], ["KR"], set()) == ("국내주식", "FIX_ASSET")
+    assert _draft_label("해외주식", [], ["KR"], set(), set()) == ("국내주식", "FIX_ASSET")
 
 
-def test_draft_label_low_conviction_and_pass():
+def test_draft_label_low_conviction_dynamic():
     from market_research.analyze.research_audit import _draft_label
-    assert _draft_label("환율(FX)", [], ["US"], set())[1] == "LOW_CONVICTION"
-    assert _draft_label("국내주식", ["테크_AI_반도체"], ["KR"], set()) == ("국내주식", "PASS")
+    # low_conv set 은 동적 주입 — 하드코딩 아님
+    assert _draft_label("환율(FX)", [], ["US"], set(), {"환율(FX)"})[1] == "LOW_CONVICTION"
+    # 같은 자산이라도 low_conv set 에 없으면 PASS (월별 strength 따라 가변)
+    assert _draft_label("환율(FX)", [], ["US"], set(), set())[1] == "PASS"
+    assert _draft_label("국내주식", ["테크_AI_반도체"], ["KR"], set(), set()) == ("국내주식", "PASS")
 
 
 def test_draft_label_unsupported_fact():
     from market_research.analyze.research_audit import _draft_label
-    assert _draft_label("국내주식", [], ["KR"], {"NEED_SOURCE_ATTACH"})[1] == "UNSUPPORTED_FACT"
+    assert _draft_label("국내주식", [], ["KR"], {"NEED_SOURCE_ATTACH"}, set())[1] == "UNSUPPORTED_FACT"
 
 
 def test_stratified_sample_diversity():

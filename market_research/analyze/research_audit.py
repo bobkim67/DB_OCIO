@@ -338,12 +338,12 @@ def unsupported_fact_report(month: str) -> list[dict]:
     return rows
 
 
-_LOW_CONV_ASSETS = {"원자재금", "환율(FX)"}
-
-
 def _draft_label(asset: str, sectors: list, regions: list,
-                 fact_verdicts: set) -> tuple[str, str]:
-    """(manual_asset_class, pass_fail) 초안 결정. 순수 함수."""
+                 fact_verdicts: set, low_conv_assets: set) -> tuple[str, str]:
+    """(manual_asset_class, pass_fail) 초안 결정. 순수 함수.
+
+    low_conv_assets: 해당 월 strength<LOW_CONVICTION_STRENGTH 자산 set (동적 — 하드코딩 X).
+    """
     if ("크립토" in (sectors or [])) or asset == "기타":
         return "기타", "DROP_OR_PARK"
     kr_asset = asset in ("국내주식", "국내채권")
@@ -354,7 +354,7 @@ def _draft_label(asset: str, sectors: list, regions: list,
         return "국내" + asset[2:], "FIX_ASSET"
     if "NEED_SOURCE_ATTACH" in (fact_verdicts or set()):
         return asset, "UNSUPPORTED_FACT"
-    if asset in _LOW_CONV_ASSETS:
+    if asset in (low_conv_assets or set()):
         return asset, "LOW_CONVICTION"
     return asset, "PASS"
 
@@ -366,11 +366,15 @@ def draft_audit_labels(month: str) -> list[dict]:
     - 크립토(theme 에 '크립토')/기타 → manual=기타, DROP_OR_PARK
     - region↔asset 불일치(국내자산인데 KR 없음 / 해외자산인데 KR 단독) → FIX_ASSET
     - NEED_SOURCE_ATTACH hard fact 보유 → UNSUPPORTED_FACT (DB_LEVEL/FIX_CITATION 은 PASS)
-    - LOW-CONV 자산(원자재금/환율) → LOW_CONVICTION
+    - strength<LOW_CONVICTION_STRENGTH 자산(동적 계산) → LOW_CONVICTION
     - 그 외 → PASS. manual_stance 는 auto_stance default(검수 시 조정).
     """
     audit = build_audit(month)
     claims = {(_split(c.get("claim_id"))): c for c in load_research_claims(month)}
+    # low-conviction 자산은 해당 월 consensus_strength 로 동적 결정 (하드코딩 X)
+    agg = aggregate_by_asset(load_research_claims(month))
+    low_conv = {asset for asset, a in agg.items()
+                if (a.get("consensus_strength") or 0) < LOW_CONVICTION_STRENGTH}
     # claim_id(short) → worst hard-fact verdict
     fact_verdicts: dict[str, set] = {}
     for r in unsupported_fact_report(month):
@@ -385,7 +389,7 @@ def draft_audit_labels(month: str) -> list[dict]:
         regions = c.get("regions") or []
         verds = fact_verdicts.get(cid, set())
 
-        manual_asset, pass_fail = _draft_label(asset, sectors, regions, verds)
+        manual_asset, pass_fail = _draft_label(asset, sectors, regions, verds, low_conv)
 
         row["manual_asset_class"] = manual_asset
         row["manual_stance"] = row["auto_stance"]   # default, 검수 조정
