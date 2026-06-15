@@ -103,3 +103,6 @@ market_research/data/claims/*.r9a4-replay.json
 market_research/data/claims/*.r9a4-c5replay.json
 market_research/data/claims/_promotion_quality.r9a4-replay.jsonl
 market_research/data/claims/_promotion_quality.r9a4-c5replay.jsonl
+
+# wiki_from_naver_research — research claim staging (paid 재생성, 운영 claim 과 분리)
+market_research/data/claims/*.research.json
