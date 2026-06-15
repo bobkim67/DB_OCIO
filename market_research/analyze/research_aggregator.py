@@ -54,21 +54,50 @@ def _base_primary(claim: dict) -> str | None:
     return None
 
 
+# 미국 변수가 한국 자산에 '직접 영향'을 준다고 명시된 claim 판별 키워드.
+# 있으면 비-KR region 이라도 국내 primary 유지(driver_region=US/overseas 로 구분).
+_KR_IMPACT_KW = (
+    "코스피", "코스닥", "한국", "국내", "원화", "원/달러", "원·달러", "국고채",
+    "한국은행", "한은", "금통위", "kospi", "kosdaq", "krw", "외국인", "삼성전자",
+    "sk하이닉스", "하이닉스", "대한민국",
+)
+
+
+def _claim_blob(claim: dict) -> str:
+    return " ".join(str(claim.get(k) or "")
+                    for k in ("claim_text", "view", "rationale_text")).lower()
+
+
+def claim_driver_region(claim: dict) -> str | None:
+    """claim 의 driver region. regions 없으면 None.
+    KR 단독→KR / KR+해외→mixed / US 포함 비-KR→US / 그 외 비-KR→overseas."""
+    rg = claim.get("regions") or []
+    if not rg:
+        return None
+    if "KR" in rg:
+        return "KR" if len(rg) == 1 else "mixed"
+    return "US" if "US" in rg else "overseas"
+
+
 def _primary(claim: dict) -> str | None:
-    """research routing 정책 적용 primary (사용자 D4 결정, 2026-06-15):
+    """research routing 정책 (사용자 D4 결정 + region-aware rerouting, 2026-06-15):
     - 크립토(sectors='크립토') → '기타' (OCIO 8자산 밖, 채권/현금성 오염 방지).
-    - 크레딧(HY/신용) → region 으로 채권 슬리브 분리: KR→국내채권, 그 외→해외채권
-      (크레딧 = 미국 HY/회사채 자산군이라 국내/해외 회사채로 귀속).
-    - 현금성: 크립토 제거 후 잔여(단기금리/유동성)만 유지.
+    - 크레딧(HY/신용) → region 채권 슬리브: KR→국내채권, 그 외→해외채권.
+    - ★region-aware: 국내자산(국내주식/국내채권)인데 regions 가 비-KR 이고 KR 직접영향
+      명시(_KR_IMPACT_KW)도 없으면 → 해외자산으로 reroute (US CPI/Fed/미국금리 등이
+      국내로 오는 오라우팅 차단). KR 영향 명시 claim 은 국내 유지(driver_region 로 구분).
+    - 현금성: 크립토 제거 후 잔여만.
     """
     base = _base_primary(claim)
-    # 크립토 = 기타 (base 무관, 우선 적용)
     if "크립토" in (claim.get("sectors") or []):
         return "기타"
-    # 크레딧 → 국내/해외 채권 슬리브
+    rg = claim.get("regions") or []
     if base == "크레딧":
-        rg = claim.get("regions") or []
-        return "국내채권" if "KR" in rg else "해외채권"
+        base = "국내채권" if "KR" in rg else "해외채권"
+    # region-aware rerouting (국내자산 + 비-KR region + KR 직접영향 미명시 → 해외)
+    if base in ("국내주식", "국내채권") and rg and "KR" not in rg:
+        if not any(kw in _claim_blob(claim) for kw in _KR_IMPACT_KW):
+            base = "해외" + base[2:]
     return base
 
 
@@ -84,6 +113,7 @@ def aggregate_by_asset(claims: list[dict]) -> dict[str, dict[str, Any]]:
     for c in claims:
         pa = _primary(c)
         if pa:
+            c["_driver_region"] = claim_driver_region(c)
             by_asset[pa].append(c)
 
     out: dict[str, dict[str, Any]] = {}
@@ -127,6 +157,9 @@ def aggregate_by_asset(claims: list[dict]) -> dict[str, dict[str, Any]]:
             "by_horizon": {k: len(v) for k, v in by_horizon.items()},
             "by_theme": dict(by_theme.most_common(5)),
             "risk_factors": risk_factors[:8],
+            # 국내자산이나 US/overseas driver 인 claim (secondary impact 구분용 — P5)
+            "us_driven_kr": sum(1 for c in cs if asset in ("국내주식", "국내채권")
+                                and c.get("_driver_region") in ("US", "overseas", "mixed")),
             "broker_claims": broker,
             "monygeek_claims": monygeek,
             "dissent": dissent,

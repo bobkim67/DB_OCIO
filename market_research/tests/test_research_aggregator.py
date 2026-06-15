@@ -83,6 +83,54 @@ def test_page_build_deterministic_structure():
     assert "[claim:a1]" in page   # claim trace ref
 
 
+# ── region-aware rerouting (FIX_ASSET 6건 regression, 2026-06-15) ──
+
+def _rc(asset, regions, text, sectors=None):
+    return {"affected_assets": [{"asset_class": asset, "role": "primary"}],
+            "primary_asset": asset, "regions": regions, "claim_text": text,
+            "sectors": sectors or ["금리_채권"]}
+
+
+def test_reroute_us_macro_to_overseas():
+    # 실제 FIX_ASSET 6건 패턴 — 국내자산 + 비-KR region + KR 직접영향 無 → 해외
+    from market_research.analyze.research_aggregator import _primary
+    cases = [
+        _rc("국내채권", ["US", "GLOBAL"], "미국 인플레이션 재상승 우려"),
+        _rc("국내채권", ["US"], "수입물가 급등에 따른 인플레이션 경계감 심화"),
+        _rc("국내채권", ["US", "GLOBAL"], "미국 스태그플레이션 리스크"),
+        _rc("국내채권", ["US"], "인플레이션 압력 재격화"),
+        _rc("국내주식", ["US", "GLOBAL"], "미국 고용 질적 악화 신호", ["경기_소비"]),
+        _rc("국내주식", ["US", "GLOBAL"], "정책 변동성 상승", ["관세_무역"]),
+    ]
+    for c in cases:
+        out = _primary(c)
+        assert out.startswith("해외"), f"{c['claim_text']} → {out}"
+
+
+def test_reroute_keeps_kr_when_kr_impact_explicit():
+    # 미국 변수지만 한국 자산 직접 영향 명시 → 국내 유지 + driver_region=US
+    from market_research.analyze.research_aggregator import _primary, claim_driver_region
+    c = _rc("국내주식", ["US"], "미국 금리 상승이 코스피 외국인 수급에 직접 타격")
+    assert _primary(c) == "국내주식"
+    assert claim_driver_region(c) == "US"
+
+
+def test_reroute_kr_region_unaffected():
+    # regions 에 KR 있으면 reroute 안 함
+    from market_research.analyze.research_aggregator import _primary
+    assert _primary(_rc("국내채권", ["KR"], "한국 금리 동결")) == "국내채권"
+    assert _primary(_rc("국내채권", ["KR", "US"], "한미 금리차")) == "국내채권"
+
+
+def test_driver_region_classification():
+    from market_research.analyze.research_aggregator import claim_driver_region
+    assert claim_driver_region({"regions": ["KR"]}) == "KR"
+    assert claim_driver_region({"regions": ["KR", "US"]}) == "mixed"
+    assert claim_driver_region({"regions": ["US"]}) == "US"
+    assert claim_driver_region({"regions": ["NON_US_OVERSEAS"]}) == "overseas"
+    assert claim_driver_region({"regions": []}) is None
+
+
 def test_synthesize_narrative_no_llm_returns_empty():
     agg = aggregate_by_asset(_claims())
     n = synthesize_asset_narrative("국내주식", agg["국내주식"], llm_call=None)
