@@ -1253,3 +1253,85 @@ def test_v2_serialize_includes_present_optional_fields():
     assert s["primary_asset"] == "국내주식"
     assert s["regions"] == ["KR"]
     assert s["sectors"] == ["테크_AI_반도체"]
+
+
+# ──────────────────────────────────────────────────────────────────
+# P0 — research claim 전용 필드 (wiki_from_naver_research)
+# ──────────────────────────────────────────────────────────────────
+
+def _research_claim() -> dict:
+    """naver_research 분해 claim — 기존 baseline + research OPTIONAL 필드."""
+    c = _valid_claim()
+    c["source_type"] = "naver_research"
+    c["broker_author"] = "미래에셋증권"
+    c["stance"] = "bullish"
+    c["view"] = "반도체 비중확대"
+    c["rationale_text"] = "AI capex 지속 + 메모리 업황 회복 기대"
+    c["risk_factor"] = "중국 수요 둔화 시 하방"
+    c["evidence_text"] = "2분기 가이던스 상향"
+    return c
+
+
+def test_research_claim_valid():
+    from market_research.analyze.claim_extractor import validate_claim
+    r = validate_claim(_research_claim())
+    assert r["valid"], r["errors"]
+
+
+def test_research_stance_invalid_is_warning_not_error():
+    # stance 오류는 soft(warning) — 기존 claim valid 회귀 0 보장
+    from market_research.analyze.claim_extractor import validate_claim
+    c = _research_claim()
+    c["stance"] = "VERY_BULLISH"
+    r = validate_claim(c)
+    assert r["valid"]
+    assert any("stance invalid" in w for w in r["warnings"])
+
+
+def test_research_source_type_invalid_is_warning():
+    from market_research.analyze.claim_extractor import validate_claim
+    c = _research_claim()
+    c["source_type"] = "twitter"
+    r = validate_claim(c)
+    assert r["valid"]
+    assert any("source_type invalid" in w for w in r["warnings"])
+
+
+def test_stance_direction_decoupled_no_consistency_error():
+    # 금리상승 전망: 채권 stance=bearish 이나 direction=positive — 일치강제 없음
+    from market_research.analyze.claim_extractor import validate_claim
+    c = _research_claim()
+    c["stance"] = "bearish"
+    c["direction"] = "positive"
+    r = validate_claim(c)
+    assert r["valid"]
+    assert not any("stance" in w and "direction" in w for w in r["warnings"])
+
+
+def test_research_free_text_field_type_warned():
+    from market_research.analyze.claim_extractor import validate_claim
+    c = _research_claim()
+    c["view"] = 123  # str 아님
+    r = validate_claim(c)
+    assert r["valid"]
+    assert any("view must be a string" in w for w in r["warnings"])
+
+
+def test_research_fields_serialized():
+    from market_research.analyze.claim_extractor import normalize_claim, serialize_claim
+    s = serialize_claim(normalize_claim(_research_claim()))
+    assert s["source_type"] == "naver_research"
+    assert s["broker_author"] == "미래에셋증권"
+    assert s["stance"] == "bullish"
+    assert s["view"] == "반도체 비중확대"
+    assert s["risk_factor"] == "중국 수요 둔화 시 하방"
+
+
+def test_baseline_claim_omits_research_fields_md5_safe():
+    # research 필드 없는 기존 claim → serialize 에 research 키 미주입 (md5 불변)
+    from market_research.analyze.claim_extractor import (
+        normalize_claim, serialize_claim, RESEARCH_OPTIONAL_FIELDS,
+    )
+    s = serialize_claim(normalize_claim(_valid_claim()))
+    for k in RESEARCH_OPTIONAL_FIELDS:
+        assert k not in s

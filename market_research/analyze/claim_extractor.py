@@ -110,6 +110,18 @@ ALLOWED_EXTRACTION_METHODS: frozenset[str] = frozenset({
     "llm", "rule", "manual", "fallback",
 })
 
+# ── Research claim 전용 (wiki_from_naver_research P0) ──
+# stance = 리서치 전망 어조(해당 자산 보유 관점), direction = 자산가격 영향 방향.
+# 둘은 독립 (금리상승 전망 → 채권 stance=bearish 이나 금리 direction=positive). 일치강제 X.
+ALLOWED_STANCES: frozenset[str] = frozenset({
+    "bullish", "neutral", "bearish", "mixed",
+})
+
+# research claim 출처 레인. 기존 운영 claim 은 source_type 미보유 → soft 검증이라 무영향.
+ALLOWED_SOURCE_TYPES: frozenset[str] = frozenset({
+    "naver_research", "monygeek", "news",
+})
+
 REQUIRED_FIELDS: tuple[str, ...] = (
     "schema_version",
     "claim_id",
@@ -151,6 +163,29 @@ OPTIONAL_FIELDS: tuple[str, ...] = (
     "regions",
     "sectors",
 )
+
+# Research claim 전용 OPTIONAL 필드 (wiki_from_naver_research P0). OPTIONAL_FIELDS 와
+# 동일 규약: REQUIRED 승격 금지 → 기존 운영 claim(미보유)은 serialize 시 `if k in claim`
+# 으로 dump 제외되어 md5 불변. theme 은 신설 안 함 (기존 `sectors` 재사용).
+#   source_type   : "naver_research" | "monygeek" | "news"  (출처 레인)
+#   broker_author : 증권사명 또는 블로거(author)            (귀속)
+#   stance        : bullish/neutral/bearish/mixed           (전망 어조, direction 과 독립)
+#   view          : 한 줄 view title (claim_text 와 별도)
+#   rationale_text: 장문 논거 (causal_chain 보완)
+#   risk_factor   : 리스크 서술 (str)
+#   evidence_text : 인용 원문 발췌
+RESEARCH_OPTIONAL_FIELDS: tuple[str, ...] = (
+    "source_type",
+    "broker_author",
+    "stance",
+    "view",
+    "rationale_text",
+    "risk_factor",
+    "evidence_text",
+)
+
+# serialize_claim / 호환 surface 가 단일 OPTIONAL 집합을 보도록 합본 (순서 보존).
+OPTIONAL_FIELDS = OPTIONAL_FIELDS + RESEARCH_OPTIONAL_FIELDS
 
 # Threshold heuristics (validator soft warnings)
 CLAIM_TEXT_MIN_LEN = 8
@@ -751,6 +786,22 @@ def validate_claim(claim: Any) -> dict:
         if roles and roles.count("primary") != 1:
             warnings.append(
                 f"role=primary count expected 1, got {roles.count('primary')}")
+
+    # ── Research claim optional fields — soft 검증 (값 없으면 skip, REQUIRED 아님) ──
+    # stance↔direction 일치는 의도적으로 검증하지 않음(정의 분리: 전망 어조 vs 가격방향).
+    st = claim.get("stance")
+    if st is not None and st not in ALLOWED_STANCES:
+        warnings.append(
+            f"stance invalid: {st!r}, allowed={sorted(ALLOWED_STANCES)}")
+    src = claim.get("source_type")
+    if src is not None and src not in ALLOWED_SOURCE_TYPES:
+        warnings.append(
+            f"source_type invalid: {src!r}, allowed={sorted(ALLOWED_SOURCE_TYPES)}")
+    for _f in ("broker_author", "view", "rationale_text", "risk_factor",
+               "evidence_text"):
+        _v = claim.get(_f)
+        if _v is not None and not isinstance(_v, str):
+            warnings.append(f"{_f} must be a string, got {type(_v).__name__}")
 
     return {
         "valid": len(errors) == 0,
