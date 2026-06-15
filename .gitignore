@@ -106,3 +106,5 @@ market_research/data/claims/_promotion_quality.r9a4-c5replay.jsonl
 
 # wiki_from_naver_research — research claim staging (paid 재생성, 운영 claim 과 분리)
 market_research/data/claims/*.research.json
+# D4 audit 산출물 (재생성 가능)
+market_research/debug/research_audit/
