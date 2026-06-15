@@ -308,9 +308,11 @@ def unsupported_fact_report(month: str) -> list[dict]:
             cat = _fact_category(fact, sentence)
             pool_hits = _search_pool(core, pool_norm)
             rel_own = _nearest_rel_dist(core, own_ev)
-            # 지수 round-number(코스피 7,000/8,000선)는 period 근거 확인 우선 (사용자 규칙4)
-            if cat == "1_지수레벨" and re.fullmatch(r"[78],?000", fact):
-                verdict = "ROUND_UP_REVIEW"
+            from market_research.analyze.market_snapshot import is_market_metric_text
+            # 시장 레벨(지수/환율/유가/금)은 DB source of truth → pool 검색·remap 대상 아님
+            if cat == "1_지수레벨" or (is_market_metric_text(sentence)
+                                       and ("," in fact or "%" not in fact)):
+                verdict = "DB_LEVEL"
             elif rel_own is not None and rel_own <= 0.01:
                 verdict = "OK_ROUNDING"
             elif pool_hits:
