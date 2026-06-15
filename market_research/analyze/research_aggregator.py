@@ -35,27 +35,41 @@ def load_research_claims(month: str) -> list[dict]:
     return data.get("claims", [])
 
 
-def _primary(claim: dict) -> str | None:
-    """canonical 8-class primary 만 반환. LLM 이 primary_asset 에 세부업종을
-    괄호로 붙이거나(국내주식(반도체)) 오타(국내채건)를 내도, 하드검증된
-    affected_assets[].asset_class(role=primary 우선)로 collapse."""
+def _base_primary(claim: dict) -> str | None:
+    """canonical 8-class primary. LLM primary_asset 세부업종 괄호/오타는
+    하드검증된 affected_assets[].asset_class(role=primary 우선)로 collapse."""
     aa = claim.get("affected_assets") or []
-    # 1) role=primary 인 affected_asset (8-class 하드검증 통과분)
     for a in aa:
         if isinstance(a, dict) and a.get("role") == "primary":
             ac = a.get("asset_class")
             if ac in ALLOWED_ASSET_CLASSES:
                 return ac
-    # 2) primary_asset 이 valid 8-class 일 때만
     pa = claim.get("primary_asset")
     if pa in ALLOWED_ASSET_CLASSES:
         return pa
-    # 3) 첫 valid affected_asset
     for a in aa:
         ac = a.get("asset_class") if isinstance(a, dict) else a
         if ac in ALLOWED_ASSET_CLASSES:
             return ac
     return None
+
+
+def _primary(claim: dict) -> str | None:
+    """research routing 정책 적용 primary (사용자 D4 결정, 2026-06-15):
+    - 크립토(sectors='크립토') → '기타' (OCIO 8자산 밖, 채권/현금성 오염 방지).
+    - 크레딧(HY/신용) → region 으로 채권 슬리브 분리: KR→국내채권, 그 외→해외채권
+      (크레딧 = 미국 HY/회사채 자산군이라 국내/해외 회사채로 귀속).
+    - 현금성: 크립토 제거 후 잔여(단기금리/유동성)만 유지.
+    """
+    base = _base_primary(claim)
+    # 크립토 = 기타 (base 무관, 우선 적용)
+    if "크립토" in (claim.get("sectors") or []):
+        return "기타"
+    # 크레딧 → 국내/해외 채권 슬리브
+    if base == "크레딧":
+        rg = claim.get("regions") or []
+        return "국내채권" if "KR" in rg else "해외채권"
+    return base
 
 
 def aggregate_by_asset(claims: list[dict]) -> dict[str, dict[str, Any]]:
