@@ -338,6 +338,66 @@ def unsupported_fact_report(month: str) -> list[dict]:
     return rows
 
 
+_LOW_CONV_ASSETS = {"원자재금", "환율(FX)"}
+
+
+def _draft_label(asset: str, sectors: list, regions: list,
+                 fact_verdicts: set) -> tuple[str, str]:
+    """(manual_asset_class, pass_fail) 초안 결정. 순수 함수."""
+    if ("크립토" in (sectors or [])) or asset == "기타":
+        return "기타", "DROP_OR_PARK"
+    kr_asset = asset in ("국내주식", "국내채권")
+    ov_asset = asset in ("해외주식", "해외채권")
+    if (kr_asset and regions and "KR" not in regions):
+        return "해외" + asset[2:], "FIX_ASSET"
+    if (ov_asset and regions == ["KR"]):
+        return "국내" + asset[2:], "FIX_ASSET"
+    if "NEED_SOURCE_ATTACH" in (fact_verdicts or set()):
+        return asset, "UNSUPPORTED_FACT"
+    if asset in _LOW_CONV_ASSETS:
+        return asset, "LOW_CONVICTION"
+    return asset, "PASS"
+
+
+def draft_audit_labels(month: str) -> list[dict]:
+    """audit sample 73건에 manual_asset_class/manual_stance/pass_fail 초안 라벨.
+
+    규칙:
+    - 크립토(theme 에 '크립토')/기타 → manual=기타, DROP_OR_PARK
+    - region↔asset 불일치(국내자산인데 KR 없음 / 해외자산인데 KR 단독) → FIX_ASSET
+    - NEED_SOURCE_ATTACH hard fact 보유 → UNSUPPORTED_FACT (DB_LEVEL/FIX_CITATION 은 PASS)
+    - LOW-CONV 자산(원자재금/환율) → LOW_CONVICTION
+    - 그 외 → PASS. manual_stance 는 auto_stance default(검수 시 조정).
+    """
+    audit = build_audit(month)
+    claims = {(_split(c.get("claim_id"))): c for c in load_research_claims(month)}
+    # claim_id(short) → worst hard-fact verdict
+    fact_verdicts: dict[str, set] = {}
+    for r in unsupported_fact_report(month):
+        fact_verdicts.setdefault(r["claim_id"], set()).add(r["verdict"])
+
+    rows = audit["rows"]
+    for row in rows:
+        cid = row["claim_id"]
+        c = claims.get(cid, {})
+        asset = row["auto_asset_class"]
+        sectors = c.get("sectors") or []
+        regions = c.get("regions") or []
+        verds = fact_verdicts.get(cid, set())
+
+        manual_asset, pass_fail = _draft_label(asset, sectors, regions, verds)
+
+        row["manual_asset_class"] = manual_asset
+        row["manual_stance"] = row["auto_stance"]   # default, 검수 조정
+        row["pass_fail"] = pass_fail
+        row["fact_verdicts"] = ";".join(sorted(verds))
+    return rows
+
+
+def _split(cid: str | None) -> str:
+    return (cid or "").split(":")[-1]
+
+
 def write_audit_csv(month: str, audit: dict[str, Any]) -> Path:
     AUDIT_DIR.mkdir(parents=True, exist_ok=True)
     p = AUDIT_DIR / f"{month}_audit_sheet.csv"

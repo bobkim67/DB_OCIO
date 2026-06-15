@@ -44,6 +44,31 @@ def test_claim_grounding_supported():
     assert g["unsupported"] == []
 
 
+def test_draft_label_crypto_park():
+    from market_research.analyze.research_audit import _draft_label
+    assert _draft_label("기타", ["크립토"], ["US"], set()) == ("기타", "DROP_OR_PARK")
+    assert _draft_label("해외주식", ["크립토"], ["US"], set())[1] == "DROP_OR_PARK"
+
+
+def test_draft_label_region_mismatch():
+    from market_research.analyze.research_audit import _draft_label
+    # 국내채권인데 KR 없음(US 매크로) → 해외채권 FIX_ASSET
+    assert _draft_label("국내채권", ["금리_채권"], ["US"], set()) == ("해외채권", "FIX_ASSET")
+    # 해외주식인데 KR 단독 → 국내주식 FIX_ASSET
+    assert _draft_label("해외주식", [], ["KR"], set()) == ("국내주식", "FIX_ASSET")
+
+
+def test_draft_label_low_conviction_and_pass():
+    from market_research.analyze.research_audit import _draft_label
+    assert _draft_label("환율(FX)", [], ["US"], set())[1] == "LOW_CONVICTION"
+    assert _draft_label("국내주식", ["테크_AI_반도체"], ["KR"], set()) == ("국내주식", "PASS")
+
+
+def test_draft_label_unsupported_fact():
+    from market_research.analyze.research_audit import _draft_label
+    assert _draft_label("국내주식", [], ["KR"], {"NEED_SOURCE_ATTACH"})[1] == "UNSUPPORTED_FACT"
+
+
 def test_stratified_sample_diversity():
     claims = ([{"claim_id": f"b{i}", "stance": "bullish", "horizon": "short"} for i in range(10)]
               + [{"claim_id": f"x{i}", "stance": "bearish", "horizon": "long"} for i in range(3)])
