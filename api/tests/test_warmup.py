@@ -9,9 +9,13 @@ def test_warmup_status_endpoint_shape(client):
     assert body["status"] in (
         "idle", "running", "done", "done_with_errors", "error",
     )
-    for key in ("total", "done", "error_count", "current", "errors"):
+    for key in (
+        "phase", "total", "done", "essential_total", "essential_done",
+        "essential_complete", "error_count", "current", "errors",
+    ):
         assert key in body
     assert isinstance(body["errors"], list)
+    assert isinstance(body["essential_complete"], bool)
 
 
 def test_warmup_idle_before_start(client):
@@ -21,18 +25,50 @@ def test_warmup_idle_before_start(client):
     assert body["status"] == "idle"
     assert body["done"] == 0
     assert body["error_count"] == 0
+    assert body["essential_complete"] is False
 
 
-def test_build_steps_covers_holdings_brinson_transactions():
+def test_build_steps_split_essential_and_brinson():
     from config.funds import FUND_LIST
 
-    steps = warmup._build_steps()
-    # 펀드당 7스텝 (편입종목/성과분석/거래내역/비중추이x2/FX/보유종목목록)
-    assert len(steps) == len(FUND_LIST) * 7
-    labels = " ".join(label for label, _ in steps)
-    assert "편입종목" in labels   # holdings
-    assert "성과분석" in labels   # brinson
-    assert "거래내역" in labels   # transactions
+    essential = warmup._build_essential_steps()
+    brinson = warmup._build_brinson_steps()
+    # essential = 펀드당 6스텝(편입종목/거래내역/비중추이x2/FX/보유종목목록)
+    assert len(essential) == len(FUND_LIST) * 6
+    # brinson = 펀드당 1스텝(성과분석)
+    assert len(brinson) == len(FUND_LIST)
+    # 전체 = essential + brinson
+    assert len(warmup._build_steps()) == len(FUND_LIST) * 7
+
+    ess_labels = " ".join(label for label, _ in essential)
+    assert "편입종목" in ess_labels    # holdings
+    assert "거래내역" in ess_labels    # transactions
+    assert "성과분석" not in ess_labels  # brinson 은 게이트에서 제외
+    assert all("성과분석" in label for label, _ in brinson)
+
+
+def test_call_with_timeout_returns_value():
+    assert warmup._call_with_timeout(lambda: 42, timeout=5) == 42
+
+
+def test_call_with_timeout_raises_on_slow_step():
+    import time
+
+    import pytest
+
+    with pytest.raises(TimeoutError):
+        warmup._call_with_timeout(lambda: time.sleep(2), timeout=1)
+
+
+def test_run_step_isolates_timeout(monkeypatch):
+    # 느린 step 이 error 로 집계되고 예외가 새지 않아야 한다 (블로킹 방지).
+    import time
+
+    monkeypatch.setattr(warmup, "_state", warmup._WarmupState(), raising=True)
+    warmup._run_step("느린스텝", lambda: time.sleep(2), timeout=1)
+    st = warmup.get_state()
+    assert st["error_count"] == 1
+    assert st["errors"][0]["step"] == "느린스텝"
 
 
 def test_start_warmup_is_idempotent(monkeypatch):

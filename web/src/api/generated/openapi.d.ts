@@ -1788,10 +1788,18 @@ export interface components {
              * @enum {string}
              */
             status: "idle" | "running" | "done" | "done_with_errors" | "error";
+            /** Phase */
+            phase: string;
             /** Total */
             total: number;
             /** Done */
             done: number;
+            /** Essential Total */
+            essential_total: number;
+            /** Essential Done */
+            essential_done: number;
+            /** Essential Complete */
+            essential_complete: boolean;
             /** Error Count */
             error_count: number;
             /** Current */
