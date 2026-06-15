@@ -86,6 +86,11 @@ export type WikiContextPackResponseDTO = S["WikiContextPackResponseDTO"];
 export type WikiPackStage = WikiContextPackResponseDTO["stage"];
 export type WikiPageResponseDTO = S["WikiPageResponseDTO"];
 
+// === Warmup (앱 시작 시 백그라운드 프리워밍 진행률) ===
+export type WarmupStatusDTO = S["WarmupStatusDTO"];
+export type WarmupErrorDTO = S["WarmupErrorDTO"];
+export type WarmupStatus = WarmupStatusDTO["status"];
+
 // === Brinson ===
 export type BrinsonAssetRowDTO = S["BrinsonAssetRowDTO"];
 export type BrinsonSecContribDTO = S["BrinsonSecContribDTO"];
@@ -442,5 +447,13 @@ export const fetchSecurityReturn = async (
     `/funds/${code}/security-returns`,
     { params: { item_cd: itemCd, item_nm: itemNm, start, end } },
   );
+  return r.data;
+};
+
+// ----------------------------------------------------------------------
+// Warmup — 앱 시작 시 백그라운드 프리워밍 진행률 (폴링용)
+// ----------------------------------------------------------------------
+export const fetchWarmupStatus = async (): Promise<WarmupStatusDTO> => {
+  const r = await api.get<WarmupStatusDTO>("/warmup-status");
   return r.data;
 };

@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -13,12 +14,26 @@ from .routers import (
     overview,
     report,
     transactions,
+    warmup,
 )
 from .settings import get_settings
 
 
+def _warmup_enabled() -> bool:
+    """startup 워밍업 on/off. 기본 ON. pytest/conftest 는 OFF (요구사항 #4)."""
+    return os.getenv("OCIO_WARMUP_ON_STARTUP", "true").strip().lower() not in (
+        "0", "false", "no", "off", "",
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if _warmup_enabled():
+        # 데몬 스레드를 즉시 반환하며 시작 → startup 비차단.
+        # 멱등 가드는 warmup 모듈 내부(_run_lock/_started)에서 보장.
+        from .warmup import start_warmup_background
+
+        start_warmup_background()
     yield
 
 
@@ -41,6 +56,7 @@ def create_app() -> FastAPI:
     app.include_router(report.router, prefix="/api", tags=["report"])
     app.include_router(brinson.router, prefix="/api", tags=["brinson"])
     app.include_router(transactions.router, prefix="/api", tags=["transactions"])
+    app.include_router(warmup.router, prefix="/api", tags=["warmup"])
     return app
 
 

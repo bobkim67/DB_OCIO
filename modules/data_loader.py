@@ -950,7 +950,8 @@ def _classify_6class(row) -> str:
     return '유동성'
 
 
-def load_fund_holdings_classified(fund_code: str, date: str = None) -> pd.DataFrame:
+@_ttl_cache()
+def _load_fund_holdings_classified_cached(fund_code: str, date: str = None) -> pd.DataFrame:
     """
     보유종목 로드 + 6분류 매핑.
     미수/미지급 필터 적용.
@@ -991,6 +992,14 @@ def load_fund_holdings_classified(fund_code: str, date: str = None) -> pd.DataFr
     return df
 
 
+def load_fund_holdings_classified(fund_code: str, date: str = None) -> pd.DataFrame:
+    """`_load_fund_holdings_classified_cached`의 공개 래퍼.
+    TTL 캐시된 DataFrame을 호출자가 in-place로 변형해 캐시를 오염시키지 않도록
+    항상 copy를 반환한다."""
+    df = _load_fund_holdings_classified_cached(fund_code, date)
+    return df.copy() if isinstance(df, pd.DataFrame) else df
+
+
 # ============================================================
 # Look-through: 모펀드 → 하위 종목 전개
 # ============================================================
@@ -1009,7 +1018,8 @@ def _extract_fund_code_from_item_cd(item_cd: str) -> str:
     return s
 
 
-def load_fund_holdings_lookthrough(fund_code: str, date: str = None) -> pd.DataFrame:
+@_ttl_cache()
+def _load_fund_holdings_lookthrough_cached(fund_code: str, date: str = None) -> pd.DataFrame:
     """
     보유종목 로드 + 모펀드 look-through.
     모펀드 ITEM_CD에서 하위 펀드코드 추출 후 보유종목을 비중 가중하여 전개.
@@ -1081,6 +1091,13 @@ def load_fund_holdings_lookthrough(fund_code: str, date: str = None) -> pd.DataF
     return grp
 
 
+def load_fund_holdings_lookthrough(fund_code: str, date: str = None) -> pd.DataFrame:
+    """`_load_fund_holdings_lookthrough_cached`의 공개 래퍼.
+    캐시 오염 방지를 위해 항상 copy를 반환한다."""
+    df = _load_fund_holdings_lookthrough_cached(fund_code, date)
+    return df.copy() if isinstance(df, pd.DataFrame) else df
+
+
 # ============================================================
 # NAV + AUM 시계열 (확장)
 # ============================================================
@@ -1091,7 +1108,8 @@ _FUND_INCEPTION_BASE = {
 }
 
 
-def load_fund_nav_with_aum(fund_code: str, start_date: str = None) -> pd.DataFrame:
+@_ttl_cache()
+def _load_fund_nav_with_aum_cached(fund_code: str, start_date: str = None) -> pd.DataFrame:
     """
     펀드 NAV(MOD_STPR) + AUM(NAST_AMT) 시계열.
     load_fund_nav의 단일 펀드 확장 버전.
@@ -1103,6 +1121,13 @@ def load_fund_nav_with_aum(fund_code: str, start_date: str = None) -> pd.DataFra
         return df
     df['AUM_억'] = df['NAST_AMT'] / 1e8
     return df[['기준일자', 'MOD_STPR', 'NAST_AMT', 'AUM_억', 'DD1_ERN_RT']].sort_values('기준일자').reset_index(drop=True)
+
+
+def load_fund_nav_with_aum(fund_code: str, start_date: str = None) -> pd.DataFrame:
+    """`_load_fund_nav_with_aum_cached`의 공개 래퍼.
+    캐시 오염 방지를 위해 항상 copy를 반환한다."""
+    df = _load_fund_nav_with_aum_cached(fund_code, start_date)
+    return df.copy() if isinstance(df, pd.DataFrame) else df
 
 
 # ============================================================
