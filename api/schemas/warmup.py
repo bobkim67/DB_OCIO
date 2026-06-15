@@ -12,8 +12,12 @@ class WarmupErrorDTO(BaseModel):
 
 class WarmupStatusDTO(BaseModel):
     status: WarmupStatus
+    phase: str  # "" | essential | brinson
     total: int
     done: int
+    essential_total: int
+    essential_done: int
+    essential_complete: bool  # 프론트 게이트 해제 신호
     error_count: int
     current: str
     # 시작 전/완료 전에는 null. (nullable optional)
