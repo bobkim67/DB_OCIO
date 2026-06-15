@@ -1154,6 +1154,27 @@ def _allowed_dirs(stage: str) -> tuple[str, ...]:
 # Public API
 # ──────────────────────────────────────────────────────────────────
 
+# ──────────────────────────────────────────────────────────────────
+# P5.3-C — research-only 03_Assets allowlist (legacy commodity/기타 page
+# stale 유입 차단). Option B(금/원유/기타원자재 taxonomy migration) 전까지 한시.
+# asset_class frontmatter 기준. 운영 wiki 파일은 삭제/수정하지 않음(읽기 측 필터).
+# legacy 제외: 금/금_대체/원자재/크레딧/현금성/채권(+원자재금 aggregate). active 5종만.
+# ──────────────────────────────────────────────────────────────────
+ACTIVE_ASSET_PAGES: frozenset[str] = frozenset({
+    "국내주식", "해외주식", "국내채권", "해외채권", "환율",
+})
+APPLY_ASSET_ALLOWLIST: bool = True
+
+
+def _filter_active_asset_pages(recs: list[WikiPageRecord]) -> tuple[list, list]:
+    """03_Assets 후보를 active allowlist 로 필터. (included, excluded) 반환."""
+    inc, exc = [], []
+    for r in recs:
+        ac = (r.frontmatter or {}).get("asset_class")
+        (inc if ac in ACTIVE_ASSET_PAGES else exc).append(r)
+    return inc, exc
+
+
 def build_wiki_context_pack(
     *,
     period_key: str,
@@ -1233,6 +1254,15 @@ def build_wiki_context_pack(
                 "directory": directory,
                 "count": stats["fallback_count"],
             })
+        # P5.3-C — 03_Assets allowlist: legacy commodity/기타 page 제외(읽기측 필터)
+        if directory == "03_Assets" and APPLY_ASSET_ALLOWLIST:
+            recs, _excluded = _filter_active_asset_pages(recs)
+            if _excluded:
+                overall_warnings.append({
+                    "warning_type": "asset_allowlist_excluded",
+                    "directory": "03_Assets",
+                    "excluded": [(r.frontmatter or {}).get("asset_class") for r in _excluded],
+                })
         candidates_by_dir[directory] = recs
 
     # ── Phase B: fund_pinned (fund_comment stage contract — pre-cap)
