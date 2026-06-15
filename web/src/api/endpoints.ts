@@ -94,6 +94,21 @@ export type BrinsonResponseDTO = S["BrinsonResponseDTO"];
 export type BrinsonMappingMethod = "방법1" | "방법2" | "방법3" | "방법4";
 export type BrinsonPaMethod = "8" | "5";
 
+// === Transactions (거래내역 탭) ===
+export type TransactionRowDTO = S["TransactionRowDTO"];
+export type TransactionsResponseDTO = S["TransactionsResponseDTO"];
+export type WeightHistoryPointDTO = S["WeightHistoryPointDTO"];
+export type WeightHistoryResponseDTO = S["WeightHistoryResponseDTO"];
+export type WeightHistoryLevel = "security" | "asset";
+export type FxPositionPointDTO = S["FxPositionPointDTO"];
+export type FxPositionResponseDTO = S["FxPositionResponseDTO"];
+export type SecurityItemDTO = S["SecurityItemDTO"];
+export type SecuritiesResponseDTO = S["SecuritiesResponseDTO"];
+export type SecurityReturnPointDTO = S["SecurityReturnPointDTO"];
+export type SecurityTradeMarkerDTO = S["SecurityTradeMarkerDTO"];
+export type SecurityWeightPointDTO = S["SecurityWeightPointDTO"];
+export type SecurityReturnResponseDTO = S["SecurityReturnResponseDTO"];
+
 // ----------------------------------------------------------------------
 // Fetchers — 시그니처/구현 불변. DTO 타입만 generated alias 참조.
 // ----------------------------------------------------------------------
@@ -367,6 +382,65 @@ export const fetchBrinson = async (
   const r = await api.get<BrinsonResponseDTO>(
     `/funds/${code}/brinson`,
     { params },
+  );
+  return r.data;
+};
+
+// ----------------------------------------------------------------------
+// 거래내역 탭 — 거래내역 조회 + 일별 비중 시계열 (FoF look-through)
+// ----------------------------------------------------------------------
+export const fetchTransactions = async (
+  code: string,
+  start: string,
+  end: string,
+): Promise<TransactionsResponseDTO> => {
+  const r = await api.get<TransactionsResponseDTO>(
+    `/funds/${code}/transactions`,
+    { params: { start, end } },
+  );
+  return r.data;
+};
+
+export const fetchWeightHistory = async (
+  code: string,
+  start: string,
+  level: WeightHistoryLevel,
+): Promise<WeightHistoryResponseDTO> => {
+  const r = await api.get<WeightHistoryResponseDTO>(
+    `/funds/${code}/weight-history`,
+    { params: { start, level } },
+  );
+  return r.data;
+};
+
+export const fetchFxPosition = async (
+  code: string,
+  start: string,
+): Promise<FxPositionResponseDTO> => {
+  const r = await api.get<FxPositionResponseDTO>(
+    `/funds/${code}/fx-position`,
+    { params: { start } },
+  );
+  return r.data;
+};
+
+export const fetchSecurities = async (
+  code: string,
+): Promise<SecuritiesResponseDTO> => {
+  const r = await api.get<SecuritiesResponseDTO>(`/funds/${code}/securities`);
+  return r.data;
+};
+
+export const fetchSecurityReturn = async (
+  code: string,
+  itemCd: string,
+  itemNm: string,
+  start: string,
+  end: string,
+): Promise<SecurityReturnResponseDTO> => {
+  const r = await api.get<SecurityReturnResponseDTO>(
+    `/funds/${code}/security-returns`,
+    { params: { item_cd: itemCd, item_nm: itemNm, start, end } },
   );
   return r.data;
 };
