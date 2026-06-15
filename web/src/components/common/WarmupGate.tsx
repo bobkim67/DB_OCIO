@@ -3,13 +3,12 @@ import type { CSSProperties } from "react";
 import { useWarmupStatus } from "../../hooks/useWarmupStatus";
 
 /**
- * 앱 시작 시 백그라운드 프리워밍의 "필수 단계"가 끝날 때까지 대시보드 조작을 막는 게이트.
+ * 앱 시작 시 백그라운드 프리워밍이 끝날 때까지 대시보드 조작을 막는 게이트.
  *
- * - 서버 워밍업은 2단계(essential → brinson). 이 게이트는 essential 완료
- *   (`essential_complete`)까지만 전체화면으로 막는다.
- * - essential 해제 후 brinson(성과분석)은 백그라운드로 계속 워밍 → 이때는 조작을
- *   허용하고 비차단 슬림 배너로만 알린다. brinson 미워밍 펀드의 성과분석 탭은
- *   진입 시 그 자리에서 on-demand 계산된다(동일 캐시).
+ * - 워밍업 대상은 holdings/거래내역/비중/FX/보유목록. 완료(`essential_complete`)까지
+ *   전체화면으로 막는다.
+ * - brinson(성과분석)은 워밍업에서 제외(느림) → 성과분석 탭 진입 시 on-demand 계산.
+ *   reload 범위 한정으로 한 번 계산되면 캐시 유지 → 두 번째 진입부터 즉시.
  * - fail-open: warmup endpoint 가 없거나(구버전 백엔드) 에러면 막지 않는다.
  * - idle(워밍업 비활성: OCIO_WARMUP_ON_STARTUP=false) 도 막지 않는다.
  */
@@ -60,23 +59,9 @@ export default function WarmupGate() {
           </div>
           <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 8 }}>
             모든 펀드의 편입종목·거래내역·비중 데이터를 미리 불러오는 중입니다.
-            (성과분석은 진입 후 백그라운드로 준비)
+            (성과분석은 탭 진입 시 계산)
           </div>
         </div>
-      </div>
-    );
-  }
-
-  // 게이트 해제 후 brinson(성과분석) 백그라운드 워밍 중 — 비차단 안내.
-  if (
-    data &&
-    data.status === "running" &&
-    data.essential_complete &&
-    data.phase === "brinson"
-  ) {
-    return (
-      <div style={infoStrip}>
-        성과분석(Brinson) 미리 불러오는 중… 일부 펀드는 첫 진입 시 잠깐 로드될 수 있습니다.
       </div>
     );
   }
@@ -132,16 +117,6 @@ const indeterminateBar: CSSProperties = {
   background:
     "linear-gradient(90deg, transparent 0%, #2563eb 50%, transparent 100%)",
   animation: "warmup-gate-slide 1.2s ease-in-out infinite",
-};
-
-const infoStrip: CSSProperties = {
-  background: "#eff6ff",
-  border: "1px solid #bfdbfe",
-  color: "#1d4ed8",
-  fontSize: 12,
-  borderRadius: 8,
-  padding: "8px 12px",
-  marginBottom: 12,
 };
 
 const errorStrip: CSSProperties = {

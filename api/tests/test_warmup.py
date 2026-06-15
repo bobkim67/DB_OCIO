@@ -28,23 +28,16 @@ def test_warmup_idle_before_start(client):
     assert body["essential_complete"] is False
 
 
-def test_build_steps_split_essential_and_brinson():
+def test_build_steps_excludes_brinson():
     from config.funds import FUND_LIST
 
-    essential = warmup._build_essential_steps()
-    brinson = warmup._build_brinson_steps()
-    # essential = 펀드당 6스텝(편입종목/거래내역/비중추이x2/FX/보유종목목록)
-    assert len(essential) == len(FUND_LIST) * 6
-    # brinson = 펀드당 1스텝(성과분석)
-    assert len(brinson) == len(FUND_LIST)
-    # 전체 = essential + brinson
-    assert len(warmup._build_steps()) == len(FUND_LIST) * 7
-
-    ess_labels = " ".join(label for label, _ in essential)
-    assert "편입종목" in ess_labels    # holdings
-    assert "거래내역" in ess_labels    # transactions
-    assert "성과분석" not in ess_labels  # brinson 은 게이트에서 제외
-    assert all("성과분석" in label for label, _ in brinson)
+    steps = warmup._build_steps()
+    # 펀드당 6스텝(편입종목/거래내역/비중추이x2/FX/보유종목목록), brinson 제외
+    assert len(steps) == len(FUND_LIST) * 6
+    labels = " ".join(label for label, _ in steps)
+    assert "편입종목" in labels    # holdings
+    assert "거래내역" in labels    # transactions
+    assert "성과분석" not in labels  # brinson 은 워밍업에서 제외(on-demand)
 
 
 def test_call_with_timeout_returns_value():

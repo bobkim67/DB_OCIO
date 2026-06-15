@@ -5,14 +5,13 @@
 - 워밍업은 transactions/holdings/brinson 서비스 빌더를 UI 디폴트와 동일한
   파라미터로 호출 → 동일한 캐시(`modules.data_loader._ttl_cache`,
   `brinson_service._compute_cached`)를 채운다.
-- 2단계 구성:
-  * essential — holdings/거래내역/비중추이x2/FX/보유종목목록 (펀드당 6스텝, 빠름).
-    프론트 게이트가 이 단계 완료(`essential_complete`)까지만 진입을 막는다.
-  * brinson — 성과분석 (펀드당 1스텝, 느림/ECOS 의존). 게이트 해제 후 백그라운드로
-    계속 워밍한다. 워밍 전 펀드의 성과분석 탭은 그 자리에서 on-demand 계산(동일 캐시).
-- step 단위로 실패해도 계속 진행한다. 한 스텝이 오래 걸리면(예: brinson ECOS 지연)
-  step 타임아웃으로 건너뛴다(블로킹 방지). 최종 상태는 error_count 에 따라
-  `done` / `done_with_errors` 로 구분한다.
+- 워밍업 대상은 holdings/거래내역/비중추이x2/FX/보유종목목록 (펀드당 6스텝, 빠름).
+  프론트 게이트가 완료(`essential_complete`)까지 진입을 막는다.
+- brinson(성과분석)은 계산이 본질적으로 느려(펀드당 ~15s, FoF 수 분) 워밍업에서 제외한다.
+  성과분석 탭 진입 시 on-demand 계산되며, reload 범위 한정 덕에 한 번 계산되면 6h 캐시가
+  유지되어 두 번째 진입부터 즉시 표시된다.
+- step 단위로 실패해도 계속 진행한다. 한 스텝이 오래 걸리면 step 타임아웃으로
+  건너뛴다(블로킹 방지). 최종 상태는 error_count 에 따라 `done` / `done_with_errors`.
 - 데몬 스레드 1개에서 순차 실행한다. `asyncio.to_thread` 의 취소는 실행 중인
   스레드를 즉시 멈추지 못하므로, 시작은 `_run_lock` + `_started` 플래그로
   멱등(중복 실행 금지) 보장한다.
@@ -26,9 +25,7 @@ from datetime import date, datetime, timedelta, timezone
 _KST = timezone(timedelta(hours=9))
 
 # step 타임아웃(초) — 한 스텝이 이 시간을 넘으면 error 로 집계하고 건너뛴다.
-# essential 은 빠르므로 짧게, brinson(ECOS/무거운 PA)은 길게.
 _ESSENTIAL_STEP_TIMEOUT = 90
-_BRINSON_STEP_TIMEOUT = 300
 
 
 @dataclass
@@ -78,12 +75,6 @@ def _warm_holdings(fund: str):
     return build_holdings(fund, lookthrough=True)
 
 
-def _warm_brinson(fund: str):
-    from api.services.brinson_service import build_brinson
-    # 기본 기간(YTD: 전년 12/31~어제) + 펀드별 mapping_method
-    return build_brinson(fund)
-
-
 def _warm_transactions(fund: str, start: date, end: date):
     from api.services.transactions_service import build_transactions
     return build_transactions(fund, _ymd(start), _ymd(end))
@@ -105,7 +96,8 @@ def _warm_securities(fund: str):
 
 
 def _build_essential_steps() -> list[tuple[str, object]]:
-    """게이트 대상 — 빠른 디폴트 데이터(holdings/거래내역/비중/FX/보유목록)."""
+    """워밍업 대상 — 빠른 디폴트 데이터(holdings/거래내역/비중/FX/보유목록).
+    brinson 은 제외(느림 → on-demand)."""
     from config.funds import FUND_LIST
 
     today = datetime.now(_KST).date()
@@ -126,19 +118,9 @@ def _build_essential_steps() -> list[tuple[str, object]]:
     return steps
 
 
-def _build_brinson_steps() -> list[tuple[str, object]]:
-    """백그라운드 대상 — 성과분석(느림/ECOS 의존). 게이트 해제 후 워밍."""
-    from config.funds import FUND_LIST
-
-    return [
-        (f"{fund} · 성과분석", lambda f=fund: _warm_brinson(f))
-        for fund in FUND_LIST
-    ]
-
-
 def _build_steps() -> list[tuple[str, object]]:
-    """essential + brinson 전체(순서대로). 총 스텝 수/테스트용."""
-    return _build_essential_steps() + _build_brinson_steps()
+    """전체 워밍업 스텝(brinson 제외). 총 스텝 수/테스트용."""
+    return _build_essential_steps()
 
 
 def _record_error(label: str, msg: str) -> None:
@@ -185,14 +167,13 @@ def _run_step(label: str, fn, timeout: int) -> None:
 
 def _run() -> None:
     try:
-        essential = _build_essential_steps()
-        brinson = _build_brinson_steps()
+        steps = _build_essential_steps()
         with _state_lock:
             _state.status = "running"
             _state.phase = "essential"
-            _state.total = len(essential) + len(brinson)
+            _state.total = len(steps)
             _state.done = 0
-            _state.essential_total = len(essential)
+            _state.essential_total = len(steps)
             _state.essential_done = 0
             _state.essential_complete = False
             _state.error_count = 0
@@ -201,8 +182,7 @@ def _run() -> None:
             _state.started_at = _now_iso()
             _state.finished_at = None
 
-        # --- Phase 1: essential (게이트 대상) ---
-        for label, fn in essential:
+        for label, fn in steps:
             _run_step(label, fn, _ESSENTIAL_STEP_TIMEOUT)
             with _state_lock:
                 _state.done += 1
@@ -210,15 +190,6 @@ def _run() -> None:
 
         with _state_lock:
             _state.essential_complete = True  # 게이트 해제
-            _state.phase = "brinson"
-
-        # --- Phase 2: brinson (게이트 해제 후 백그라운드) ---
-        for label, fn in brinson:
-            _run_step(label, fn, _BRINSON_STEP_TIMEOUT)
-            with _state_lock:
-                _state.done += 1
-
-        with _state_lock:
             _state.current = ""
             _state.phase = ""
             _state.finished_at = _now_iso()
