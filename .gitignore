@@ -55,6 +55,11 @@ General_Backtest/.RData
 MP_monitoring/.RData
 MP_monitoring/shiny-server-1.5.22.1017-amd64.deb
 
+# backtesting — 대용량 생성 Plotly HTML (96~400MB, spaghetti_paths.py 로 재생성 가능)
+backtesting/spaghetti_paths_5Y_7pct.html
+backtesting/spaghetti_paths_5Y_7pct_AP.html
+backtesting/spaghetti_paths_7pct.html
+
 # Debug outputs (재생성 가능)
 debug/*.csv
 debug/*.xlsx
@@ -75,3 +80,26 @@ debug/claims/
 
 # R9-A.2 promotion ledger (run log 성격 — 매 실행마다 append, 재현성 X)
 market_research/data/claims/_promotion_quality.jsonl
+
+# Debug — 리뷰패킷·진단 md/txt (재생성 가능)
+debug/*.md
+debug/*.txt
+
+# Debug — backtest/diagnostic 산출물 서브디렉토리 (재생성 가능)
+debug/comment_trace/
+debug/incidents/
+debug/r9b4_backtest/
+debug/r9b4_extended/
+debug/r9b4_v2/
+debug/r9b6_wiki_backfill/
+debug/r9b6c_claim_backtest/
+debug/r9b6c_claim_retry/
+debug/wiki/
+debug/wiki_context_pack/
+debug/wiki_default_rebuild/
+
+# R9-A.4 claim replay/backtest 변종 (재현 실험 산출물, 운영 아님)
+market_research/data/claims/*.r9a4-replay.json
+market_research/data/claims/*.r9a4-c5replay.json
+market_research/data/claims/_promotion_quality.r9a4-replay.jsonl
+market_research/data/claims/_promotion_quality.r9a4-c5replay.jsonl
