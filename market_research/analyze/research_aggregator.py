@@ -157,9 +157,10 @@ def aggregate_by_asset(claims: list[dict]) -> dict[str, dict[str, Any]]:
             "by_horizon": {k: len(v) for k, v in by_horizon.items()},
             "by_theme": dict(by_theme.most_common(5)),
             "risk_factors": risk_factors[:8],
-            # 국내자산이나 US/overseas driver 인 claim (secondary impact 구분용 — P5)
+            # 국내자산이나 driver 가 순수 US/overseas(KR region 없음, 키워드예외로 국내
+            # 유지)인 claim = 진짜 'US-driven KR자산' secondary. mixed(KR+US)는 정상 국내라 제외.
             "us_driven_kr": sum(1 for c in cs if asset in ("국내주식", "국내채권")
-                                and c.get("_driver_region") in ("US", "overseas", "mixed")),
+                                and c.get("_driver_region") in ("US", "overseas")),
             "broker_claims": broker,
             "monygeek_claims": monygeek,
             "dissent": dissent,
