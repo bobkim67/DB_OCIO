@@ -115,6 +115,36 @@ def _remap_to_8class(asset: str | None) -> str | None:
         return None
     return _REMAP_TO_8CLASS.get(asset)
 
+
+# article/selector 진입 경계 collapse → balanced_selector.CORE_ASSETS(7) label space.
+# route_by_region / LLM primary 는 selector 밖 라벨(크레딧·크립토·현금성)도 낼 수 있어,
+# article path 출력이 CORE_ASSETS 계약을 벗어나는 label-space leakage 발생(R-4 발견).
+# claim 진입부 _remap_to_8class 와 대칭이되 target label space 가 다르다:
+#   - _remap_to_8class : claim 8-class (크레딧·현금성 유효, 크립토 drop)
+#   - _remap_to_core_assets : selector 7-class (크레딧→해외채권, 크립토→금대체, 현금성 drop)
+_REMAP_TO_CORE_ASSETS: dict[str, str] = {
+    # CORE_ASSETS(7) — idempotent
+    "국내주식": "국내주식", "해외주식": "해외주식",
+    "국내채권": "국내채권", "해외채권": "해외채권",
+    "환율": "환율", "원자재에너지": "원자재에너지", "금대체": "금대체",
+    # selector 밖 라벨 → CORE 버킷 흡수
+    "크레딧": "해외채권",   # 크레딧(HY/IG) → 해외채권 슬리브
+    "크립토": "금대체",     # 크립토 → 대체투자(금대체)
+    # 현금성 = selector(이벤트 선별) 대상 아님(직접 이벤트 제한·단독 비중결정 X) → drop.
+    # dict 미포함 → .get default None. 매핑 밖 라벨도 동일하게 drop(strict, 누수 차단).
+}
+
+
+def _remap_to_core_assets(asset: str | None) -> str | None:
+    """article 출력 → CORE_ASSETS(selector label space) collapse (article 진입 경계 전용).
+
+    크레딧→해외채권, 크립토→금대체, 현금성 및 매핑 밖 라벨 → None(drop).
+    이미 CORE_ASSETS 면 idempotent. claim path 에는 적용 금지(_remap_to_8class 사용).
+    """
+    if not asset:
+        return None
+    return _REMAP_TO_CORE_ASSETS.get(asset)
+
 # Generic milestone lane — record-high/저 등 "긍정·완만해서 salience 저평가되는"
 # 구조적 마일스톤 보조 rescue용. ★특정 지수 레벨(8000 등) 매직넘버 금지 — 일반
 # record 표현 + 시장/지수 맥락 가드만 사용 (어느 지수/레벨이든 일반화).
@@ -172,12 +202,17 @@ def article_primary_asset_v2(article: dict) -> str | None:
     priority 2) `_classified_topics` per-topic (region, sector) route_by_region
        intensity 가중 argmax (selector label).
     priority 3) v1 article_primary_asset (벡터 argmax + KR 키워드).
-    article path 는 selector label space 유지 (CORE_ASSETS 와 정합).
+    모든 출력은 _remap_to_core_assets 로 CORE_ASSETS(selector label space)에 collapse:
+    크레딧→해외채권, 크립토→금대체, 현금성 및 매핑 밖 라벨→drop(None). label-space
+    leakage(selector 7-class 밖 라벨 누수) 차단 (R-4 발견 / R-5 blocker).
     """
     # priority 1 — LLM 직접 primary (flag ON research_v2 에서만 부착됨)
     llm_pa = article.get("_primary_asset_v2")
     if llm_pa:
-        return ASSET_IMPACT_TO_CANONICAL.get(llm_pa, llm_pa)
+        mapped = _remap_to_core_assets(ASSET_IMPACT_TO_CANONICAL.get(llm_pa, llm_pa))
+        if mapped:
+            return mapped
+        # 현금성 등 selector 밖 라벨 → drop 후 topic 라우팅으로 폴백
 
     ts = article.get("_classified_topics") or []
     agg: dict[str, float] = defaultdict(float)
@@ -189,7 +224,8 @@ def article_primary_asset_v2(article: dict) -> str | None:
         if region:
             saw_region = True
         sector = t.get("topic")
-        asset = route_by_region(region or "UNKNOWN", sector)
+        # route 출력을 CORE label space 로 collapse 후 누적 (agg 는 CORE 라벨만 보유)
+        asset = _remap_to_core_assets(route_by_region(region or "UNKNOWN", sector))
         if asset is None:
             continue
         try:
@@ -199,10 +235,10 @@ def article_primary_asset_v2(article: dict) -> str | None:
         agg[asset] += w
     if agg:
         return max(agg, key=agg.get)
-    # region 정보가 없거나 라우팅이 전부 비면 v1 경로로 위임
+    # region 정보가 없거나 라우팅이 전부 비면 v1 경로로 위임 (v1 도 CORE 로 collapse)
     if not saw_region:
-        return article_primary_asset(article)
-    # region 은 있었으나 (UNKNOWN 등) 라우팅 미정 → 키워드 fallback 만
+        return _remap_to_core_assets(article_primary_asset(article))
+    # region 은 있었으나 (UNKNOWN 등) 라우팅 미정 → 키워드 fallback 만 (CORE 라벨)
     title = _text(article)
     if any(k in title for k in _KR_BOND_KW):
         return "국내채권"

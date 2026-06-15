@@ -20,7 +20,9 @@ if str(PROJECT_ROOT) not in sys.path:
 from market_research.core.asset_taxonomy import (  # noqa: E402
     REGION_SET, REGION_TAXONOMY, route_by_region,
     article_primary_asset, article_primary_asset_v2, _remap_to_8class,
+    _remap_to_core_assets,
 )
+from market_research.core.balanced_selector import CORE_ASSETS  # noqa: E402
 from market_research.analyze.claim_extractor import (  # noqa: E402
     ALLOWED_ASSET_CLASSES,
 )
@@ -259,6 +261,72 @@ def test_remap_output_always_in_8class_or_none():
         ):
             out = _remap_to_8class(route_by_region(region, sector))
             assert out is None or out in ALLOWED_ASSET_CLASSES
+
+
+# ── _remap_to_core_assets: article 출력 → CORE_ASSETS(selector) collapse (R-5 blocker) ──
+
+def test_remap_core_leaked_labels():
+    # selector 밖 라벨 → CORE 버킷 흡수 / drop
+    assert _remap_to_core_assets("크레딧") == "해외채권"   # HY/IG → 해외채권 슬리브
+    assert _remap_to_core_assets("크립토") == "금대체"     # 크립토 → 대체투자
+    assert _remap_to_core_assets("현금성") is None         # selector 대상 아님 → drop
+
+
+def test_remap_core_identity_for_core_assets():
+    # CORE_ASSETS(7) 은 그대로 (idempotent)
+    for a in CORE_ASSETS:
+        assert _remap_to_core_assets(a) == a
+
+
+def test_remap_core_unknown_and_empty_to_none():
+    assert _remap_to_core_assets("존재안함") is None       # 매핑 밖 → strict drop
+    assert _remap_to_core_assets(None) is None
+    assert _remap_to_core_assets("") is None
+
+
+def test_remap_core_output_always_in_core_or_none():
+    # route_by_region 이 emit 하는 모든 라벨 → CORE_ASSETS 또는 None (누수 0)
+    for region in REGION_TAXONOMY:
+        for sector in (
+            "테크_AI_반도체", "금리_채권", "환율_FX", "에너지_원자재",
+            "귀금속_금", "유동성_크레딧", "크립토", "지정학", "관세_무역",
+        ):
+            out = _remap_to_core_assets(route_by_region(region, sector))
+            assert out is None or out in CORE_ASSETS
+
+
+def test_v2_llm_primary_credit_collapses_to_overseas_bond():
+    # priority 1: LLM _primary_asset_v2='크레딧' → 해외채권 (CORE collapse)
+    art = {"title": "美 하이일드 스프레드 확대", "description": "",
+           "_primary_asset_v2": "크레딧"}
+    assert article_primary_asset_v2(art) == "해외채권"
+
+
+def test_v2_llm_primary_crypto_collapses_to_alt():
+    # priority 1: LLM _primary_asset_v2='크립토' → 금대체
+    art = {"title": "비트코인 사상 최고", "description": "",
+           "_primary_asset_v2": "크립토"}
+    assert article_primary_asset_v2(art) == "금대체"
+
+
+def test_v2_llm_primary_cash_drops_then_falls_through():
+    # priority 1: '현금성' → drop(None) 후 topic 라우팅으로 폴백
+    art = {
+        "title": "단기자금 시장 점검", "description": "",
+        "_primary_asset_v2": "현금성",
+        "_classified_topics": [{"region": "KR", "topic": "테크_AI_반도체", "intensity": 7}],
+    }
+    # 현금성 drop → priority 2 (KR 테크 → 국내주식) 로 폴백
+    assert article_primary_asset_v2(art) == "국내주식"
+
+
+def test_v2_route_credit_collapses_in_priority2():
+    # priority 2: 크레딧 sector route → 크레딧 → CORE collapse → 해외채권
+    art = {
+        "title": "크레딧 시장", "description": "",
+        "_classified_topics": [{"region": "US", "topic": "유동성_크레딧", "intensity": 8}],
+    }
+    assert article_primary_asset_v2(art) == "해외채권"
 
 
 # ── WS1: research_v2 asset-layer validator + hybrid resolver ──
