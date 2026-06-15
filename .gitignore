@@ -108,5 +108,5 @@ market_research/data/claims/_promotion_quality.r9a4-c5replay.jsonl
 market_research/data/claims/*.research.json
 # D4 audit 산출물 (재생성 가능)
 market_research/debug/research_audit/
-# P5 03_Assets staging (운영 미반영, 재생성 가능)
-market_research/debug/wiki/p5_assets_staging/
+# P5/P5.1 03_Assets staging (운영 미반영, 재생성 가능)
+market_research/debug/wiki/

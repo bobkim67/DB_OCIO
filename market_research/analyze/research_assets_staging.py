@@ -227,11 +227,183 @@ def run_p5_staging(period: str) -> dict[str, Any]:
             "staging_dir": str(STAGING_DIR), "n_pages": len(supplied)}
 
 
+# ══════════════════════════════════════════════════════════════════
+# P5.1 cleanup — conviction 재작성(시장수치 제거/방향성 정규화/톤완화) + 섹션 정리
+# ══════════════════════════════════════════════════════════════════
+
+import re as _re
+
+STAGING_CLEAN_DIR = BASE_DIR / 'debug' / 'wiki' / 'p5_assets_staging_clean'
+SYNTH_MODEL = "claude-haiku-4-5-20251001"
+
+# §2 conviction 잔존 시장수치 검출(검증용): 천단위 콤마 레벨 / N달러 / 지수 등락 등
+_MARKET_NUM_RE = _re.compile(
+    r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?\s?달러|\d+(?:\.\d+)?\s?원")
+
+
+def _clean_conviction(asset: str, a: dict, directional: bool,
+                      llm_call) -> str:
+    """§2 conviction 재작성: 시장 레벨 수치 제거 + 방향성/톤 정규화."""
+    broker = a.get("broker_claims") or []
+    if not broker or llm_call is None:
+        return ""
+    claim_lines = "\n".join(
+        f"- ({c.get('stance')},{c.get('horizon')}) {c.get('view') or c.get('claim_text')}"
+        f" :: {(c.get('rationale_text') or '')}"[:240] for c in broker[:14])
+    stance = a.get("consensus_stance")
+    vote = a.get("vote_distribution", {})
+    strength = a.get("consensus_strength")
+
+    if directional:
+        nonbull = sum(v for k, v in vote.items() if k != stance)
+        weak = (strength or 0) < 0.6 or nonbull >= sum(vote.values()) * 0.45
+        tone = ("단정적 강세/약세 대신 '완만한 우위 / 조건부' 톤"
+                if (asset == "해외주식" or weak) else f"{stance} 방향 명확히")
+        bond = ("채권: '긴축 본격화 임박' 등 강한 표현 금지 → "
+                "'금리 상방 압력/인하 기대 후퇴/듀레이션 부담' 류로 완화"
+                if asset in ("국내채권", "해외채권") else "")
+        dir_rule = (f"- 방향성: stance={stance}. {tone}. {bond}\n")
+    else:
+        dir_rule = ("- ★non-directional: bullish/bearish/강세/약세/컨센서스 강세·약세 표현 "
+                    "절대 금지. '상승 요인은 …, 하락 요인은 …, 방향성 판단 유보' 구조로.\n")
+
+    user = (
+        f"자산군: {asset} (directional={directional})\n"
+        f"broker claims:\n{claim_lines}\n\n"
+        "위 claim 근거로 운용보고 conviction 2~3문장 작성. 규칙:\n"
+        "- ★시장 레벨/가격 수치 절대 금지: 지수레벨(코스피 7,981 등)·가격·등락률·월말값"
+        "·금리레벨·환율수치·유가달러 등 숫자 레벨 쓰지 말 것(별도 DB에서 주입).\n"
+        f"{dir_rule}"
+        "- 근거 불명확한 고유명사/정치인물(예: 특정 인물 체제) 금지 — claim 명시분만.\n"
+        "- 방향성과 논리만. 순수 텍스트(JSON/마크다운 금지)."
+    )
+    prompt = {"system": "OCIO 운용보고 자산군 코멘트 보조. 시장 레벨/가격 수치는 절대 "
+                        "쓰지 않는다(DB 주입). 방향성과 논리만 간결히. 제목/헤더 없이 본문만.",
+              "user": user, "model": SYNTH_MODEL, "max_tokens": 600}
+    try:
+        raw = (llm_call(prompt) or "").strip()
+    except Exception:
+        return ""
+    # LLM 이 붙인 markdown 제목/헤더/fence 제거 (본문 산문만)
+    lines = [ln for ln in raw.splitlines()
+             if not ln.lstrip().startswith("#") and not ln.strip().startswith("```")]
+    return "\n".join(lines).strip()
+
+
+def _number_sections(sections: list[tuple[str, str]]) -> str:
+    """(title, body) 리스트 → ## N. 순차 번호 (빈 섹션 제외)."""
+    out = []
+    n = 0
+    for title, body in sections:
+        if not body.strip():
+            continue
+        n += 1
+        out.append(f"## {n}. {title}\n{body}".rstrip())
+    return "\n\n".join(out)
+
+
+def build_clean_asset_page(period: str, asset: str, a: dict, llm_call) -> tuple[str, dict]:
+    directional = asset in DIRECTIONAL
+    strength = a.get("consensus_strength") or 0.0
+    stance = a.get("consensus_stance")
+    broker = a.get("broker_claims") or []
+    credit = [c for c in broker if _is_credit(c)]
+    non_credit = [c for c in broker if not _is_credit(c)]
+    us_driven = [c for c in broker if asset in ("국내주식", "국내채권")
+                 and c.get("_driver_region") in ("US", "overseas")]
+    market_txt, snap = _market_section(asset, period)
+    conviction = _clean_conviction(asset, a, directional, llm_call)
+    leak = _MARKET_NUM_RE.findall(conviction)
+
+    # 섹션 동적 구성 (빈 섹션 미출력 → 번호 정상화)
+    s_market = market_txt.split("\n", 1)[1] if "\n" in market_txt else market_txt
+    if directional:
+        s_conv = f"- stance: **{stance}** (strength {strength}, directional)\n{conviction}"
+    else:
+        s_conv = (f"- 방향성 판단 유보 (strength {strength} < {LOW_CONVICTION_STRENGTH}, "
+                  f"non-directional)\n{conviction}")
+    s_rat = "\n".join(_claim_line(c) for c in non_credit[:8])
+    s_credit = ("\n".join(_claim_line(c) for c in credit[:6])
+                if asset in ("국내채권", "해외채권") and credit else "")
+    s_sec = ("\n".join(_claim_line(c) for c in us_driven[:5])
+             if asset in ("국내주식", "국내채권") and us_driven else "")
+
+    body = _number_sections([
+        ("시장 레벨 (출처: market_db)", s_market),
+        ("컨센서스 / conviction (출처: research_claims 09)", s_conv),
+        ("핵심 논거 (출처: research claims)", s_rat),
+        ("credit_sleeve (출처: 크레딧 claims — 채권 main stance 미합산)", s_credit),
+        ("secondary driver (출처: driver_region=US/overseas)", s_sec),
+    ])
+    front = (
+        "---\n"
+        f"period: {period}\nasset_class: {asset}\n"
+        "source_type: asset_staging_clean\ngenerated_by: research_assets_staging(P5.1)\n"
+        "stance_source: research_claims_09\n"
+        f"market_level_source: {'market_db' if snap else 'none'}\n"
+        f"directional: {str(directional).lower()}\n"
+        f"consensus_stance: {stance if directional else '(non-directional)'}\n"
+        f"consensus_strength: {strength}\n"
+        f"conviction_market_num_leak: {len(leak)}\n"
+        "---\n\n"
+    )
+    page = front + f"# {period} {asset} — 운용보고 자산군 (P5.1 clean staging)\n\n" + body
+    trace = {"asset": asset, "directional": directional,
+             "stance": stance if directional else "(non-directional)",
+             "market_snapshot_used": bool(snap), "credit_sleeve": len(credit),
+             "us_driven_kr": len(us_driven), "conviction_market_num_leak": len(leak),
+             "leaked": leak[:5]}
+    return page, trace
+
+
+def run_p5_1_cleanup(period: str, *, llm_call=None) -> dict[str, Any]:
+    from market_research.analyze.research_consensus import _default_llm_call
+    call = llm_call or _default_llm_call
+    agg = aggregate_by_asset(load_research_claims(period))
+    (STAGING_CLEAN_DIR / "03_Assets").mkdir(parents=True, exist_ok=True)
+    traces, diffs = [], []
+    for asset in DIRECTIONAL + NON_DIRECTIONAL:
+        a = agg.get(asset)
+        if not a:
+            continue
+        clean, tr = build_clean_asset_page(period, asset, a, call)
+        stem = _ASSET_STEM.get(asset, asset)
+        (STAGING_CLEAN_DIR / "03_Assets" / f"{period}_{stem}.md").write_text(
+            clean, encoding="utf-8")
+        traces.append(tr)
+        # diff: P5(원본 staging) → P5.1(clean)
+        before_p = STAGING_DIR / "03_Assets" / f"{period}_{stem}.md"
+        before = before_p.read_text(encoding="utf-8") if before_p.exists() else ""
+        d = difflib.unified_diff(before.splitlines(), clean.splitlines(),
+                                 fromfile=f"P5/{asset}", tofile=f"P5.1clean/{asset}",
+                                 lineterm="", n=1)
+        diffs.append("\n".join(d))
+    (STAGING_CLEAN_DIR / "p5_assets_clean_trace.json").write_text(
+        json.dumps({"period": period, "traces": traces}, ensure_ascii=False, indent=2),
+        encoding="utf-8")
+    (STAGING_CLEAN_DIR / "p5_assets_clean_diff.md").write_text(
+        f"# P5.1 clean diff ({period}) — 운영 미반영\n\n"
+        + "\n\n---\n\n".join(f"```diff\n{d}\n```" for d in diffs if d.strip()),
+        encoding="utf-8")
+    return {"period": period, "traces": traces, "dir": str(STAGING_CLEAN_DIR)}
+
+
 def main() -> int:
     import argparse
     ap = argparse.ArgumentParser(description="P5 03_Assets staging (no operational write)")
     ap.add_argument("period")
+    ap.add_argument("--clean", action="store_true", help="P5.1 cleanup staging")
     args = ap.parse_args()
+    if args.clean:
+        r = run_p5_1_cleanup(args.period)
+        print(f"[P5.1 clean] {args.period} → {r['dir']}")
+        print(f"{'asset':10} {'stance':18} {'mkt':4} {'credit':6} {'us_kr':5} {'num_leak':8}")
+        for t in r["traces"]:
+            print(f"  {t['asset']:10} {str(t['stance'])[:16]:18} "
+                  f"{'Y' if t['market_snapshot_used'] else '-':4} "
+                  f"{t['credit_sleeve']:<6} {t['us_driven_kr']:<5} "
+                  f"{t['conviction_market_num_leak']:<8} {t['leaked'] if t['leaked'] else ''}")
+        return 0
     r = run_p5_staging(args.period)
     print(f"[P5 staging] {args.period} → {r['staging_dir']}")
     print(f"{'asset':10} {'src':16} {'stance':16} {'mkt':5} {'credit':6} {'us_kr':5}")
