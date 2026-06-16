@@ -31,6 +31,11 @@ from pathlib import Path
 if sys.stdout.encoding != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
+from market_research.report.debate_context_policy import (
+    DebateContextPolicy, LEGACY_POLICY, resolve_policy,
+    summarize_prompt_sections, active_sections, validate_research_only_clean,
+)
+
 BASE_DIR = Path(__file__).resolve().parent.parent  # market_research/
 REGIME_FILE = BASE_DIR / 'data' / 'regime_memory.json'
 DEBATE_LOG_DIR = BASE_DIR / 'data' / 'debate_logs'
@@ -255,7 +260,7 @@ def _build_evidence_candidates(year: int, month: int, target_count: int,
                                start_idx: int,
                                *,
                                force_window_ids: set[str] | None = None,
-                               research_only: bool = False,
+                               policy: DebateContextPolicy = LEGACY_POLICY,
                                ) -> tuple[list, list, list, dict]:
     """source-aware evidence 선발.
 
@@ -298,10 +303,11 @@ def _build_evidence_candidates(year: int, month: int, target_count: int,
     research_pool.sort(key=lambda x: -float(x.get('_event_salience', 0) or 0))
 
     # ── Lane B: news corroboration (primary + intensity>=6 + filter) ──
-    # research_only: news lane 전면 차단 (research_pool 만으로 evidence 구성).
+    # policy.news_evidence_lane_enabled=False (research-only) 면 news lane 전면 차단
+    # → research_pool 만으로 evidence 구성.
     news_pool: list[dict] = []
     news_file = BASE_DIR / 'data' / 'news' / f'{year}-{month:02d}.json'
-    if not research_only and news_file.exists():
+    if policy.news_evidence_lane_enabled and news_file.exists():
         data = json.loads(news_file.read_text(encoding='utf-8'))
         for a in data.get('articles', []):
             if not a.get('_classified_topics'):
@@ -318,8 +324,8 @@ def _build_evidence_candidates(year: int, month: int, target_count: int,
                        -int(x.get('intensity', 0) or 0)),
     )
 
-    # ── Quota 산정 ──
-    research_quota = int(round(target_count * RESEARCH_QUOTA))
+    # ── Quota 산정 (policy 기반) ──
+    research_quota = int(round(target_count * policy.research_quota))
     news_quota = target_count - research_quota
 
     high_impact: list[dict] = []
@@ -333,9 +339,9 @@ def _build_evidence_candidates(year: int, month: int, target_count: int,
     def _guardrails_ok(a: dict) -> bool:
         topic = a.get('primary_topic', '')
         egid = a.get('_event_group_id', '') or ''
-        if topic and topic_count.get(topic, 0) >= MAX_PER_TOPIC:
+        if topic and topic_count.get(topic, 0) >= policy.max_per_topic:
             return False
-        if egid and event_count.get(egid, 0) >= MAX_PER_EVENT:
+        if egid and event_count.get(egid, 0) >= policy.max_per_event:
             return False
         return True
 
@@ -598,17 +604,70 @@ def _build_evidence_candidates(year: int, month: int, target_count: int,
 # 컨텍스트 빌더
 # ===================================================================
 
+def build_research_synthesis_context(year: int, month: int,
+                                     max_assets: int = 8,
+                                     excerpt_chars: int = 600) -> str:
+    """09_Research_Synthesis best-effort 로더 (Phase 2 승격 대상의 hook).
+
+    naver_research 분해→재종합 결과(09_Research_Synthesis/{period}_{자산군}.md)를
+    debate 컨텍스트로 best-effort 주입한다. 파일 포맷이 아직 유동적이라 frontmatter
+    (consensus_stance/strength) + 본문 앞부분 excerpt 만 발췌한다. 페이지 없으면
+    빈 문자열 + debug 로그(누락 표시). Phase 2 에서 1급 소스로 정식 승격 예정.
+    """
+    period = f'{year}-{month:02d}'
+    try:
+        from market_research.wiki.paths import RESEARCH_SYNTHESIS_DIR
+        synth_dir = RESEARCH_SYNTHESIS_DIR
+    except Exception:
+        synth_dir = BASE_DIR / 'data' / 'wiki' / '09_Research_Synthesis'
+    pages = sorted(synth_dir.glob(f'{period}_*.md')) if synth_dir.exists() else []
+    if not pages:
+        _log('research_synthesis_missing', period=period,
+             dir=str(synth_dir), exists=synth_dir.exists())
+        return ''
+    blocks = [f'## 09 Research Synthesis (naver_research 재종합, {period})']
+    for fp in pages[:max_assets]:
+        try:
+            body = fp.read_text(encoding='utf-8')
+        except Exception:
+            continue
+        asset = fp.stem.split('_', 1)[-1]
+        # frontmatter consensus 요약
+        stance = strength = None
+        for ln in body.splitlines():
+            s = ln.strip()
+            if s.startswith('consensus_stance:'):
+                stance = s.split(':', 1)[1].strip()
+            elif s.startswith('consensus_strength:'):
+                strength = s.split(':', 1)[1].strip()
+        # 본문(frontmatter 이후) excerpt
+        prose = body.split('---', 2)[-1].strip() if body.startswith('---') else body
+        excerpt = prose[:excerpt_chars].strip()
+        head = f'### {asset}'
+        if stance:
+            head += f' — consensus={stance}' + (f'/{strength}' if strength else '')
+        blocks.append(head)
+        blocks.append(excerpt)
+    _log('research_synthesis_loaded', period=period, pages=len(pages[:max_assets]))
+    return '\n'.join(blocks)
+
+
 def _build_shared_context(year: int, month: int, fund_code: str = None,
                           start_idx: int = 1, target_count: int = 15,
                           *,
                           force_window_ids: set[str] | None = None,
-                          research_only: bool = False) -> dict:
+                          research_only: bool = False,
+                          policy: DebateContextPolicy | None = None) -> dict:
     """4인 에이전트 공유 컨텍스트 빌드.
 
     start_idx: evidence 번호 시작값 (분기 통번호용)
-    target_count: 이 달에서 뽑을 뉴스 목표 건수 (분기 debate 시 월별 quota 적용)
+    target_count: (legacy) evidence quota. policy.evidence_target_count 우선.
     force_window_ids: BEW lane 내부 filter (None=전체)
+    policy: 컨텍스트 소스 정책. None 이면 research_only(bool) 로 legacy resolve
+      (backward-compatible). 소스별 on/off 와 quota/guardrail knob 을 담는다.
     """
+    if policy is None:
+        policy = resolve_policy("legacy", research_only=research_only)
     context = {
         'year': year,
         'month': month,
@@ -621,10 +680,22 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
         'blog_context_text': '',
     }
 
-    # 뉴스 분류 요약 (dedupe + salience 활용)
+    # evidence cards (research lane + optional news lane) — mode 무관 항상 빌드.
+    #   research-only 면 policy 가 news lane 만 차단 → research_pool 로 카드 구성.
+    #   카드는 [ref:N] citation 근거라 prompt 에 노출돼야 한다 → evidence_cards_text.
     evidence_ids = []  # 프롬프트에 포함된 기사 ID 추적
+    high_impact, lane_evidence_ids, card_lines, _sel_debug = \
+        _build_evidence_candidates(year, month, policy.evidence_target_count, start_idx,
+                                   force_window_ids=force_window_ids, policy=policy)
+    evidence_ids.extend(lane_evidence_ids)
+    if high_impact:
+        context['_next_idx'] = start_idx + len(high_impact)
+    context['evidence_cards_text'] = '\n'.join(card_lines)
+
+    # 뉴스 분류 요약 (토픽 카운트 + asset_impact 집계) — policy.news_summary_enabled.
+    # legacy parity: 헤더 + 카드 + 집계를 한 string 으로 묶어 기존 출력 그대로 유지.
     news_file = BASE_DIR / 'data' / 'news' / f'{year}-{month:02d}.json'
-    if news_file.exists():
+    if policy.news_summary_enabled and news_file.exists():
         data = json.loads(news_file.read_text(encoding='utf-8'))
         articles = data.get('articles', [])
         classified = [a for a in articles if a.get('_classified_topics')]
@@ -643,15 +714,7 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
         for topic, count in topic_counts.most_common(10):
             lines.append(f'  {topic}: {count}건')
 
-        # 주요 뉴스: source-aware two-lane selection (research 70% / news 30%)
-        high_impact, lane_evidence_ids, card_lines, _sel_debug = \
-            _build_evidence_candidates(year, month, target_count, start_idx,
-                                       force_window_ids=force_window_ids,
-                                       research_only=research_only)
         lines.extend(card_lines)
-        evidence_ids.extend(lane_evidence_ids)
-        if high_impact:
-            context['_next_idx'] = start_idx + len(high_impact)
 
         # 자산군별 영향 집계 (asset_impact_vector 합산)
         from collections import defaultdict as _dd
@@ -678,19 +741,21 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
         'max_selected_confidence': 0.0,
         'selected_path_labels': [],
     }
+    # research-only mode 면 graph_paths 차단 (insight_graph = news+naver mixed-source).
     graph_file = BASE_DIR / 'data' / 'insight_graph' / f'{year}-{month:02d}.json'
-    if graph_file.exists():
+    if policy.graph_paths_enabled and graph_file.exists():
         graph = json.loads(graph_file.read_text(encoding='utf-8'))
         all_paths = graph.get('transmission_paths', []) or []
         graph_trace['candidate_path_count'] = len(all_paths)
-        # confidence 0.3 이상 우선, 부족하면 보조로 채워 최소 6개까지
-        confident = [p for p in all_paths if (p.get('confidence') or 0) >= 0.3]
-        weak = [p for p in all_paths if 0 < (p.get('confidence') or 0) < 0.3]
+        # confidence threshold 이상 우선, 부족하면 보조로 채워 graph_path_min 까지
+        _thr = policy.graph_confidence_threshold
+        confident = [p for p in all_paths if (p.get('confidence') or 0) >= _thr]
+        weak = [p for p in all_paths if 0 < (p.get('confidence') or 0) < _thr]
         graph_trace['dropped_low_confidence_count'] = len(weak)
         confident.sort(key=lambda p: -(p.get('confidence') or 0))
         weak.sort(key=lambda p: -(p.get('confidence') or 0))
-        # 최소 6 ~ 최대 10 개 안정화
-        TARGET_MIN, TARGET_MAX = 6, 10
+        # 최소 graph_path_min ~ 최대 graph_path_max 개 안정화
+        TARGET_MIN, TARGET_MAX = policy.graph_path_min, policy.graph_path_max
         selected = list(confident[:TARGET_MAX])
         if len(selected) < TARGET_MIN:
             need = TARGET_MIN - len(selected)
@@ -741,7 +806,12 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
         'pinned_fund_context_reason': None,
         'fund_specific_keywords_added': [],
     }
-    try:
+    if not policy.wiki_keyword_retriever_enabled:
+        # research-only: keyword retriever 는 build_wiki_context_pack 과 중복 → 미실행(차단).
+        context['wiki_context_text'] = ''
+        context['_wiki_trace'] = wiki_trace
+    else:
+      try:
         from market_research.report.wiki_retriever import (
             retrieve_wiki_context, format_wiki_context_for_prompt,
             get_pinned_fund_context, format_pinned_fund_context_for_prompt,
@@ -832,21 +902,27 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
             format_pinned_fund_context_for_prompt(pinned)
             + format_wiki_context_for_prompt(retrieval)
         )
-    except Exception as e:
+      except Exception as e:
         context['wiki_context_text'] = ''
         print(f'[wiki_retriever] 오류: {e}')
     context['_wiki_trace'] = wiki_trace
 
-    # Blog insight (monygeek 전용)
-    try:
-        from market_research.analyze.blog_analyst import build_monygeek_context
-        context['blog_context_text'] = build_monygeek_context(year, month)
-    except Exception:
-        pass
+    # Blog insight — monygeek **persona** 전용 소스 (monygeek_blog_source).
+    # ⚠️ persona(유로달러 분석가) 와 다른 개념. policy.monygeek_blog_enabled 로 게이트.
+    if policy.monygeek_blog_enabled:
+        try:
+            from market_research.analyze.blog_analyst import build_monygeek_context
+            context['blog_context_text'] = build_monygeek_context(year, month)
+        except Exception:
+            pass
 
-    # indicators.csv
+    # 09_Research_Synthesis hook (Phase 2 승격 대상) — best-effort 로더.
+    if policy.research_synthesis_enabled:
+        context['research_synthesis_text'] = build_research_synthesis_context(year, month)
+
+    # indicators.csv — policy.macro_indicators_enabled
     indicators_file = BASE_DIR / 'data' / 'macro' / 'indicators.csv'
-    if indicators_file.exists():
+    if policy.macro_indicators_enabled and indicators_file.exists():
         import csv
         with open(indicators_file, encoding='utf-8') as f:
             reader = csv.reader(f)
@@ -1109,6 +1185,7 @@ def _build_wiki_context_pack_for_debate(
     max_pages: int,
     period_type: str = "monthly",
     period_keys: list[str] | None = None,
+    restrict_dirs: tuple[str, ...] | None = None,
 ) -> dict:
     """R9-B.3 — builder 호출 wrapper. read-only, LLM 0.
 
@@ -1129,6 +1206,7 @@ def _build_wiki_context_pack_for_debate(
         stage=stage,
         fund_code=fund_code,
         max_pages=max_pages,
+        restrict_dirs=restrict_dirs,
     )
 
 
@@ -1347,7 +1425,14 @@ def _build_agent_prompt(agent_type: str, context: dict) -> str:
     anchor_block = context.get('asset_movement_anchors_text') or ''
     claims_block = context.get('claims_text') or ''
     wiki_primary_block = context.get('wiki_primary_context_text') or ''
+    # 09_Research_Synthesis hook (research-only 면 채워짐, legacy 면 '').
+    research_synth_block = context.get('research_synthesis_text') or ''
     raw_heading = (WIKI_CONTEXT_RAW_HEADING + '\n\n') if wiki_primary_block else ''
+    # evidence cards: news_summary 가 있으면 그 안에 포함(legacy). research-only 면
+    # news_summary='' 이라 research lane 카드(evidence_cards_text)로 대체.
+    evidence_block = (context.get('news_summary_text')
+                      or context.get('evidence_cards_text')
+                      or '(뉴스 데이터 없음)')
     shared = (
         f'## {context["year"]}년 {context["month"]}월 시장 분석\n\n'
         + (wiki_primary_block + '\n' if wiki_primary_block else '')
@@ -1355,7 +1440,8 @@ def _build_agent_prompt(agent_type: str, context: dict) -> str:
         + (anchor_block + '\n\n' if anchor_block else '')
         + (claims_block + '\n\n' if claims_block else '')
         + (_CLAIM_CITATION_INSTRUCTION + '\n' if claims_block else '')
-        + f'{context.get("news_summary_text", "(뉴스 데이터 없음)")}\n\n'
+        + (research_synth_block + '\n\n' if research_synth_block else '')
+        + f'{evidence_block}\n\n'
         + f'{context.get("indicators_text", "(지표 데이터 없음)")}\n\n'
         + f'{context.get("timeseries_narrative_text", "")}\n\n'
         + f'{context.get("graph_paths_text", "")}\n\n'
@@ -1370,14 +1456,17 @@ def _build_agent_prompt(agent_type: str, context: dict) -> str:
         )
 
     # P3: 주요 인과 경로 / WikiTree 메모 활용 강제 (소량, JSON 응답 지시 직전에 삽입)
-    shared += (
-        '\n## 분석 지시 (필수)\n'
-        '- 단순한 뉴스 요약을 넘어, 위에 제시된 "주요 인과 경로"와 "관련 WikiTree 메모"를 활용해 '
-        '이벤트가 자산군에 전파되는 경로를 해석하세요.\n'
-        '- key_points 또는 reasoning 에 최소 1개 이상의 전파경로 (예: "A → B → C" 또는 자연어 인과 chain)를 '
-        '명시적으로 언급하세요.\n'
-        '- confidence 가 낮은 경로는 "가능성/리스크"로 표현하고, 단정 표현은 피하세요.\n'
-    )
+    # research-only mode 면 graph_paths 가 없으므로 graph 인용 강제 지시를 넣지 않는다
+    # (없는 경로를 지어내게 만들기 때문). graph_paths_text 있을 때만 삽입.
+    if context.get('graph_paths_text'):
+        shared += (
+            '\n## 분석 지시 (필수)\n'
+            '- 단순한 뉴스 요약을 넘어, 위에 제시된 "주요 인과 경로"와 "관련 WikiTree 메모"를 활용해 '
+            '이벤트가 자산군에 전파되는 경로를 해석하세요.\n'
+            '- key_points 또는 reasoning 에 최소 1개 이상의 전파경로 (예: "A → B → C" 또는 자연어 인과 chain)를 '
+            '명시적으로 언급하세요.\n'
+            '- confidence 가 낮은 경로는 "가능성/리스크"로 표현하고, 단정 표현은 피하세요.\n'
+        )
 
     shared += (
         f'\n위 데이터를 바탕으로 {context["year"]}년 {context["month"]}월 시장을 분석하세요.\n\n'
@@ -1817,10 +1906,38 @@ def _summarize_debate_narrative(agent_responses: dict) -> dict:
 # 메인: Debate 실행
 # ===================================================================
 
+def _record_context_source_trace(context: dict, policy: DebateContextPolicy) -> dict:
+    """Phase 1 §6 — prompt 섹션 dump + research-only 차단 검증 로그.
+
+    context['_context_source_trace'] 에 섹션별 char 수 + active 목록 + policy 이름을
+    기록. research-only 면 금지 소스(news/graph/retriever) 누수 검증 후 로그/경고.
+    """
+    sizes = summarize_prompt_sections(context)
+    trace = {
+        'policy': policy.name,
+        'section_chars': sizes,
+        'active_sections': [s for s, n in sizes.items() if n > 0],
+    }
+    if policy.name == 'research_only':
+        ok, violations = validate_research_only_clean(context)
+        trace['research_only_clean'] = ok
+        trace['research_only_violations'] = violations
+        if ok:
+            print('  [research-only] raw news/graph/retriever 차단 확인 ✓')
+        else:
+            print(f'  [research-only] ⚠️ 금지 소스 누수: {violations}')
+        _log('context_source_trace', **trace)
+    else:
+        _log('context_source_trace', **trace)
+    context['_context_source_trace'] = trace
+    return trace
+
+
 def run_market_debate(year: int, month: int,
                       *,
                       force_window_ids: set[str] | None = None,
                       research_only: bool = False,
+                      context_mode: str = "legacy",
                       use_wiki_context_pack: bool = True,
                       wiki_context_pack: dict | None = None,
                       wiki_context_max_pages: int = 12) -> dict:
@@ -1828,6 +1945,11 @@ def run_market_debate(year: int, month: int,
     시장 전체 debate (월 1회, 펀드 무관).
     4인 에이전트 병렬 실행 -> Opus 2단계 종합 -> 자산군별 분석 결과.
     펀드별 캐시에서는 이 결과를 참조하여 보유 비중에 맞는 코멘트만 사용.
+
+    context_mode (Phase 1): 'legacy'(default, 기존 출력 불변) | 'research_only'
+      (naver_research wiki + synthesis 중심, news/graph/retriever 차단). 기존
+      `research_only: bool` 은 backward-compatible 하게 흡수(resolve_policy).
+      research-only 면 wiki_context_pack dir 도 research dir(03/05/08)로 제한.
 
     force_window_ids: BEW viewer 에서 선택된 window_id set (None=전체 BEW 사용).
 
@@ -1842,7 +1964,8 @@ def run_market_debate(year: int, month: int,
         WikiContextPackError).
       wiki_context_max_pages: builder 의 max_pages (default 12).
     """
-    print(f'\n-- Market Debate: {year}-{month:02d} --')
+    policy = resolve_policy(context_mode, research_only=research_only)
+    print(f'\n-- Market Debate: {year}-{month:02d} (context_mode={policy.name}) --')
     if force_window_ids:
         print(f'  [forced BEW] {len(force_window_ids)}개 window_id 만 evidence lane 에 허용')
 
@@ -1851,7 +1974,7 @@ def run_market_debate(year: int, month: int,
     wcp_trace_fields: dict = {'wiki_context_pack_enabled': False}
     wiki_primary_text = ''
     wcp_used: dict | None = None
-    if use_wiki_context_pack:
+    if use_wiki_context_pack and policy.research_wiki_enabled:
         period_key = f'{year}-{month:02d}'
         if wiki_context_pack is not None:
             _validate_wiki_context_pack(
@@ -1866,6 +1989,7 @@ def run_market_debate(year: int, month: int,
                 stage='market_debate',
                 fund_code=None,
                 max_pages=wiki_context_max_pages,
+                restrict_dirs=policy.wiki_context_pack_dirs,
             )
         wiki_primary_text = _format_wiki_primary_context_for_prompt(wcp_used)
         wcp_trace_fields = _wiki_context_pack_trace(wcp_used)
@@ -1874,11 +1998,13 @@ def run_market_debate(year: int, month: int,
               f'{wcp_trace_fields.get("wiki_pages_selected", 0)}')
 
     context = _build_shared_context(year, month, force_window_ids=force_window_ids,
-                                    research_only=research_only)
+                                    policy=policy)
     context['wiki_primary_context_text'] = wiki_primary_text
     context['_wiki_context_pack'] = wcp_used
     context['_prompt_context_mode'] = prompt_context_mode
-    print(f'  컨텍스트 빌드 완료')
+    # Phase 1 — context source trace + research-only 차단 검증 로그.
+    _record_context_source_trace(context, policy)
+    print(f'  컨텍스트 빌드 완료 (sections: {", ".join(active_sections(context))})')
 
     # 4인 에이전트 병렬 실행
     print(f'  4인 에이전트 실행 중...')
@@ -2093,6 +2219,8 @@ def _evidence_month_distribution(evidence_ids: list, year: int,
 def run_quarterly_debate(year: int, quarter: int,
                          *,
                          force_window_ids: set[str] | None = None,
+                         research_only: bool = False,
+                         context_mode: str = "legacy",
                          use_wiki_context_pack: bool = True,
                          wiki_context_pack: dict | None = None,
                          wiki_context_max_pages: int = 12) -> dict:
@@ -2109,8 +2237,10 @@ def run_quarterly_debate(year: int, quarter: int,
     builder 가 분기 전체 month 의 claim_store 를 union 하고 wiki page selection 도
     분기 window 기준으로 수행.
     """
+    policy = resolve_policy(context_mode, research_only=research_only)
     months = [(quarter - 1) * 3 + i for i in range(1, 4)]
-    print(f'\n-- Quarterly Debate: {year}Q{quarter} ({months[0]}~{months[2]}월) --')
+    print(f'\n-- Quarterly Debate: {year}Q{quarter} ({months[0]}~{months[2]}월) '
+          f'(context_mode={policy.name}) --')
     if force_window_ids:
         print(f'  [forced BEW] {len(force_window_ids)}개 window_id 만 evidence lane 에 허용')
 
@@ -2119,7 +2249,7 @@ def run_quarterly_debate(year: int, quarter: int,
     wcp_trace_fields: dict = {'wiki_context_pack_enabled': False}
     wiki_primary_text_q = ''
     wcp_used_q: dict | None = None
-    if use_wiki_context_pack:
+    if use_wiki_context_pack and policy.research_wiki_enabled:
         # R9-B.5.6 — quarterly union pack.
         # period_key: YYYY-QX label (display + pack identifier)
         # period_keys: 분기 3개월 — builder 가 monthly claim_store 를 union.
@@ -2140,6 +2270,7 @@ def run_quarterly_debate(year: int, quarter: int,
                 stage='quarterly_debate',
                 fund_code=None,
                 max_pages=wiki_context_max_pages,
+                restrict_dirs=policy.wiki_context_pack_dirs,
             )
         wiki_primary_text_q = _format_wiki_primary_context_for_prompt(wcp_used_q)
         wcp_trace_fields = _wiki_context_pack_trace(wcp_used_q)
@@ -2163,6 +2294,8 @@ def run_quarterly_debate(year: int, quarter: int,
     all_news_lines = []
     all_graph_lines = []
     all_blog_lines = []
+    all_evidence_cards = []   # research-only: news_summary 비어도 evidence 카드 보존
+    all_research_synth = []   # 09 synthesis (research-only)
     all_evidence_ids = []
     next_idx = 1  # 분기 통번호
     last_ctx = None  # Q-FIX-1: 마지막 월 ctx 의 trace 보존
@@ -2171,13 +2304,18 @@ def run_quarterly_debate(year: int, quarter: int,
     MONTHLY_QUOTA = 5
     for m in months:
         ctx = _build_shared_context(year, m, start_idx=next_idx, target_count=MONTHLY_QUOTA,
-                                    force_window_ids=force_window_ids)
+                                    force_window_ids=force_window_ids, policy=policy)
         next_idx = ctx.get('_next_idx', next_idx)
         if ctx.get('indicators_text') and not merged_context['indicators_text']:
             merged_context['indicators_text'] = ctx['indicators_text']
         if ctx.get('news_summary_text'):
             all_news_lines.append(f'--- {year}-{m:02d} ---')
             all_news_lines.append(ctx['news_summary_text'])
+        elif ctx.get('evidence_cards_text'):
+            all_evidence_cards.append(f'--- {year}-{m:02d} ---')
+            all_evidence_cards.append(ctx['evidence_cards_text'])
+        if ctx.get('research_synthesis_text'):
+            all_research_synth.append(ctx['research_synthesis_text'])
         if ctx.get('graph_paths_text'):
             all_graph_lines.append(ctx['graph_paths_text'])
         if ctx.get('blog_context_text'):
@@ -2187,6 +2325,8 @@ def run_quarterly_debate(year: int, quarter: int,
 
     merged_context['indicators_text'] = merged_context['indicators_text']
     merged_context['news_summary_text'] = '\n'.join(all_news_lines)
+    merged_context['evidence_cards_text'] = '\n'.join(all_evidence_cards)
+    merged_context['research_synthesis_text'] = '\n'.join(all_research_synth)
     merged_context['graph_paths_text'] = '\n'.join(all_graph_lines)
     merged_context['blog_context_text'] = '\n'.join(all_blog_lines)
     merged_context['_evidence_ids'] = all_evidence_ids
@@ -2211,8 +2351,10 @@ def run_quarterly_debate(year: int, quarter: int,
     merged_context['wiki_primary_context_text'] = wiki_primary_text_q
     merged_context['_wiki_context_pack'] = wcp_used_q
     merged_context['_prompt_context_mode'] = prompt_context_mode
+    _record_context_source_trace(merged_context, policy)
 
-    print(f'  컨텍스트 빌드 완료 (3개월 병합)')
+    print(f'  컨텍스트 빌드 완료 (3개월 병합, sections: '
+          f'{", ".join(active_sections(merged_context))})')
 
     # 4인 에이전트
     print(f'  4인 에이전트 실행 중...')

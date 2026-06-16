@@ -1188,6 +1188,7 @@ def build_wiki_context_pack(
     max_pages: int = DEFAULT_MAX_PAGES,
     body_excerpt_chars: int = DEFAULT_BODY_EXCERPT_CHARS,
     include_debate_memory: bool = False,
+    restrict_dirs: tuple[str, ...] | None = None,
     wiki_root: Path | None = None,
     builder_run_time: str | None = None,
 ) -> dict:
@@ -1218,6 +1219,12 @@ def build_wiki_context_pack(
     )
     run_time = builder_run_time or datetime.now(timezone.utc).isoformat(timespec="seconds")
     allowed = _allowed_dirs(stage)
+    if restrict_dirs is not None:
+        # research-only 등 — stage 허용 dir 중 restrict_dirs 교집합만 사용.
+        # (모든 phase: scan / 08_Claims reserve / 04_Funds pinned 가 `allowed` 를
+        #  공통 참조하므로 한 곳만 좁히면 전체 적용.)
+        _restrict = set(restrict_dirs)
+        allowed = tuple(d for d in allowed if d in _restrict)
     if max_pages <= 0:
         raise ValueError(f"max_pages must be > 0, got {max_pages}")
 
