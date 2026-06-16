@@ -26,12 +26,13 @@ def test_consumption_sets_disjoint_and_complete():
 
 
 def test_market_metric_only_verified():
-    # 등록된 metric 만(미확정 S&P/Nasdaq/금리 제외)
+    # 검증된 metric 만 등록 (S&P500/NASDAQ100 confirmed; 금리 yield 는 보류)
     assert ASSET_METRIC["국내주식"] == "KOSPI"
+    assert ASSET_METRIC["해외주식"] == "SP500"   # ✓검증: 271/ds6 USD (1999=1469.25 실제 종가)
     assert ASSET_METRIC["원자재금"] == "Gold"
     assert ASSET_METRIC["환율(FX)"] == "USDKRW"
-    assert "해외주식" not in ASSET_METRIC   # S&P 보류
-    assert "국내채권" not in ASSET_METRIC   # 금리 보류
+    assert "국내채권" not in ASSET_METRIC   # 금리 yield 보류
+    assert "해외채권" not in ASSET_METRIC   # 금리 yield 보류
 
 
 def test_is_credit_detection():

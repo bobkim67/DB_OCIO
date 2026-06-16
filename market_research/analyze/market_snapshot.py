@@ -20,8 +20,11 @@ MARKET_METRICS: dict[str, tuple[int, int, str | None]] = {
     "KOSPI":    (253, 15, "KRW"),   # ✓검증 2026-05-29 = 8,476.15
     "KOSPI200": (225, 15, "KRW"),
     "USDKRW":   (31,  6,  "USD"),   # ✓ CLAUDE.md: blob USD키 = USDKRW rate
-    "Gold":     (408, 48, None),    # Gold spot (단일 숫자)
-    # S&P500/NASDAQ/금리/유가: Price vs TR dataseries 모호 → 확정 전 미등록.
+    "Gold":     (408, 48, None),    # Gold spot (PX_LAST, 단일 숫자)
+    "SP500":    (271, 6,  "USD"),   # ✓검증: FG Return USD키. 1999-12-31=1469.25=실제 S&P 종가(rebased 아님)
+    "NASDAQ100":(272, 48, None),    # ✓검증: PX_LAST=레벨(1999-12-30=3683.67). ds=9 TR(37,269)는 레벨 아님—사용 금지
+    "WTI":      (98,  15, "USD"),   # ✓검증: Crude Oil WTI NYM $/bbl Continuous. FG Price USD키=$/bbl(1999-12-31=25.6). 단일 ds(TR 없음)
+    # 금리(yield, ds=7): % 단위라 month_return_pct 무의미(bp 변화 필요) → 별 트랙.
     # (잘못된 series 주입이 research 인용보다 위험 — 빈 값이 안전)
 }
 
