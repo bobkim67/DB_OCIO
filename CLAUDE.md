@@ -2,10 +2,20 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## ⚠️ STATUS (2026-05-13~): Streamlit 폐기 — web/ + api/ 만 사용
+
+`prototype.py` / `tabs/` / Streamlit 기반 UI 는 **폐기**됐다. 신규 UI 작업은
+전부 **`web/` (React) + `api/` (FastAPI)** 에서만 한다. 아래 "Running the App",
+"Streamlit 자동 리셋 규칙" 등 Streamlit 관련 섹션은 **legacy 참조용**으로만
+보존하며 현역이 아니다. 데이터 로더(`modules/data_loader.py`)는 폐기 대상이
+아니라 `api/` 가 재사용한다. (근거: 2026-05-13 사용자 명시)
+
 ## Project Purpose
 
 DB형 퇴직연금 OCIO(Outsourced CIO) 운용 현황 웹 대시보드.
-Streamlit 기반 프로토타입으로, R Shiny 기존 시스템(General_Backtest/)을 Python으로 재구현 중.
+**web/ (React) + api/ (FastAPI)** 로 구현. R Shiny 기존 시스템(General_Backtest/)을
+Python 으로 재구현한 결과물이며, 초기 프로토타입은 Streamlit(`prototype.py`)이었으나
+2026-05-13 폐기됐다(위 STATUS 참조).
 9개 펀드의 성과 모니터링, 자산배분, Brinson PA, 매크로 지표 분석 제공 (2026-04-21: 12개 펀드 제거 — 06X08, 07J20/27/34/41, 07J48/49, 07P70, 07W15, 09L94, 1JM96/98).
 
 ## Running the App
