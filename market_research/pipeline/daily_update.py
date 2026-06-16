@@ -207,6 +207,25 @@ def daily_update(
             print(f"  [Step 2.8] {group_step.get('status')}: "
                   f"{group_step.get('reason', '')}")
 
+    # ── Step 2.9: 09_Research_Synthesis (03_Assets/08_Claims 이후) ──
+    # naver_research 기반 research-only synthesis. debate primary source.
+    print(f'\n[Step 2.9] 09 Research Synthesis...')
+    rs_step = _step_research_synthesis(month_str, dry_run=dry_run)
+    result['steps']['research_synthesis'] = rs_step
+    print(f'  → status={rs_step.get("status")} pages={rs_step.get("pages")} '
+          f'reused={rs_step.get("reused")}')
+
+    # 09 readiness 게이트 — monthly pipeline 완료 조건.
+    readiness = check_09_readiness(month_str)
+    result['steps']['research_synthesis_readiness'] = readiness
+    result['pipeline_status'] = readiness['status']
+    print(f'  → 09 readiness: {readiness["status"]} '
+          f'(missing={readiness["missing_assets"]}, '
+          f'bad_source={readiness["bad_source_files"]})')
+    if readiness['status'] != 'ready':
+        print(f'  ⚠️ 09 미충족 — pipeline_status={readiness["status"]} '
+              f'(checks={readiness["checks"]})')
+
     if dry_run:
         print(f'\n  [dry-run] GraphRAG/델타 생략')
         result['dry_run'] = True
@@ -853,6 +872,109 @@ def _step_group_monitoring(month_str: str, claim_step: dict) -> dict:
         'summary_md_path': md_path,
         'write_error': write_error,
     }
+
+
+# ═══════════════════════════════════════════════════════
+# Step 2.9 — 09_Research_Synthesis (research-only)
+# ═══════════════════════════════════════════════════════
+
+# readiness 필수 자산군 (directional 6 — 파일 stem 기준). 크레딧=해외채권 흡수,
+# 현금성=잔여(non-directional)라 필수에서 제외.
+REQUIRED_09_ASSET_STEMS = ('국내주식', '해외주식', '국내채권', '해외채권', '원자재금', '환율FX')
+
+
+def _step_research_synthesis(month_str: str, *, dry_run: bool = False,
+                            force: bool = False) -> dict:
+    """Step 2.9 — 09_Research_Synthesis 생성 (03_Assets/08_Claims 이후).
+
+    naver_research 기반 research-only synthesis 만 사용. monygeek 은 raw blog 가
+    아니라 §2 dissent layer 요약으로만 반영 (research_consensus 가 보장).
+    P2(research claim 추출) → P4(consensus). idempotent:
+      - research.json 없으면/force → P2 추출(LLM), 있으면 재사용.
+      - 09 가 research.json 보다 최신이면 P4 skip(reused), 아니면 재생성.
+    dry_run → skip(LLM 미호출).
+    """
+    if dry_run:
+        return {'status': 'skip', 'reason': 'dry_run'}
+    try:
+        from market_research.analyze.research_claim_extractor import (
+            run_research_extraction, research_claims_path)
+        from market_research.analyze.research_consensus import run_research_synthesis
+        from market_research.wiki.paths import RESEARCH_SYNTHESIS_DIR
+    except Exception as exc:
+        return {'status': 'error', 'error': f'import 실패: {exc}'}
+
+    rp = research_claims_path(month_str)
+    extracted = None
+    if force or not rp.exists():
+        try:
+            ext = run_research_extraction(month_str)  # P2 (LLM)
+            extracted = ext.get('stats')
+        except Exception as exc:
+            return {'status': 'error', 'error': f'P2 추출 실패: {exc}'}
+
+    pages = (sorted(RESEARCH_SYNTHESIS_DIR.glob(f'{month_str}_*.md'))
+             if RESEARCH_SYNTHESIS_DIR.exists() else [])
+    rp_mtime = rp.stat().st_mtime if rp.exists() else 0.0
+    nine_mtime = max((p.stat().st_mtime for p in pages), default=0.0)
+    if pages and nine_mtime >= rp_mtime and not force:
+        return {'status': 'ok', 'reused': True, 'extracted': extracted,
+                'pages': len(pages)}
+    try:
+        r = run_research_synthesis(month_str, use_llm=True)  # P4 (Haiku narrative)
+    except Exception as exc:
+        return {'status': 'error', 'error': f'P4 consensus 실패: {exc}',
+                'extracted': extracted}
+    return {'status': 'ok', 'reused': False, 'extracted': extracted,
+            'assets': r['n_assets'], 'pages': len(r['written']),
+            'total_claims': r['total_claims'],
+            'warnings': r['report'].get('warnings', [])}
+
+
+def check_09_readiness(month_str: str,
+                       required_stems: tuple = REQUIRED_09_ASSET_STEMS) -> dict:
+    """09 monthly readiness 게이트 (pipeline 완료 조건).
+
+    검사:
+      (a) files_exist        — 해당 월 09 파일 존재
+      (b) asset_coverage     — 필수 자산군(directional 6) 전부 존재
+      (c) claims_linkable    — research claim store({month}.research.json) 존재
+      (d) research_only_source — 09 전부 source_type=research_synthesis
+                                 (raw news / mixed graph 미포함)
+    status: ready(전부 pass) / degraded(파일 있으나 일부 미흡) / failed(파일 없음).
+    """
+    from market_research.wiki.paths import RESEARCH_SYNTHESIS_DIR
+    from market_research.analyze.research_claim_extractor import research_claims_path
+
+    pages = (sorted(RESEARCH_SYNTHESIS_DIR.glob(f'{month_str}_*.md'))
+             if RESEARCH_SYNTHESIS_DIR.exists() else [])
+    checks: dict = {}
+    checks['files_exist'] = len(pages) > 0
+    have = {p.stem.split('_', 1)[-1] for p in pages}
+    missing = [s for s in required_stems if s not in have]
+    checks['asset_coverage'] = (not missing) and checks['files_exist']
+    checks['claims_linkable'] = research_claims_path(month_str).exists()
+    bad_src = []
+    for p in pages:
+        try:
+            head = p.read_text(encoding='utf-8')[:500]
+        except Exception:
+            bad_src.append(p.name)
+            continue
+        if 'source_type: research_synthesis' not in head:
+            bad_src.append(p.name)
+    checks['research_only_source'] = (len(bad_src) == 0) and checks['files_exist']
+
+    ready = all(checks.values())
+    if not checks['files_exist']:
+        status = 'failed'
+    elif ready:
+        status = 'ready'
+    else:
+        status = 'degraded'
+    return {'status': status, 'ready': ready, 'checks': checks,
+            'missing_assets': missing, 'bad_source_files': bad_src,
+            'n_pages': len(pages)}
 
 
 # ═══════════════════════════════════════════════════════

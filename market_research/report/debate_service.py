@@ -479,7 +479,7 @@ def run_debate_and_save(mode: str, year: int, period_num: int,
                         fund_code: str, period_key: str,
                         *,
                         target_suffix: str | None = None,
-                        context_mode: str = "legacy",
+                        context_mode: str = "research_only",
                         use_wiki_context_pack: bool = True,
                         wiki_context_pack: dict | None = None,
                         wiki_context_max_pages: int | None = None) -> dict:

@@ -2020,7 +2020,7 @@ def run_market_debate(year: int, month: int,
                       *,
                       force_window_ids: set[str] | None = None,
                       research_only: bool = False,
-                      context_mode: str = "legacy",
+                      context_mode: str = "research_only",
                       use_wiki_context_pack: bool = True,
                       wiki_context_pack: dict | None = None,
                       wiki_context_max_pages: int = 12) -> dict:
@@ -2087,6 +2087,14 @@ def run_market_debate(year: int, month: int,
     context['_prompt_context_mode'] = prompt_context_mode
     # Phase 1 — context source trace + research-only 차단 검증 로그.
     _record_context_source_trace(context, policy)
+    # Phase 2.5 — research-only 인데 09 가 없으면 **legacy 폴백하지 않고** 명확히 경고.
+    #             (auto-fallback 미도입 — 정책상 09 없이 research_only 로 진행, degraded.)
+    if policy.research_synthesis_enabled and not (context.get('research_synthesis_text') or '').strip():
+        print(f'  ⚠️ [research-only] {year}-{month:02d} 09_Research_Synthesis 없음 — '
+              f'primary synthesis 비어 degraded 진행(legacy 폴백 안 함). '
+              f'09 생성: daily_update Step 2.9 또는 research_consensus 실행 필요.')
+        _log('research_only_09_missing', period=f'{year}-{month:02d}',
+             policy=policy.name, fallback='none')
     print(f'  컨텍스트 빌드 완료 (sections: {", ".join(active_sections(context))})')
 
     # 4인 에이전트 병렬 실행
@@ -2303,7 +2311,7 @@ def run_quarterly_debate(year: int, quarter: int,
                          *,
                          force_window_ids: set[str] | None = None,
                          research_only: bool = False,
-                         context_mode: str = "legacy",
+                         context_mode: str = "research_only",
                          use_wiki_context_pack: bool = True,
                          wiki_context_pack: dict | None = None,
                          wiki_context_max_pages: int = 12) -> dict:
