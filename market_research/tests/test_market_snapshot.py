@@ -11,7 +11,20 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from market_research.analyze.market_snapshot import (  # noqa: E402
     _parse, _next_month, is_market_metric_text, MARKET_METRICS,
+    _pick_policy_rate, POLICY_RATES,
 )
+
+# 합성 indicators.json (FRED/ECOS 캐시 구조 모사 — 파일/DB 비의존)
+_MACRO_FIXTURE = {
+    "fred": {
+        "FED_UPPER": {"data": {"2026-04-30": 4.0, "2026-05-31": 3.75, "2026-06-15": 3.75}},
+        "FED_LOWER": {"data": {"2026-04-30": 3.75, "2026-05-31": 3.5, "2026-06-15": 3.5}},
+        "ECB_RATE": {"data": {"2026-05-29": 2.0}},
+    },
+    "ecos": {
+        "BOK_RATE": {"data": {"2026-03-01": 2.75, "2026-04-01": 2.5}},  # 월간 (lag)
+    },
+}
 
 
 def test_parse_dict_currency_key():
@@ -57,3 +70,34 @@ def test_us_equity_config_correct_series():
 def test_wti_config_correct_series():
     # WTI 유가: dataset 98 단일 ds=15(FG Price) USD키=$/bbl (1999-12-31=25.6=실제 종가)
     assert MARKET_METRICS["WTI"] == (98, 15, "USD")
+
+
+def test_policy_rate_sources_registered():
+    assert set(POLICY_RATES) == {"BOK", "FED", "ECB", "BOJ"}
+
+
+def test_policy_rate_fed_range_and_month_end():
+    # FED = target range(upper/lower), month 말(5/31) 기준 최신값
+    r = _pick_policy_rate(_MACRO_FIXTURE, "FED", "2026-05")
+    assert r["rate"] == 3.75 and r["range"] == [3.5, 3.75]
+    assert r["as_of"] == "2026-05-31" and r["stale_days_to_month_end"] == 0
+    assert r["kind"] == "policy_rate"
+
+
+def test_policy_rate_bok_monthly_lag():
+    # BOK 월간 — 2026-05 에 5월 값 없으면 4/1 값 사용 + lag 표시
+    r = _pick_policy_rate(_MACRO_FIXTURE, "BOK", "2026-05")
+    assert r["rate"] == 2.5 and r["as_of"] == "2026-04-01"
+    assert r["stale_days_to_month_end"] == 60  # 4/1 → 5/31
+    assert r["range"] is None
+
+
+def test_policy_rate_respects_month_cutoff():
+    # 4월 조회 시 5/31 값을 미래로 보고 가져오지 않음(누수 방지)
+    r = _pick_policy_rate(_MACRO_FIXTURE, "FED", "2026-04")
+    assert r["rate"] == 4.0 and r["as_of"] == "2026-04-30"
+
+
+def test_policy_rate_unknown_source_and_empty():
+    assert _pick_policy_rate(_MACRO_FIXTURE, "RBA", "2026-05") is None
+    assert _pick_policy_rate({}, "FED", "2026-05") is None

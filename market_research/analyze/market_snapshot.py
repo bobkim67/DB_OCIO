@@ -12,6 +12,7 @@ ds=15(FG Price) KRW키 = 실제 지수(8,476), ds=9(TR)=13,284 은 레벨 아님
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 # metric → (dataset_id, dataseries_id, currency_key | None)
@@ -113,13 +114,102 @@ def is_market_metric_text(text: str) -> bool:
     return any(k in t for k in kw)
 
 
+# ─────────────────────────────────────────────────────────────────
+# 기준금리(정책금리) accessor — SCIP 아님. macro indicators 캐시(FRED/ECOS) 소스.
+# 10년물 yield 는 곡선 왜곡이 있어 미주입; 기준금리는 단일 명확값이라 hard-fact anchor 적합.
+# 수집은 외부망 배치(daily_update Step 0). 기업망(in-env)은 캐시 파일 의존 + 월간 시리즈 lag.
+# ─────────────────────────────────────────────────────────────────
+_MACRO_JSON = Path(__file__).resolve().parent.parent / "data" / "macro" / "indicators.json"
+
+# source → (indicators.json group, [keys]). FED 는 target range(upper/lower).
+POLICY_RATES: dict[str, tuple[str, list[str]]] = {
+    "BOK": ("ecos", ["BOK_RATE"]),          # ECOS 722Y001 (월간)
+    "FED": ("fred", ["FED_UPPER", "FED_LOWER"]),  # DFEDTARU/DFEDTARL (일간 target range)
+    "ECB": ("fred", ["ECB_RATE"]),          # ECBDFR (일간)
+    "BOJ": ("fred", ["BOJ_RATE"]),          # IRSTCI01JPM156N (월간)
+}
+_RATE_ORIGIN = {"BOK": "ECOS 722Y001", "FED": "FRED DFEDTARU/DFEDTARL",
+                "ECB": "FRED ECBDFR", "BOJ": "FRED IRSTCI01JPM156N"}
+
+
+def _load_macro() -> dict | None:
+    try:
+        return json.loads(_MACRO_JSON.read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError):
+        return None
+
+
+def _pick_latest_on_or_before(series: dict, cutoff: str) -> tuple[str, float] | None:
+    """series={date:val}, cutoff 'YYYY-MM-DD'(exclusive) 이전 최신 (date<cutoff)."""
+    picked = None
+    for dt, v in series.items():
+        if dt < cutoff and (picked is None or dt > picked[0]):
+            picked = (dt, float(v))
+    return picked
+
+
+def _pick_policy_rate(data: dict, source: str, month: str) -> dict | None:
+    """순수함수: indicators.json dict 에서 month 말 기준 정책금리. 없으면 None."""
+    src = source.upper()
+    if src not in POLICY_RATES or not data:
+        return None
+    grp, keys = POLICY_RATES[src]
+    cutoff = _next_month(month)  # 'YYYY-MM-01' (해당 월 포함, 다음 월 미만)
+    picks = {}
+    for k in keys:
+        series = (data.get(grp, {}).get(k) or {}).get("data") or {}
+        p = _pick_latest_on_or_before(series, cutoff)
+        if p:
+            picks[k] = p
+    if src == "FED":
+        up = picks.get("FED_UPPER")
+        if not up:
+            return None
+        lo = picks.get("FED_LOWER")
+        return {"source": "FED", "month": month, "kind": "policy_rate", "unit": "%",
+                "rate": up[1], "range": [lo[1] if lo else None, up[1]],
+                "as_of": up[0], "stale_days_to_month_end": _stale_days(up[0], month),
+                "origin": f"{_RATE_ORIGIN['FED']} (macro indicators cache)"}
+    p = picks.get(keys[0])
+    if not p:
+        return None
+    return {"source": src, "month": month, "kind": "policy_rate", "unit": "%",
+            "rate": p[1], "range": None, "as_of": p[0],
+            "stale_days_to_month_end": _stale_days(p[0], month),
+            "origin": f"{_RATE_ORIGIN[src]} (macro indicators cache)"}
+
+
+def _stale_days(as_of: str, month: str) -> int:
+    """as_of(YYYY-MM-DD) 와 month 말일 사이 일수 (월간 시리즈 lag 표시용)."""
+    from datetime import date
+    y, m = int(month[:4]), int(month[5:7])
+    nxt = _next_month(month)
+    end = date(int(nxt[:4]), int(nxt[5:7]), 1)
+    end = date.fromordinal(end.toordinal() - 1)  # month 마지막 날
+    ao = date.fromisoformat(as_of)
+    return max(0, (end - ao).days)
+
+
+def policy_rate(source: str, month: str) -> dict | None:
+    """기준금리(정책금리) — macro indicators 캐시에서 month 말 기준 최신값.
+
+    source: 'BOK'(한은) / 'FED'(연준 target range) / 'ECB' / 'BOJ'. SCIP 아님.
+    캐시 미존재/미수집 시 None (조용히 빈 값 — 오값 주입보다 안전).
+    """
+    return _pick_policy_rate(_load_macro() or {}, source, month)
+
+
 def main() -> int:
     import argparse
     ap = argparse.ArgumentParser(description="Market snapshot (DB source of truth)")
     ap.add_argument("month")
     ap.add_argument("--metric", default=None)
+    ap.add_argument("--policy", default=None, help="기준금리 source: BOK/FED/ECB/BOJ")
     args = ap.parse_args()
-    if args.metric:
+    if args.policy:
+        r = policy_rate(args.policy, args.month)
+        print(json.dumps(r, ensure_ascii=False, indent=2) if r else "no data")
+    elif args.metric:
         s = market_snapshot(args.metric, args.month)
         print(json.dumps(s, ensure_ascii=False, indent=2) if s else "no data")
     else:
@@ -127,6 +217,12 @@ def main() -> int:
             print(f"{m}: 월초 {s['month_start']['level']} → 월말 {s['month_end']['level']} "
                   f"(고 {s['month_high']['level']}/저 {s['month_low']['level']}, "
                   f"{s['month_return_pct']:+.2f}%) [{s['month_end']['date']}]")
+        for src in ("BOK", "FED", "ECB", "BOJ"):
+            r = policy_rate(src, args.month)
+            if r:
+                rng = f" (range {r['range'][0]}~{r['range'][1]})" if r.get("range") else ""
+                stale = f", lag {r['stale_days_to_month_end']}d" if r["stale_days_to_month_end"] else ""
+                print(f"{src} 기준금리: {r['rate']}%{rng} [{r['as_of']}{stale}]")
     return 0
 
 
