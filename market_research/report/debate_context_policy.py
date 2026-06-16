@@ -68,6 +68,9 @@ class DebateContextPolicy:
     graph_path_max: int = 10
     graph_confidence_threshold: float = 0.3
     wiki_context_max_pages: int = 12
+    # 09_Research_Synthesis (Phase 2)
+    research_synthesis_max_assets: int = 8      # 자산군 페이지 상한
+    research_synthesis_asset_chars: int = 900   # 자산군별 §1~§3 발췌 char 상한
 
 
 LEGACY_POLICY = DebateContextPolicy(name="legacy")

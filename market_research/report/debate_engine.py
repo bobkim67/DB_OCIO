@@ -604,52 +604,113 @@ def _build_evidence_candidates(year: int, month: int, target_count: int,
 # 컨텍스트 빌더
 # ===================================================================
 
-def build_research_synthesis_context(year: int, month: int,
-                                     max_assets: int = 8,
-                                     excerpt_chars: int = 600) -> str:
-    """09_Research_Synthesis best-effort 로더 (Phase 2 승격 대상의 hook).
+# 09_Research_Synthesis 섹션 헤더 (research_consensus.build_research_synthesis_page).
+# §1 컨센서스 / §2 이견(dissent) / §3 리스크 = synthesis prose (primary).
+# §4 근거 claim(broker) / §5 monygeek 관점 = claim 리스트 → 08_Claims 중복이라 제외.
+_SYNTH_PRIMARY_PREFIXES = ('## 1.', '## 2.', '## 3.')
+_SYNTH_SKIP_PREFIXES = ('## 4.', '## 5.')
 
-    naver_research 분해→재종합 결과(09_Research_Synthesis/{period}_{자산군}.md)를
-    debate 컨텍스트로 best-effort 주입한다. 파일 포맷이 아직 유동적이라 frontmatter
-    (consensus_stance/strength) + 본문 앞부분 excerpt 만 발췌한다. 페이지 없으면
-    빈 문자열 + debug 로그(누락 표시). Phase 2 에서 1급 소스로 정식 승격 예정.
+
+def _parse_synth_page(text: str) -> tuple[dict, str]:
+    """09 페이지 → (frontmatter dict, body). 포맷 변동에 robust (best-effort)."""
+    fm: dict = {}
+    body = text
+    if text.startswith('---'):
+        parts = text.split('---', 2)
+        if len(parts) >= 3:
+            for ln in parts[1].splitlines():
+                if ':' in ln:
+                    k, v = ln.split(':', 1)
+                    fm[k.strip()] = v.strip()
+            body = parts[2]
+    return fm, body.strip()
+
+
+def _extract_synth_sections(body: str, char_cap: int) -> str:
+    """body 에서 §1~§3 (컨센서스/이견/리스크) 섹션만 발췌. 헤더 변동 시 fallback=앞부분."""
+    lines = body.splitlines()
+    kept: list[str] = []
+    keep = False
+    for ln in lines:
+        st = ln.strip()
+        if st.startswith('## '):
+            if st.startswith(_SYNTH_PRIMARY_PREFIXES):
+                keep = True
+            elif st.startswith(_SYNTH_SKIP_PREFIXES):
+                keep = False
+            else:
+                keep = False  # 알 수 없는 섹션은 보수적으로 제외
+        if keep and st and not st.startswith('# '):
+            kept.append(ln)
+    out = '\n'.join(kept).strip()
+    if not out:                      # 헤더 패턴 불일치 → 본문 앞부분 fallback
+        out = body[:char_cap].strip()
+    return out[:char_cap].strip()
+
+
+def build_research_synthesis_context(year: int, month: int,
+                                     policy: "DebateContextPolicy | None" = None,
+                                     asset_scope: list[str] | None = None,
+                                     trace: dict | None = None) -> str:
+    """09_Research_Synthesis 정식 context builder (Phase 2 — 1급 소스 승격).
+
+    naver_research 분해→재종합 결과를 debate 의 **primary synthesis** 로 주입한다.
+    자산군별 §1 컨센서스(base view) + §2 이견(dissent/tail-risk) + §3 리스크 만 발췌
+    (§4/§5 claim 리스트는 08_Claims 중복 → 제외). 100% research claim 계보라 news/graph
+    누수 없음. 파일 없거나 비면 fail 하지 않고 trace 에 기록.
+
+    asset_scope: 특정 자산군만 (None=전체). trace: 채워줄 dict(source/selected/chars).
     """
+    if policy is None:
+        policy = LEGACY_POLICY
     period = f'{year}-{month:02d}'
     try:
         from market_research.wiki.paths import RESEARCH_SYNTHESIS_DIR
         synth_dir = RESEARCH_SYNTHESIS_DIR
     except Exception:
         synth_dir = BASE_DIR / 'data' / 'wiki' / '09_Research_Synthesis'
+    tr = trace if trace is not None else {}
+    tr.update({'period': period, 'dir': str(synth_dir),
+               'selected_files': [], 'selected_assets': [], 'total_chars': 0})
     pages = sorted(synth_dir.glob(f'{period}_*.md')) if synth_dir.exists() else []
+    if asset_scope:
+        scope = set(asset_scope)
+        pages = [p for p in pages if p.stem.split('_', 1)[-1] in scope]
     if not pages:
+        tr['status'] = 'missing'
         _log('research_synthesis_missing', period=period,
              dir=str(synth_dir), exists=synth_dir.exists())
         return ''
-    blocks = [f'## 09 Research Synthesis (naver_research 재종합, {period})']
-    for fp in pages[:max_assets]:
+    blocks = [f'## 09 Research Synthesis — naver_research 재종합 ({period})',
+              '아래는 증권사 리서치 claim 을 자산군별로 재종합한 base view / 이견 / 리스크입니다 '
+              '(news·graph 미포함, primary synthesis source).']
+    for fp in pages[:policy.research_synthesis_max_assets]:
         try:
-            body = fp.read_text(encoding='utf-8')
+            fm, body = _parse_synth_page(fp.read_text(encoding='utf-8'))
         except Exception:
             continue
-        asset = fp.stem.split('_', 1)[-1]
-        # frontmatter consensus 요약
-        stance = strength = None
-        for ln in body.splitlines():
-            s = ln.strip()
-            if s.startswith('consensus_stance:'):
-                stance = s.split(':', 1)[1].strip()
-            elif s.startswith('consensus_strength:'):
-                strength = s.split(':', 1)[1].strip()
-        # 본문(frontmatter 이후) excerpt
-        prose = body.split('---', 2)[-1].strip() if body.startswith('---') else body
-        excerpt = prose[:excerpt_chars].strip()
+        asset = fm.get('asset_class') or fp.stem.split('_', 1)[-1]
+        stance = fm.get('consensus_stance')
+        strength = fm.get('consensus_strength')
+        nclaims = fm.get('n_claims')
         head = f'### {asset}'
         if stance:
-            head += f' — consensus={stance}' + (f'/{strength}' if strength else '')
+            head += f' — consensus={stance}'
+            if strength:
+                head += f' (strength {strength})'
+        if nclaims:
+            head += f' | n_claims={nclaims}'
+        section = _extract_synth_sections(body, policy.research_synthesis_asset_chars)
         blocks.append(head)
-        blocks.append(excerpt)
-    _log('research_synthesis_loaded', period=period, pages=len(pages[:max_assets]))
-    return '\n'.join(blocks)
+        blocks.append(section)
+        tr['selected_files'].append(fp.name)
+        tr['selected_assets'].append(asset)
+    text = '\n'.join(blocks)
+    tr['status'] = 'ok'
+    tr['total_chars'] = len(text)
+    _log('research_synthesis_loaded', period=period,
+         files=tr['selected_files'], chars=tr['total_chars'])
+    return text
 
 
 def _build_shared_context(year: int, month: int, fund_code: str = None,
@@ -916,9 +977,12 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
         except Exception:
             pass
 
-    # 09_Research_Synthesis hook (Phase 2 승격 대상) — best-effort 로더.
+    # 09_Research_Synthesis — primary synthesis source (Phase 2 1급 승격).
     if policy.research_synthesis_enabled:
-        context['research_synthesis_text'] = build_research_synthesis_context(year, month)
+        _rs_trace: dict = {}
+        context['research_synthesis_text'] = build_research_synthesis_context(
+            year, month, policy=policy, trace=_rs_trace)
+        context['_research_synthesis_trace'] = _rs_trace
 
     # indicators.csv — policy.macro_indicators_enabled
     indicators_file = BASE_DIR / 'data' / 'macro' / 'indicators.csv'
@@ -1135,6 +1199,16 @@ _CLAIM_CITATION_INSTRUCTION = (
 WIKI_CONTEXT_PACK_SCHEMA_VERSION = "r9b-context-pack-1.0.0"
 WIKI_CONTEXT_PRIMARY_HEADING = "## A. Wiki Primary Context (R9-B.3 opt-in)"
 WIKI_CONTEXT_RAW_HEADING = "## B. Raw Validation / Fallback Context"
+
+# research-only mode 전용 Opus 종합 원칙 (Phase 2 §6). legacy 면 미주입.
+_RESEARCH_ONLY_SYNTHESIS_DIRECTIVE = (
+    "## research-only 종합 원칙 (필수)\n"
+    "- 위 '09 Research Synthesis(재종합)' 를 이번 종합의 primary synthesis source 로 사용하세요.\n"
+    "- 데이터 분석가(quant)의 수치를 numeric anchor 로 우선하고, 제공된 수치는 반올림하지 마세요.\n"
+    "- monygeek 이견(dissent)은 base view 와 구분해 tail-risk / 대안적 유동성 시각으로만 반영하세요 "
+    "(주류 컨센서스와 혼동 금지).\n"
+    "- raw 뉴스 또는 mixed graph 를 근거로 사용하지 마세요 (이번 모드에선 제공되지 않습니다)."
+)
 
 _WIKI_CONTEXT_HIERARCHY_NOTE = (
     "> **위계 안내** — A. Wiki Primary Context (canonical wiki 메모) 가 "
@@ -1436,11 +1510,12 @@ def _build_agent_prompt(agent_type: str, context: dict) -> str:
     shared = (
         f'## {context["year"]}년 {context["month"]}월 시장 분석\n\n'
         + (wiki_primary_block + '\n' if wiki_primary_block else '')
+        # research_synthesis(09) 는 primary synthesis → raw heading 위에 배치.
+        + (research_synth_block + '\n\n' if research_synth_block else '')
         + raw_heading
         + (anchor_block + '\n\n' if anchor_block else '')
         + (claims_block + '\n\n' if claims_block else '')
         + (_CLAIM_CITATION_INSTRUCTION + '\n' if claims_block else '')
-        + (research_synth_block + '\n\n' if research_synth_block else '')
         + f'{evidence_block}\n\n'
         + f'{context.get("indicators_text", "(지표 데이터 없음)")}\n\n'
         + f'{context.get("timeseries_narrative_text", "")}\n\n'
@@ -1671,18 +1746,25 @@ def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> 
     coverage_block = context.get("asset_coverage_text", "") or ""
     claims_block = context.get("claims_text", "") or ""
     wiki_primary_block = context.get("wiki_primary_context_text", "") or ""
+    research_synth_block = context.get("research_synthesis_text", "") or ""
+    # research-only 면 news_summary 가 비어 → research lane 카드(evidence_cards_text) 사용.
+    evidence_block = (context.get("news_summary_text")
+                      or context.get("evidence_cards_text") or "")
+    is_research_only = (context.get('_context_source_trace') or {}).get('policy') == 'research_only'
     raw_heading = (WIKI_CONTEXT_RAW_HEADING + '\n\n') if wiki_primary_block else ''
     comment_prompt = (
         '4명의 분석가가 각각 다른 시각에서 시장을 분석했습니다.\n\n'
         + (wiki_primary_block + '\n' if wiki_primary_block else '')
+        + (research_synth_block + '\n\n' if research_synth_block else '')
         + raw_heading
         + f'## 분석가별 의견\n{debate_text}\n\n'
-        f'## 뉴스 evidence\n{context.get("news_summary_text", "")}\n\n'
+        f'## 뉴스 evidence\n{evidence_block}\n\n'
         + (f'{claims_block}\n\n' if claims_block else '')
         + (_CLAIM_CITATION_INSTRUCTION + '\n' if claims_block else '')
         + (f'{graph_block}\n\n' if graph_block else '')
         + (f'{wiki_block}\n\n' if wiki_block else '')
         + (f'{coverage_block}\n\n' if coverage_block else '')
+        + (_RESEARCH_ONLY_SYNTHESIS_DIRECTIVE + '\n\n' if is_research_only else '')
         + f'## 문서 성격\n{period_instruction}\n'
         f'{structure_instruction}'
         '## 작성 규칙\n'
@@ -1917,6 +1999,7 @@ def _record_context_source_trace(context: dict, policy: DebateContextPolicy) -> 
         'policy': policy.name,
         'section_chars': sizes,
         'active_sections': [s for s, n in sizes.items() if n > 0],
+        'research_synthesis': context.get('_research_synthesis_trace'),
     }
     if policy.name == 'research_only':
         ok, violations = validate_research_only_clean(context)
