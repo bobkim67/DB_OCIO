@@ -101,13 +101,53 @@ def _primary(claim: dict) -> str | None:
     return base
 
 
-def aggregate_by_asset(claims: list[dict]) -> dict[str, dict[str, Any]]:
+def _format_causal_path(chain: Any) -> str:
+    """causal_chain [{source,target,relation}...] → 'A →(rel) B →(rel) C' 문자열."""
+    if not isinstance(chain, list) or not chain:
+        return ""
+    parts: list[str] = []
+    first = chain[0]
+    if isinstance(first, dict):
+        parts.append(str(first.get("source", "")).strip())
+    for e in chain:
+        if not isinstance(e, dict):
+            continue
+        rel = str(e.get("relation", "")).strip()
+        tgt = str(e.get("target", "")).strip()
+        if tgt:
+            parts.append(f"→({rel}) {tgt}" if rel else f"→ {tgt}")
+    return " ".join(p for p in parts if p).strip()
+
+
+def aggregate_causal_paths(broker_claims: list[dict], top_n: int = 3) -> list[dict]:
+    """broker claim 의 causal_chain 을 salience 순 top_n distinct path 로 집계 (Phase 2.8).
+
+    monygeek 은 입력에서 이미 제외(broker_claims 만). news/legacy GraphRAG 미사용 —
+    research claim 에 추출돼 있는 causal_chain 만 사용.
+    """
+    out: list[dict] = []
+    seen: set[str] = set()
+    for c in sorted(broker_claims, key=lambda x: -float(x.get("salience", 0) or 0)):
+        path = _format_causal_path(c.get("causal_chain"))
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        out.append({"path": path, "salience": c.get("salience"),
+                    "claim_id": c.get("claim_id")})
+        if len(out) >= top_n:
+            break
+    return out
+
+
+def aggregate_by_asset(claims: list[dict], *, include_causal: bool = True,
+                       causal_top_n: int = 3) -> dict[str, dict[str, Any]]:
     """primary_asset 기준 자산군별 집계.
 
     각 자산군:
       broker_claims / monygeek_claims, vote_distribution(broker only),
       consensus_stance / consensus_strength, by_horizon, by_theme,
-      risk_factors, dissent(monygeek + broker 소수 stance).
+      risk_factors, dissent(monygeek + broker 소수 stance),
+      causal_paths(Phase 2.8 — broker-only top_n, include_causal 시).
     """
     by_asset: dict[str, list[dict]] = defaultdict(list)
     for c in claims:
@@ -166,6 +206,9 @@ def aggregate_by_asset(claims: list[dict]) -> dict[str, dict[str, Any]]:
             "broker_claims": broker,
             "monygeek_claims": monygeek,
             "dissent": dissent,
+            # Phase 2.8 — broker-only causal skeleton (monygeek 제외, news/GraphRAG 미사용)
+            "causal_paths": (aggregate_causal_paths(broker, causal_top_n)
+                             if include_causal else []),
         }
     return out
 

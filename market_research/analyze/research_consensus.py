@@ -65,15 +65,25 @@ def synthesize_asset_narrative(asset: str, a: dict[str, Any], *,
             f"- ({c.get('stance')}, {c.get('horizon')}) {c.get('view') or c.get('claim_text')}"
             f" :: {c.get('rationale_text') or ''}"[:300] for c in cs[:12]) or "(없음)"
 
+    # Phase 2.8 — broker-only causal skeleton (narrative 에 인과경로 반영용)
+    causal = a.get("causal_paths") or []
+    causal_block = ("\n".join(f"- {p.get('path')}" for p in causal)
+                    if causal else "(인과 경로 없음)")
+    causal_instr = (
+        " consensus_narrative 와 리스크 서술은 위 '주요 인과 경로(broker)'를 따라 "
+        "이벤트→지표→자산 전파를 자연어로 반영하세요(없으면 생략)." if causal else "")
+
     user = (
         f"자산군: {asset}\n"
         f"증권사 컨센서스 stance={a.get('consensus_stance')} "
         f"(vote={a.get('vote_distribution')}, strength={a.get('consensus_strength')})\n\n"
         f"## 증권사 리서치 claim (consensus 본류)\n{_fmt(broker)}\n\n"
+        f"## 주요 인과 경로 (broker, top{len(causal)})\n{causal_block}\n\n"
         f"## monygeek 관점 (dissent/contrarian — consensus 산정 제외)\n{_fmt(monygeek)}\n\n"
         "위를 바탕으로 두 단락을 작성하세요(JSON):\n"
         '{"consensus_narrative": "증권사 컨센서스 2~3문장(stance 근거 중심)", '
         '"dissent_narrative": "이견/리스크/monygeek 관점 1~2문장"}\n'
+        f"{causal_instr}\n"
         "순수 JSON 만, 마크다운 금지."
     )
     prompt = {"system": "당신은 OCIO 운용 리서치 종합 보조 모델입니다. 증권사 컨센서스를 "
@@ -128,9 +138,16 @@ def build_research_synthesis_page(period: str, asset: str, a: dict[str, Any],
     b.append("")
 
     b.append("## 3. 리스크")
+    # Phase 2.8 — broker-only 인과 경로(causal skeleton) 를 §3 상단에 명시(traceable).
+    causal = a.get("causal_paths") or []
+    if causal:
+        b.append("주요 인과 경로(broker):")
+        for p in causal:
+            ref = _claim_ref({"claim_id": p.get("claim_id")}) if p.get("claim_id") else ""
+            b.append(f"- {p.get('path')} {ref}".rstrip())
     for rf in (a.get("risk_factors") or [])[:6]:
         b.append(f"- {rf}")
-    if not a.get("risk_factors"):
+    if not a.get("risk_factors") and not causal:
         b.append("- (명시 리스크 제한적)")
     b.append("")
 
@@ -151,11 +168,15 @@ def build_research_synthesis_page(period: str, asset: str, a: dict[str, Any],
 
 
 def run_research_synthesis(month: str, *, use_llm: bool = True,
-                           dry_run: bool = False,
+                           dry_run: bool = False, include_causal: bool = True,
                            llm_call: Callable[[dict], str] | None = None) -> dict[str, Any]:
-    """월별 09_Research_Synthesis 페이지 생성. dry_run=True → 파일 미저장."""
+    """월별 09_Research_Synthesis 페이지 생성. dry_run=True → 파일 미저장.
+
+    include_causal (Phase 2.8): broker-only causal_chain 집계를 §1 narrative + §3 에
+      반영(on/off). False 면 인과 경로 미반영(기존 동작).
+    """
     claims = load_research_claims(month)
-    agg = aggregate_by_asset(claims)
+    agg = aggregate_by_asset(claims, include_causal=include_causal)
     report = distribution_report(agg)
 
     call = (llm_call or _default_llm_call) if use_llm else None
@@ -183,9 +204,12 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Research consensus → 09_Research_Synthesis (P4)")
     ap.add_argument("month")
     ap.add_argument("--no-llm", action="store_true", help="LLM narrative 생략(결정적만)")
+    ap.add_argument("--no-causal", action="store_true",
+                    help="Phase 2.8 causal_chain 집계 비활성(기존 동작)")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
-    r = run_research_synthesis(args.month, use_llm=not args.no_llm, dry_run=args.dry_run)
+    r = run_research_synthesis(args.month, use_llm=not args.no_llm, dry_run=args.dry_run,
+                              include_causal=not args.no_causal)
     print(f"[research_synthesis] {args.month} assets={r['n_assets']} "
           f"claims={r['total_claims']} pages_written={len(r['written'])}")
     for w in r["report"]["warnings"]:

@@ -62,6 +62,44 @@ def test_risk_factors_collected():
     assert any("실적 둔화" in r for r in agg["국내주식"]["risk_factors"])
 
 
+def _cchain(*hops):
+    # hops: ("A","raises","B"),("B","supports","C") → causal_chain
+    return [{"source": s, "relation": r, "target": t} for (s, r, t) in hops]
+
+
+def test_format_causal_path():
+    from market_research.analyze.research_aggregator import _format_causal_path
+    chain = _cchain(("유가", "raises", "인플레"), ("인플레", "raises", "금리"))
+    assert _format_causal_path(chain) == "유가 →(raises) 인플레 →(raises) 금리"
+    assert _format_causal_path([]) == "" and _format_causal_path(None) == ""
+
+
+def test_causal_paths_broker_only_and_topn():
+    # Phase 2.8 — broker causal 만, monygeek causal 제외, top_n 제한
+    claims = [
+        {**_claim("국내주식", "bullish", cid="c1"),
+         "salience": 0.9, "causal_chain": _cchain(("AI", "raises", "반도체"))},
+        {**_claim("국내주식", "bullish", cid="c2"),
+         "salience": 0.5, "causal_chain": _cchain(("수출", "supports", "국내주식"))},
+        {**_claim("국내주식", "bearish", cid="c3"),
+         "salience": 0.3, "causal_chain": _cchain(("금리", "pressures", "성장주"))},
+        {**_claim("국내주식", "neutral", src="monygeek", cid="c4"),
+         "salience": 0.99, "causal_chain": _cchain(("monygeek원인", "raises", "monygeek결과"))},
+    ]
+    cps = aggregate_by_asset(claims, causal_top_n=2)["국내주식"]["causal_paths"]
+    assert len(cps) == 2                                   # top_n 제한
+    joined = " ".join(p["path"] for p in cps)
+    assert "monygeek" not in joined                        # monygeek causal 제외
+    assert "AI →(raises) 반도체" in cps[0]["path"]          # salience 최상위 우선
+
+
+def test_include_causal_flag_off():
+    claims = [{**_claim("국내주식", "bullish", cid="c1"),
+               "causal_chain": _cchain(("AI", "raises", "반도체"))}]
+    agg = aggregate_by_asset(claims, include_causal=False)
+    assert agg["국내주식"]["causal_paths"] == []
+
+
 def test_risk_factors_broker_only_excludes_monygeek():
     # Phase 2.7.2 — §3 리스크는 broker 만. monygeek risk 는 §2 dissent + persona 담당.
     claims = [
