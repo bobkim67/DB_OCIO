@@ -61,27 +61,28 @@ def test_parse_synth_page_frontmatter_and_body():
     assert body.startswith("# 2026-05 국내주식")
 
 
-def test_extract_sections_keeps_1to3_drops_4to5():
+def test_extract_sections_broker_only_drops_monygeek_dissent():
+    # Phase 2.7.1 — §1 컨센서스(broker) + §3 리스크 유지, §2 이견(monygeek) 제외
     _, body = _parse_synth_page(_SAMPLE)
     sec = _extract_synth_sections(body, char_cap=5000)
-    # §1~§3 유지
-    assert "컨센서스" in sec and "이견" in sec and "리스크" in sec
-    assert "반도체 슈퍼사이클이 인플레" in sec
-    # §4/§5 (claim 리스트) 제외 → 08_Claims 중복 방지
+    assert "컨센서스" in sec and "리스크" in sec   # §1, §3 유지
+    assert "반도체 슈퍼사이클이 인플레" in sec       # §1 본문
+    # §2 이견(monygeek dissent) 제외
+    assert "## 2. 이견" not in sec
+    assert "monygeek은 구조적 공급부족" not in sec
+    # §4/§5 claim 리스트 제외 (synthesis 발췌 아님)
     assert "## 4. 근거 claim" not in sec
     assert "## 5. monygeek 관점" not in sec
-    assert "[claim:xyz]" not in sec      # broker claim list 미포함
 
 
-def test_extract_claims_keeps_4and5_bullets():
-    # Phase 2.7 — §4/§5 원자 claim bullet 만 발췌 (08 대체)
+def test_extract_claims_broker_only_drops_monygeek():
+    # Phase 2.7.1 — §4 broker claim 만, §5 monygeek 관점 제외
     _, body = _parse_synth_page(_SAMPLE)
     claims = _extract_synth_claims(body, char_cap=5000)
-    assert "## 4. 근거 claim" in claims and "## 5. monygeek" in claims
-    assert "[claim:xyz]" in claims          # broker claim
-    assert "[claim:abc]" in claims          # monygeek claim
-    # synthesis prose(§1 컨센서스 본문)는 claims 발췌에 미포함
-    assert "반도체 슈퍼사이클이 인플레" not in claims
+    assert "## 4. 근거 claim" in claims      # broker
+    assert "[claim:xyz]" in claims           # broker claim
+    assert "## 5. monygeek" not in claims    # monygeek 제외
+    assert "[claim:abc]" not in claims       # monygeek claim 제외
 
 
 def test_include_claims_flag_toggles_4and5():

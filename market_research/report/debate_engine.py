@@ -604,13 +604,15 @@ def _build_evidence_candidates(year: int, month: int, target_count: int,
 # 컨텍스트 빌더
 # ===================================================================
 
-# 09_Research_Synthesis 섹션 헤더 (research_consensus.build_research_synthesis_page).
-# §1 컨센서스 / §2 이견(dissent) / §3 리스크 = synthesis prose (primary).
-# §4 근거 claim(broker) / §5 monygeek 관점 = 원자 claim 리스트.
-# Phase 2.7: research-only 가 08_Claims(뉴스 트랙)를 제외하므로, 원자 claim 레이어는
-#   09 §4/§5 에서 직접 가져온다(08 중복 아님 — 09=research, 08=news 별 트랙).
-_SYNTH_PRIMARY_PREFIXES = ('## 1.', '## 2.', '## 3.')
-_SYNTH_CLAIM_PREFIXES = ('## 4.', '## 5.')
+# 09_Research_Synthesis 섹션 (research_consensus.build_research_synthesis_page):
+#   §1 컨센서스(broker) / §2 이견(monygeek dissent) / §3 리스크 / §4 broker claim / §5 monygeek 관점
+# Phase 2.7: 08_Claims(뉴스) 제외 → 원자 claim 은 09 §4 에서 직접 공급.
+# Phase 2.7.1: **monygeek 분리** — monygeek 블로그 견해(§2 이견 / §5 monygeek 관점)는 shared
+#   debate 컨텍스트에서 제외. monygeek 은 monygeek **persona** 의 blog_context_text 로만 사용.
+#   shared 09 = broker 만: §1 컨센서스 + §3 리스크 + §4 broker claim.
+#   (§3 리스크는 전체 claim risk_factor 익명 집계 → 일부 monygeek 출처 잔존하나 견해 아닌 risk fact.)
+_SYNTH_PRIMARY_PREFIXES = ('## 1.', '## 3.')   # §2(monygeek dissent) 제외
+_SYNTH_CLAIM_PREFIXES = ('## 4.',)             # §5(monygeek 관점) 제외
 
 
 def _parse_synth_page(text: str) -> tuple[dict, str]:
@@ -718,7 +720,8 @@ def build_research_synthesis_context(year: int, month: int,
             if strength:
                 head += f' (strength {strength})'
         if nclaims:
-            head += f' | n_claims={nclaims}'
+            # broker/monygeek 내역 제외 — 총계만 (monygeek 토큰 노출 방지)
+            head += f' | n_claims={str(nclaims).split("(")[0].strip()}'
         section = _extract_synth_sections(body, policy.research_synthesis_asset_chars)
         blocks.append(head)
         blocks.append(section)
