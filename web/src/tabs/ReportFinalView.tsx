@@ -1,10 +1,9 @@
 import type { CSSProperties } from "react";
 import MetaBadge from "../components/common/MetaBadge";
-import IndicatorChart from "../components/charts/IndicatorChart";
+import CommentMarkdown from "../components/common/CommentMarkdown";
 import type {
   EvidenceAnnotationDTO,
   EvidenceQualitySummaryDTO,
-  IndicatorChartDTO,
   RelatedNewsDTO,
   ReportFinalResponseDTO,
   ValidationSummaryDTO,
@@ -17,7 +16,6 @@ const COMMENT_BOX: CSSProperties = {
   padding: 16,
   fontSize: 14,
   lineHeight: 1.7,
-  whiteSpace: "pre-wrap",
   marginBottom: 16,
 };
 
@@ -255,39 +253,6 @@ function QualitySection({ q }: { q: EvidenceQualitySummaryDTO | null | undefined
 // Validation section
 // ──────────────────────────────────────────────────────────────────────
 
-// ──────────────────────────────────────────────────────────────────────
-// Indicator Chart section (P1-③)
-// macro context — approved final 의 period 범위로 read-time 합성한 참고 차트.
-// 승인본의 근거 데이터가 아님을 사용자에게 명시한다.
-// ──────────────────────────────────────────────────────────────────────
-
-function IndicatorChartSection({
-  chart,
-}: {
-  chart: IndicatorChartDTO | null | undefined;
-}) {
-  if (!chart || !chart.series || chart.series.length === 0) return null;
-  return (
-    <>
-      <div style={SECTION_TITLE}>참고 시장지표</div>
-      <div style={{
-        background: "#fef3c7", border: "1px solid #fcd34d",
-        borderRadius: 6, padding: "8px 12px", fontSize: 12, color: "#92400e",
-        marginBottom: 8,
-      }}>
-        참고용 시장지표 차트입니다. 승인본 보고서의 근거 데이터가 아니라,
-        보고서 기간에 맞춰 조회한 macro timeseries 입니다.
-      </div>
-      <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 6 }}>
-        기간: {chart.period_start ?? "—"} ~ {chart.period_end ?? "—"} ·
-        normalize: 첫 유효값 = 100
-      </div>
-      <IndicatorChart series={chart.series} />
-    </>
-  );
-}
-
-
 function ValidationSection({
   v,
 }: {
@@ -385,7 +350,9 @@ export default function ReportFinalView({
       </div>
 
       {d.final_comment ? (
-        <div style={COMMENT_BOX}>{d.final_comment}</div>
+        <div style={COMMENT_BOX}>
+          <CommentMarkdown text={d.final_comment} />
+        </div>
       ) : (
         <div style={{ color: "#6b7280", fontSize: 13, marginBottom: 16 }}>
           코멘트가 비어 있습니다.
@@ -420,13 +387,11 @@ export default function ReportFinalView({
           <RelatedNewsSection items={enr.related_news ?? []} />
           <QualitySection q={enr.evidence_quality} />
           <ValidationSection v={enr.validation_summary} />
-          <IndicatorChartSection chart={enr.indicator_chart} />
         </>
       )}
 
       {/* P3: 펀드 viewer 전용 — 동일 기간 시장 debate 의 evidence/news fan-out.
-          시장 코멘트(_market) 자체 응답에는 market_enrichment 가 없으므로 표시 안 됨.
-          indicator_chart 는 펀드 enrichment 에서 이미 표시되므로 여기서는 생략(중복 회피). */}
+          시장 코멘트(_market) 자체 응답에는 market_enrichment 가 없으므로 표시 안 됨. */}
       {d.fund_code !== "_market" && d.market_enrichment && (
         <LinkedMarketSection linked={d.market_enrichment} />
       )}
