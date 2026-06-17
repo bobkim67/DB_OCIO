@@ -16,6 +16,7 @@ from ..schemas.transactions import (
     TransactionsResponseDTO,
     WeightHistoryPointDTO,
     WeightHistoryResponseDTO,
+    WeightMarkerDTO,
 )
 
 
@@ -105,7 +106,10 @@ def build_weight_history(
     if level not in ("security", "asset"):
         raise ValueError("level must be 'security' or 'asset'")
 
-    from modules.data_loader import load_weight_history_lookthrough
+    from modules.data_loader import (
+        load_weight_history_lookthrough,
+        load_weight_trade_markers,
+    )
 
     warnings: list[str] = []
 
@@ -119,7 +123,7 @@ def build_weight_history(
                 warnings=warnings, generated_at=_now(),
             ),
             fund_code=fund_code, level=level, lookthrough_applied=False,
-            start_date=start_date, keys=[], points=[],
+            start_date=start_date, keys=[], points=[], markers=[],
         )
 
     if df is None or df.empty:
@@ -130,7 +134,7 @@ def build_weight_history(
                 warnings=warnings, generated_at=_now(),
             ),
             fund_code=fund_code, level=level, lookthrough_applied=is_fof,
-            start_date=start_date, keys=[], points=[],
+            start_date=start_date, keys=[], points=[], markers=[],
         )
 
     # keys 정렬은 로더가 (버킷 순서, 평균비중 desc)로 확정
@@ -140,6 +144,19 @@ def build_weight_history(
         )
         for _, r in df.iterrows()
     ]
+
+    # 매매 마커 — 실패해도 차트 본체에 영향 없도록 격리
+    markers: list[WeightMarkerDTO] = []
+    try:
+        mdf = load_weight_trade_markers(fund_code, start_date, level)
+        if mdf is not None and not mdf.empty:
+            markers = [
+                WeightMarkerDTO(date=str(r["date"]), key=str(r["key"]),
+                                net_eok=float(r["net_eok"]))
+                for _, r in mdf.iterrows()
+            ]
+    except Exception as exc:
+        warnings.append(f"마커 생성 실패: {type(exc).__name__}")
 
     return WeightHistoryResponseDTO(
         meta=BaseMeta(
@@ -155,6 +172,7 @@ def build_weight_history(
         start_date=start_date,
         keys=keys,
         points=points,
+        markers=markers,
     )
 
 

@@ -730,6 +730,8 @@ export interface components {
             ap_return: number;
             /** Bm Return */
             bm_return: number;
+            /** Bm Contrib */
+            bm_contrib: number;
             /** Alloc Effect */
             alloc_effect: number;
             /** Select Effect */
@@ -738,6 +740,28 @@ export interface components {
             cross_effect: number;
             /** Contrib Return */
             contrib_return: number;
+        };
+        /**
+         * BrinsonBmComponentDTO
+         * @description BM(또는 SAA) 구성 한 행 — item4 'BM 셋팅 vs AP' 비교 표용.
+         */
+        BrinsonBmComponentDTO: {
+            /** Name */
+            name: string;
+            /** Weight */
+            weight: number;
+            /** Asset Class */
+            asset_class: string;
+            /**
+             * Region
+             * @default
+             */
+            region: string;
+            /**
+             * Hedged
+             * @default false
+             */
+            hedged: boolean;
         };
         /**
          * BrinsonDailyPointDTO
@@ -799,6 +823,10 @@ export interface components {
             fx_contrib: number;
             /** Residual */
             residual: number;
+            /** Bm Source */
+            bm_source: string;
+            /** Bm Components */
+            bm_components: components["schemas"]["BrinsonBmComponentDTO"][];
             /** Asset Rows */
             asset_rows: components["schemas"]["BrinsonAssetRowDTO"][];
             /** Sec Contrib */
@@ -1835,6 +1863,17 @@ export interface components {
             keys: string[];
             /** Points */
             points: components["schemas"]["WeightHistoryPointDTO"][];
+            /** Markers */
+            markers: components["schemas"]["WeightMarkerDTO"][];
+        };
+        /** WeightMarkerDTO */
+        WeightMarkerDTO: {
+            /** Date */
+            date: string;
+            /** Key */
+            key: string;
+            /** Net Eok */
+            net_eok: number;
         };
         /**
          * WeightedDurationDTO

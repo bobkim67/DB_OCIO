@@ -23,13 +23,23 @@ class BrinsonAssetRowDTO(BaseModel):
     """compute_brinson_attribution_v2['pa_df'] 한 행."""
     asset_class: str           # 자산군 (예: "국내주식")
     ap_weight: float           # AP비중 (%)
-    bm_weight: float           # BM비중 (%)
+    bm_weight: float           # BM비중 (%) — BM 없으면 SAA 목표비중
     ap_return: float           # AP수익률 (%)
     bm_return: float           # BM수익률 (%)
+    bm_contrib: float          # BM 기여수익률 (%) — 경로의존, 합 = period_bm_return
     alloc_effect: float        # Allocation Effect (%)
     select_effect: float       # Selection Effect (%)
     cross_effect: float        # Cross Effect (%)
-    contrib_return: float      # 기여수익률 (%)
+    contrib_return: float      # 기여수익률 (AP 기여, %)
+
+
+class BrinsonBmComponentDTO(BaseModel):
+    """BM(또는 SAA) 구성 한 행 — item4 'BM 셋팅 vs AP' 비교 표용."""
+    name: str                  # 인덱스명(BM) 또는 자산군명(SAA)
+    weight: float              # 목표비중 (%)
+    asset_class: str           # 매핑 자산군 (AP 자산군 비중과 대조용)
+    region: str = ""           # KR / ex_KR (BM 컴포넌트만)
+    hedged: bool = False       # 환헤지 여부 (BM 컴포넌트만)
 
 
 class BrinsonSecContribDTO(BaseModel):
@@ -69,6 +79,9 @@ class BrinsonResponseDTO(BaseModel):
     total_excess_relative: float
     fx_contrib: float
     residual: float
+    # BM/SAA 구성 (item4: BM 셋팅 vs AP 비교 표). bm_source: "BM"|"SAA"|"none"
+    bm_source: str
+    bm_components: list[BrinsonBmComponentDTO]
     # 자산군별
     asset_rows: list[BrinsonAssetRowDTO]
     # 종목별 기여 (top 20)

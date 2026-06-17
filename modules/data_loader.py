@@ -10,6 +10,7 @@ import warnings
 import logging
 import time
 import functools
+from modules import db_cache
 warnings.filterwarnings('ignore')
 logger = logging.getLogger(__name__)
 
@@ -799,19 +800,24 @@ def load_fund_trade_detail(fund_code: str, start_date: int, end_date: int) -> pd
 
     Returns: DataFrame [날짜, 종목명, 자산군, 매수매도, 금액(억), item_cd]
     """
-    conn = get_pandas_connection('dt')
-    try:
-        df = pd.read_sql("""
-            SELECT t.std_dt, t.item_cd, t.item_nm, t.curr_ds_cd,
-                   t.buy_sell_ds_cd, t.trd_amt, t.tr_cd, c.tr_nm
-            FROM DWPM10520 t
-            LEFT JOIN DWCI10160 c ON t.tr_cd = c.tr_cd AND t.synp_cd = c.synp_cd
-            WHERE t.fund_cd = %s AND t.std_dt BETWEEN %s AND %s
-              AND t.imc_cd = '003228'
-            ORDER BY t.std_dt, t.item_nm
-        """, conn, params=[fund_code, start_date, end_date])
-    finally:
-        conn.close()
+    def _fetch(lo, hi):
+        conn = get_pandas_connection('dt')
+        try:
+            return pd.read_sql("""
+                SELECT t.std_dt, t.item_cd, t.item_nm, t.curr_ds_cd,
+                       t.buy_sell_ds_cd, t.trd_amt, t.tr_cd, c.tr_nm
+                FROM DWPM10520 t
+                LEFT JOIN DWCI10160 c ON t.tr_cd = c.tr_cd AND t.synp_cd = c.synp_cd
+                WHERE t.fund_cd = %s AND t.std_dt BETWEEN %s AND %s
+                  AND t.imc_cd = '003228'
+                ORDER BY t.std_dt, t.item_nm
+            """, conn, params=[fund_code, str(lo), str(hi)])
+        finally:
+            conn.close()
+
+    # 과거 거래는 불변 → SQLite 영속 캐시(최근 N영업일만 재조회)
+    df = db_cache.get_cached_range(db_cache.TRADES, fund_code,
+                                   int(start_date), int(end_date), _fetch)
 
     if df.empty:
         return pd.DataFrame()
@@ -1964,6 +1970,25 @@ def compute_brinson_attribution_v2(fund_code: str,
         else:
             bm_period_returns[ac] = 0
 
+    # 자산군별 BM 기여 (경로의존: 합 = period_bm_return).
+    # 단순 BM비중×BM수익률 은 산술 분해라 복리·교차항만큼 합이 BM수익률과 안 맞음
+    # → daily(ac)×weight×누적_{t-1} 로 정확 분해(검증식상 합 = (bm_cum[-1]-1)).
+    bm_cum_prev = bm_cum.shift(1).fillna(1.0)
+    bm_period_contrib = {}
+    for ac in asset_classes:
+        w = bm_weights.get(ac, 0) / 100.0
+        if bm_available and ac in bm_daily_df.columns:
+            bm_period_contrib[ac] = float((bm_daily_df[ac] * w * bm_cum_prev).sum() * 100)
+        else:
+            bm_period_contrib[ac] = 0.0
+    # composite 보정(-34bp cost 등) 잔차는 유동성및기타에 귀속 → 합이 period_bm_return 과 일치
+    if bm_available:
+        _bm_resid = period_bm_return - sum(bm_period_contrib.values())
+        _resid_ac = '유동성및기타' if '유동성및기타' in bm_period_contrib else (
+            asset_classes[-1] if asset_classes else None)
+        if _resid_ac is not None:
+            bm_period_contrib[_resid_ac] = bm_period_contrib.get(_resid_ac, 0.0) + _bm_resid
+
     # ── 9) 결과 테이블 조립 ──
     results = []
     for ac in asset_classes:
@@ -1982,6 +2007,7 @@ def compute_brinson_attribution_v2(fund_code: str,
         results.append({
             '자산군': ac, 'AP비중': round(ap_w, 2), 'BM비중': round(bm_w, 2),
             'AP수익률': round(ap_r, 2), 'BM수익률': round(bm_r, 2),
+            'BM기여': round(bm_period_contrib.get(ac, 0.0), 4),
             'Allocation': round(alloc, 4), 'Selection': round(sel, 4),
             'Cross': round(crs, 4), '기여수익률': round(contrib, 4),
         })
@@ -3426,26 +3452,29 @@ def _load_holdings_range(fund_code: str, start_yyyymmdd: str = None) -> pd.DataF
 
     Returns: DataFrame [STD_DT(int), ITEM_CD, ITEM_NM, 자산군, EVL_AMT(float)]
     """
-    conn = get_pandas_connection('dt')
-    try:
-        params = [fund_code]
-        date_filter = ""
-        if start_yyyymmdd:
-            date_filter = " AND STD_DT >= %s"
-            params.append(start_yyyymmdd)
-        sql = f"""
-            SELECT STD_DT, ITEM_CD, ITEM_NM, AST_CLSF_CD_NM, CURR_DS_CD,
-                   SUM(EVL_AMT) AS EVL_AMT
-            FROM DWPM10530
-            WHERE FUND_CD = %s AND IMC_CD = '003228' AND EVL_AMT > 0
-              AND ITEM_NM NOT LIKE '%%미지급%%'
-              AND ITEM_NM NOT LIKE '%%미수%%'
-              {date_filter}
-            GROUP BY STD_DT, ITEM_CD, ITEM_NM, AST_CLSF_CD_NM, CURR_DS_CD
-        """
-        df = pd.read_sql(sql, conn, params=params)
-    finally:
-        conn.close()
+    def _fetch(lo, hi):
+        conn = get_pandas_connection('dt')
+        try:
+            sql = """
+                SELECT STD_DT, ITEM_CD, ITEM_NM, AST_CLSF_CD_NM, CURR_DS_CD,
+                       SUM(EVL_AMT) AS EVL_AMT
+                FROM DWPM10530
+                WHERE FUND_CD = %s AND IMC_CD = '003228' AND EVL_AMT > 0
+                  AND ITEM_NM NOT LIKE '%%미지급%%'
+                  AND ITEM_NM NOT LIKE '%%미수%%'
+                  AND STD_DT BETWEEN %s AND %s
+                GROUP BY STD_DT, ITEM_CD, ITEM_NM, AST_CLSF_CD_NM, CURR_DS_CD
+            """
+            # STD_DT 는 varchar(8) PK — 문자열 바운드로 넘겨야 인덱스 사용(int면 full scan)
+            return pd.read_sql(sql, conn, params=[fund_code, str(lo), str(hi)])
+        finally:
+            conn.close()
+
+    # 과거 보유는 사실상 불변 → SQLite 영속 캐시(최근 N영업일만 재조회). end=오늘
+    start_int = int(start_yyyymmdd) if start_yyyymmdd else None
+    today_int = int(datetime.now().strftime('%Y%m%d'))
+    df = db_cache.get_cached_range(db_cache.HOLDINGS, fund_code,
+                                   start_int, today_int, _fetch)
 
     if df.empty:
         return df
@@ -3477,6 +3506,28 @@ _EIGHT_TO_SIX = {
 
 def _collapse_to_6bucket(ac: str) -> str:
     return _EIGHT_TO_SIX.get(str(ac), '유동성')
+
+
+@_ttl_cache()
+def load_business_days_set(start_yyyymmdd: str, end_yyyymmdd: str) -> frozenset:
+    """DWCI10220 영업일(hldy_yn='N')의 'YYYY-MM-DD' 집합. 주말+평일공휴일 제외.
+    조회 실패 시 빈 set → 호출부에서 주말 fallback."""
+    try:
+        conn = get_pandas_connection('dt')
+        try:
+            df = pd.read_sql(
+                "SELECT std_dt FROM DWCI10220 WHERE hldy_yn='N' "
+                "AND std_dt BETWEEN %s AND %s",
+                conn, params=[str(start_yyyymmdd), str(end_yyyymmdd)])
+        finally:
+            conn.close()
+        if not df.empty:
+            return frozenset(
+                pd.to_datetime(df['std_dt'].astype(str), format='%Y%m%d')
+                .dt.strftime('%Y-%m-%d'))
+    except Exception:
+        pass
+    return frozenset()
 
 
 @_ttl_cache()
@@ -3547,6 +3598,18 @@ def load_weight_history_lookthrough(fund_code: str, start_date: str = None,
     out = (agg[['date', 'key', 'weight']]
            .sort_values(['date', 'key']).reset_index(drop=True))
 
+    # 영업일만 표시 — DWCI10220(hldy_yn='N')로 주말/평일공휴일 보유 스냅샷 제외.
+    # (거래는 영업일만 발생 → 영역도 영업일로 맞춰 주말 carry 노이즈 제거)
+    if not out.empty:
+        _s = out['date'].min().replace('-', '')
+        _e = out['date'].max().replace('-', '')
+        _bdays = load_business_days_set(_s, _e)
+        if _bdays:
+            out = out[out['date'].isin(_bdays)].reset_index(drop=True)
+        else:  # 캘린더 조회 실패 → 주말만 제거 fallback
+            _wd = pd.to_datetime(out['date']).dt.dayofweek
+            out = out[(_wd < 5).values].reset_index(drop=True)
+
     # keys 정렬: (버킷 순서, 평균비중 desc)
     kb = allrows.groupby('key')['bucket'].first()
     meanw = agg.groupby('key')['weight'].mean()
@@ -3558,6 +3621,58 @@ def load_weight_history_lookthrough(fund_code: str, start_date: str = None,
 
     keys = sorted(meanw.index, key=_ord)
     return out, is_fof, keys
+
+
+@_ttl_cache()
+def load_weight_trade_markers(fund_code: str, start_date: str,
+                              level: str = 'asset', end_date: str = None) -> pd.DataFrame:
+    """일별 비중 영역차트용 매매 마커. (date, key) 순매수(억) 합산.
+
+    key 규칙은 load_weight_history_lookthrough 와 동일:
+      - level='asset': key=6버킷
+      - level='security': 버킷 1~5 종목명, 그 외(유동성·FX·모펀드)는 '유동성' 묶음
+    부호: 매수/발행=+, 매도/환매=−, 기타(환전 등)=0(제외). |net|≈0 행 제외.
+    거래는 load_fund_trades_lookthrough 재사용(FoF 자펀드 치환·콜론/환전 제외 동일).
+
+    Returns: DataFrame[date(YYYY-MM-DD), key, net_eok]
+    """
+    if end_date is None:
+        end_date = datetime.now().strftime('%Y-%m-%d')
+    s_int = int(start_date.replace('-', ''))
+    e_int = int(end_date.replace('-', ''))
+
+    df, _funds, _fof = load_fund_trades_lookthrough(fund_code, s_int, e_int)
+    cols = ['date', 'key', 'net_eok']
+    if df is None or df.empty:
+        return pd.DataFrame(columns=cols)
+
+    d = df.copy()
+    # BA정산(발행/환매 정산성, qty=0)은 마커에서 제외 (사용자 요청)
+    d = d[~d['매수매도'].astype(str).str.contains('BA정산')].copy()
+    if d.empty:
+        return pd.DataFrame(columns=cols)
+
+    d['bucket'] = d['자산군'].map(_collapse_to_6bucket)
+    if level == 'asset':
+        d['key'] = d['bucket']
+    else:
+        d['key'] = d.apply(
+            lambda r: r['종목명'] if r['bucket'] != '유동성' else '유동성', axis=1)
+
+    side = d['매수매도'].astype(str)
+    is_buy = side.str.contains('매수') | side.str.contains('발행')
+    is_sell = side.str.contains('매도') | side.str.contains('환매')
+    d['signed'] = 0.0
+    d.loc[is_buy, 'signed'] = d.loc[is_buy, '금액(억)']
+    d.loc[is_sell, 'signed'] = -d.loc[is_sell, '금액(억)']
+
+    g = d.groupby(['날짜', 'key'], as_index=False)['signed'].sum()
+    g = g[g['signed'].abs() > 1e-9].copy()
+    if g.empty:
+        return pd.DataFrame(columns=cols)
+    g['date'] = pd.to_datetime(g['날짜'].astype(str), format='%Y%m%d').dt.strftime('%Y-%m-%d')
+    g['net_eok'] = g['signed'].round(2)
+    return g[cols].sort_values(['date', 'key']).reset_index(drop=True)
 
 
 @_ttl_cache()
@@ -3758,7 +3873,9 @@ def load_security_return_with_trades(fund_code: str, item_cd: str,
     e_int = int(end_date.replace('-', ''))
 
     target = str(item_cd).strip()
-    trades = []
+    # 같은 날·같은 방향 거래는 합산(겹쳐서 하나만 보이는 문제 해소).
+    # 제외: 기타/환전, BA정산(발행/환매 정산성) — 마커 정책 일관.
+    agg = {}  # (date_iso, '매수'|'매도') -> amount 합
     for f in funds:
         d = load_fund_trade_detail(f, s_int, e_int)
         if d is None or d.empty:
@@ -3766,14 +3883,14 @@ def load_security_return_with_trades(fund_code: str, item_cd: str,
         d = d[d['item_cd'].astype(str).str.strip() == target]
         for _, r in d.iterrows():
             side = str(r['매수매도'])
-            if side in ('기타', '환전'):
+            if side in ('기타', '환전') or 'BA정산' in side:
                 continue
             ds = str(r['날짜'])
-            trades.append({
-                'date': f"{ds[:4]}-{ds[4:6]}-{ds[6:8]}" if len(ds) == 8 else ds,
-                'side': side,
-                'amount': float(r['금액(억)']),
-            })
+            date_iso = f"{ds[:4]}-{ds[4:6]}-{ds[6:8]}" if len(ds) == 8 else ds
+            direction = '매수' if ('매수' in side or '발행' in side) else '매도'
+            agg[(date_iso, direction)] = agg.get((date_iso, direction), 0.0) + float(r['금액(억)'])
+    trades = [{'date': dt, 'side': dr, 'amount': round(amt, 2)}
+              for (dt, dr), amt in sorted(agg.items())]
     return price, trades
 
 

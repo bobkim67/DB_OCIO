@@ -37,21 +37,30 @@ echo  FastAPI port : !OCIO_API_PORT!  ^(default 8000^)
 echo  Vite port    : !OCIO_WEB_PORT!  ^(default 5173^)
 echo.
 
-echo [1/4] Starting FastAPI ...
+REM warmup CLI pre-builds disk caches; disable server startup warmup to avoid duplication
+set "OCIO_WARMUP_ON_STARTUP=false"
+
+echo [1/5] Starting FastAPI ...
 start "FastAPI :!OCIO_API_PORT!" "%~dp0launch_fastapi.bat"
 
-echo [2/4] Starting Vite ...
+echo [2/5] Starting Vite ...
 start "Vite :!OCIO_WEB_PORT!" "%~dp0launch_vite.bat"
 
 if "%RUN_DU%"=="1" (
-    echo [3/4] Starting Daily Update ...
+    echo [3/5] Starting Daily Update ...
     start "Daily Update" "%~dp0launch_daily_update.bat"
 ) else (
-    echo [3/4] Daily Update SKIPPED ^(declined / timeout^)
+    echo [3/5] Daily Update SKIPPED ^(declined / timeout^)
 )
 
-echo [4/4] Opening browser in 5 seconds ...
-timeout /t 5 /nobreak >nul
+echo [4/5] Warming up caches ^(holdings/transactions/Brinson, default params^) ...
+echo       progress below; browser opens when warmup completes.
+pushd "%~dp0.."
+api\.venv\Scripts\python.exe -m api.warmup_cli
+popd
+
+echo.
+echo [5/5] Opening browser ...
 REM child launchers may have shifted to a different free port if the pre-picked
 REM one was grabbed by a stale process. Re-read the actual port from runtime json.
 pushd "%~dp0.."

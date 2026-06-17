@@ -28,6 +28,12 @@ class WeightHistoryPointDTO(BaseModel):
     weight: float           # % (일자별 합 ≈ 100)
 
 
+class WeightMarkerDTO(BaseModel):
+    date: str               # YYYY-MM-DD
+    key: str                # WeightHistoryPointDTO.key 와 동일 (버킷 또는 종목명)
+    net_eok: float          # 순매수(억). >0 매수우위 ▲ / <0 매도우위 ▼
+
+
 class WeightHistoryResponseDTO(BaseModel):
     meta: BaseMeta
     fund_code: str
@@ -36,6 +42,7 @@ class WeightHistoryResponseDTO(BaseModel):
     start_date: str                 # YYYY-MM-DD
     keys: list[str]                 # 정렬된 key (버킷 순서 → 평균비중 desc). security면 '유동성' 묶음 포함
     points: list[WeightHistoryPointDTO]
+    markers: list[WeightMarkerDTO]  # 일자·key별 순매수 마커 (영역차트 ▲▼)
 
 
 # === FX 포지션 (달러선물 등) 별도 라인차트 ===

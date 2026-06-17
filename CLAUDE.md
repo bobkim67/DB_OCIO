@@ -2,6 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## ⛔ NEWS 데이터 미사용 (2026-06-17 사용자 확정 — 영구)
+
+운영 wiki/코멘트/claim 의 소스는 **naver_research + monygeek** 뿐이다. **news 데이터는
+운영에서 쓰지 않는다** (data/news, news claims, news_classifier/vectordb/content_pool,
+daily_update Step 1·2·2.5·2.6·2.7 news 산출물). 신규 작업에서 news 를 운영 소스로
+끌어오거나 news claim 을 재생성/참조하지 말 것. fetch 코드는 보존만. 상세는
+`market_research/CLAUDE.md` 상단 배너 참조. (근거: 2026-06-17 사용자 명시)
+
 ## ⚠️ STATUS (2026-05-13~): Streamlit 폐기 — web/ + api/ 만 사용
 
 `prototype.py` / `tabs/` / Streamlit 기반 UI 는 **폐기**됐다. 신규 UI 작업은
@@ -676,4 +684,40 @@ DashboardPage 신규 탭 "거래내역" — 거래내역 조회 + 일별 비중 
 - 종목 수익률 = **종목 자체 수익률(편입비중 미반영)** + 보조축 비중 파스텔 레이어. 디폴트=비중 최상위 종목
 
 ### 미완
-- 콜드 로드 워밍업/사전산출 미구현(옵션3=TTL만). 시각검증 08K88/07G04/4JM12만.
+- 시각검증 08K88/07G04/4JM12 위주. (콜드 로드 워밍업은 아래 2026-06-17 에서 구현)
+
+## 2026-06-17 세션 (영속캐시 · 워밍업 · 영역차트 마커 · 성과분석 개편)
+
+### 영속 디스크 캐시 (재기동 콜드로드 단축)
+- `modules/db_cache.py` 신설 — DWPM10530 일별범위(`_load_holdings_range`)·DWPM10520 거래
+  (`load_fund_trade_detail`)를 `.cache/db_cache.sqlite`(gitignore)에 영속. warm 시 **최근
+  5영업일만 재조회**(정정 흡수)+신규 증분. env `OCIO_DISABLE_DB_CACHE=1` 우회.
+- ★ **STD_DT 는 varchar(8)** — 날짜 필터에 int 넘기면 인덱스 미사용 full scan(8s) → **반드시 `str()`**(0.02s).
+- **편입종목(load_fund_holdings_lookthrough)·FX·보유목록은 db_cache 미적용**(최신일 스냅샷이라).
+
+### Brinson 디스크 캐시 + 워밍업
+- `brinson_service._compute_cached` 에 디스크 레이어(`.cache/brinson/{fund}_{start}_{end}_{method}.pkl`)
+  + 기존 LRU. 재기동에도 유지. key=(fund,start,end,method) — end=어제라 새 날엔 새 키(자연 재계산).
+  ⚠️ 스키마 변경(아래 BM기여 추가) 시 `.cache/brinson` 비워야 함.
+- `api/warmup_cli.py` 신설 — cmd 진행바(tqdm 無, 수동 `\r` 바)로 전 9펀드 거래내역+Brinson 디폴트 선계산.
+- `scripts/launch_dashboard.bat`: daily-update 질문 직후 `[4/5] python -m api.warmup_cli`(블로킹)
+  → 완료 후 브라우저. `OCIO_WARMUP_ON_STARTUP=false`(서버 중복 워밍업 방지). **.bat 은 CRLF·ASCII 유지**.
+- 브라우저 재계산: fetchBrinson 타임아웃 30s→**120s**, BrinsonTab 부정형 LoadingBar("재계산 중…").
+- ⚠️ 워밍업 시간: brinson 콜드 펀드당 ~1–2분(FoF 더), 9펀드 블로킹이면 길다. 첫 스텝 느림=편입종목 콜드 DB조회 ~7s(임포트 0.8s 아님).
+
+### 일별 비중추이(영역차트) 마커 + 영업일 필터
+- `load_weight_trade_markers` 신설 — (date,key) 순매수(억). **BA정산 제외**. WeightHistoryResponseDTO.markers.
+- 영역차트: 삼각형 마커(시각, hoverinfo skip) + **거래 요약을 x-unified 툴팁 최상단 별도 줄**(데이터 배열 끝 trace=역순 최상단, y=100, 투명마커=dot제거). 매수=빨강▲/매도=파랑▼ `<span color>`, 건별 줄바꿈, 매수먼저→금액내림차순.
+- 영역 fill 톤 0.65. 영업일 필터: `load_business_days_set`(DWCI10220 hldy_yn='N') → 주말·공휴일 보유스냅샷 제외.
+- 종목수익률 차트: 같은 날·같은 방향 거래 **합산**, BA정산 제외.
+
+### 성과분석(Brinson) 탭 개편
+- **BM기여 경로의존 분해**(`compute_brinson_attribution_v2`): `bm_daily×weight×누적_{t-1}` → **합=period_bm_return**(기존 BM비중×BM수익률 산술합 불일치 해소). cost 잔차는 유동성및기타 귀속. pa_df 'BM기여' 컬럼 + DTO `bm_contrib`.
+- BrinsonTab: AP비중 옆 `(±%p vs BM)`, AP수익률/BM수익률 컬럼 삭제, BM기여=백엔드값.
+- **BM/SAA 구성 표**(표0): `bm_source`('BM'|'SAA'|'none') + `bm_components`. BM=FUND_BM 컴포넌트(지수·목표비중·지역/헤지), **BM 없는 6펀드=SAA(FUND_MP_DIRECT/MAPPING) 목표비중**. SAA는 비중비교만(인덱스 수익률 정의 없어 기여분해 불가). 대체투자→대체·유동성→유동성및기타 정규화.
+
+### 다음 세션 추가 작업 (사용자 지시 2026-06-17, 미구현)
+1. **거래내역 탭 세부내역 접기**: 일별 거래 표를 숨김+"세부내역" 타이틀+"열기" 토글. 표 위에 **종목별 매수/매도/순매수(기간 합계)** 요약.
+2. **마스터 토글(자산군↔종목)**: 현재 영역차트에만 있는 asset/security 토글을 **탭 전체(mother)** 로 승격 → 거래내역·일별비중추이·수익률차트 모두 동일 기준 적용.
+3. **성과분석 표0 간소화**: 컬럼 = 자산군 / SAA(BM) ticker / SAA비중 / AP ticker / AP비중. **FX 제외**. (※ "AP ticker" 정의 불명확 — 자산군별 실제 대표 보유종목? 다음 세션 확인 필요.)
+4. **성과분석 우측 라인차트**: (a) AP vs BM 누적수익 + 자산군별 기여수익률 선택, (b) 기간별 비중 AP vs SAA 추이.

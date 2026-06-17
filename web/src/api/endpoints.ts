@@ -93,6 +93,7 @@ export type WarmupStatus = WarmupStatusDTO["status"];
 
 // === Brinson ===
 export type BrinsonAssetRowDTO = S["BrinsonAssetRowDTO"];
+export type BrinsonBmComponentDTO = S["BrinsonBmComponentDTO"];
 export type BrinsonSecContribDTO = S["BrinsonSecContribDTO"];
 export type BrinsonDailyPointDTO = S["BrinsonDailyPointDTO"];
 export type BrinsonResponseDTO = S["BrinsonResponseDTO"];
@@ -103,6 +104,7 @@ export type BrinsonPaMethod = "8" | "5";
 export type TransactionRowDTO = S["TransactionRowDTO"];
 export type TransactionsResponseDTO = S["TransactionsResponseDTO"];
 export type WeightHistoryPointDTO = S["WeightHistoryPointDTO"];
+export type WeightMarkerDTO = S["WeightMarkerDTO"];
 export type WeightHistoryResponseDTO = S["WeightHistoryResponseDTO"];
 export type WeightHistoryLevel = "security" | "asset";
 export type FxPositionPointDTO = S["FxPositionPointDTO"];
@@ -384,9 +386,11 @@ export const fetchBrinson = async (
   if (opts.mappingMethod) params.mapping_method = opts.mappingMethod;
   if (opts.paMethod) params.pa_method = opts.paMethod;
   if (opts.fxSplit !== undefined) params.fx_split = opts.fxSplit;
+  // brinson 콜드 계산은 ~1분 → 공통 30s 타임아웃을 초과하므로 요청별로 상향.
+  // (디스크 캐시 히트면 즉시지만, 날짜 변경 등 캐시 미스 시 재계산 대기)
   const r = await api.get<BrinsonResponseDTO>(
     `/funds/${code}/brinson`,
-    { params },
+    { params, timeout: 120_000 },
   );
   return r.data;
 };

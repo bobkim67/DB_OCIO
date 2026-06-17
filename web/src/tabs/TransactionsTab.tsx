@@ -325,6 +325,9 @@ export default function TransactionsTab({ fundCode }: Props) {
 
         <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
           {chartStart} ~ 현재
+          <span style={{ marginLeft: 8, color: "#9ca3af" }}>
+            · ▲ 순매수 / ▼ 순매도 (밴드 상단, 일자·{level === "asset" ? "자산군" : "종목"}별 순액)
+          </span>
           {whQ.data?.lookthrough_applied && (
             <span style={{ marginLeft: 8, color: "#7c3aed" }}>
               · FoF look-through: 자펀드 종목 편입비율 가중평균
@@ -340,6 +343,7 @@ export default function TransactionsTab({ fundCode }: Props) {
             keys={whQ.data?.keys ?? []}
             level={level}
             topN={topN}
+            markers={whQ.data?.markers ?? []}
             instanceKey={`${fundCode}-${level}-${chartPeriod}`}
           />
         )}

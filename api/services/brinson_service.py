@@ -13,6 +13,8 @@ mapping_method 기본값:
 """
 from __future__ import annotations
 
+import os
+import pickle
 from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
 from typing import Any
@@ -28,6 +30,7 @@ from config.funds import (
 
 from ..schemas.brinson import (
     BrinsonAssetRowDTO,
+    BrinsonBmComponentDTO,
     BrinsonDailyPointDTO,
     BrinsonResponseDTO,
     BrinsonSecContribDTO,
@@ -95,20 +98,49 @@ def _to_yyyymmdd(d: date) -> str:
 
 # -------------------- core compute (cached) --------------------
 
+_BRINSON_CACHE_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    ".cache", "brinson",
+)
+# 거래 캐시와 동일 플래그로 디스크 캐시 우회 가능
+_DISK_DISABLED = os.environ.get("OCIO_DISABLE_DB_CACHE") == "1"
+
+
+def _brinson_disk_path(fund_code: str, start_yyyymmdd: str,
+                       end_yyyymmdd: str, mapping_method: str) -> str:
+    safe = f"{fund_code}_{start_yyyymmdd}_{end_yyyymmdd}_{mapping_method}".replace("/", "_")
+    return os.path.join(_BRINSON_CACHE_DIR, safe + ".pkl")
+
+
 @lru_cache(maxsize=128)
 def _compute_cached(fund_code: str, start_yyyymmdd: str, end_yyyymmdd: str,
                     mapping_method: str) -> dict | None:
-    """compute_brinson_attribution_v2 호출 결과를 LRU 캐시.
+    """compute_brinson_attribution_v2 결과를 LRU(인메모리) + 디스크(.cache/brinson) 캐시.
 
-    캐시 키에 (fund, start, end, method) 만 포함. pa_method/fx_split 은
-    동일 결과의 후처리 (자산군 합산 / FX 행 제거) 로 처리해 재계산 회피.
-    end_date 가 변경되면 자연 invalidation.
+    캐시 키 (fund, start, end, method). pa_method/fx_split 은 후처리라 키 제외.
+    디스크 캐시 덕에 서버 재기동에도 콜드 재계산을 피한다. end_date 가 바뀌면
+    (새 영업일) 새 키 → 자연 재계산(런처 워밍업이 그날치를 선계산).
     """
+    path = _brinson_disk_path(fund_code, start_yyyymmdd, end_yyyymmdd, mapping_method)
+    if not _DISK_DISABLED and os.path.exists(path):
+        try:
+            with open(path, "rb") as f:
+                return pickle.load(f)
+        except Exception:
+            pass  # 손상 시 재계산
     from modules.data_loader import compute_brinson_attribution_v2
-    return compute_brinson_attribution_v2(
+    raw = compute_brinson_attribution_v2(
         fund_code, start_yyyymmdd, end_yyyymmdd,
         mapping_method=mapping_method,
     )
+    if raw is not None and not _DISK_DISABLED:
+        try:
+            os.makedirs(_BRINSON_CACHE_DIR, exist_ok=True)
+            with open(path, "wb") as f:
+                pickle.dump(raw, f)
+        except Exception:
+            pass  # 캐시 실패는 무시(계산 결과는 정상 반환)
+    return raw
 
 
 # -------------------- post-processing --------------------
@@ -128,6 +160,7 @@ def _collapse_5class(pa_df: pd.DataFrame, mapping_method: str) -> pd.DataFrame:
         "BM비중": other["BM비중"].sum(),
         "AP수익률": 0.0,
         "BM수익률": 0.0,
+        "BM기여": other["BM기여"].sum() if "BM기여" in other.columns else 0.0,
         "Allocation": other["Allocation"].sum(),
         "Selection": other["Selection"].sum(),
         "Cross": other["Cross"].sum(),
@@ -156,6 +189,7 @@ def _to_asset_rows(pa_df: pd.DataFrame) -> list[BrinsonAssetRowDTO]:
             bm_weight=float(r.get("BM비중", 0.0) or 0.0),
             ap_return=float(r.get("AP수익률", 0.0) or 0.0),
             bm_return=float(r.get("BM수익률", 0.0) or 0.0),
+            bm_contrib=float(r.get("BM기여", 0.0) or 0.0),
             alloc_effect=float(r.get("Allocation", 0.0) or 0.0),
             select_effect=float(r.get("Selection", 0.0) or 0.0),
             cross_effect=float(r.get("Cross", 0.0) or 0.0),
@@ -199,6 +233,52 @@ def _to_daily_rows(daily_df: pd.DataFrame | None) -> list[BrinsonDailyPointDTO]:
     return out
 
 
+def _build_bm_meta(fund_code: str, method: str):
+    """item4/5: BM(FUND_BM 컴포넌트) 또는 SAA(FUND_MP 목표비중) 구성을 만든다.
+
+    returns (bm_source, components, saa_dict_or_None)
+      - bm_source: "BM" | "SAA" | "none"
+      - components: list[BrinsonBmComponentDTO]  (인덱스/자산군 목표비중)
+      - saa_dict: SAA 펀드면 {자산군: 목표비중%} (AP 비중 비교용으로 BM비중에 주입), 아니면 None
+    """
+    from config.funds import FUND_BM, FUND_MP_DIRECT, FUND_MP_MAPPING
+    from modules.data_loader import _map_bm_component_to_asset_class
+
+    bm = FUND_BM.get(fund_code)
+    if bm:
+        comps = [
+            BrinsonBmComponentDTO(
+                name=str(c.get("name", "")),
+                weight=round(float(c.get("weight", 0.0)) * 100, 2),
+                asset_class=_map_bm_component_to_asset_class(str(c.get("name", "")), method),
+                region=str(c.get("region", "") or ""),
+                hedged=bool(c.get("hedged", False)),
+            )
+            for c in bm.get("components", [])
+        ]
+        return "BM", comps, None
+
+    # BM 미설정 → SAA(MP) 목표비중 (item5). 비중 비교만 가능(수익률 분해 불가).
+    saa = None
+    if fund_code in FUND_MP_DIRECT:
+        saa = {k: float(v) for k, v in FUND_MP_DIRECT[fund_code].items()}
+    elif fund_code in FUND_MP_MAPPING:
+        try:
+            from modules.data_loader import load_mp_weights_8class
+            raw = load_mp_weights_8class(FUND_MP_MAPPING[fund_code])
+            if isinstance(raw, dict):
+                saa = {k: float(v) for k, v in raw.items()}
+        except Exception:
+            saa = None
+    if saa:
+        comps = [
+            BrinsonBmComponentDTO(name=ac, weight=round(w, 2), asset_class=ac)
+            for ac, w in saa.items() if abs(w) > 1e-9
+        ]
+        return "SAA", comps, saa
+    return "none", [], None
+
+
 # -------------------- public --------------------
 
 def build_brinson(
@@ -217,6 +297,8 @@ def build_brinson(
     method = _resolve_mapping_method(fund_code, mapping_method)
     if method not in ALLOWED_MAPPING_METHODS:
         raise ValueError(f"mapping_method must be one of {ALLOWED_MAPPING_METHODS}")
+
+    bm_source, bm_components, _saa = _build_bm_meta(fund_code, method)
 
     if start_date is None or end_date is None:
         d_start, d_end = _resolve_default_period(fund_code)
@@ -272,6 +354,8 @@ def build_brinson(
             total_excess_relative=0.0,
             fx_contrib=0.0,
             residual=0.0,
+            bm_source=bm_source,
+            bm_components=bm_components,
             asset_rows=[],
             sec_contrib=[],
             daily_brinson=[],
@@ -280,6 +364,15 @@ def build_brinson(
     sources.append(SourceBreakdown(component="pa", kind="db", note="dt.MA000410"))
 
     pa_df = raw["pa_df"].copy()
+    # BM 미설정 펀드: SAA(MP) 목표비중을 BM비중에 주입 → AP 대비 %p 비교가 동작(item1/5).
+    # (수익률/기여 분해는 SAA 인덱스 정의가 없어 불가 → BM기여/Allocation 은 0 유지)
+    if bm_source == "SAA" and _saa:
+        # SAA 8분류 키(대체투자/유동성)를 Brinson 자산군명(대체/유동성및기타)으로 정규화
+        _saa_b: dict[str, float] = {}
+        for _k, _v in _saa.items():
+            _bk = {"대체투자": "대체", "유동성": "유동성및기타"}.get(_k, _k)
+            _saa_b[_bk] = _saa_b.get(_bk, 0.0) + float(_v)
+        pa_df["BM비중"] = pa_df["자산군"].map(lambda a: _saa_b.get(a, 0.0))
     if pa_method == "5":
         pa_df = _collapse_5class(pa_df, method)
     if not fx_split and "FX" in set(pa_df["자산군"].astype(str)):
@@ -311,6 +404,8 @@ def build_brinson(
         total_excess_relative=float(raw.get("total_excess_relative", 0.0) or 0.0),
         fx_contrib=float(raw.get("fx_contrib", 0.0) or 0.0),
         residual=float(raw.get("residual", 0.0) or 0.0),
+        bm_source=bm_source,
+        bm_components=bm_components,
         asset_rows=_to_asset_rows(pa_df),
         sec_contrib=_to_sec_rows(raw.get("sec_contrib")),
         daily_brinson=_to_daily_rows(raw.get("daily_brinson")),
