@@ -1210,7 +1210,7 @@ def test_v2_normalize_remaps_selector_label_to_8class():
         "supporting_evidence_ids": ["aa11bb22cc33"],
     })
     assert c["affected_assets"][0]["asset_class"] == "환율(FX)"
-    assert c["affected_assets"][1]["asset_class"] == "원자재금"
+    assert c["affected_assets"][1]["asset_class"] == "대체"
     assert c["primary_asset"] == "환율(FX)"
     assert validate_claim(c)["valid"]
 

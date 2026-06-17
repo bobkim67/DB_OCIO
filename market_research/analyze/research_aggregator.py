@@ -81,19 +81,18 @@ def claim_driver_region(claim: dict) -> str | None:
 
 def _primary(claim: dict) -> str | None:
     """research routing 정책 (사용자 D4 결정 + region-aware rerouting, 2026-06-15):
-    - 크립토(sectors='크립토') → '기타' (OCIO 8자산 밖, 채권/현금성 오염 방지).
-    - 크레딧(HY/신용) → region 채권 슬리브: KR→국내채권, 그 외→해외채권.
+    - 크립토(sectors='크립토') → '기타' (OCIO 자산 밖, 채권/유동성 오염 방지).
+    - 크레딧(HY/IG/사모신용)은 claim 진입 경계(_remap_to_8class)에서 이미 해외채권으로,
+      LLM enum 단계에서는 region 따라 국내/해외채권으로 배정됨 → 여기서 별도 분기 불필요
+      (2026-06-17 크레딧 독립 자산군 폐지).
     - ★region-aware: 국내자산(국내주식/국내채권)인데 regions 가 비-KR 이고 KR 직접영향
       명시(_KR_IMPACT_KW)도 없으면 → 해외자산으로 reroute (US CPI/Fed/미국금리 등이
       국내로 오는 오라우팅 차단). KR 영향 명시 claim 은 국내 유지(driver_region 로 구분).
-    - 현금성: 크립토 제거 후 잔여만.
     """
     base = _base_primary(claim)
     if "크립토" in (claim.get("sectors") or []):
         return "기타"
     rg = claim.get("regions") or []
-    if base == "크레딧":
-        base = "국내채권" if "KR" in rg else "해외채권"
     # region-aware rerouting (국내자산 + 비-KR region + KR 직접영향 미명시 → 해외)
     if base in ("국내주식", "국내채권") and rg and "KR" not in rg:
         if not any(kw in _claim_blob(claim) for kw in _KR_IMPACT_KW):

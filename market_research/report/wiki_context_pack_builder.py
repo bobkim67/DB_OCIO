@@ -1158,7 +1158,7 @@ def _allowed_dirs(stage: str) -> tuple[str, ...]:
 # P5.3-C — research-only 03_Assets allowlist (legacy commodity/기타 page
 # stale 유입 차단). Option B(금/원유/기타원자재 taxonomy migration) 전까지 한시.
 # asset_class frontmatter 기준. 운영 wiki 파일은 삭제/수정하지 않음(읽기 측 필터).
-# legacy 제외: 금/금_대체/원자재/크레딧/현금성/채권(+원자재금 aggregate). active 5종만.
+# legacy 제외: 금/금_대체/원자재/크레딧/현금성/채권/대체/유동성(non-directional). active 5종만.
 # ──────────────────────────────────────────────────────────────────
 ACTIVE_ASSET_PAGES: frozenset[str] = frozenset({
     "국내주식", "해외주식", "국내채권", "해외채권", "환율",

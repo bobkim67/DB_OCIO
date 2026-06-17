@@ -3,7 +3,8 @@
 
 검증:
   - route_by_region: 동일 sector 라도 region 으로 국내/해외 분기 (테크 KR/US)
-  - cross-asset sector 는 region 무관 (환율/원자재/금/크레딧/크립토/지정학)
+  - cross-asset sector 는 region 무관 (환율/원자재/금/크립토). 유동성_크레딧은
+    2026-06-17 부터 금리성(RATE) — region 따라 국내/해외채권으로 분기.
   - REGION_SET / validate_regions / is_region 계약
   - article_primary_asset_v2: per-topic region 라우팅 argmax + v1 fallback
   - "팔천피" KR 테크 record → 국내주식 (v1 해외채권 오분류 해소)
@@ -48,8 +49,13 @@ def test_rate_sector_region_split():
     assert route_by_region("US", "금리_채권") == "해외채권"
     assert route_by_region("KR", "통화정책") == "국내채권"
     assert route_by_region("US", "통화정책") == "해외채권"
+    # 2026-06-17: 유동성_크레딧(HY/IG/사모신용)도 금리성 → region 따라 국내/해외채권
+    assert route_by_region("KR", "유동성_크레딧") == "국내채권"
+    assert route_by_region("US", "유동성_크레딧") == "해외채권"
+    assert route_by_region("NON_US_OVERSEAS", "유동성_크레딧") == "해외채권"
     # §8: GLOBAL+금리성 → None (해외채권 default 폐기)
     assert route_by_region("GLOBAL", "물가_인플레이션") is None
+    assert route_by_region("GLOBAL", "유동성_크레딧") is None
     assert route_by_region("UNKNOWN", "금리_채권") is None
 
 
@@ -78,8 +84,8 @@ def test_cross_asset_sectors_region_invariant():
         assert route_by_region(region, "달러_글로벌유동성") == "환율"
         assert route_by_region(region, "에너지_원자재") == "원자재에너지"
         assert route_by_region(region, "귀금속_금") == "금대체"
-        assert route_by_region(region, "유동성_크레딧") == "크레딧"
         assert route_by_region(region, "크립토") == "크립토"
+        # 유동성_크레딧은 더 이상 cross-asset 아님(RATE) → test_rate_sector_region_split 참조
 
 
 def test_unknown_sector_returns_none():
@@ -227,22 +233,26 @@ def test_geopolitics_article_v2_falls_back_to_v1_after_s8(monkeypatch):
 # ── _remap_to_8class: selector label → claim 8-class collapse ──
 
 def test_remap_collapse():
-    # 환율 → 환율(FX), 금/원자재 → 원자재금
+    # 환율 → 환율(FX), 금/원자재 → 대체, 크레딧 → 해외채권, 현금성 → 유동성 (2026-06-17)
     assert _remap_to_8class("환율") == "환율(FX)"
-    assert _remap_to_8class("금대체") == "원자재금"
-    assert _remap_to_8class("원자재에너지") == "원자재금"
+    assert _remap_to_8class("금대체") == "대체"
+    assert _remap_to_8class("원자재에너지") == "대체"
+    assert _remap_to_8class("원자재금") == "대체"
+    assert _remap_to_8class("크레딧") == "해외채권"
+    assert _remap_to_8class("현금성") == "유동성"
 
 
 def test_remap_identity_for_plain_8class():
-    # 국내/해외 주식·채권 + 크레딧·현금성 은 그대로
-    for a in ("국내주식", "해외주식", "국내채권", "해외채권", "크레딧", "현금성"):
+    # 운영 7 자산군은 그대로 (idempotent)
+    for a in ("국내주식", "해외주식", "국내채권", "해외채권", "유동성", "대체"):
         assert _remap_to_8class(a) == a
 
 
 def test_remap_idempotent_on_8class():
-    # 이미 8-class(환율(FX)/원자재금) 입력 → 동일 (idempotent)
+    # 이미 운영 라벨(환율(FX)/대체/유동성) 입력 → 동일 (idempotent)
     assert _remap_to_8class("환율(FX)") == "환율(FX)"
-    assert _remap_to_8class("원자재금") == "원자재금"
+    assert _remap_to_8class("대체") == "대체"
+    assert _remap_to_8class("유동성") == "유동성"
 
 
 def test_remap_crypto_and_unknown_to_none():
@@ -345,7 +355,7 @@ def test_v2_validator_remap_and_floor():
     }
     aa, pa, regions = _validate_v2_asset_layer(item)
     assets = {a["asset_class"] for a in aa}
-    assert assets == {"환율(FX)", "원자재금"}        # remap + floor drop + crypto reject
+    assert assets == {"환율(FX)", "대체"}            # remap(금대체→대체) + floor drop + crypto reject
     assert pa == "환율(FX)"                          # primary remap
     assert sum(1 for a in aa if a["role"] == "primary") == 1
     assert regions == ["US", "GLOBAL"]               # JP drop, cap 2

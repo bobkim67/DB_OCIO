@@ -878,9 +878,9 @@ def _step_group_monitoring(month_str: str, claim_step: dict) -> dict:
 # Step 2.9 — 09_Research_Synthesis (research-only)
 # ═══════════════════════════════════════════════════════
 
-# readiness 필수 자산군 (directional 6 — 파일 stem 기준). 크레딧=해외채권 흡수,
-# 현금성=잔여(non-directional)라 필수에서 제외.
-REQUIRED_09_ASSET_STEMS = ('국내주식', '해외주식', '국내채권', '해외채권', '원자재금', '환율FX')
+# readiness 필수 자산군 (directional — 파일 stem 기준). 크레딧=해외채권 흡수,
+# 유동성=잔여(non-directional)라 필수에서 제외.
+REQUIRED_09_ASSET_STEMS = ('국내주식', '해외주식', '국내채권', '해외채권', '대체', '환율FX')
 
 
 def _step_research_synthesis(month_str: str, *, dry_run: bool = False,

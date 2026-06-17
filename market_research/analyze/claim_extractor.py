@@ -75,10 +75,11 @@ EXTRACTOR_VERSION = "r9a.0"
 # Allowed taxonomies
 # ──────────────────────────────────────────────────────────────────
 
-# R8-B asset_movement_anchor._ASSET_TO_INDICATOR keys 와 동일 8 자산군.
+# 운영 7 자산군 (2026-06-17): 크레딧 제거(→region 따라 국내/해외채권),
+# 현금성→유동성, 원자재금→대체. asset_movement_anchor._ASSET_TO_INDICATOR 와 동기.
 ALLOWED_ASSET_CLASSES: frozenset[str] = frozenset({
     "국내주식", "해외주식", "국내채권", "해외채권",
-    "크레딧", "현금성", "환율(FX)", "원자재금",
+    "유동성", "환율(FX)", "대체",
 })
 
 ALLOWED_CLAIM_TYPES: frozenset[str] = frozenset({

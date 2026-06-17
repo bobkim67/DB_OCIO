@@ -108,9 +108,9 @@ def test_asset_class_filter(tmp_claims):
     promo_c_no_overseas = {
         **_claim(suffix="ccccccccc2", assets=3),
         "affected_assets": [
-            {"asset_class": "원자재금", "direction": "positive"},
+            {"asset_class": "대체", "direction": "positive"},
             {"asset_class": "환율(FX)", "direction": "negative"},
-            {"asset_class": "현금성", "direction": "neutral"},
+            {"asset_class": "유동성", "direction": "neutral"},
         ],
     }
     # 해외주식 단독 (A,B 둘다 미만족)

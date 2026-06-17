@@ -63,7 +63,7 @@ def test_filter_claims_for_asset_match():
 
 def test_filter_claims_for_asset_no_match():
     c = _claim(suffix="bbb1234567", asset_classes=["환율(FX)"])
-    assert _filter_claims_for_asset([c], "원자재금") == []
+    assert _filter_claims_for_asset([c], "대체") == []
 
 
 def test_filter_claims_robust_to_none_or_empty():
@@ -104,7 +104,7 @@ def test_anchor_linked_claims_attached(tmp_path):
     assert len(fx_linked) == 1
     assert fx_linked[0]["claim_id"] == cl_fx["claim_id"]
     # 비매칭 자산군은 빈 list
-    assert by_ac["원자재금"]["linked_claims"] == []
+    assert by_ac["대체"]["linked_claims"] == []
 
 
 def test_anchor_no_claims_arg_keeps_linked_claims_empty(tmp_path):
@@ -135,7 +135,7 @@ def test_claims_text_block_contains_claim_id_anchors():
                 asset_classes=["국내주식", "해외주식", "국내채권"],
                 claim_text="JP모건 CEO 이란 전쟁 인플레 고착 경고")
     c2 = _claim(suffix="bbbbbbbbbb",
-                asset_classes=["원자재금"],
+                asset_classes=["대체"],
                 claim_text="브렌트유 141달러 2008년 이후 최고")
     block = _format_claims_for_context([c1, c2])
     assert "## Canonical Claims" in block

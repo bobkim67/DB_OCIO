@@ -44,7 +44,9 @@ REGION_SET = frozenset(REGION_TAXONOMY)
 # sector 성격 분류 — region 라우팅 대상 (주식성 / 금리성).
 # cross-asset 글로벌 sector (환율/원자재/금/크레딧/크립토/지정학) 는 region 무관.
 EQUITY_SECTORS = frozenset({"테크_AI_반도체", "경기_소비", "부동산"})
-RATE_SECTORS = frozenset({"금리_채권", "통화정책", "물가_인플레이션"})
+# 유동성_크레딧(HY/IG/사모신용) 도 금리성 — region 따라 국내/해외채권으로 라우팅
+# (2026-06-17: 크레딧 독립 자산군 폐지. region 판단은 LLM 이 부여한 region 사용).
+RATE_SECTORS = frozenset({"금리_채권", "통화정책", "물가_인플레이션", "유동성_크레딧"})
 _OVERSEAS_REGIONS = frozenset({"US", "NON_US_OVERSEAS"})
 
 
@@ -69,10 +71,9 @@ def route_by_region(region: str | None, sector: str | None) -> str | None:
         return "원자재에너지"
     if sector == "귀금속_금":
         return "금대체"
-    if sector == "유동성_크레딧":
-        return "크레딧"
     if sector == "크립토":
         return "크립토"
+    # 유동성_크레딧 은 RATE_SECTORS 로 이동 — 아래 region 라우팅(국내/해외채권)에서 처리.
     # 지정학·관세_무역 = 다발성 → rule fallback None (LLM affected_assets 위임). §8
     overseas = region in _OVERSEAS_REGIONS
     # 주식성 sector → 주식 (region 라우팅; KR/해외만, GLOBAL·UNKNOWN → None)
@@ -98,18 +99,23 @@ def route_by_region(region: str | None, sector: str | None) -> str | None:
 _REMAP_TO_8CLASS: dict[str, str] = {
     "국내주식": "국내주식", "해외주식": "해외주식",
     "국내채권": "국내채권", "해외채권": "해외채권",
-    "크레딧": "크레딧", "현금성": "현금성",
+    # 2026-06-17: 크레딧 폐지 → 해외채권 슬리브로 collapse (legacy/stray claim 안전망;
+    # 신규 추출은 enum 에 크레딧 없어 LLM 이 region 따라 국내/해외채권 직접 배정).
+    "크레딧": "해외채권",
+    # 현금성 → 유동성, 원자재금/금대체/원자재에너지 → 대체 (라벨 변경).
+    "현금성": "유동성", "유동성": "유동성",
     "환율": "환율(FX)", "환율(FX)": "환율(FX)",
-    "금대체": "원자재금", "원자재에너지": "원자재금", "원자재금": "원자재금",
-    # 크립토 = OCIO 8자산 밖 → drop (claim 미승격). dict 미포함 → .get default None.
+    "금대체": "대체", "원자재에너지": "대체", "원자재금": "대체", "대체": "대체",
+    # 크립토 = OCIO 자산 밖 → drop (claim 미승격). dict 미포함 → .get default None.
 }
 
 
 def _remap_to_8class(asset: str | None) -> str | None:
-    """selector canonical label → claim 8-class collapse (claim 진입 경계 전용).
+    """selector canonical label → claim 자산군 collapse (claim 진입 경계 전용).
 
-    환율→환율(FX), 금대체·원자재에너지→원자재금, 크립토 및 매핑 밖 라벨 → None.
-    이미 8-class 면 idempotent. selector article path 에는 적용 금지(label space 유지).
+    환율→환율(FX), 금대체·원자재에너지·원자재금→대체, 현금성→유동성, 크레딧→해외채권,
+    크립토 및 매핑 밖 라벨 → None. 이미 운영 라벨이면 idempotent. selector article
+    path 에는 적용 금지(label space 유지).
     """
     if not asset:
         return None
@@ -120,7 +126,7 @@ def _remap_to_8class(asset: str | None) -> str | None:
 # route_by_region / LLM primary 는 selector 밖 라벨(크레딧·크립토·현금성)도 낼 수 있어,
 # article path 출력이 CORE_ASSETS 계약을 벗어나는 label-space leakage 발생(R-4 발견).
 # claim 진입부 _remap_to_8class 와 대칭이되 target label space 가 다르다:
-#   - _remap_to_8class : claim 8-class (크레딧·현금성 유효, 크립토 drop)
+#   - _remap_to_8class : claim 운영 라벨 (크레딧→해외채권·현금성→유동성·원자재금→대체, 크립토 drop)
 #   - _remap_to_core_assets : selector 7-class (크레딧→해외채권, 크립토→금대체, 현금성 drop)
 _REMAP_TO_CORE_ASSETS: dict[str, str] = {
     # CORE_ASSETS(7) — idempotent

@@ -24,16 +24,15 @@ from __future__ import annotations
 import re
 from collections import Counter
 
-# 8개 필수 자산군 (사용자 지시 순서)
+# 7개 필수 자산군 (2026-06-17: 크레딧 폐지 → 해외채권 흡수, 현금성→유동성, 금/대체→대체)
 REQUIRED_ASSET_CLASSES: tuple[str, ...] = (
     "국내주식",
     "해외주식",
     "국내채권",
     "해외채권",
     "환율",
-    "금/대체",
-    "크레딧",
-    "현금성",
+    "대체",
+    "유동성",
 )
 
 
@@ -66,6 +65,12 @@ _KOREAN_INCLUDE: dict[str, tuple[str, ...]] = {
         "해외채권", "해외 채권", "미국채", "미국 국채", "미 국채",
         "UST", "Treasury", "장기금리", "10Y", "10년물",
         "Fed", "연준", "FOMC",
+        # 크레딧(HY/IG/사모신용)은 해외채권으로 흡수 (2026-06-17)
+        "하이일드", "high yield", "HY 스프레드", "HY 채권",
+        "credit spread", "신용스프레드", "신용 스프레드",
+        "회사채", "회사채 스프레드", "investment grade", "IG 스프레드",
+        "회사채 발행", "크레딧 시장", "크레딧 이벤트", "크레딧 스프레드",
+        "투자등급 크레딧", "투자등급", "사모신용", "사모대출",
     ),
     "환율": (
         "원달러", "원·달러", "달러원", "달러/원", "USDKRW",
@@ -73,26 +78,16 @@ _KOREAN_INCLUDE: dict[str, tuple[str, ...]] = {
         "달러 강세", "달러 약세", "달러 인덱스", "달러인덱스",
         "DXY", "위안 환율", "엔화 환율",
     ),
-    "금/대체": (
+    "대체": (
         "금 가격", "금값", "국제 금", "국제금", "금 선물", "금 현물",
         "KRX 금", "골드 가격", "금시세", "금 시세", "금ETF",
         "GLD", "XAU", "bullion", "precious metal", "gold price",
         "리츠", "REIT", "REITs", "원자재", "구리 가격", "옥수수 가격",
         "유가", "원유", "WTI", "브렌트", "Brent", "에너지 가격",
     ),
-    "크레딧": (
-        "하이일드", "high yield", "HY 스프레드", "HY 채권",
-        "credit spread", "신용스프레드", "신용 스프레드",
-        "회사채", "회사채 스프레드", "investment grade", "IG 스프레드",
-        "CDS", "회사채 발행",
-        # 2026-05-06 hotfix: 코멘트가 "크레딧 시장/이벤트", "투자등급 크레딧"
-        # 형태로 자주 표현하지만 매처 누락 → 추가
-        "크레딧 시장", "크레딧 이벤트", "크레딧 스프레드", "투자등급 크레딧",
-        "투자등급",
-    ),
-    "현금성": (
+    "유동성": (
         "MMF", "단기금리", "콜금리", "RP 금리", "CD 금리",
-        "현금성 자산", "단기 금리", "초단기",
+        "유동성 자산", "단기 금리", "초단기",
         # 2026-05-06 hotfix: "유동성 관리/유동성 자산" phrase 만 (단독 "유동성"은
         # 너무 광범위 — 글로벌유동성/유동성 위기 등과 충돌)
         "유동성 관리", "유동성 자산",
@@ -102,11 +97,10 @@ _KOREAN_INCLUDE: dict[str, tuple[str, ...]] = {
 # 영문 키워드 (word boundary 매칭) — 위 dict 와 분리해 별도 처리
 _ENGLISH_INCLUDE: dict[str, tuple[str, ...]] = {
     "해외주식": ("Nasdaq",),
-    "해외채권": ("Treasury", "Fed", "FOMC", "UST"),
+    "해외채권": ("Treasury", "Fed", "FOMC", "UST", "HY", "CDS"),
     "환율": ("FX", "DXY", "USDKRW"),
-    "금/대체": ("GLD", "XAU", "WTI", "Brent", "REIT", "REITs", "bullion"),
-    "크레딧": ("HY", "CDS"),
-    "현금성": ("MMF",),
+    "대체": ("GLD", "XAU", "WTI", "Brent", "REIT", "REITs", "bullion"),
+    "유동성": ("MMF",),
 }
 
 # Exclude keyword — 한국어 substring 으로 잡혔을 때 강제 차감.
@@ -116,7 +110,7 @@ _ENGLISH_INCLUDE: dict[str, tuple[str, ...]] = {
 # 따라서 exclude 는 *include 의 짧은/모호한 키워드가 false-positive 를 일으킬 때*
 # 만 의미가 있다. include 가 phrase only 인 자산군에는 exclude 를 두지 않는다.
 _KOREAN_EXCLUDE: dict[str, tuple[str, ...]] = {
-    "금/대체": (
+    "대체": (
         # 영문 word-boundary 매칭은 "Goldman" / "GLD" 등 짧은 약어와 충돌
         # 가능하므로 보존. 한국어 짧은 단어 ("금리"/"금융"/...) 는
         # include 가 phrase only 라 false-positive 보호 효과 없이
@@ -124,7 +118,7 @@ _KOREAN_EXCLUDE: dict[str, tuple[str, ...]] = {
         # 2026-05-06 hotfix 로 제거.
         "Goldman", "골드만", "Goldman Sachs",
     ),
-    "크레딧": (
+    "해외채권": (
         "신용카드", "credit card", "신용 카드",
     ),
     "환율": (
@@ -133,7 +127,7 @@ _KOREAN_EXCLUDE: dict[str, tuple[str, ...]] = {
     "해외주식": (
         # "미국" 단독 매칭 회피용 — include 에 "미국" 단독 키워드 자체를 두지 않음
     ),
-    "현금성": (
+    "유동성": (
         "현금영수증",
     ),
 }

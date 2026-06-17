@@ -2,8 +2,8 @@
 
 LLM 호출 0. report_output / approved 무수정.
 
-자산군 8종 (국내주식 / 해외주식 / 국내채권 / 해외채권 / 크레딧 / 현금성 /
-환율(FX) / 원자재금) 을 anchor 로 하여, 각 자산군에 BM 등락률 + 펀드 노출 +
+자산군 7종 (국내주식 / 해외주식 / 국내채권 / 해외채권 / 유동성 /
+환율(FX) / 대체) 을 anchor 로 하여, 각 자산군에 BM 등락률 + 펀드 노출 +
 causal path + supporting evidence + wiki page 를 nested 로 묶어 반환.
 
 debate input prompt 의 1차 unit 으로 사용 (raw evidence 직접 listing 보조화).
@@ -46,7 +46,7 @@ SCHEMA_VERSION = "r8b-asset-movement-anchor-1.0.0"
 
 ASSET_CLASSES_R8B: tuple[str, ...] = (
     "국내주식", "해외주식", "국내채권", "해외채권",
-    "크레딧", "현금성", "환율(FX)", "원자재금",
+    "유동성", "환율(FX)", "대체",
 )
 
 # PA asset_summary 의 한국어 키 → 우리 8종으로 alias
@@ -57,14 +57,14 @@ _PA_ALIAS: dict[str, str] = {
     "해외주식": "해외주식",
     "국내채권": "국내채권",
     "해외채권": "해외채권",
-    "대체": "원자재금",
-    "대체투자": "원자재금",
-    "금/대체": "원자재금",
+    "대체": "대체",
+    "대체투자": "대체",
+    "금/대체": "대체",
     "FX": "환율(FX)",
     "환율": "환율(FX)",
-    "유동성": "현금성",
-    "유동성및기타": "현금성",
-    "현금성": "현금성",
+    "유동성": "유동성",
+    "유동성및기타": "유동성",
+    "유동성": "유동성",
     "주식": "국내주식",  # 방법1/2 병합 시 fallback (alias 후보)
     "채권": "국내채권",
 }
@@ -80,10 +80,9 @@ _ASSET_TO_INDICATOR: dict[str, tuple[str, str, str]] = {
     "해외주식": ("SP500_TR", "level_pct", "S&P 500 Total Return"),
     "국내채권": ("KAP_BOND_TR", "level_pct", "KAP종합채권 (KIS)"),
     "해외채권": ("UST_7_10Y_TR", "level_pct", "UST 7-10Y Total Return"),
-    "크레딧":   ("HY_TR", "level_pct", "Bloomberg US HY TR (LF98TRUU)"),
-    "현금성":   ("FED_UPPER", "bp_diff", "Fed Funds Upper Bound (bp)"),
+    "유동성":   ("FED_UPPER", "bp_diff", "Fed Funds Upper Bound (bp)"),
     "환율(FX)": ("USDKRW", "level_pct", "USD/KRW"),
-    "원자재금": ("GOLD", "level_pct", "Gold Spot"),
+    "대체": ("GOLD", "level_pct", "Gold Spot"),
 }
 
 
@@ -95,13 +94,13 @@ _TOPIC_TO_ASSET_CLASS: dict[str, list[str]] = {
     # R7 TOPIC_DEFS (rule-based id)
     "event:geopolitical":          [],  # cross-asset → unattached
     "event:wgbi":                  ["국내채권"],
-    "macro:oil_price":              ["원자재금"],
+    "macro:oil_price":              ["대체"],
     "macro:inflation":              ["국내채권", "해외채권"],
     "macro:interest_rate":          ["국내채권", "해외채권"],
     "macro:fx_usdkrw":              ["환율(FX)"],
     "asset:us_growth_stock":        ["해외주식"],
     "asset:domestic_bond":          ["국내채권"],
-    "asset:gold":                   ["원자재금"],
+    "asset:gold":                   ["대체"],
     "asset:overseas_translation":   ["환율(FX)"],
     # 한국어 토픽 (news classifier — evidence_annotations.topic / all_topics)
     "지정학":                        [],
@@ -109,10 +108,12 @@ _TOPIC_TO_ASSET_CLASS: dict[str, list[str]] = {
     "통화정책":                      ["국내채권", "해외채권"],
     "물가_인플레이션":               ["국내채권", "해외채권"],
     "환율_FX":                       ["환율(FX)"],
-    "달러_글로벌유동성":             ["환율(FX)", "크레딧"],
-    "유동성_크레딧":                 ["크레딧"],
-    "에너지_원자재":                 ["원자재금"],
-    "귀금속_금":                     ["원자재금"],
+    # region 미상 topic 정적맵 — 채권류는 국내/해외 둘 다 후보로 두고, 실제 국내/해외
+    # 발라내기는 claim region 기반 route_by_region(KR→국내채권/US→해외채권)에서 수행.
+    "달러_글로벌유동성":             ["환율(FX)", "국내채권", "해외채권"],
+    "유동성_크레딧":                 ["국내채권", "해외채권"],
+    "에너지_원자재":                 ["대체"],
+    "귀금속_금":                     ["대체"],
     "테크_AI_반도체":                ["해외주식"],
     "관세_무역":                     [],   # cross-asset → unattached
     "경기_소비":                     [],
@@ -122,10 +123,10 @@ _TOPIC_TO_ASSET_CLASS: dict[str, list[str]] = {
 
 # R7 path_id → asset_classes (path 단위 직접 매핑)
 _PATH_ID_TO_ASSETS: dict[str, list[str]] = {
-    "geopolitical_oil_inflation_rates_growth": ["해외주식", "원자재금", "국내채권"],
+    "geopolitical_oil_inflation_rates_growth": ["해외주식", "대체", "국내채권"],
     "wgbi_domestic_bond_inflow":                ["국내채권"],
     "fx_translation_overseas_assets":           ["환율(FX)", "해외주식", "해외채권"],
-    "gold_hedge_volatility":                    ["원자재금"],
+    "gold_hedge_volatility":                    ["대체"],
     "rates_domestic_bond":                      ["국내채권"],
 }
 

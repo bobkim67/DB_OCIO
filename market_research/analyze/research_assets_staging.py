@@ -33,21 +33,21 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 STAGING_DIR = BASE_DIR / 'debug' / 'wiki' / 'p5_assets_staging'
 
 DIRECTIONAL = ("국내주식", "해외주식", "국내채권", "해외채권")
-NON_DIRECTIONAL = ("원자재금", "환율(FX)")
-NOT_SUPPLIED = ("기타", "현금성")
+NON_DIRECTIONAL = ("대체", "환율(FX)")
+NOT_SUPPLIED = ("기타", "유동성")
 
 # 자산군 → market_snapshot metric (등록된 것만; 나머지는 주입 보류)
 ASSET_METRIC = {
     "국내주식": "KOSPI",
     "해외주식": "SP500",   # S&P500 광범위 벤치마크 (NASDAQ100도 등록됨, 테크 집중이라 보조)
-    "원자재금": "Gold",
+    "대체": "Gold",
     "환율(FX)": "USDKRW",
     # 국내채권/해외채권(금리 yield): metric 미등록 → 보류 (yield bp 처리 별 트랙)
 }
 
 _ASSET_STEM = {
     "국내주식": "국내주식", "해외주식": "해외주식", "국내채권": "국내채권",
-    "해외채권": "해외채권", "원자재금": "원자재금", "환율(FX)": "환율FX",
+    "해외채권": "해외채권", "대체": "대체", "환율(FX)": "환율FX",
 }
 
 

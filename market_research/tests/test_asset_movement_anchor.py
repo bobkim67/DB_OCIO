@@ -140,9 +140,9 @@ def test_movement_direction_from_indicators(tmp_path):
     # USDKRW 1450→1500 → +3.4% → up
     assert by_ac["환율(FX)"]["movement_direction"] == "up"
     # GOLD 2300→2400 → up
-    assert by_ac["원자재금"]["movement_direction"] == "up"
+    assert by_ac["대체"]["movement_direction"] == "up"
     # FED_UPPER 5.50→5.50 → flat
-    assert by_ac["현금성"]["movement_direction"] == "flat"
+    assert by_ac["유동성"]["movement_direction"] == "flat"
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -184,7 +184,7 @@ def test_path_to_asset_matching(tmp_path):
         evidence_annotations=[],
     )
     by_ac = {a["asset_class"]: a for a in out["asset_movements"]}
-    # geopolitical_oil_inflation_rates_growth → 해외주식, 원자재금, 국내채권
+    # geopolitical_oil_inflation_rates_growth → 해외주식, 대체, 국내채권
     overseas = by_ac["해외주식"]["causal_paths"]
     assert any(p["path_id"] == "geopolitical_oil_inflation_rates_growth"
                 for p in overseas)
@@ -194,8 +194,8 @@ def test_path_to_asset_matching(tmp_path):
     # fx_translation_overseas_assets → 환율(FX), 해외주식, 해외채권
     fx = by_ac["환율(FX)"]["causal_paths"]
     assert any(p["path_id"] == "fx_translation_overseas_assets" for p in fx)
-    # gold_hedge_volatility → 원자재금
-    gold = by_ac["원자재금"]["causal_paths"]
+    # gold_hedge_volatility → 대체
+    gold = by_ac["대체"]["causal_paths"]
     assert any(p["path_id"] == "gold_hedge_volatility" for p in gold)
 
 
@@ -242,16 +242,16 @@ def test_importance_score_ordering(tmp_path):
         pa_asset_summary=_mock_pa_dataframe(),
         indicators_csv_path=ind,
     )
-    # rank 값은 1~8
+    # rank 값은 1~7 (2026-06-17: 크레딧 폐지로 7 자산군)
     ranks = sorted(a["movement_rank"] for a in out["asset_movements"])
-    assert ranks == list(range(1, 9))
+    assert ranks == list(range(1, 8))
     # importance 0~1 범위
     for a in out["asset_movements"]:
         assert 0.0 <= a["importance_score"] <= 1.0
-    # 큰 movement (해외주식, FX, 금) 가 작은 movement (현금성) 보다 high rank
+    # 큰 movement (해외주식, FX, 금) 가 작은 movement (유동성) 보다 high rank
     by_ac = {a["asset_class"]: a for a in out["asset_movements"]}
-    assert by_ac["해외주식"]["movement_rank"] < by_ac["현금성"]["movement_rank"]
-    assert by_ac["환율(FX)"]["movement_rank"] < by_ac["현금성"]["movement_rank"]
+    assert by_ac["해외주식"]["movement_rank"] < by_ac["유동성"]["movement_rank"]
+    assert by_ac["환율(FX)"]["movement_rank"] < by_ac["유동성"]["movement_rank"]
 
 
 # ──────────────────────────────────────────────────────────────────
