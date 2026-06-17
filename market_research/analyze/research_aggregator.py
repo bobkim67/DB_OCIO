@@ -138,7 +138,9 @@ def aggregate_by_asset(claims: list[dict]) -> dict[str, dict[str, Any]]:
             for s in (c.get("sectors") or []):
                 by_theme[s] += 1
 
-        risk_factors = [c.get("risk_factor") for c in cs
+        # §3 리스크 = **broker 만**. monygeek 리스크는 §2 이견(dissent)에 이미 포함 +
+        # debate 에선 monygeek persona 가 직접 언급하므로 §3 중복 제외(2.7.2).
+        risk_factors = [c.get("risk_factor") for c in broker
                         if (c.get("risk_factor") or "").strip()]
 
         # dissent: monygeek 전체 + broker 중 consensus 와 다른 stance

@@ -62,6 +62,18 @@ def test_risk_factors_collected():
     assert any("실적 둔화" in r for r in agg["국내주식"]["risk_factors"])
 
 
+def test_risk_factors_broker_only_excludes_monygeek():
+    # Phase 2.7.2 — §3 리스크는 broker 만. monygeek risk 는 §2 dissent + persona 담당.
+    claims = [
+        _claim("국내주식", "bullish", cid="r1"),
+        _claim("국내주식", "bearish", cid="r2", risk="broker_위험"),
+        _claim("국내주식", "neutral", src="monygeek", cid="r3", risk="monygeek_위험"),
+    ]
+    rf = aggregate_by_asset(claims)["국내주식"]["risk_factors"]
+    assert any("broker_위험" in r for r in rf)
+    assert not any("monygeek_위험" in r for r in rf)   # §3 에서 monygeek 제외
+
+
 def test_distribution_report_warnings():
     agg = aggregate_by_asset(_claims())
     rep = distribution_report(agg, min_claims=3)
