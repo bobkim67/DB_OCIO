@@ -24,12 +24,13 @@ from dataclasses import dataclass, field, replace
 
 # research-only mode 에서 wiki_context_pack 이 읽도록 허용하는 dir.
 # 01_Events / 02_Entities / 07_Graph_Evidence 는 news/mixed-source 라 제외.
-# (09_Research_Synthesis 는 builder 가 아직 파싱 못 함 → 별도 hook
-#  build_research_synthesis_context 로 best-effort 주입. Phase 2 에서 1급 승격.)
+# 09_Research_Synthesis 는 별도 hook build_research_synthesis_context 로 주입.
+# Phase 2.7: **08_Claims 제외** — 08 은 뉴스 트랙 claim. 09 가 이미 research claim 을
+#   분해→재종합(§4/§5 원자 claim 포함)하므로 research-only 는 09 단일 트랙으로 충분.
+#   (08 의 cross-month canonical lineage 는 월간 debate 에 불필요 — operational 트랙에 잔존.)
 RESEARCH_WIKI_DIRS: tuple[str, ...] = (
     "03_Assets",
     "05_Regime_Canonical",
-    "08_Claims",
 )
 
 
@@ -58,6 +59,9 @@ class DebateContextPolicy:
     macro_indicators_enabled: bool = True       # indicators_text (data/macro)
     fund_context_enabled: bool = True           # pa_text / bm_text (펀드 코멘트)
     monygeek_blog_enabled: bool = True          # blog_context_text → monygeek **persona** 전용
+    # operational(R9-A) claim store(뉴스 트랙) → claims_text. Phase 2.7: research-only 는
+    # 09 §4/§5 research claim 으로 대체하므로 False (08 트랙 완전 제외).
+    operational_claims_enabled: bool = True
 
     # ── 하드코딩 knob → config 이동 ──
     evidence_target_count: int = 15
@@ -70,7 +74,10 @@ class DebateContextPolicy:
     wiki_context_max_pages: int = 12
     # 09_Research_Synthesis (Phase 2)
     research_synthesis_max_assets: int = 8      # 자산군 페이지 상한
-    research_synthesis_asset_chars: int = 900   # 자산군별 §1~§3 발췌 char 상한
+    research_synthesis_asset_chars: int = 900   # 자산군별 §1~§3 synthesis 발췌 char 상한
+    # Phase 2.7 — 08_Claims 제외 보완: 09 §4/§5 원자 claim 을 debate 에 직접 공급.
+    research_synthesis_include_claims: bool = False
+    research_synthesis_claims_chars: int = 700  # 자산군별 §4/§5 claim bullet char 상한
 
 
 LEGACY_POLICY = DebateContextPolicy(name="legacy")
@@ -82,8 +89,10 @@ RESEARCH_ONLY_POLICY = DebateContextPolicy(
     graph_paths_enabled=False,
     wiki_keyword_retriever_enabled=False,
     research_wiki_enabled=True,
-    wiki_context_pack_dirs=RESEARCH_WIKI_DIRS,
+    wiki_context_pack_dirs=RESEARCH_WIKI_DIRS,   # Phase 2.7: 08_Claims 제외(03/05 만)
     research_synthesis_enabled=True,
+    research_synthesis_include_claims=True,        # 09 §4/§5 원자 claim 직접 공급(08 대체)
+    operational_claims_enabled=False,              # R9-A 뉴스-트랙 claim 제외(09 로 대체)
     macro_indicators_enabled=True,
     fund_context_enabled=True,
     monygeek_blog_enabled=True,   # blog **source** 는 유지 (persona 한정 주입)

@@ -606,9 +606,11 @@ def _build_evidence_candidates(year: int, month: int, target_count: int,
 
 # 09_Research_Synthesis 섹션 헤더 (research_consensus.build_research_synthesis_page).
 # §1 컨센서스 / §2 이견(dissent) / §3 리스크 = synthesis prose (primary).
-# §4 근거 claim(broker) / §5 monygeek 관점 = claim 리스트 → 08_Claims 중복이라 제외.
+# §4 근거 claim(broker) / §5 monygeek 관점 = 원자 claim 리스트.
+# Phase 2.7: research-only 가 08_Claims(뉴스 트랙)를 제외하므로, 원자 claim 레이어는
+#   09 §4/§5 에서 직접 가져온다(08 중복 아님 — 09=research, 08=news 별 트랙).
 _SYNTH_PRIMARY_PREFIXES = ('## 1.', '## 2.', '## 3.')
-_SYNTH_SKIP_PREFIXES = ('## 4.', '## 5.')
+_SYNTH_CLAIM_PREFIXES = ('## 4.', '## 5.')
 
 
 def _parse_synth_page(text: str) -> tuple[dict, str]:
@@ -627,24 +629,41 @@ def _parse_synth_page(text: str) -> tuple[dict, str]:
 
 
 def _extract_synth_sections(body: str, char_cap: int) -> str:
-    """body 에서 §1~§3 (컨센서스/이견/리스크) 섹션만 발췌. 헤더 변동 시 fallback=앞부분."""
+    """body 에서 §1~§3 (컨센서스/이견/리스크) synthesis prose 만 발췌. fallback=앞부분."""
     lines = body.splitlines()
     kept: list[str] = []
     keep = False
     for ln in lines:
         st = ln.strip()
         if st.startswith('## '):
-            if st.startswith(_SYNTH_PRIMARY_PREFIXES):
-                keep = True
-            elif st.startswith(_SYNTH_SKIP_PREFIXES):
-                keep = False
-            else:
-                keep = False  # 알 수 없는 섹션은 보수적으로 제외
+            keep = st.startswith(_SYNTH_PRIMARY_PREFIXES)  # 그 외(§4/§5/미지) 제외
         if keep and st and not st.startswith('# '):
             kept.append(ln)
     out = '\n'.join(kept).strip()
     if not out:                      # 헤더 패턴 불일치 → 본문 앞부분 fallback
         out = body[:char_cap].strip()
+    return out[:char_cap].strip()
+
+
+def _extract_synth_claims(body: str, char_cap: int) -> str:
+    """body 에서 §4(broker)/§5(monygeek) 원자 claim bullet 만 발췌 (Phase 2.7).
+
+    08_Claims(뉴스 트랙) 제외에 따라 research-only debate 의 원자 claim 레이어를 09 에서
+    공급. claim bullet(`- [claim:..]`) 줄만 모아 char_cap 까지. 없으면 빈 문자열.
+    """
+    lines = body.splitlines()
+    kept: list[str] = []
+    in_claim = False
+    for ln in lines:
+        st = ln.strip()
+        if st.startswith('## '):
+            in_claim = st.startswith(_SYNTH_CLAIM_PREFIXES)
+            if in_claim:
+                kept.append(ln)        # §4/§5 헤더 유지(broker vs monygeek 구분)
+            continue
+        if in_claim and st.startswith('- '):
+            kept.append(ln)
+    out = '\n'.join(kept).strip()
     return out[:char_cap].strip()
 
 
@@ -703,6 +722,11 @@ def build_research_synthesis_context(year: int, month: int,
         section = _extract_synth_sections(body, policy.research_synthesis_asset_chars)
         blocks.append(head)
         blocks.append(section)
+        # Phase 2.7 — 08_Claims 제외 보완: 원자 claim(§4/§5)을 09 에서 직접 공급.
+        if getattr(policy, 'research_synthesis_include_claims', False):
+            claims = _extract_synth_claims(body, policy.research_synthesis_claims_chars)
+            if claims:
+                blocks.append(claims)
         tr['selected_files'].append(fp.name)
         tr['selected_assets'].append(asset)
     text = '\n'.join(blocks)
@@ -1064,20 +1088,23 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
 
     # R9-A.3: canonical claim store read-only load. write 0, LLM 호출 0.
     # claim store 결손 / promotion 0 모두 graceful → context['claims'] = [].
+    # Phase 2.7: operational_claims_enabled=False(research-only) 면 뉴스-트랙 claim 제외
+    #            (09 §4/§5 research claim 으로 대체).
     period_str = f"{year}-{month:02d}"
     promoted_claims: list[dict] = []
-    try:
-        from market_research.analyze.claim_store import (
-            select_promoted_claims_for_period,
-        )
-        promoted_claims = select_promoted_claims_for_period(
-            period=period_str,
-            fund_code=fund_code,
-            max_claims=8,
-        ) or []
-    except Exception as e:
-        promoted_claims = []
-        print(f'[claim_store] read-side 오류: {e}')
+    if policy.operational_claims_enabled:
+        try:
+            from market_research.analyze.claim_store import (
+                select_promoted_claims_for_period,
+            )
+            promoted_claims = select_promoted_claims_for_period(
+                period=period_str,
+                fund_code=fund_code,
+                max_claims=8,
+            ) or []
+        except Exception as e:
+            promoted_claims = []
+            print(f'[claim_store] read-side 오류: {e}')
     context['_canonical_claims'] = promoted_claims
     context['claims_text'] = _format_claims_for_context(promoted_claims)
 
@@ -1515,7 +1542,8 @@ def _build_agent_prompt(agent_type: str, context: dict) -> str:
         + raw_heading
         + (anchor_block + '\n\n' if anchor_block else '')
         + (claims_block + '\n\n' if claims_block else '')
-        + (_CLAIM_CITATION_INSTRUCTION + '\n' if claims_block else '')
+        # citation 지시 — 08 claims_block 또는 09 §4/§5(research_synth) 에 claim 이 있으면 적용.
+        + (_CLAIM_CITATION_INSTRUCTION + '\n' if (claims_block or research_synth_block) else '')
         + f'{evidence_block}\n\n'
         + f'{context.get("indicators_text", "(지표 데이터 없음)")}\n\n'
         + f'{context.get("timeseries_narrative_text", "")}\n\n'
@@ -1760,7 +1788,7 @@ def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> 
         + f'## 분석가별 의견\n{debate_text}\n\n'
         f'## 뉴스 evidence\n{evidence_block}\n\n'
         + (f'{claims_block}\n\n' if claims_block else '')
-        + (_CLAIM_CITATION_INSTRUCTION + '\n' if claims_block else '')
+        + (_CLAIM_CITATION_INSTRUCTION + '\n' if (claims_block or research_synth_block) else '')
         + (f'{graph_block}\n\n' if graph_block else '')
         + (f'{wiki_block}\n\n' if wiki_block else '')
         + (f'{coverage_block}\n\n' if coverage_block else '')

@@ -23,6 +23,7 @@ def test_legacy_preset_all_sources_on():
     assert p.research_wiki_enabled and p.macro_indicators_enabled
     assert p.monygeek_blog_enabled
     assert p.research_synthesis_enabled is False     # 09 는 Phase 2
+    assert p.operational_claims_enabled is True       # legacy 는 R9-A claim 유지
     assert p.wiki_context_pack_dirs is None          # stage default 전체
 
 
@@ -39,6 +40,11 @@ def test_research_only_preset_blocks_news_graph_retriever():
     assert p.wiki_context_pack_dirs == RESEARCH_WIKI_DIRS
     for d in ("01_Events", "02_Entities", "07_Graph_Evidence"):
         assert d not in RESEARCH_WIKI_DIRS
+    # Phase 2.7 — 08_Claims(뉴스 트랙) 제외, 09 §4/§5 원자 claim 으로 대체
+    assert "08_Claims" not in RESEARCH_WIKI_DIRS
+    assert "08_Claims" not in p.wiki_context_pack_dirs
+    assert p.research_synthesis_include_claims is True
+    assert p.operational_claims_enabled is False      # R9-A 뉴스-트랙 claim 도 제외
 
 
 def test_resolve_policy_modes():

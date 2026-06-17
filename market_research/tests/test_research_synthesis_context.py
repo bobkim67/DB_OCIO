@@ -15,9 +15,13 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from market_research.report.debate_engine import (  # noqa: E402
-    _parse_synth_page, _extract_synth_sections, build_research_synthesis_context,
+    _parse_synth_page, _extract_synth_sections, _extract_synth_claims,
+    build_research_synthesis_context,
 )
-from market_research.report.debate_context_policy import RESEARCH_ONLY_POLICY  # noqa: E402
+from market_research.report.debate_context_policy import (  # noqa: E402
+    RESEARCH_ONLY_POLICY, LEGACY_POLICY,
+)
+import dataclasses  # noqa: E402
 from market_research.wiki.paths import RESEARCH_SYNTHESIS_DIR  # noqa: E402
 
 _SAMPLE = """---
@@ -69,6 +73,26 @@ def test_extract_sections_keeps_1to3_drops_4to5():
     assert "[claim:xyz]" not in sec      # broker claim list 미포함
 
 
+def test_extract_claims_keeps_4and5_bullets():
+    # Phase 2.7 — §4/§5 원자 claim bullet 만 발췌 (08 대체)
+    _, body = _parse_synth_page(_SAMPLE)
+    claims = _extract_synth_claims(body, char_cap=5000)
+    assert "## 4. 근거 claim" in claims and "## 5. monygeek" in claims
+    assert "[claim:xyz]" in claims          # broker claim
+    assert "[claim:abc]" in claims          # monygeek claim
+    # synthesis prose(§1 컨센서스 본문)는 claims 발췌에 미포함
+    assert "반도체 슈퍼사이클이 인플레" not in claims
+
+
+def test_include_claims_flag_toggles_4and5():
+    # RESEARCH_ONLY = include_claims True → §4 헤더 포함
+    assert RESEARCH_ONLY_POLICY.research_synthesis_include_claims is True
+    # include_claims=False preset → claim 미포함 (synthesis 만)
+    pol_off = dataclasses.replace(RESEARCH_ONLY_POLICY, name="ro_no_claims",
+                                  research_synthesis_include_claims=False)
+    assert pol_off.research_synthesis_include_claims is False
+
+
 def test_extract_sections_fallback_on_unknown_headers():
     body = "본문에 ## 1. 같은 헤더가 전혀 없는 자유 텍스트입니다." * 3
     sec = _extract_synth_sections(body, char_cap=40)
@@ -102,7 +126,9 @@ def test_build_real_2026_05_integration():
     assert tr["selected_files"]                 # 자산군 파일 선택됨
     assert "09 Research Synthesis" in out
     assert "컨센서스" in out
-    assert "## 4. 근거 claim" not in out        # claim 리스트 제외 확인
+    # Phase 2.7 — 08_Claims 제외 → 09 §4/§5 원자 claim 이 포함되어야 함
+    assert "[claim:" in out                     # 원자 claim bullet 포함
+    assert "## 4. 근거 claim" in out            # §4 broker claim 헤더
     # asset_scope 필터
     tr2: dict = {}
     out2 = build_research_synthesis_context(2026, 5, policy=RESEARCH_ONLY_POLICY,
