@@ -690,6 +690,23 @@ export interface components {
             jsonl_total_matched: number;
             enrichment?: components["schemas"]["InternalReportEnrichmentDTO"] | null;
         };
+        /**
+         * AgentOpinionDTO
+         * @description debate 참여자 1인의 의견 (draft.agents). key_points 를 불렛으로 노출.
+         */
+        AgentOpinionDTO: {
+            /** Agent Key */
+            agent_key: string;
+            /** Agent Name */
+            agent_name: string;
+            /** Stance */
+            stance?: string | null;
+            /**
+             * Key Points
+             * @default []
+             */
+            key_points: string[];
+        };
         /** BaseMeta */
         BaseMeta: {
             /** As Of Date */
@@ -927,6 +944,17 @@ export interface components {
              * @enum {string}
              */
             claims_source: "approved" | "unavailable";
+            /**
+             * Agent Opinions
+             * @default []
+             */
+            agent_opinions: components["schemas"]["AgentOpinionDTO"][];
+            /**
+             * Agent Opinions Source
+             * @default unavailable
+             * @enum {string}
+             */
+            agent_opinions_source: "approved" | "unavailable";
             evidence_quality?: components["schemas"]["EvidenceQualitySummaryDTO"] | null;
             /**
              * Evidence Quality Source
@@ -1682,6 +1710,8 @@ export interface components {
              *       "related_news_source": "unavailable",
              *       "claims": [],
              *       "claims_source": "unavailable",
+             *       "agent_opinions": [],
+             *       "agent_opinions_source": "unavailable",
              *       "evidence_quality_source": "unavailable",
              *       "validation_summary_source": "unavailable",
              *       "indicator_chart_source": "unavailable",

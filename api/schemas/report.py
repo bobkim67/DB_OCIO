@@ -204,6 +204,14 @@ class ClaimCitationDTO(BaseModel):
     evidence_refs: list[int] = []       # 이 claim 의 원천 기사 Evidence 번호(e{n}) 목록
 
 
+class AgentOpinionDTO(BaseModel):
+    """debate 참여자 1인의 의견 (draft.agents). key_points 를 불렛으로 노출."""
+    agent_key: str                      # bull / bear / quant / monygeek
+    agent_name: str                     # 표시명 (낙관론자 등)
+    stance: str | None = None           # bullish / bearish / neutral / ...
+    key_points: list[str] = []
+
+
 class ClientReportEnrichmentDTO(BaseModel):
     """Client viewer (`/api/market-report`, `/api/funds/{fund}/report`) 응답에 들어가는
     enrichment 모델. **내부 source 라벨과 raw reason 메시지는 절대 포함되지 않는다.**
@@ -227,6 +235,10 @@ class ClientReportEnrichmentDTO(BaseModel):
     # 본문 [claim:hash] inline 인용 → research claim 해석 리스트 (등장순 번호 c1..).
     claims: list[ClaimCitationDTO] = []
     claims_source: EnrichmentSource = "unavailable"
+
+    # debate 참여자별 의견 (draft.agents). lineage-safe 시에만 채움.
+    agent_opinions: list[AgentOpinionDTO] = []
+    agent_opinions_source: EnrichmentSource = "unavailable"
 
     evidence_quality: EvidenceQualitySummaryDTO | None = None
     evidence_quality_source: EnrichmentSource = "unavailable"

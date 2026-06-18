@@ -2,6 +2,7 @@ import { useState, type CSSProperties } from "react";
 import MetaBadge from "../components/common/MetaBadge";
 import CommentMarkdown from "../components/common/CommentMarkdown";
 import type {
+  AgentOpinionDTO,
   ClaimCitationDTO,
   EvidenceAnnotationDTO,
   EvidenceQualitySummaryDTO,
@@ -116,6 +117,37 @@ function Collapsible({
       </div>
       {open && children}
     </>
+  );
+}
+
+// debate 참여자별 의견 (낙관/비관/데이터/유로달러). 합의포인트처럼 불렛, 기본 숨김.
+function AgentOpinionsSection({ items }: { items: AgentOpinionDTO[] }) {
+  if (!items || items.length === 0) return null;
+  return (
+    <Collapsible title="debate 참여자별 의견" count={items.length}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {items.map((a) => {
+          const sc = a.stance ? STANCE_COLOR[a.stance] ?? STANCE_COLOR.neutral : null;
+          return (
+            <div key={a.agent_key}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+                {a.agent_name}
+                {a.stance && sc && (
+                  <span style={{ ...PILL_BASE, background: sc.bg, color: sc.fg, marginLeft: 6 }}>
+                    {a.stance}
+                  </span>
+                )}
+              </div>
+              <ul style={{ paddingLeft: 20, margin: 0 }}>
+                {(a.key_points ?? []).map((p, i) => (
+                  <li key={i} style={LIST_ITEM}>{p}</li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+    </Collapsible>
   );
 }
 
@@ -416,6 +448,7 @@ export default function ReportFinalView({
 
       {enr && (
         <>
+          <AgentOpinionsSection items={enr.agent_opinions ?? []} />
           <EvidenceSection items={enr.evidence_annotations ?? []} />
           <ClaimsSection items={enr.claims ?? []} />
           <QualitySection q={enr.evidence_quality} />

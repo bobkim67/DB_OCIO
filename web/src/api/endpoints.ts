@@ -61,6 +61,7 @@ export type ReportEnrichmentDTO = S["ClientReportEnrichmentDTO"];
 export type EvidenceAnnotationDTO = S["EvidenceAnnotationDTO"];
 export type RelatedNewsDTO = S["RelatedNewsDTO"];
 export type ClaimCitationDTO = S["ClaimCitationDTO"];
+export type AgentOpinionDTO = S["AgentOpinionDTO"];
 export type EvidenceQualitySummaryDTO = S["EvidenceQualitySummaryDTO"];
 export type ValidationSummaryDTO = S["ValidationSummaryDTO"];
 export type ValidationWarningDTO = S["ValidationWarningDTO"];

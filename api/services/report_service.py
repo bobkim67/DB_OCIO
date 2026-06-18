@@ -20,6 +20,7 @@ from fastapi import HTTPException
 
 from ..schemas.meta import BaseMeta, SourceBreakdown
 from ..schemas.report import (
+    AgentOpinionDTO,
     ClaimCitationDTO,
     ClientReportEnrichmentDTO,
     EnrichmentSource,
@@ -1252,6 +1253,34 @@ def _resolve_citations(
     return out_comment, claims, evidence
 
 
+_AGENT_LABELS = {
+    "bull": "낙관론자", "bear": "비관론자",
+    "quant": "데이터 분석가", "monygeek": "유로달러 학파 (monygeek)",
+}
+
+
+def _build_agent_opinions(draft: dict) -> list[AgentOpinionDTO]:
+    """draft.agents → 참여자별 의견(key_points 불렛). 없으면 빈 리스트."""
+    ag = draft.get("agents") if isinstance(draft, dict) else None
+    if not isinstance(ag, dict):
+        return []
+    out: list[AgentOpinionDTO] = []
+    for key in ("bull", "bear", "quant", "monygeek"):
+        v = ag.get(key)
+        if not isinstance(v, dict):
+            continue
+        kps = [str(x).strip() for x in (v.get("key_points") or []) if x and str(x).strip()]
+        if not kps:
+            continue
+        out.append(AgentOpinionDTO(
+            agent_key=key,
+            agent_name=v.get("agent_name") or _AGENT_LABELS.get(key, key),
+            stance=v.get("stance"),
+            key_points=kps,
+        ))
+    return out
+
+
 def _build_report(period: str, fund_code: str) -> ReportFinalResponseDTO:
     """공통 빌더: load_final → approved 검증 → DTO.
 
@@ -1288,6 +1317,13 @@ def _build_report(period: str, fund_code: str) -> ReportFinalResponseDTO:
             "approved" if evidence_list else "unavailable")
         # related_news 는 미노출 (uncited 보조뉴스)
         dto.enrichment.related_news = []
+    # debate 참여자별 의견 (draft.agents) — enrichment 와 동일 lineage 게이트
+    if _is_safe_for_client(dto.enrichment.source_consistency_status):
+        _draft = rsg.load_draft(period, fund_code) or {}
+        ops = _build_agent_opinions(_draft)
+        if ops:
+            dto.enrichment.agent_opinions = ops
+            dto.enrichment.agent_opinions_source = "approved"
     if fund_code != _MARKET_FUND_CODE:
         dto.market_enrichment = _build_linked_market_enrichment(period, payload)
     return ReportFinalResponseDTO(
