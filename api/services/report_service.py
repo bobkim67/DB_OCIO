@@ -11,13 +11,16 @@
 from __future__ import annotations
 
 import calendar
+import json
 import re
 from datetime import date, datetime, timezone
+from pathlib import Path
 
 from fastapi import HTTPException
 
 from ..schemas.meta import BaseMeta, SourceBreakdown
 from ..schemas.report import (
+    ClaimCitationDTO,
     ClientReportEnrichmentDTO,
     EnrichmentSource,
     EvidenceAnnotationDTO,
@@ -1071,6 +1074,100 @@ def _build_linked_market_enrichment(
     )
 
 
+# ──────────────────────────────────────────────────────────────────────────
+# Claim 인용 해석 (read-time, final.json 불변)
+#   본문 [claim:hash] → research claim store 해석 + 등장순 번호화([c{n}]).
+#   [ref:N] 도 [N] 으로 살균(접두사 제거). client 노출 마커를 깔끔한 번호로 통일.
+# ──────────────────────────────────────────────────────────────────────────
+
+_CLAIMS_DIR = Path(__file__).resolve().parents[2] / "market_research" / "data" / "claims"
+_CLAIM_MARK_RE = re.compile(r"\[claim:([0-9a-fA-F]+)\]")
+_REF_MARK_RE = re.compile(r"\[ref:(\d+)\]")
+_QUARTER_PERIOD_RE = re.compile(r"^(\d{4})-Q([1-4])$")
+
+
+def _claim_store_files(period: str) -> list[Path]:
+    """period → claim store 파일들. 분기는 3개월 union. research 우선 + 뉴스 fallback."""
+    m = _QUARTER_PERIOD_RE.match(period)
+    if m:
+        y, q = int(m.group(1)), int(m.group(2))
+        months = [f"{y}-{(q - 1) * 3 + i:02d}" for i in range(1, 4)]
+    else:
+        months = [period]
+    files: list[Path] = []
+    for mo in months:
+        for name in (f"{mo}.research.json", f"{mo}.json"):
+            p = _CLAIMS_DIR / name
+            if p.exists():
+                files.append(p)
+    return files
+
+
+def _load_claim_index(period: str) -> dict[str, dict]:
+    """claim_id 해시 → claim dict. research 우선(먼저 본 hash 유지)."""
+    idx: dict[str, dict] = {}
+    for fp in _claim_store_files(period):
+        try:
+            data = json.loads(fp.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        claims = data.get("claims", []) if isinstance(data, dict) else data
+        if not isinstance(claims, list):
+            continue
+        for c in claims:
+            if not isinstance(c, dict):
+                continue
+            h = str(c.get("claim_id") or "").split(":")[-1]
+            if h and h not in idx:
+                idx[h] = c
+    return idx
+
+
+def _resolve_claim_citations(
+    comment: str, period: str,
+) -> tuple[str, list[ClaimCitationDTO]]:
+    """본문 [claim:hash] → 등장순 [c{n}] 번호화 + claim 리스트. [ref:N]→[N] 살균."""
+    if not comment:
+        return comment, []
+    has_claim = "[claim:" in comment
+    out_comment = _REF_MARK_RE.sub(lambda mo: f"[{mo.group(1)}]", comment)
+    if not has_claim:
+        return out_comment, []
+    idx = _load_claim_index(period)
+    order: list[str] = []
+    seen: dict[str, int] = {}
+
+    def _sub(mo: "re.Match[str]") -> str:
+        h = mo.group(1)
+        if h not in seen:
+            order.append(h)
+            seen[h] = len(order)
+        return f"[c{seen[h]}]"
+
+    out_comment = _CLAIM_MARK_RE.sub(_sub, out_comment)
+    claims: list[ClaimCitationDTO] = []
+    for h in order:
+        n = seen[h]
+        c = idx.get(h)
+        if c:
+            aa = c.get("affected_assets") or []
+            primary = c.get("primary_asset") or (
+                aa[0].get("asset_class") if aa and isinstance(aa[0], dict) else None)
+            ev = c.get("supporting_evidence_ids") or []
+            claims.append(ClaimCitationDTO(
+                n=n,
+                claim_id=str(c.get("claim_id") or f"claim:{h}"),
+                claim_text=str(c.get("claim_text") or ""),
+                asset_class=primary,
+                stance=c.get("stance"),
+                evidence_count=len(ev) if isinstance(ev, list) else 0,
+            ))
+        else:
+            claims.append(ClaimCitationDTO(
+                n=n, claim_id=f"claim:{h}", claim_text="(claim 원문 미확인)"))
+    return out_comment, claims
+
+
 def _build_report(period: str, fund_code: str) -> ReportFinalResponseDTO:
     """공통 빌더: load_final → approved 검증 → DTO.
 
@@ -1095,6 +1192,11 @@ def _build_report(period: str, fund_code: str) -> ReportFinalResponseDTO:
     dto = _to_dto(payload, period, fund_code)
     internal_enrichment = _build_enrichment(payload, period, fund_code)
     dto.enrichment = _to_client_enrichment(internal_enrichment)
+    # 본문 claim 인용 해석 + 마커 번호화 (read-time, final.json 불변)
+    new_comment, claim_list = _resolve_claim_citations(dto.final_comment, period)
+    dto.final_comment = new_comment
+    dto.enrichment.claims = claim_list
+    dto.enrichment.claims_source = "approved" if claim_list else "unavailable"
     if fund_code != _MARKET_FUND_CODE:
         dto.market_enrichment = _build_linked_market_enrichment(period, payload)
     return ReportFinalResponseDTO(

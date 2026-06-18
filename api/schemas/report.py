@@ -190,6 +190,19 @@ class IndicatorChartDTO(BaseModel):
 # Enrichment wrapper (모든 섹션의 source/empty 메타)
 # ──────────────────────────────────────────────────────────────────────
 
+class ClaimCitationDTO(BaseModel):
+    """코멘트 본문 `[claim:hash]` inline 인용 → research claim store 해석 1건.
+
+    번호(n)는 본문 등장 순서. 본문 마커는 `[c{n}]` 로 치환되어 노출된다.
+    """
+    n: int                              # 본문 등장 순번 (c1, c2, ...)
+    claim_id: str
+    claim_text: str
+    asset_class: str | None = None      # primary_asset (자산군)
+    stance: str | None = None           # bullish / bearish / neutral
+    evidence_count: int = 0             # supporting_evidence_ids 개수
+
+
 class ClientReportEnrichmentDTO(BaseModel):
     """Client viewer (`/api/market-report`, `/api/funds/{fund}/report`) 응답에 들어가는
     enrichment 모델. **내부 source 라벨과 raw reason 메시지는 절대 포함되지 않는다.**
@@ -209,6 +222,10 @@ class ClientReportEnrichmentDTO(BaseModel):
 
     related_news: list[RelatedNewsDTO] = []
     related_news_source: EnrichmentSource = "unavailable"
+
+    # 본문 [claim:hash] inline 인용 → research claim 해석 리스트 (등장순 번호 c1..).
+    claims: list[ClaimCitationDTO] = []
+    claims_source: EnrichmentSource = "unavailable"
 
     evidence_quality: EvidenceQualitySummaryDTO | None = None
     evidence_quality_source: EnrichmentSource = "unavailable"

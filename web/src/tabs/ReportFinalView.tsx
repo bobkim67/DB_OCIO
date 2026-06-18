@@ -2,9 +2,9 @@ import type { CSSProperties } from "react";
 import MetaBadge from "../components/common/MetaBadge";
 import CommentMarkdown from "../components/common/CommentMarkdown";
 import type {
+  ClaimCitationDTO,
   EvidenceAnnotationDTO,
   EvidenceQualitySummaryDTO,
-  RelatedNewsDTO,
   ReportFinalResponseDTO,
   ValidationSummaryDTO,
 } from "../api/endpoints";
@@ -143,38 +143,49 @@ function EvidenceSection({ items }: { items: EvidenceAnnotationDTO[] }) {
 // Related News section
 // ──────────────────────────────────────────────────────────────────────
 
-function RelatedNewsSection({ items }: { items: RelatedNewsDTO[] }) {
+// 본문 [c1]·[c2]… inline 인용에 대응하는 research claim 리스트.
+const STANCE_COLOR: Record<string, { bg: string; fg: string }> = {
+  bullish: { bg: "#fee2e2", fg: "#991b1b" },
+  bearish: { bg: "#dbeafe", fg: "#1e40af" },
+  neutral: { bg: "#f3f4f6", fg: "#374151" },
+};
+
+function ClaimsSection({ items }: { items: ClaimCitationDTO[] }) {
   if (!items || items.length === 0) return null;
   return (
     <>
-      <div style={SECTION_TITLE}>Related News ({items.length})</div>
+      <div style={SECTION_TITLE}>Claims ({items.length})</div>
       <table style={TABLE_STYLE}>
         <thead>
           <tr>
-            <th style={TH}>제목</th>
-            <th style={{ ...TH, width: 100 }}>매체</th>
-            <th style={{ ...TH, width: 90 }}>날짜</th>
-            <th style={{ ...TH, width: 100 }}>토픽</th>
+            <th style={{ ...TH, width: 40 }}>#</th>
+            <th style={TH}>리서치 claim</th>
+            <th style={{ ...TH, width: 84 }}>자산군</th>
+            <th style={{ ...TH, width: 70 }}>방향</th>
+            <th style={{ ...TH, width: 52 }}>근거</th>
           </tr>
         </thead>
         <tbody>
-          {items.map((it, i) => (
-            <tr key={`${it.article_id ?? i}`}>
-              <td style={TD}>
-                {it.url ? (
-                  <a href={it.url} target="_blank" rel="noreferrer"
-                     style={{ color: "#1d4ed8", textDecoration: "none" }}>
-                    {it.title ?? "(제목 없음)"}
-                  </a>
-                ) : (
-                  it.title ?? "(제목 없음)"
-                )}
-              </td>
-              <td style={TD}>{it.source ?? "—"}</td>
-              <td style={TD}>{it.date ?? "—"}</td>
-              <td style={TD}>{it.topic ?? "—"}</td>
-            </tr>
-          ))}
+          {items.map((it) => {
+            const sc = it.stance ? STANCE_COLOR[it.stance] ?? STANCE_COLOR.neutral : null;
+            return (
+              <tr key={it.n}>
+                <td style={{ ...TD, fontWeight: 600 }}>c{it.n}</td>
+                <td style={TD}>{it.claim_text}</td>
+                <td style={TD}>{it.asset_class ?? "—"}</td>
+                <td style={TD}>
+                  {it.stance && sc ? (
+                    <span style={{ ...PILL_BASE, background: sc.bg, color: sc.fg }}>
+                      {it.stance}
+                    </span>
+                  ) : (
+                    "—"
+                  )}
+                </td>
+                <td style={TD}>{it.evidence_count ?? 0}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </>
@@ -384,7 +395,7 @@ export default function ReportFinalView({
       {enr && (
         <>
           <EvidenceSection items={enr.evidence_annotations ?? []} />
-          <RelatedNewsSection items={enr.related_news ?? []} />
+          <ClaimsSection items={enr.claims ?? []} />
           <QualitySection q={enr.evidence_quality} />
           <ValidationSection v={enr.validation_summary} />
         </>
@@ -409,10 +420,9 @@ function LinkedMarketSection({
   linked: NonNullable<ReportFinalResponseDTO["data"]["market_enrichment"]>;
 }) {
   const ev = linked.evidence_annotations ?? [];
-  const rn = linked.related_news ?? [];
-  const hasContent = ev.length > 0 || rn.length > 0;
+  const hasContent = ev.length > 0;
 
-  // 시장 evidence 가 모두 비어 있으면 섹션 자체를 hide
+  // 시장 evidence 가 비어 있으면 섹션 자체를 hide (related news 는 미노출)
   if (!hasContent) return null;
 
   return (
@@ -441,7 +451,6 @@ function LinkedMarketSection({
         )}
       </div>
       {ev.length > 0 && <EvidenceSection items={ev} />}
-      {rn.length > 0 && <RelatedNewsSection items={rn} />}
     </>
   );
 }

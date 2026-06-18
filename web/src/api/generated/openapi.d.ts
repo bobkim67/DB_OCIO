@@ -851,6 +851,29 @@ export interface components {
             contrib_pct: number;
         };
         /**
+         * ClaimCitationDTO
+         * @description 코멘트 본문 `[claim:hash]` inline 인용 → research claim store 해석 1건.
+         *
+         *     번호(n)는 본문 등장 순서. 본문 마커는 `[c{n}]` 로 치환되어 노출된다.
+         */
+        ClaimCitationDTO: {
+            /** N */
+            n: number;
+            /** Claim Id */
+            claim_id: string;
+            /** Claim Text */
+            claim_text: string;
+            /** Asset Class */
+            asset_class?: string | null;
+            /** Stance */
+            stance?: string | null;
+            /**
+             * Evidence Count
+             * @default 0
+             */
+            evidence_count: number;
+        };
+        /**
          * ClientReportEnrichmentDTO
          * @description Client viewer (`/api/market-report`, `/api/funds/{fund}/report`) 응답에 들어가는
          *     enrichment 모델. **내부 source 라벨과 raw reason 메시지는 절대 포함되지 않는다.**
@@ -888,6 +911,17 @@ export interface components {
              * @enum {string}
              */
             related_news_source: "approved" | "unavailable";
+            /**
+             * Claims
+             * @default []
+             */
+            claims: components["schemas"]["ClaimCitationDTO"][];
+            /**
+             * Claims Source
+             * @default unavailable
+             * @enum {string}
+             */
+            claims_source: "approved" | "unavailable";
             evidence_quality?: components["schemas"]["EvidenceQualitySummaryDTO"] | null;
             /**
              * Evidence Quality Source
@@ -1641,6 +1675,8 @@ export interface components {
              *       "evidence_annotations_source": "unavailable",
              *       "related_news": [],
              *       "related_news_source": "unavailable",
+             *       "claims": [],
+             *       "claims_source": "unavailable",
              *       "evidence_quality_source": "unavailable",
              *       "validation_summary_source": "unavailable",
              *       "indicator_chart_source": "unavailable",
@@ -1768,10 +1804,6 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
-            /** Input */
-            input?: unknown;
-            /** Context */
-            ctx?: Record<string, never>;
         };
         /**
          * ValidationSummaryDTO
