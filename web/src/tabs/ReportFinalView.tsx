@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import MetaBadge from "../components/common/MetaBadge";
 import CommentMarkdown from "../components/common/CommentMarkdown";
 import type {
@@ -93,12 +93,37 @@ function severityPill(severity: string) {
 // Evidence section
 // ──────────────────────────────────────────────────────────────────────
 
+// 접기/펼치기 섹션 — 기본 숨김. 헤더 클릭으로 토글.
+function Collapsible({
+  title, count, defaultOpen = false, children,
+}: {
+  title: string;
+  count: number;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <>
+      <div
+        onClick={() => setOpen((o) => !o)}
+        style={{ ...SECTION_TITLE, cursor: "pointer", userSelect: "none" }}
+      >
+        <span style={{ display: "inline-block", width: 14, color: "#6b7280" }}>
+          {open ? "▼" : "▶"}
+        </span>
+        {title} ({count})
+      </div>
+      {open && children}
+    </>
+  );
+}
+
 // Evidence = 인용된 claim 들의 원천 기사 (claim provenance). e{n} 으로 표기.
 function EvidenceSection({ items }: { items: EvidenceAnnotationDTO[] }) {
   if (!items || items.length === 0) return null;
   return (
-    <>
-      <div style={SECTION_TITLE}>Evidence · claim 원천 기사 ({items.length})</div>
+    <Collapsible title="Evidence · claim 원천 기사" count={items.length}>
       <table style={TABLE_STYLE}>
         <thead>
           <tr>
@@ -128,7 +153,7 @@ function EvidenceSection({ items }: { items: EvidenceAnnotationDTO[] }) {
           ))}
         </tbody>
       </table>
-    </>
+    </Collapsible>
   );
 }
 
@@ -146,8 +171,7 @@ const STANCE_COLOR: Record<string, { bg: string; fg: string }> = {
 function ClaimsSection({ items }: { items: ClaimCitationDTO[] }) {
   if (!items || items.length === 0) return null;
   return (
-    <>
-      <div style={SECTION_TITLE}>Claims ({items.length})</div>
+    <Collapsible title="Claims" count={items.length}>
       <table style={TABLE_STYLE}>
         <thead>
           <tr>
@@ -186,7 +210,7 @@ function ClaimsSection({ items }: { items: ClaimCitationDTO[] }) {
           })}
         </tbody>
       </table>
-    </>
+    </Collapsible>
   );
 }
 
