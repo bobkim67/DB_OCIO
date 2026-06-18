@@ -872,6 +872,11 @@ export interface components {
              * @default 0
              */
             evidence_count: number;
+            /**
+             * Evidence Refs
+             * @default []
+             */
+            evidence_refs: number[];
         };
         /**
          * ClientReportEnrichmentDTO

@@ -1075,27 +1075,31 @@ def _build_linked_market_enrichment(
 
 
 # ──────────────────────────────────────────────────────────────────────────
-# Claim 인용 해석 (read-time, final.json 불변)
+# Claim 인용 + 원천 evidence 해석 (read-time, final.json 불변)
 #   본문 [claim:hash] → research claim store 해석 + 등장순 번호화([c{n}]).
-#   [ref:N] 도 [N] 으로 살균(접두사 제거). client 노출 마커를 깔끔한 번호로 통일.
+#   각 인용 claim 의 supporting_evidence_ids → 원천 리서치 기사로 해석·dedupe·
+#   e{n} 번호 부여 → Evidence 리스트(=claim provenance). [ref:N] 마커는 제거
+#   (debate 내부 인용 — claim provenance 로 대체). claim↔evidence 연결(evidence_refs).
 # ──────────────────────────────────────────────────────────────────────────
 
 _CLAIMS_DIR = Path(__file__).resolve().parents[2] / "market_research" / "data" / "claims"
 _CLAIM_MARK_RE = re.compile(r"\[claim:([0-9a-fA-F]+)\]")
-_REF_MARK_RE = re.compile(r"\[ref:(\d+)\]")
+_REF_MARK_RE = re.compile(r"\s*\[ref:\d+\]")
 _QUARTER_PERIOD_RE = re.compile(r"^(\d{4})-Q([1-4])$")
+
+
+def _period_months(period: str) -> list[str]:
+    m = _QUARTER_PERIOD_RE.match(period)
+    if m:
+        y, q = int(m.group(1)), int(m.group(2))
+        return [f"{y}-{(q - 1) * 3 + i:02d}" for i in range(1, 4)]
+    return [period]
 
 
 def _claim_store_files(period: str) -> list[Path]:
     """period → claim store 파일들. 분기는 3개월 union. research 우선 + 뉴스 fallback."""
-    m = _QUARTER_PERIOD_RE.match(period)
-    if m:
-        y, q = int(m.group(1)), int(m.group(2))
-        months = [f"{y}-{(q - 1) * 3 + i:02d}" for i in range(1, 4)]
-    else:
-        months = [period]
     files: list[Path] = []
-    for mo in months:
+    for mo in _period_months(period):
         for name in (f"{mo}.research.json", f"{mo}.json"):
             p = _CLAIMS_DIR / name
             if p.exists():
@@ -1123,17 +1127,68 @@ def _load_claim_index(period: str) -> dict[str, dict]:
     return idx
 
 
-def _resolve_claim_citations(
+def _load_evidence_index(period: str) -> dict[str, dict]:
+    """evidence_id → 원천 기사 메타. naver_research(adapted) + monygeek.
+    evidence_id 는 _raw_dedupe_key('cat:nid') / bare nid / monygeek _article_id 다양 →
+    가능한 모든 키로 인덱싱한다. import/IO 실패는 graceful(빈 dict)."""
+    idx: dict[str, dict] = {}
+    months = _period_months(period)
+    try:
+        from market_research.collect.naver_research_adapter import load_adapted
+    except Exception:
+        load_adapted = None  # type: ignore
+    try:
+        from market_research.collect.monygeek_research_adapter import build_monygeek_articles
+    except Exception:
+        build_monygeek_articles = None  # type: ignore
+
+    def _put(key, art, src_label=None):
+        if not key:
+            return
+        k = str(key)
+        if k in idx:
+            return
+        idx[k] = {
+            "title": art.get("title"),
+            "source": src_label or art.get("source") or art.get("_raw_broker"),
+            "date": str(art.get("date") or "")[:10] or None,
+            "url": art.get("url") or art.get("detail_url"),
+        }
+
+    for mo in months:
+        if load_adapted:
+            try:
+                for a in load_adapted(mo) or []:
+                    _put(a.get("_raw_dedupe_key"), a)
+                    _put(a.get("_raw_nid"), a)
+                    _put(a.get("_article_id"), a)
+            except Exception:
+                pass
+        if build_monygeek_articles:
+            try:
+                for a in build_monygeek_articles(mo) or []:
+                    _put(a.get("_article_id"), a, src_label=a.get("source") or "monygeek")
+            except Exception:
+                pass
+    return idx
+
+
+def _resolve_citations(
     comment: str, period: str,
-) -> tuple[str, list[ClaimCitationDTO]]:
-    """본문 [claim:hash] → 등장순 [c{n}] 번호화 + claim 리스트. [ref:N]→[N] 살균."""
+) -> tuple[str, list[ClaimCitationDTO], list[EvidenceAnnotationDTO]]:
+    """본문 [claim:hash] → [c{n}] 번호화 + claim 리스트 + claim 원천 Evidence 리스트.
+
+    각 인용 claim 의 supporting_evidence_ids 를 원천 기사로 해석, 전체 dedupe 후
+    등장순 e{n} 부여. claim.evidence_refs 로 연결. [ref:N] 마커는 제거.
+    """
     if not comment:
-        return comment, []
-    has_claim = "[claim:" in comment
-    out_comment = _REF_MARK_RE.sub(lambda mo: f"[{mo.group(1)}]", comment)
-    if not has_claim:
-        return out_comment, []
-    idx = _load_claim_index(period)
+        return comment, [], []
+    out_comment = _REF_MARK_RE.sub("", comment)  # debate 내부 [ref:N] 제거
+    if "[claim:" not in out_comment:
+        return out_comment, [], []
+
+    cidx = _load_claim_index(period)
+    eidx = _load_evidence_index(period)
     order: list[str] = []
     seen: dict[str, int] = {}
 
@@ -1145,27 +1200,56 @@ def _resolve_claim_citations(
         return f"[c{seen[h]}]"
 
     out_comment = _CLAIM_MARK_RE.sub(_sub, out_comment)
+
+    # evidence: 인용 claim 들의 supporting_evidence_ids dedupe → e{n}
+    ev_order: list[str] = []
+    ev_num: dict[str, int] = {}
     claims: list[ClaimCitationDTO] = []
     for h in order:
         n = seen[h]
-        c = idx.get(h)
-        if c:
-            aa = c.get("affected_assets") or []
-            primary = c.get("primary_asset") or (
-                aa[0].get("asset_class") if aa and isinstance(aa[0], dict) else None)
-            ev = c.get("supporting_evidence_ids") or []
-            claims.append(ClaimCitationDTO(
-                n=n,
-                claim_id=str(c.get("claim_id") or f"claim:{h}"),
-                claim_text=str(c.get("claim_text") or ""),
-                asset_class=primary,
-                stance=c.get("stance"),
-                evidence_count=len(ev) if isinstance(ev, list) else 0,
-            ))
-        else:
+        c = cidx.get(h)
+        if not c:
             claims.append(ClaimCitationDTO(
                 n=n, claim_id=f"claim:{h}", claim_text="(claim 원문 미확인)"))
-    return out_comment, claims
+            continue
+        aa = c.get("affected_assets") or []
+        primary = c.get("primary_asset") or (
+            aa[0].get("asset_class") if aa and isinstance(aa[0], dict) else None)
+        ev_ids = c.get("supporting_evidence_ids") or []
+        refs: list[int] = []
+        for e in ev_ids:
+            ek = str(e)
+            if ek not in ev_num:
+                ev_order.append(ek)
+                ev_num[ek] = len(ev_order)
+            if ev_num[ek] not in refs:
+                refs.append(ev_num[ek])
+        claims.append(ClaimCitationDTO(
+            n=n,
+            claim_id=str(c.get("claim_id") or f"claim:{h}"),
+            claim_text=str(c.get("claim_text") or ""),
+            asset_class=primary,
+            stance=c.get("stance"),
+            evidence_count=len(ev_ids) if isinstance(ev_ids, list) else 0,
+            evidence_refs=refs,
+        ))
+
+    evidence: list[EvidenceAnnotationDTO] = []
+    for ek in ev_order:
+        meta = eidx.get(ek) or {}
+        evidence.append(EvidenceAnnotationDTO(
+            ref=ev_num[ek],
+            article_id=ek,
+            title=meta.get("title") or "(원천 기사 메타 미확인)",
+            url=meta.get("url"),
+            source=meta.get("source"),
+            date=meta.get("date"),
+            topic=None,
+            all_topics=[],
+            salience=None,
+            salience_explanation=None,
+        ))
+    return out_comment, claims, evidence
 
 
 def _build_report(period: str, fund_code: str) -> ReportFinalResponseDTO:
@@ -1192,11 +1276,18 @@ def _build_report(period: str, fund_code: str) -> ReportFinalResponseDTO:
     dto = _to_dto(payload, period, fund_code)
     internal_enrichment = _build_enrichment(payload, period, fund_code)
     dto.enrichment = _to_client_enrichment(internal_enrichment)
-    # 본문 claim 인용 해석 + 마커 번호화 (read-time, final.json 불변)
-    new_comment, claim_list = _resolve_claim_citations(dto.final_comment, period)
+    # 본문 claim 인용 해석 + 마커 번호화 + claim 원천 Evidence (read-time, final.json 불변)
+    new_comment, claim_list, evidence_list = _resolve_citations(dto.final_comment, period)
     dto.final_comment = new_comment
     dto.enrichment.claims = claim_list
     dto.enrichment.claims_source = "approved" if claim_list else "unavailable"
+    # Evidence = claim provenance 로 재정의 (debate [ref:N] 대체)
+    if claim_list:
+        dto.enrichment.evidence_annotations = evidence_list
+        dto.enrichment.evidence_annotations_source = (
+            "approved" if evidence_list else "unavailable")
+        # related_news 는 미노출 (uncited 보조뉴스)
+        dto.enrichment.related_news = []
     if fund_code != _MARKET_FUND_CODE:
         dto.market_enrichment = _build_linked_market_enrichment(period, payload)
     return ReportFinalResponseDTO(

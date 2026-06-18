@@ -93,26 +93,25 @@ function severityPill(severity: string) {
 // Evidence section
 // ──────────────────────────────────────────────────────────────────────
 
+// Evidence = 인용된 claim 들의 원천 기사 (claim provenance). e{n} 으로 표기.
 function EvidenceSection({ items }: { items: EvidenceAnnotationDTO[] }) {
   if (!items || items.length === 0) return null;
   return (
     <>
-      <div style={SECTION_TITLE}>Evidence ({items.length})</div>
+      <div style={SECTION_TITLE}>Evidence · claim 원천 기사 ({items.length})</div>
       <table style={TABLE_STYLE}>
         <thead>
           <tr>
-            <th style={{ ...TH, width: 36 }}>ref</th>
-            <th style={TH}>제목</th>
-            <th style={{ ...TH, width: 100 }}>매체</th>
+            <th style={{ ...TH, width: 40 }}>#</th>
+            <th style={TH}>원천 기사</th>
+            <th style={{ ...TH, width: 110 }}>매체</th>
             <th style={{ ...TH, width: 90 }}>날짜</th>
-            <th style={{ ...TH, width: 100 }}>토픽</th>
-            <th style={{ ...TH, width: 60 }}>중요도</th>
           </tr>
         </thead>
         <tbody>
           {items.map((it) => (
             <tr key={it.ref}>
-              <td style={TD}>{it.ref}</td>
+              <td style={{ ...TD, fontWeight: 600 }}>e{it.ref}</td>
               <td style={TD}>
                 {it.url ? (
                   <a href={it.url} target="_blank" rel="noreferrer"
@@ -125,12 +124,6 @@ function EvidenceSection({ items }: { items: EvidenceAnnotationDTO[] }) {
               </td>
               <td style={TD}>{it.source ?? "—"}</td>
               <td style={TD}>{it.date ?? "—"}</td>
-              <td style={TD}>{it.topic ?? "—"}</td>
-              <td style={TD}>
-                {typeof it.salience === "number"
-                  ? it.salience.toFixed(2)
-                  : "—"}
-              </td>
             </tr>
           ))}
         </tbody>
@@ -162,12 +155,13 @@ function ClaimsSection({ items }: { items: ClaimCitationDTO[] }) {
             <th style={TH}>리서치 claim</th>
             <th style={{ ...TH, width: 84 }}>자산군</th>
             <th style={{ ...TH, width: 70 }}>방향</th>
-            <th style={{ ...TH, width: 52 }}>근거</th>
+            <th style={{ ...TH, width: 110 }}>원천(e#)</th>
           </tr>
         </thead>
         <tbody>
           {items.map((it) => {
             const sc = it.stance ? STANCE_COLOR[it.stance] ?? STANCE_COLOR.neutral : null;
+            const refs = it.evidence_refs ?? [];
             return (
               <tr key={it.n}>
                 <td style={{ ...TD, fontWeight: 600 }}>c{it.n}</td>
@@ -182,7 +176,11 @@ function ClaimsSection({ items }: { items: ClaimCitationDTO[] }) {
                     "—"
                   )}
                 </td>
-                <td style={TD}>{it.evidence_count ?? 0}</td>
+                <td style={TD}>
+                  {refs.length > 0
+                    ? refs.map((r) => `e${r}`).join(", ")
+                    : (it.evidence_count ? `${it.evidence_count}건` : "—")}
+                </td>
               </tr>
             );
           })}

@@ -201,6 +201,7 @@ class ClaimCitationDTO(BaseModel):
     asset_class: str | None = None      # primary_asset (자산군)
     stance: str | None = None           # bullish / bearish / neutral
     evidence_count: int = 0             # supporting_evidence_ids 개수
+    evidence_refs: list[int] = []       # 이 claim 의 원천 기사 Evidence 번호(e{n}) 목록
 
 
 class ClientReportEnrichmentDTO(BaseModel):
