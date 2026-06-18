@@ -1175,18 +1175,20 @@ def _load_evidence_index(period: str) -> dict[str, dict]:
 
 
 def _resolve_citations(
-    comment: str, period: str,
-) -> tuple[str, list[ClaimCitationDTO], list[EvidenceAnnotationDTO]]:
+    comment: str, period: str, extra_segments: list[str] | None = None,
+) -> tuple[str, list[ClaimCitationDTO], list[EvidenceAnnotationDTO], list[str]]:
     """본문 [claim:hash] → [c{n}] 번호화 + claim 리스트 + claim 원천 Evidence 리스트.
 
-    각 인용 claim 의 supporting_evidence_ids 를 원천 기사로 해석, 전체 dedupe 후
-    등장순 e{n} 부여. claim.evidence_refs 로 연결. [ref:N] 마커는 제거.
+    extra_segments(예: agent key_points)도 동일 번호 체계로 renumber 해 함께 반환한다
+    (코멘트 먼저 번호 부여, 이후 등장 claim 은 이어서). 각 인용 claim 의
+    supporting_evidence_ids 를 원천 기사로 해석, 전체 dedupe 후 등장순 e{n} 부여.
+    claim.evidence_refs 로 연결. [ref:N] 마커는 제거.
     """
-    if not comment:
-        return comment, [], []
-    out_comment = _REF_MARK_RE.sub("", comment)  # debate 내부 [ref:N] 제거
-    if "[claim:" not in out_comment:
-        return out_comment, [], []
+    extra_segments = extra_segments or []
+    out_comment = _REF_MARK_RE.sub("", comment or "")
+    out_extra = [_REF_MARK_RE.sub("", s or "") for s in extra_segments]
+    if "[claim:" not in out_comment and not any("[claim:" in s for s in out_extra):
+        return out_comment, [], [], out_extra
 
     cidx = _load_claim_index(period)
     eidx = _load_evidence_index(period)
@@ -1201,6 +1203,7 @@ def _resolve_citations(
         return f"[c{seen[h]}]"
 
     out_comment = _CLAIM_MARK_RE.sub(_sub, out_comment)
+    out_extra = [_CLAIM_MARK_RE.sub(_sub, s) for s in out_extra]
 
     # evidence: 인용 claim 들의 supporting_evidence_ids dedupe → e{n}
     ev_order: list[str] = []
@@ -1250,7 +1253,7 @@ def _resolve_citations(
             salience=None,
             salience_explanation=None,
         ))
-    return out_comment, claims, evidence
+    return out_comment, claims, evidence, out_extra
 
 
 _AGENT_LABELS = {
@@ -1305,9 +1308,29 @@ def _build_report(period: str, fund_code: str) -> ReportFinalResponseDTO:
     dto = _to_dto(payload, period, fund_code)
     internal_enrichment = _build_enrichment(payload, period, fund_code)
     dto.enrichment = _to_client_enrichment(internal_enrichment)
+    # debate 참여자별 의견 (draft.agents) — enrichment 와 동일 lineage 게이트.
+    # key_points 의 [claim:hash] 도 코멘트와 같은 번호 체계로 renumber 하기 위해
+    # _resolve_citations 에 함께 전달한다.
+    ops: list[AgentOpinionDTO] = []
+    if _is_safe_for_client(dto.enrichment.source_consistency_status):
+        ops = _build_agent_opinions(rsg.load_draft(period, fund_code) or {})
+    # flatten agent key_points → extra_segments (renumber 후 되써넣기)
+    seg_index: list[tuple[int, int]] = []
+    segments: list[str] = []
+    for oi, op in enumerate(ops):
+        for ki, kp in enumerate(op.key_points):
+            seg_index.append((oi, ki))
+            segments.append(kp)
+
     # 본문 claim 인용 해석 + 마커 번호화 + claim 원천 Evidence (read-time, final.json 불변)
-    new_comment, claim_list, evidence_list = _resolve_citations(dto.final_comment, period)
+    new_comment, claim_list, evidence_list, new_segments = _resolve_citations(
+        dto.final_comment, period, segments)
     dto.final_comment = new_comment
+    for (oi, ki), newkp in zip(seg_index, new_segments):
+        ops[oi].key_points[ki] = newkp
+    if ops:
+        dto.enrichment.agent_opinions = ops
+        dto.enrichment.agent_opinions_source = "approved"
     dto.enrichment.claims = claim_list
     dto.enrichment.claims_source = "approved" if claim_list else "unavailable"
     # Evidence = claim provenance 로 재정의 (debate [ref:N] 대체)
@@ -1317,13 +1340,6 @@ def _build_report(period: str, fund_code: str) -> ReportFinalResponseDTO:
             "approved" if evidence_list else "unavailable")
         # related_news 는 미노출 (uncited 보조뉴스)
         dto.enrichment.related_news = []
-    # debate 참여자별 의견 (draft.agents) — enrichment 와 동일 lineage 게이트
-    if _is_safe_for_client(dto.enrichment.source_consistency_status):
-        _draft = rsg.load_draft(period, fund_code) or {}
-        ops = _build_agent_opinions(_draft)
-        if ops:
-            dto.enrichment.agent_opinions = ops
-            dto.enrichment.agent_opinions_source = "approved"
     if fund_code != _MARKET_FUND_CODE:
         dto.market_enrichment = _build_linked_market_enrichment(period, payload)
     return ReportFinalResponseDTO(

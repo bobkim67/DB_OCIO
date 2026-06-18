@@ -151,11 +151,16 @@ function AgentOpinionsSection({ items }: { items: AgentOpinionDTO[] }) {
   );
 }
 
-// Evidence = 인용된 claim 들의 원천 기사 (claim provenance). e{n} 으로 표기.
-function EvidenceSection({ items }: { items: EvidenceAnnotationDTO[] }) {
+const SUB_TITLE: CSSProperties = {
+  fontSize: 12, fontWeight: 600, margin: "0 0 6px", color: "#374151",
+};
+
+// Evidence = 인용된 claim 들의 원천 기사 (claim provenance). e{n} 으로 표기. (테이블만)
+function EvidenceTable({ items }: { items: EvidenceAnnotationDTO[] }) {
   if (!items || items.length === 0) return null;
   return (
-    <Collapsible title="Evidence · claim 원천 기사" count={items.length}>
+    <div style={{ flex: "1 1 320px", minWidth: 0 }}>
+      <div style={SUB_TITLE}>원천 기사 ({items.length})</div>
       <table style={TABLE_STYLE}>
         <thead>
           <tr>
@@ -185,7 +190,7 @@ function EvidenceSection({ items }: { items: EvidenceAnnotationDTO[] }) {
           ))}
         </tbody>
       </table>
-    </Collapsible>
+    </div>
   );
 }
 
@@ -200,10 +205,11 @@ const STANCE_COLOR: Record<string, { bg: string; fg: string }> = {
   neutral: { bg: "#f3f4f6", fg: "#374151" },
 };
 
-function ClaimsSection({ items }: { items: ClaimCitationDTO[] }) {
+function ClaimsTable({ items }: { items: ClaimCitationDTO[] }) {
   if (!items || items.length === 0) return null;
   return (
-    <Collapsible title="Claims" count={items.length}>
+    <div style={{ flex: "1 1 360px", minWidth: 0 }}>
+      <div style={SUB_TITLE}>Claims ({items.length})</div>
       <table style={TABLE_STYLE}>
         <thead>
           <tr>
@@ -242,6 +248,25 @@ function ClaimsSection({ items }: { items: ClaimCitationDTO[] }) {
           })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// 근거자료 = Claims + 원천 Evidence 를 하나의 토글 아래 좌우로 배치.
+function SourcesSection({
+  claims, evidence,
+}: {
+  claims: ClaimCitationDTO[];
+  evidence: EvidenceAnnotationDTO[];
+}) {
+  const total = (claims?.length ?? 0) + (evidence?.length ?? 0);
+  if (total === 0) return null;
+  return (
+    <Collapsible title="근거자료" count={total}>
+      <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+        <ClaimsTable items={claims} />
+        <EvidenceTable items={evidence} />
+      </div>
     </Collapsible>
   );
 }
@@ -449,8 +474,10 @@ export default function ReportFinalView({
       {enr && (
         <>
           <AgentOpinionsSection items={enr.agent_opinions ?? []} />
-          <EvidenceSection items={enr.evidence_annotations ?? []} />
-          <ClaimsSection items={enr.claims ?? []} />
+          <SourcesSection
+            claims={enr.claims ?? []}
+            evidence={enr.evidence_annotations ?? []}
+          />
           <QualitySection q={enr.evidence_quality} />
           <ValidationSection v={enr.validation_summary} />
         </>
@@ -505,7 +532,7 @@ function LinkedMarketSection({
           </span>
         )}
       </div>
-      {ev.length > 0 && <EvidenceSection items={ev} />}
+      {ev.length > 0 && <EvidenceTable items={ev} />}
     </>
   );
 }
