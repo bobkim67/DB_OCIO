@@ -2942,7 +2942,7 @@ def generate_report_from_inputs(fund_code, year, quarter, data_ctx, inputs,
 
     Parameters
     ----------
-    model : str | None — 기본값 LLM_MODEL (claude-sonnet-4-6)
+    model : str | None — 기본값 LLM_MODEL (claude-opus-4-8)
     start_date, end_date : date | None — 분석 기간. None이면 분기 기준 fallback.
     """
     if model is None:

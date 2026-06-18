@@ -235,7 +235,7 @@ def run_p5_staging(period: str) -> dict[str, Any]:
 import re as _re
 
 STAGING_CLEAN_DIR = BASE_DIR / 'debug' / 'wiki' / 'p5_assets_staging_clean'
-SYNTH_MODEL = "claude-haiku-4-5-20251001"
+SYNTH_MODEL = "claude-opus-4-8"
 
 # §2 conviction 잔존 시장수치 검출(검증용): 천단위 콤마 레벨 / N달러 / 지수 등락 등
 _MARKET_NUM_RE = _re.compile(

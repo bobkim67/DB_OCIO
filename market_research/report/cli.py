@@ -946,7 +946,7 @@ def main():
     build_p.add_argument('--from-json', action='store_true', help='기존 JSON inputs로 코멘트 재생성')
     build_p.add_argument('--detail', action='store_true', help='상세 양식 (과거 코멘트 few-shot)')
     build_p.add_argument('--fx-split', action='store_true', help='FX 분리 (증권/환효과 분리)')
-    build_p.add_argument('--model', type=str, default=None, help='LLM 모델 (기본: claude-sonnet-4-6)')
+    build_p.add_argument('--model', type=str, default=None, help='LLM 모델 (기본: claude-opus-4-8)')
     build_p.add_argument('--forced-bew-json', type=str, default=None,
                          help='BEW viewer 에서 export 된 forced-BEW JSON 경로. '
                               '해당 월 window_id 만 debate evidence lane 에 허용.')

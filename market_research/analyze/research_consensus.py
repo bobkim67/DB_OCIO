@@ -17,7 +17,7 @@ from market_research.analyze.research_aggregator import (
 )
 from market_research.wiki.paths import RESEARCH_SYNTHESIS_DIR
 
-SYNTH_MODEL = "claude-haiku-4-5-20251001"
+SYNTH_MODEL = "claude-opus-4-8"
 SYNTH_MAX_TOKENS = 1200
 
 _ASSET_FILE_STEM = {
