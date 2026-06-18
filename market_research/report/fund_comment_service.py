@@ -407,7 +407,7 @@ def generate_fund_comment_and_save(
     from market_research.report.comment_engine import generate_report_from_inputs
     result = generate_report_from_inputs(
         fund_code, year, quarter, data_ctx, inputs,
-        model='claude-opus-4-6',
+        model='claude-opus-4-8',
         start_date=start_dt, end_date=end_dt,
     )
 
@@ -465,7 +465,7 @@ def generate_fund_comment_and_save(
         'evidence_annotations': fund_evidence_annotations,
         'market_debate_period': period_key,
         'generated_at': time.strftime('%Y-%m-%dT%H:%M:%S'),
-        'model': 'claude-opus-4-6',
+        'model': 'claude-opus-4-8',
         'cost_usd': round(cost, 3),
         'token_usage': token_usage,
         'data_warnings': data_warnings,

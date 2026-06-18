@@ -579,7 +579,7 @@ def run_debate_and_save(mode: str, year: int, period_num: int,
         'canonical_regime_snapshot': debate_interp.get('canonical_snapshot', {}),
         'diverges_from_canonical': debate_interp.get('diverges_from_canonical', False),
         'generated_at': result.get('debated_at', time.strftime('%Y-%m-%dT%H:%M:%S')),
-        'model': 'claude-opus-4-6',
+        'model': 'claude-opus-4-8',
         'cost_usd': 0.34,
         'validation_summary': {
             'sanitize_warnings': sanitize_warnings,

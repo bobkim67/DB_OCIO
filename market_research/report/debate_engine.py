@@ -58,7 +58,7 @@ def _log(event: str, **kwargs):
 AGENT_PERSONAS = {
     'bull': {
         'name': '낙관론자',
-        'model': 'claude-haiku-4-5-20251001',
+        'model': 'claude-opus-4-8',
         'system_prompt': (
             '당신은 성장 촉매와 회복 신호를 중시하는 낙관적 시장 분석가입니다.\n'
             '[중요] 당신의 stance는 반드시 "bullish"여야 합니다. 이것이 당신의 역할입니다.\n'
@@ -71,7 +71,7 @@ AGENT_PERSONAS = {
     },
     'bear': {
         'name': '비관론자',
-        'model': 'claude-haiku-4-5-20251001',
+        'model': 'claude-opus-4-8',
         'system_prompt': (
             '당신은 꼬리 리스크와 과열 신호를 중시하는 비관적 시장 분석가입니다.\n'
             '- 밸류에이션 과열, 유동성 위축, 지정학 리스크, 신용 스프레드 확대 등에 주목\n'
@@ -83,7 +83,7 @@ AGENT_PERSONAS = {
     },
     'quant': {
         'name': '데이터 분석가',
-        'model': 'claude-haiku-4-5-20251001',
+        'model': 'claude-opus-4-8',
         'system_prompt': (
             '당신은 데이터와 수치에만 기반하는 정량적 분석가입니다.\n'
             '- 내러티브나 감정을 배제하고 오직 숫자로만 판단\n'
@@ -95,7 +95,7 @@ AGENT_PERSONAS = {
     },
     'monygeek': {
         'name': '유로달러 학파 분석가',
-        'model': 'claude-haiku-4-5-20251001',
+        'model': 'claude-opus-4-8',
         'system_prompt': (
             '당신은 유로달러 학파(Jeff Snider 계열) 관점의 매크로 분석가입니다.\n'
             '- 핵심 프레임워크: 유로달러 시스템의 구조적 붕괴가 모든 자산 가격의 근본 드라이버\n'
@@ -1868,7 +1868,7 @@ def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> 
         # context 조합에서 prompt 가 길어져 non-streaming 10분 한계를 초과한
         # 회귀 (R9-B.4 backtest 2026-Q1 fail) 해결.
         customer_comment = _call_llm(
-            model='claude-opus-4-6',
+            model='claude-opus-4-8',
             system=system_msg,
             prompt=comment_prompt,
             max_tokens=comment_max_tokens,
@@ -1907,7 +1907,7 @@ def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> 
     try:
         # R9-B.4.1 — Step 2 도 Opus. Step 1 과 동일 prompt 사이즈 누적 위험.
         text = _call_llm(
-            model='claude-opus-4-6',
+            model='claude-opus-4-8',
             system=system_msg,
             prompt=analysis_prompt,
             max_tokens=2500,

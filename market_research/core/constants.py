@@ -24,7 +24,7 @@ for _env_candidate in [
 
 # ── Claude API ──
 ANTHROPIC_API_KEY = _os.environ.get('ANTHROPIC_API_KEY', '')
-LLM_MODEL = 'claude-sonnet-4-6'
+LLM_MODEL = 'claude-opus-4-8'
 
 # ── 공통 position_constraints ──
 _COMMON_CONSTRAINTS = (

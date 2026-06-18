@@ -761,7 +761,7 @@ def generate_report_from_selections(fund_code, year, month, context, selections)
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     response = client.messages.create(
-        model="claude-opus-4-6",
+        model="claude-opus-4-8",
         max_tokens=2000,
         messages=[{"role": "user", "content": prompt}],
     )
