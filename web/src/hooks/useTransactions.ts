@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import {
+  fetchAssetClassReturn,
   fetchFxPosition,
   fetchSecurities,
   fetchSecurityReturn,
@@ -33,10 +34,10 @@ export const useFxPosition = (code: string, start: string) =>
     enabled: !!code && !!start,
   });
 
-export const useSecurities = (code: string) =>
+export const useSecurities = (code: string, start?: string) =>
   useQuery({
-    queryKey: ["securities", code],
-    queryFn: () => fetchSecurities(code),
+    queryKey: ["securities", code, start ?? ""],
+    queryFn: () => fetchSecurities(code, start),
     enabled: !!code,
   });
 
@@ -51,4 +52,16 @@ export const useSecurityReturn = (
     queryKey: ["security-return", code, itemCd, start, end],
     queryFn: () => fetchSecurityReturn(code, itemCd, itemNm, start, end),
     enabled: !!code && !!itemCd && !!start && !!end,
+  });
+
+export const useAssetClassReturn = (
+  code: string,
+  assetClass: string,
+  start: string,
+  end: string,
+) =>
+  useQuery({
+    queryKey: ["asset-class-return", code, assetClass, start, end],
+    queryFn: () => fetchAssetClassReturn(code, assetClass, start, end),
+    enabled: !!code && !!assetClass && !!start && !!end,
   });

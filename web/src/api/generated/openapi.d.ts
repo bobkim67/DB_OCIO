@@ -489,6 +489,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/funds/{code}/asset-class-return": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Asset Class Return */
+        get: operations["get_asset_class_return_api_funds__code__asset_class_return_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/warmup-status": {
         parameters: {
             query?: never;
@@ -1746,6 +1763,11 @@ export interface components {
             weight: number;
             /** Has Price */
             has_price: boolean;
+            /**
+             * Currently Held
+             * @default true
+             */
+            currently_held: boolean;
         };
         /** SecurityReturnPointDTO */
         SecurityReturnPointDTO: {
@@ -1771,6 +1793,16 @@ export interface components {
             trades: components["schemas"]["SecurityTradeMarkerDTO"][];
             /** Weights */
             weights: components["schemas"]["SecurityWeightPointDTO"][];
+            /**
+             * Weight Components
+             * @default []
+             */
+            weight_components: components["schemas"]["WeightComponentDTO"][];
+            /**
+             * Trade Components
+             * @default []
+             */
+            trade_components: components["schemas"]["TradeComponentDTO"][];
         };
         /** SecurityTradeMarkerDTO */
         SecurityTradeMarkerDTO: {
@@ -1799,6 +1831,17 @@ export interface components {
             kind: "db" | "cache" | "mock";
             /** Note */
             note?: string | null;
+        };
+        /** TradeComponentDTO */
+        TradeComponentDTO: {
+            /** Date */
+            date: string;
+            /** Name */
+            name: string;
+            /** Side */
+            side: string;
+            /** Amount */
+            amount: number;
         };
         /** TransactionRowDTO */
         TransactionRowDTO: {
@@ -1905,6 +1948,15 @@ export interface components {
             finished_at?: string | null;
             /** Errors */
             errors: components["schemas"]["WarmupErrorDTO"][];
+        };
+        /** WeightComponentDTO */
+        WeightComponentDTO: {
+            /** Date */
+            date: string;
+            /** Name */
+            name: string;
+            /** Weight */
+            weight: number;
         };
         /** WeightHistoryPointDTO */
         WeightHistoryPointDTO: {
@@ -2915,7 +2967,10 @@ export interface operations {
     };
     get_securities_api_funds__code__securities_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description 편입이력 조회 시작일 YYYY-MM-DD (지정 시 현재 미보유 종목 하단 포함) */
+                start?: string | null;
+            };
             header?: never;
             path: {
                 code: string;
@@ -2951,6 +3006,44 @@ export interface operations {
                 item_cd: string;
                 /** @description 종목명(표시용) */
                 item_nm?: string;
+                /** @description 조회 시작일 YYYY-MM-DD */
+                start: string;
+                /** @description 조회 종료일 YYYY-MM-DD */
+                end: string;
+            };
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecurityReturnResponseDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_asset_class_return_api_funds__code__asset_class_return_get: {
+        parameters: {
+            query: {
+                /** @description 자산군(6버킷: 국내주식~금/대체) */
+                asset_class: string;
                 /** @description 조회 시작일 YYYY-MM-DD */
                 start: string;
                 /** @description 조회 종료일 YYYY-MM-DD */

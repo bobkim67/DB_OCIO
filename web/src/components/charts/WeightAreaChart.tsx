@@ -39,10 +39,11 @@ interface Props {
   topN?: number;                // security 한정. 0/undefined → 전체
   markers?: WeightMarkerDTO[];  // 일자·key별 순매수 마커 (▲▼)
   instanceKey?: string;         // fund/level 변경 시 리마운트
+  xRange?: [string, string];    // 공통 x 날짜 도메인 (종목수익률 차트와 정렬용)
 }
 
 export default function WeightAreaChart({
-  points, keys, level, topN, markers = [], instanceKey,
+  points, keys, level, topN, markers = [], instanceKey, xRange,
 }: Props) {
   if (points.length === 0) {
     return <div style={{ padding: 16, color: "#6b7280" }}>데이터 없음</div>;
@@ -98,7 +99,9 @@ export default function WeightAreaChart({
     );
   }
 
-  // 누적 영역은 scattergl fill 왜곡 이슈로 항상 SVG scatter (NavChart 주석 참조)
+  // 누적 영역은 scattergl fill 왜곡 이슈로 항상 SVG scatter (NavChart 주석 참조).
+  // 영역 trace 는 렌더 전용(hoverinfo skip). 0% 행을 툴팁에서 빼기 위해 hover 는
+  // 아래 invisible trace 가 담당(0%=y null → x-unified 행 미노출).
   const traces: Plotly.Data[] = displayKeys.map((k, i) => ({
     x: dates,
     y: dates.map((d) => byDate.get(d)?.get(k) ?? 0),
@@ -108,8 +111,7 @@ export default function WeightAreaChart({
     stackgroup: "one",
     line: { width: 0.5, color: colorOf(k, i) },
     fillcolor: withAlpha(colorOf(k, i), FILL_ALPHA),
-    // x unified: 날짜는 상단 헤더에 1회만. 행에는 key/비중(소수1자리)만.
-    hovertemplate: `${k} %{y:.1f}%<extra></extra>`,
+    hoverinfo: "skip",
   }));
 
   if (etcKeys.length > 0) {
@@ -129,9 +131,11 @@ export default function WeightAreaChart({
       stackgroup: "one",
       line: { width: 0.5, color: "#9ca3af" },
       fillcolor: withAlpha("#9ca3af", FILL_ALPHA),
-      hovertemplate: `기타 %{y:.1f}%<extra></extra>`,
+      hoverinfo: "skip",
     });
   }
+
+  // (호버는 아래 단일 composed trace 가 담당 — 자산군 차트 서식 동일)
 
   // ── 매매 마커 (밴드 상단 경계에 ▲/▼) ─────────────────────────
   // 누적 스택 순서 = displayKeys 순서. 밴드 k 상단 = displayKeys[0..idx(k)] 합.
@@ -183,19 +187,37 @@ export default function WeightAreaChart({
     hoverinfo: "skip",
   });
 
-  if (buyM.length) traces.push(markerTrace(buyM, "순매수 ▲", BUY_COLOR, "triangle-up"));
-  if (sellM.length) traces.push(markerTrace(sellM, "순매도 ▼", SELL_COLOR, "triangle-down"));
+  if (buyM.length) traces.push(markerTrace(buyM, "순매수", BUY_COLOR, "triangle-up"));
+  if (sellM.length) traces.push(markerTrace(sellM, "순매도", SELL_COLOR, "triangle-down"));
 
-  // 거래 요약 줄 — x-unified 툴팁은 trace 역순(데이터 끝=최상단)으로 쌓이므로
-  // 배열 맨 끝에 둬 툴팁 최상단에 표시. 보이지 않는 trace(투명 마커=줄머리 dot 제거),
-  // 거래일에만 y 값(그 외 null) → 그 날짜 툴팁에만 표시(누수 없음).
+  // ── 통합 툴팁(x-unified, 자산군 차트와 동일 서식): dense composed text.
+  //   종목별 비중 = ■색 swatch(비중>0, 내림차순) + 거래일 매매줄. 매매없는 날은
+  //   비중줄만(상단 빈줄 없음). dense(모든 날짜 점)라 인접일 누수 없음.
+  const composed = dates.map((d) => {
+    const m = byDate.get(d);
+    const rows: { k: string; w: number; color: string }[] = [];
+    displayKeys.forEach((k, i) => {
+      const w = m?.get(k) ?? 0;
+      if (w > 0) rows.push({ k, w, color: colorOf(k, i) });
+    });
+    if (etcKeys.length > 0) {
+      const s = etcKeys.reduce((a, kk) => a + (m?.get(kk) ?? 0), 0);
+      if (s > 0) rows.push({ k: `기타 (${etcKeys.length})`, w: s, color: "#9ca3af" });
+    }
+    rows.sort((a, b) => b.w - a.w);
+    const lines = rows.map(
+      (r) => `<span style="color:${r.color}">■</span> ${r.k} ${r.w.toFixed(1)}%`);
+    const ts = daySummary.get(d);
+    if (ts) lines.push(ts);
+    return lines.join("<br>");
+  });
   traces.push({
     x: dates,
-    y: dates.map((d) => (daySummary.has(d) ? 100 : null)) as (number | null)[],
-    text: dates.map((d) => daySummary.get(d) ?? ""),
+    y: dates.map(() => 100),
+    text: composed,
     type: "scatter",
     mode: "markers",
-    name: "거래",
+    name: "",
     marker: { color: "rgba(0,0,0,0)", size: 0.1 },
     showlegend: false,
     hovertemplate: "%{text}<extra></extra>",
@@ -208,11 +230,16 @@ export default function WeightAreaChart({
       layout={{
         autosize: true,
         height: 480,
-        margin: { t: 24, r: 16, b: 40, l: 48 },
-        xaxis: { title: { text: "" } },
+        // l/r margin 을 종목수익률 차트와 동일하게 → x 날짜 눈금 위치 정렬
+        margin: { t: 40, r: 62, b: 40, l: 56 },
+        // 공통 x 날짜 도메인 고정 → 종목수익률 차트와 날짜 눈금 x위치 정렬
+        xaxis: { title: { text: "" }, type: "date",
+                 ...(xRange ? { range: xRange, autorange: false } : {}) },
         yaxis: { title: { text: "비중 (%)" }, range: [0, 100], ticksuffix: "%" },
         hovermode: "x unified",
-        legend: { orientation: "v", x: 1.02, y: 1, font: { size: 11 } },
+        hoverlabel: { align: "left" },   // 값 우측정렬 들여쓰기 제거
+        // legend 상단 가로 (종목수익률 차트와 동일 스타일)
+        legend: { orientation: "h", x: 0, y: 1.04, xanchor: "left", yanchor: "bottom", font: { size: 11 } },
         showlegend: true,
       }}
       config={{ displayModeBar: false, responsive: true }}

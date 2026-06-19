@@ -437,8 +437,11 @@ export const fetchFxPosition = async (
 
 export const fetchSecurities = async (
   code: string,
+  start?: string,
 ): Promise<SecuritiesResponseDTO> => {
-  const r = await api.get<SecuritiesResponseDTO>(`/funds/${code}/securities`);
+  const r = await api.get<SecuritiesResponseDTO>(`/funds/${code}/securities`, {
+    params: start ? { start } : {},
+  });
   return r.data;
 };
 
@@ -452,6 +455,19 @@ export const fetchSecurityReturn = async (
   const r = await api.get<SecurityReturnResponseDTO>(
     `/funds/${code}/security-returns`,
     { params: { item_cd: itemCd, item_nm: itemNm, start, end } },
+  );
+  return r.data;
+};
+
+export const fetchAssetClassReturn = async (
+  code: string,
+  assetClass: string,
+  start: string,
+  end: string,
+): Promise<SecurityReturnResponseDTO> => {
+  const r = await api.get<SecurityReturnResponseDTO>(
+    `/funds/${code}/asset-class-return`,
+    { params: { asset_class: assetClass, start, end } },
   );
   return r.data;
 };
