@@ -1061,11 +1061,23 @@ def _build_linked_market_enrichment(
 
     internal = _build_enrichment(market_payload, market_period, _MARKET_FUND_CODE)
     note = _CLIENT_NOTE_BY_STATUS.get(internal.source_consistency_status)
+    # 신규 _market 산출물은 evidence 를 stored(draft/final)가 아니라
+    # read-time(_resolve_citations)으로만 해석한다(메인 시장뷰와 동일 로직).
+    # linked 섹션도 시장 코멘트 본문 [claim:hash] 의 claim provenance 로 evidence 를
+    # 복원한다. 해석 결과가 비면(구 [ref:N]-only 코멘트) stored(internal) fallback.
+    evidence = internal.evidence_annotations
+    evidence_source = internal.evidence_annotations_source
+    if _is_safe_for_client(internal.source_consistency_status):
+        _c, _claims, resolved_ev, _seg = _resolve_citations(
+            market_payload.get("final_comment") or "", market_period)
+        if resolved_ev:
+            evidence = resolved_ev
+            evidence_source = "approved"
     return LinkedMarketEnrichmentDTO(
         market_period=market_period,
         market_period_fallback=fallback_used,
-        evidence_annotations=internal.evidence_annotations,
-        evidence_annotations_source=internal.evidence_annotations_source,
+        evidence_annotations=evidence,
+        evidence_annotations_source=evidence_source,
         related_news=internal.related_news,
         related_news_source=internal.related_news_source,
         indicator_chart=internal.indicator_chart,
