@@ -109,7 +109,6 @@ export default function SecurityReturnChart({
         type: "scatter",
         mode: "lines",
         name: nm,
-        yaxis: "y2",
         stackgroup: "wstack",
         line: { color: col, width: 0.3 },
         fillcolor: withAlpha(col, 0.45),
@@ -123,7 +122,6 @@ export default function SecurityReturnChart({
       type: "scatter",
       mode: "lines",
       name: "편입비중",
-      yaxis: "y2",
       line: { color: "rgba(129,140,248,0.45)", width: 0.5 },
       fill: "tozeroy",
       fillcolor: "rgba(129,140,248,0.13)",
@@ -131,17 +129,23 @@ export default function SecurityReturnChart({
     });
   }
 
+  // 영역(편입비중)이 있으면 수익률 라인/마커를 overlay 축(y2)에 둬 영역 위로 올린다.
+  // (Plotly 는 overlay 축 trace 를 base 축 trace 위에 렌더 → 영역=base y, 라인=overlay y2)
+  const hasArea = compNames.length > 0 || hasWeight;
+  const retAxis: "y" | "y2" = hasArea ? "y2" : "y";
+
   traces.push({
     x: dates,
     y: values,
     type: "scatter",
     mode: "lines",
     name: itemNm,
+    yaxis: retAxis,
     line: { color: "#374151", width: 1.5 },
     hoverinfo: "skip",
   });
-  if (buys.length) traces.push(markerTrace(buys, "매수/발행", BUY_COLOR, "triangle-up"));
-  if (sells.length) traces.push(markerTrace(sells, "매도/환매", SELL_COLOR, "triangle-down"));
+  if (buys.length) traces.push({ ...markerTrace(buys, "매수/발행", BUY_COLOR, "triangle-up"), yaxis: retAxis });
+  if (sells.length) traces.push({ ...markerTrace(sells, "매도/환매", SELL_COLOR, "triangle-down"), yaxis: retAxis });
 
   // ── 통합 툴팁(x-unified): 지수 + 편입비중 + 매수/매도 한 박스(일별 비중추이 서식).
   //    dense(모든 날짜) trace 라 인접일 누수 없음. 라인/마커/비중은 hover skip.
@@ -203,6 +207,7 @@ export default function SecurityReturnChart({
     type: "scatter",
     mode: "markers",
     name: "",
+    yaxis: retAxis,
     marker: { color: "rgba(0,0,0,0)", size: 0.1 },
     showlegend: false,
     hovertemplate: "%{text}<extra></extra>",
@@ -257,7 +262,7 @@ export default function SecurityReturnChart({
   const mColor = up ? UP_COLOR : DOWN_COLOR;
   const annotations = measure
     ? [{
-        x: measure.x1, y: measure.y1, xref: "x" as const, yref: "y" as const,
+        x: measure.x1, y: measure.y1, xref: "x" as const, yref: retAxis,
         text: `${up ? "▲" : "▼"} ${measure.pct >= 0 ? "+" : ""}${measure.pct.toFixed(2)}%`,
         showarrow: true, arrowhead: 3, arrowwidth: 1.5, arrowcolor: mColor,
         ax: 0, ay: up ? -34 : 34,
@@ -267,7 +272,7 @@ export default function SecurityReturnChart({
     : [];
   const shapes = measure
     ? [{
-        type: "line" as const, xref: "x" as const, yref: "y" as const,
+        type: "line" as const, xref: "x" as const, yref: retAxis,
         x0: measure.x0, y0: measure.y0, x1: measure.x1, y1: measure.y1,
         line: { color: mColor, width: 1, dash: "dot" as const },
       }]
@@ -289,19 +294,27 @@ export default function SecurityReturnChart({
           title: { text: "" }, type: "date",
           ...(xAxisRange ? { range: xAxisRange, autorange: false } : {}),
         },
-        yaxis: {
-          title: { text: "수익률 지수 (시작=100)" },
-          ...(yRange ? { range: yRange, autorange: false } : { autorange: true }),
-        },
-        ...(hasWeight
+        // 영역 있으면 base y=편입비중(오른쪽 표시), overlay y2=수익률(왼쪽 표시)로 swap.
+        // 화면 축 위치는 유지하면서 수익률 라인/마커를 영역 위 레이어로 올린다.
+        ...(hasArea
           ? {
-              yaxis2: {
+              yaxis: {
                 title: { text: "편입비중 %", standoff: 8 },
-                overlaying: "y", side: "right", rangemode: "tozero",
+                side: "right", rangemode: "tozero",
                 ticksuffix: "%", showgrid: false, automargin: false,
               },
+              yaxis2: {
+                title: { text: "수익률 지수 (시작=100)" },
+                overlaying: "y", side: "left",
+                ...(yRange ? { range: yRange, autorange: false } : { autorange: true }),
+              },
             }
-          : {}),
+          : {
+              yaxis: {
+                title: { text: "수익률 지수 (시작=100)" },
+                ...(yRange ? { range: yRange, autorange: false } : { autorange: true }),
+              },
+            }),
         annotations,
         shapes,
         hovermode: "x unified",

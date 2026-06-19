@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { useBrinson } from "../hooks/useBrinson";
 import { useFunds } from "../hooks/useFunds";
 import MetaBadge from "../components/common/MetaBadge";
@@ -75,6 +75,8 @@ export default function BrinsonTab({ fundCode }: Props) {
   const [endDate, setEndDate] = useState(defaultEnd);
   const [method, setMethod] = useState<BrinsonMappingMethod>(defaultMethod);
   const [fxSplit, setFxSplit] = useState(true);
+  // 표0 펼치기: 기본=자산군 비중만, 펼치면 AP 종목별 노출
+  const [tbl0Expanded, setTbl0Expanded] = useState(false);
 
   // 적용(applied) 상태 — 실제 조회를 구동. "조회" 버튼을 눌러야 draft → applied 반영.
   const [applied, setApplied] = useState({
@@ -331,78 +333,146 @@ export default function BrinsonTab({ fundCode }: Props) {
         </div>
       )}
 
-      {/* 표 0: BM/SAA 구성 vs AP 자산배분 (item4) */}
-      {data.bm_source !== "none" && (
-        <div style={{ marginBottom: 16 }}>
-          <h3 style={{ fontSize: 14, margin: "4px 0 8px" }}>
-            {data.bm_source === "SAA" ? "전략적 자산배분(SAA) 구성" : "벤치마크(BM) 구성"}
-            <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 400 }}>
-              {" "}— 목표 셋팅 vs AP 실제
-            </span>
-          </h3>
-          <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
-            {/* 좌: 구성 정의 */}
-            <table style={{ borderCollapse: "collapse", fontSize: 12 }}>
-              <thead>
-                <tr style={{ background: "#f9fafb" }}>
-                  <th style={th}>{data.bm_source === "SAA" ? "자산군" : "지수"}</th>
-                  <th style={thr}>목표비중</th>
-                  {data.bm_source === "BM" && <th style={th}>구분</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {data.bm_components.map((c, i) => (
-                  <tr key={i}>
-                    <td style={td}>{c.name}</td>
-                    <td style={tdr}>{fmtWeight(c.weight, 1)}</td>
-                    {data.bm_source === "BM" && (
-                      <td style={{ ...td, fontSize: 11, color: "#6b7280" }}>
-                        {c.asset_class}
-                        {c.region === "ex_KR" ? " · 해외" : ""}
-                        {c.hedged ? " · H" : ""}
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {/* 우: 자산군 목표 vs AP 비교 */}
+      {/* 표 0: SAA(BM) 구성 vs AP 실제 — 자산군 비교(기본) + 펼치기 시 AP 종목 (FX 제외) */}
+      {data.bm_source !== "none" && (() => {
+        const isBM = data.bm_source === "BM";
+        // BM '유동성'(KAP MMI Call 등)을 AP와 동일하게 '유동성및기타'로 정규화 → 같은 블록으로 묶음
+        const normCls = (c: string) => (c === "유동성" ? "유동성및기타" : c);
+        // 자산군별 BM 지수(BM=지수명, SAA="—") + 비중
+        const saaByClass = new Map<string, { label: string; weight: number }[]>();
+        for (const c of data.bm_components) {
+          if (c.asset_class === "FX") continue;
+          const g = normCls(c.asset_class);
+          const arr = saaByClass.get(g) ?? [];
+          arr.push({ label: isBM ? c.name : "—", weight: c.weight });
+          saaByClass.set(g, arr);
+        }
+        // 자산군별 AP 보유종목 (비중 내림차순)
+        const apByClass = new Map<string, { label: string; weight: number }[]>();
+        for (const s of data.sec_contrib) {
+          if (s.asset_class === "FX") continue;
+          const g = normCls(s.asset_class);
+          const arr = apByClass.get(g) ?? [];
+          arr.push({ label: s.item_nm, weight: s.weight_pct });
+          apByClass.set(g, arr);
+        }
+        for (const arr of apByClass.values()) arr.sort((a, b) => b.weight - a.weight);
+        // 자산군 소계는 asset_rows(정확값) 기준으로 조회 (반올림 누적 방지)
+        const subByClass = new Map(enrichedRows.map((r) => [r.asset_class, r]));
+        // 자산군 합집합(FX 제외) → ROW_ORDER 순
+        const classes = [...new Set([...saaByClass.keys(), ...apByClass.keys()])]
+          .filter((g) => g !== "FX")
+          .sort((a, b) => (ROW_ORDER_MAP.get(a) ?? 99) - (ROW_ORDER_MAP.get(b) ?? 99));
+
+        return (
+          <div style={{ marginBottom: 16 }}>
+            <h3
+              style={{
+                fontSize: 14,
+                margin: "4px 0 8px",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+              }}
+            >
+              {isBM ? "벤치마크(BM) 구성" : "전략적 자산배분(SAA) 구성"}
+              <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 400 }}>
+                목표 셋팅 vs AP 실제 (FX 제외)
+              </span>
+              <button
+                type="button"
+                onClick={() => setTbl0Expanded((v) => !v)}
+                style={{
+                  fontSize: 11,
+                  fontWeight: 500,
+                  padding: "2px 10px",
+                  border: "1px solid #d1d5db",
+                  borderRadius: 4,
+                  background: "#fff",
+                  cursor: "pointer",
+                  color: "#374151",
+                }}
+              >
+                {tbl0Expanded ? "▲ 접기" : "▼ 종목 펼치기"}
+              </button>
+            </h3>
             <table style={{ borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
                 <tr style={{ background: "#f9fafb" }}>
                   <th style={th}>자산군</th>
-                  <th style={thr}>{data.bm_source === "SAA" ? "SAA목표" : "BM목표"}</th>
-                  <th style={thr}>AP실제</th>
+                  <th style={th}>{isBM ? "BM 지수" : "SAA"}</th>
+                  <th style={thr}>{isBM ? "BM비중" : "SAA비중"}</th>
+                  <th style={tdGap} />
+                  <th style={th}>AP</th>
+                  <th style={thr}>AP비중</th>
                   <th style={thr}>차이</th>
                 </tr>
               </thead>
               <tbody>
-                {enrichedRows
-                  .filter((r) => r.bm_weight !== 0 || r.ap_weight !== 0)
-                  .map((r) => {
-                    const d = r.ap_weight - r.bm_weight;
-                    return (
-                      <tr key={r.asset_class}>
-                        <td style={td}>{r.asset_class}</td>
-                        <td style={tdr}>{fmtWeight(r.bm_weight, 1)}</td>
-                        <td style={tdr}>{fmtWeight(r.ap_weight, 1)}</td>
-                        <td style={{ ...tdr, color: "#6b7280" }}>
-                          {d >= 0 ? "+" : ""}
-                          {d.toFixed(1)}%p
-                        </td>
-                      </tr>
-                    );
-                  })}
+                {classes.flatMap((g) => {
+                  const saa = saaByClass.get(g) ?? [];
+                  const ap = apByClass.get(g) ?? [];
+                  const sub = subByClass.get(g);
+                  const apSub = sub?.ap_weight ?? ap.reduce((s, x) => s + x.weight, 0);
+                  const bmSub = sub?.bm_weight ?? saa.reduce((s, x) => s + x.weight, 0);
+                  const diff = apSub - bmSub;
+                  // BM은 자산군당 한 줄 — 지수명 합치고 비중은 소계 표시
+                  const bmLabel = saa.map((s) => s.label).filter((l) => l && l !== "—").join(", ");
+                  const rows: ReactNode[] = [];
+                  // 자산군 행 (항상 표시): BM 지수/비중 + AP 자산군 비중(±%p vs BM)
+                  rows.push(
+                    <tr
+                      key={`${g}-cls`}
+                      style={{ borderTop: "2px solid #e5e7eb", background: "#fcfcfd" }}
+                    >
+                      <td style={{ ...td, fontWeight: 600 }}>{g}</td>
+                      <td style={{ ...td, color: "#6b7280" }}>{bmLabel}</td>
+                      <td style={{ ...tdr, fontWeight: 600 }}>{fmtWeight(bmSub, 1)}</td>
+                      <td style={tdGap} />
+                      <td style={{ ...td, fontWeight: 600 }}>{g}</td>
+                      <td style={{ ...tdr, fontWeight: 600 }}>{fmtWeight(apSub, 1)}</td>
+                      <td
+                        style={{
+                          ...tdr,
+                          fontWeight: 600,
+                          color: diff >= 0 ? "#16a34a" : "#b91c1c",
+                        }}
+                      >
+                        {diff >= 0 ? "+" : ""}
+                        {diff.toFixed(1)}%p
+                      </td>
+                    </tr>,
+                  );
+                  // 펼침 시 AP 종목 행 (BM 컬럼 빈칸)
+                  if (tbl0Expanded) {
+                    for (let i = 0; i < ap.length; i++) {
+                      rows.push(
+                        <tr key={`${g}-ap-${i}`}>
+                          <td style={td} />
+                          <td style={td} />
+                          <td style={td} />
+                          <td style={tdGap} />
+                          <td style={{ ...td, paddingLeft: 18, color: "#374151" }}>
+                            {ap[i].label}
+                          </td>
+                          <td style={tdr}>{fmtWeight(ap[i].weight, 1)}</td>
+                          <td style={tdr} />
+                        </tr>,
+                      );
+                    }
+                  }
+                  return rows;
+                })}
               </tbody>
             </table>
+            {!isBM && (
+              <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
+                ※ BM 미설정 펀드 — SAA(MP) 목표비중으로 비중만 비교 (수익률/기여 분해는 미제공).
+              </div>
+            )}
           </div>
-          {data.bm_source === "SAA" && (
-            <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
-              ※ BM 미설정 펀드 — SAA(MP) 목표비중으로 비중만 비교 (수익률/기여 분해는 미제공).
-            </div>
-          )}
-        </div>
-      )}
+        );
+      })()}
 
       {/* 표 1: 자산군별 기여수익률 (BM기여 + 초과기여 추가) */}
       <div style={{ marginBottom: 16 }}>
@@ -640,3 +710,5 @@ const tdr: CSSProperties = {
   textAlign: "right",
   fontVariantNumeric: "tabular-nums",
 };
+// BM 블록 ↔ AP 블록 사이 시각 분리용 좁은 갭 컬럼
+const tdGap: CSSProperties = { width: 16, padding: 0, borderBottom: "none" };
