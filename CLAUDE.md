@@ -721,3 +721,29 @@ DashboardPage 신규 탭 "거래내역" — 거래내역 조회 + 일별 비중 
 2. **마스터 토글(자산군↔종목)**: 현재 영역차트에만 있는 asset/security 토글을 **탭 전체(mother)** 로 승격 → 거래내역·일별비중추이·수익률차트 모두 동일 기준 적용.
 3. **성과분석 표0 간소화**: 컬럼 = 자산군 / SAA(BM) ticker / SAA비중 / AP ticker / AP비중. **FX 제외**. (※ "AP ticker" 정의 불명확 — 자산군별 실제 대표 보유종목? 다음 세션 확인 필요.)
 4. **성과분석 우측 라인차트**: (a) AP vs BM 누적수익 + 자산군별 기여수익률 선택, (b) 기간별 비중 AP vs SAA 추이.
+
+## 2026-06-19 세션 (거래내역 탭 전면 개편 · 자산군 수익률 차트 · 분류 fix)
+
+거래내역 탭(web/+api) 대규모 개편. 위 B1/B2 완료. (성과분석 B3/B4는 미착수)
+
+### 거래내역 탭 (`TransactionsTab.tsx`)
+- **마스터 컨트롤**: 상단에 `기준(자산군↔종목)` 토글 + `기간` 프리셋을 통합 → 거래내역·일별비중추이·종목수익률 **공통 기간**(`chartStart = txnStart`). 비중추이 개별 기간 드롭다운 제거.
+- **설정후 프리셋**: 거래내역 기간 + 차트 기간에 "설정후"(inception~) 추가. inception=`useFunds` 메타.
+- **거래내역 표**: 요약(좌)+세부내역(우) side-by-side, 높이 매칭(요약 높이=세부 기본, "펼치기"로 전체). 요약 컬럼=자산군→종목명, **자산군순→순매수 내림차순** 정렬. 세부=날짜desc, 자산군→종목명.
+- **종목 수익률 드롭다운**: 현재 보유 + **과거 편입(현재 미보유)** optgroup 하단 추가 (`securities?start=`, `currently_held` 플래그).
+
+### 자산군 분류 fix (`_classify_6class`)
+- 거래 분류가 `AST_CLSF_CD_NM=''`로 호출 → KR상장 해외ETF(ACE 미국S&P500 등) 유동성 오분류. **universe DB(방법3) 1순위 조회** 추가(source of truth, `_load_universe_class_map`). 거래·보유·편입이력 일괄 보정.
+
+### 자산군 수익률 차트 (자산군 모드)
+- 일별 비중 × 종목가격 **바스켓 수익지수**(클래스 내 정규화 Σwᵢ·rᵢ/Σwᵢ, start=100). `load_asset_class_return_index` + `_load_scip_prices_batch` + `GET /funds/{code}/asset-class-return`. 종목 차트(`SecurityReturnChart`) 재사용.
+- 편입비중 보조축 = **종목별 stacked 색상 영역**. 툴팁 종목별 분해(`weight_components`/`trade_components`).
+
+### 차트 공통 (`SecurityReturnChart`/`WeightAreaChart`)
+- 두 차트 **x축 날짜 정렬**(공통 `xRange` + l/r margin 고정), **legend 상단**.
+- 툴팁 통일: x-unified **composed-text**(색상 ■ swatch, 0% 숨김, 인접일 누수방지, `hoverlabel align:left`). 지수 우측 `(+%)` 시작대비. 거래 마커 `[c#]`식 누수 fix.
+- 종목수익률: 드래그 줌 시 **y auto-fit**, **변화율 측정** 버튼(드래그=구간 %변화율 markup ↑/↓).
+
+### 기타
+- `report_service._build_linked_market_enrichment`: 펀드 운용보고 "참고 시장 판단 근거" evidence를 stored→**read-time `_resolve_citations`** 로 복원(신규 _market 8기간 빈칸 fix). 관련 [[reference_report_enrichment_readtime]].
+- 펀드 코멘트 56건(8기간×7펀드) Opus4.8 재생성+승인(data/ gitignore).
