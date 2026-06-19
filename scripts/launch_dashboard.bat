@@ -40,17 +40,32 @@ echo.
 REM warmup CLI pre-builds disk caches; disable server startup warmup to avoid duplication
 set "OCIO_WARMUP_ON_STARTUP=false"
 
-echo [1/5] Starting FastAPI ...
-start "FastAPI :!OCIO_API_PORT!" "%~dp0launch_fastapi.bat"
+REM ----- launch servers: one Windows Terminal window with tabs if available, else separate windows -----
+set "HAVE_WT=0"
+where wt >nul 2>nul && set "HAVE_WT=1"
 
-echo [2/5] Starting Vite ...
-start "Vite :!OCIO_WEB_PORT!" "%~dp0launch_vite.bat"
-
-if "%RUN_DU%"=="1" (
-    echo [3/5] Starting Daily Update ...
-    start "Daily Update" "%~dp0launch_daily_update.bat"
+if "!HAVE_WT!"=="1" (
+    echo [1-3/5] Starting FastAPI + Vite as Windows Terminal tabs ...
+    set WT_ARGS=new-tab --title "FastAPI :!OCIO_API_PORT!" cmd /k "%~dp0launch_fastapi.bat"
+    set WT_ARGS=!WT_ARGS! ; new-tab --title "Vite :!OCIO_WEB_PORT!" cmd /k "%~dp0launch_vite.bat"
+    if "%RUN_DU%"=="1" (
+        echo       + Daily Update tab
+        set WT_ARGS=!WT_ARGS! ; new-tab --title "Daily Update" cmd /k "%~dp0launch_daily_update.bat"
+    ) else (
+        echo       Daily Update SKIPPED ^(declined / timeout^)
+    )
+    start "" wt !WT_ARGS!
 ) else (
-    echo [3/5] Daily Update SKIPPED ^(declined / timeout^)
+    echo [1/5] Starting FastAPI ...
+    start "FastAPI :!OCIO_API_PORT!" "%~dp0launch_fastapi.bat"
+    echo [2/5] Starting Vite ...
+    start "Vite :!OCIO_WEB_PORT!" "%~dp0launch_vite.bat"
+    if "%RUN_DU%"=="1" (
+        echo [3/5] Starting Daily Update ...
+        start "Daily Update" "%~dp0launch_daily_update.bat"
+    ) else (
+        echo [3/5] Daily Update SKIPPED ^(declined / timeout^)
+    )
 )
 
 echo [4/5] Warming up caches ^(holdings/transactions/Brinson, default params^) ...
