@@ -66,8 +66,9 @@ class SecurityItemDTO(BaseModel):
     item_cd: str
     item_nm: str
     bucket: str             # 6버킷 (국내주식~금/대체)
-    weight: float           # 최근일 비중 %
+    weight: float           # 최근일 비중 % (현재 미보유=0)
     has_price: bool         # SCIP 가격 커버리지
+    currently_held: bool = True   # False=편입이력만(현재 미보유). 드롭다운 하단 노출
 
 
 class SecuritiesResponseDTO(BaseModel):
@@ -92,6 +93,19 @@ class SecurityWeightPointDTO(BaseModel):
     weight: float           # 종목 편입비중 % (보조축 레이어용)
 
 
+class WeightComponentDTO(BaseModel):
+    date: str
+    name: str                # 종목명
+    weight: float            # 종목 편입비중 % (자산군 툴팁 종목별 분해용)
+
+
+class TradeComponentDTO(BaseModel):
+    date: str
+    name: str                # 종목명
+    side: str                # 순매수/순매도
+    amount: float            # 순매수액(억)
+
+
 class SecurityReturnResponseDTO(BaseModel):
     meta: BaseMeta
     fund_code: str
@@ -101,3 +115,6 @@ class SecurityReturnResponseDTO(BaseModel):
     points: list[SecurityReturnPointDTO]
     trades: list[SecurityTradeMarkerDTO]
     weights: list[SecurityWeightPointDTO]   # 보조축 비중 시계열 (옅은 레이어)
+    # 자산군 툴팁 전용 종목별 분해 (종목 차트에서는 빈 list)
+    weight_components: list[WeightComponentDTO] = []
+    trade_components: list[TradeComponentDTO] = []

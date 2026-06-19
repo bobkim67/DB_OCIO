@@ -12,8 +12,10 @@ from ..schemas.transactions import (
     SecurityReturnResponseDTO,
     SecurityTradeMarkerDTO,
     SecurityWeightPointDTO,
+    TradeComponentDTO,
     TransactionRowDTO,
     TransactionsResponseDTO,
+    WeightComponentDTO,
     WeightHistoryPointDTO,
     WeightHistoryResponseDTO,
     WeightMarkerDTO,
@@ -213,7 +215,9 @@ def build_fx_position(fund_code: str, start_date: str) -> FxPositionResponseDTO:
     )
 
 
-def build_securities(fund_code: str) -> SecuritiesResponseDTO:
+def build_securities(
+    fund_code: str, start_date: str | None = None,
+) -> SecuritiesResponseDTO:
     if fund_code not in FUND_LIST:
         raise KeyError(fund_code)
     from modules.data_loader import load_fund_securities
@@ -221,13 +225,14 @@ def build_securities(fund_code: str) -> SecuritiesResponseDTO:
     warnings: list[str] = []
     items: list[SecurityItemDTO] = []
     try:
-        df = load_fund_securities(fund_code)
+        df = load_fund_securities(fund_code, start_date=start_date)
         if df is not None and not df.empty:
             for _, r in df.iterrows():
                 items.append(SecurityItemDTO(
                     item_cd=str(r["item_cd"]), item_nm=str(r["item_nm"]),
                     bucket=str(r["bucket"]), weight=float(r["weight"]),
                     has_price=bool(r["has_price"]),
+                    currently_held=bool(r.get("currently_held", True)),
                 ))
     except Exception as exc:
         warnings.append(f"DB 접속 실패: {type(exc).__name__}")
@@ -292,4 +297,86 @@ def build_security_return(
         ),
         fund_code=fund_code, item_cd=item_cd, item_nm=item_nm,
         start_date=start_date, points=points, trades=trades, weights=weights,
+    )
+
+
+def build_asset_class_return(
+    fund_code: str, asset_class: str, start_date: str, end_date: str,
+) -> SecurityReturnResponseDTO:
+    """자산군 바스켓 수익지수(클래스 내 정규화) + 자산군 순매수 마커 + 자산군 비중 보조축.
+    종목 수익률과 동일 DTO 재사용(item_cd=item_nm=자산군)."""
+    if fund_code not in FUND_LIST:
+        raise KeyError(fund_code)
+    from modules.data_loader import (
+        load_asset_class_return_index,
+        load_weight_trade_markers,
+        load_weight_history_lookthrough,
+        _asset_class_member_names,
+    )
+
+    warnings: list[str] = []
+    points: list[SecurityReturnPointDTO] = []
+    trades: list[SecurityTradeMarkerDTO] = []
+    weights: list[SecurityWeightPointDTO] = []
+    weight_components: list[WeightComponentDTO] = []
+    trade_components: list[TradeComponentDTO] = []
+    try:
+        idx, warn = load_asset_class_return_index(
+            fund_code, asset_class, start_date, end_date)
+        if warn:
+            warnings.append(warn)
+        if idx is not None and not idx.empty:
+            points = [
+                SecurityReturnPointDTO(date=str(r["date"]), value=float(r["value"]))
+                for _, r in idx.iterrows()
+            ]
+        # 자산군 순매수 마커
+        mdf = load_weight_trade_markers(fund_code, start_date, "asset", end_date)
+        if mdf is not None and not mdf.empty:
+            m = mdf[mdf["key"] == asset_class]
+            for _, r in m.iterrows():
+                net = float(r["net_eok"])
+                trades.append(SecurityTradeMarkerDTO(
+                    date=str(r["date"]),
+                    side="순매수" if net >= 0 else "순매도",
+                    amount=abs(net)))
+        # 자산군 비중 보조축 + 종목별 분해(툴팁용)
+        members = _asset_class_member_names(fund_code, asset_class, start_date)
+        wdf, _fof, _keys = load_weight_history_lookthrough(fund_code, start_date, "asset")
+        if wdf is not None and not wdf.empty:
+            w = wdf[wdf["key"] == asset_class]
+            weights = [
+                SecurityWeightPointDTO(date=str(r["date"]), weight=float(r["weight"]))
+                for _, r in w.iterrows()
+            ]
+        # 종목별 편입비중 (security 레벨에서 멤버 종목만)
+        swdf, _f2, _k2 = load_weight_history_lookthrough(fund_code, start_date, "security")
+        if swdf is not None and not swdf.empty:
+            sw = swdf[swdf["key"].isin(members)]
+            weight_components = [
+                WeightComponentDTO(date=str(r["date"]), name=str(r["key"]),
+                                   weight=float(r["weight"]))
+                for _, r in sw.iterrows()
+            ]
+        # 종목별 순매수 (security 레벨 마커에서 멤버 종목만)
+        smdf = load_weight_trade_markers(fund_code, start_date, "security", end_date)
+        if smdf is not None and not smdf.empty:
+            sm = smdf[smdf["key"].isin(members)]
+            for _, r in sm.iterrows():
+                net = float(r["net_eok"])
+                trade_components.append(TradeComponentDTO(
+                    date=str(r["date"]), name=str(r["key"]),
+                    side="순매수" if net >= 0 else "순매도", amount=abs(net)))
+    except Exception as exc:
+        warnings.append(f"DB 접속 실패: {type(exc).__name__}")
+
+    return SecurityReturnResponseDTO(
+        meta=BaseMeta(
+            source="db" if points else "mock",
+            sources=[SourceBreakdown(component="asset_class_return", kind="db")] if points else [],
+            is_fallback=not points, warnings=warnings, generated_at=_now(),
+        ),
+        fund_code=fund_code, item_cd=asset_class, item_nm=asset_class,
+        start_date=start_date, points=points, trades=trades, weights=weights,
+        weight_components=weight_components, trade_components=trade_components,
     )

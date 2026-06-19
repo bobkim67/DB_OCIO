@@ -895,6 +895,40 @@ def load_fund_holdings_weight(fund_code: str, date: int) -> pd.DataFrame:
 # Monitoring/auto_classify.py 패턴 + AST_CLSF_CD_NM 결합
 # ============================================================
 
+# universe(방법3) 분류 → 거래내역/보유 6분류 매핑
+_UNIVERSE_6CLASS = {
+    '국내주식': '국내주식', '해외주식': '해외주식',
+    '국내채권': '국내채권', '해외채권': '해외채권',
+    '대체': '대체투자', 'FX': 'FX', '유동성및기타': '유동성',
+}
+
+
+@_ttl_cache()
+def _load_universe_class_map() -> dict:
+    """solution.universe_non_derivative 방법3 → {ISIN: 6class}. 자산군 source of truth.
+
+    거래내역은 AST_CLSF_CD_NM 이 비어(='') 들어와 _classify_6class 휴리스틱이 KR상장
+    해외 ETF(예: ACE 미국S&P500)를 유동성으로 오분류 → universe DB 로 1순위 보정.
+    조회 실패 시 빈 dict (휴리스틱 fallback)."""
+    try:
+        conn = get_pandas_connection('solution')
+        try:
+            df = pd.read_sql(
+                "SELECT ISIN, classification FROM universe_non_derivative "
+                "WHERE classification_method='방법3' AND ISIN IS NOT NULL", conn)
+        finally:
+            conn.close()
+    except Exception:
+        return {}
+    out = {}
+    for _, r in df.iterrows():
+        isin = str(r['ISIN']).strip()
+        cls = _UNIVERSE_6CLASS.get(str(r['classification']).strip())
+        if isin and cls:
+            out[isin] = cls
+    return out
+
+
 def _classify_6class(row) -> str:
     """
     AST_CLSF_CD_NM + ITEM_CD + ITEM_NM 조합으로 6분류 매핑.
@@ -909,6 +943,11 @@ def _classify_6class(row) -> str:
     for pattern, cls in _TRADE_ITEM_NAME_CLASSIFY.items():
         if pattern in item_nm_raw:
             return cls
+
+    # universe DB(방법3) source of truth — 수동 override/name 패턴 다음, 휴리스틱 이전.
+    ucls = _load_universe_class_map().get(item_cd)
+    if ucls:
+        return ucls
 
     ast = str(row.get('AST_CLSF_CD_NM', '')).upper()
     item_cd = item_cd.upper()
@@ -3774,34 +3813,74 @@ def _scip_covered_isins(isins: list) -> set:
 
 
 @_ttl_cache()
-def load_fund_securities(fund_code: str) -> pd.DataFrame:
-    """수익률 차트용 보유종목 목록 (버킷 1~5, 최근일, 가격 커버리지 플래그).
+def load_fund_securities(fund_code: str, start_date: str = None) -> pd.DataFrame:
+    """수익률 차트용 보유종목 목록 (버킷 1~5, 가격 커버리지 플래그).
 
-    Returns: DataFrame[item_cd, item_nm, bucket, weight, has_price] (버킷·비중 정렬)
+    start_date 지정 시 [start_date, 오늘] 편입이력은 있으나 현재 미보유 종목을
+    하단에 추가(currently_held=False). 현재/과거 각 그룹 내 버킷순→비중(현재)/
+    EVL_AMT(과거) 내림차순 정렬.
+
+    Returns: DataFrame[item_cd, item_nm, bucket, weight, has_price, currently_held]
     """
+    frames = []
+    current_codes = set()
+
+    # 1) 현재 보유 (look-through, FoF 전개)
     df = load_fund_holdings_lookthrough(fund_code)
-    if df is None or df.empty:
-        return pd.DataFrame()
-    df = df.copy()
-    df['bucket'] = df['자산군'].map(_collapse_to_6bucket)
-    df = df[df['bucket'] != '유동성']
-    if df.empty:
+    if df is not None and not df.empty:
+        d = df.copy()
+        d['bucket'] = d['자산군'].map(_collapse_to_6bucket)
+        d = d[d['bucket'] != '유동성']
+        if not d.empty:
+            cur = pd.DataFrame({
+                'item_cd': d['ITEM_CD'].astype(str).str.strip(),
+                'item_nm': d['ITEM_NM'].astype(str),
+                'bucket': d['bucket'].astype(str),
+                'weight': pd.to_numeric(d.get('비중(%)'), errors='coerce').fillna(0.0),
+            })
+            cur['currently_held'] = True
+            cur['_sortw'] = cur['weight']
+            current_codes = set(cur['item_cd'])
+            frames.append(cur)
+
+    # 2) 편입이력(현재 미보유) — start_date 지정 시. FoF 면 자펀드 기준.
+    if start_date:
+        related = _get_관련_fund_list(fund_code)
+        children = [f for f in related if f != fund_code]
+        hist_funds = children if children else [fund_code]
+        s_int = str(start_date).replace('-', '')
+        parts = []
+        for f in hist_funds:
+            h = _load_holdings_range(f, s_int)
+            if h is not None and not h.empty:
+                parts.append(h)
+        if parts:
+            hist = pd.concat(parts, ignore_index=True)
+            hist['item_cd'] = hist['ITEM_CD'].astype(str).str.strip()
+            hist['bucket'] = hist['자산군'].map(_collapse_to_6bucket)
+            hist = hist[(hist['bucket'] != '유동성')
+                        & (~hist['item_cd'].isin(current_codes))]
+            if not hist.empty:
+                agg = (hist.groupby('item_cd')
+                       .agg(item_nm=('ITEM_NM', 'first'), bucket=('bucket', 'first'),
+                            _sortw=('EVL_AMT', 'max')).reset_index())
+                agg['weight'] = 0.0          # 현재 미보유 → 비중 0
+                agg['currently_held'] = False
+                frames.append(agg[['item_cd', 'item_nm', 'bucket', 'weight',
+                                   'currently_held', '_sortw']])
+
+    if not frames:
         return pd.DataFrame()
 
-    isins = [str(x).strip() for x in df['ITEM_CD'].dropna().unique()]
+    out = pd.concat(frames, ignore_index=True)
+    isins = [str(x).strip() for x in out['item_cd'].dropna().unique()]
     covered = _scip_covered_isins(isins)
-
-    out = pd.DataFrame({
-        'item_cd': df['ITEM_CD'].astype(str).str.strip(),
-        'item_nm': df['ITEM_NM'].astype(str),
-        'bucket': df['bucket'].astype(str),
-        'weight': pd.to_numeric(df.get('비중(%)'), errors='coerce').fillna(0.0),
-    })
     out['has_price'] = out['item_cd'].isin(covered)
+    out['_held'] = (~out['currently_held']).astype(int)   # 현재(0) 먼저, 과거(1) 하단
     out['_b'] = out['bucket'].map(
         lambda b: _SIX_BUCKET_ORDER.index(b) if b in _SIX_BUCKET_ORDER else 99)
-    out = (out.sort_values(['_b', 'weight'], ascending=[True, False])
-           .drop(columns='_b').reset_index(drop=True))
+    out = (out.sort_values(['_held', '_b', '_sortw'], ascending=[True, True, False])
+           .drop(columns=['_held', '_b', '_sortw']).reset_index(drop=True))
     return out
 
 
@@ -3892,6 +3971,140 @@ def load_security_return_with_trades(fund_code: str, item_cd: str,
     trades = [{'date': dt, 'side': dr, 'amount': round(amt, 2)}
               for (dt, dr), amt in sorted(agg.items())]
     return price, trades
+
+
+def _load_scip_prices_batch(isins, start_date: str = None) -> pd.DataFrame:
+    """여러 ISIN 의 FG Return(6) KRW 가격, 없으면 Total Return(39). 종목별 우선순위 적용.
+
+    Returns: DataFrame[date(YYYY-MM-DD), item_cd, price]
+    """
+    isins = [str(x).strip() for x in isins if str(x).strip()]
+    if not isins:
+        return pd.DataFrame(columns=['date', 'item_cd', 'price'])
+    conn = get_pandas_connection('SCIP')
+    try:
+        ph = ','.join(['%s'] * len(isins))
+        params = list(isins)
+        date_filter = ""
+        if start_date:
+            date_filter = " AND dp.timestamp_observation >= %s"
+            params.append(start_date)
+        df = pd.read_sql(f"""
+            SELECT d.ISIN AS item_cd, DATE(dp.timestamp_observation) AS date,
+                   dp.dataseries_id AS dsid, dp.data
+            FROM back_datapoint dp
+            JOIN back_dataset d ON dp.dataset_id = d.id
+            WHERE d.ISIN IN ({ph}) AND dp.dataseries_id IN (6, 39){date_filter}
+            ORDER BY d.ISIN, dp.timestamp_observation
+        """, conn, params=params)
+    finally:
+        conn.close()
+    if df.empty:
+        return pd.DataFrame(columns=['date', 'item_cd', 'price'])
+    rows = []
+    for icd, g in df.groupby('item_cd'):
+        use = g[g['dsid'] == 6]
+        cur = 'KRW'
+        if use.empty:
+            use = g[g['dsid'] == 39]
+            cur = None
+        use = use.drop_duplicates('date', keep='last').copy()
+        use['price'] = use['data'].apply(lambda b: _safe_parse_blob(b, cur))
+        use = use.dropna(subset=['price'])
+        for _, r in use.iterrows():
+            rows.append({
+                'date': pd.to_datetime(r['date']).strftime('%Y-%m-%d'),
+                'item_cd': str(icd).strip(), 'price': float(r['price']),
+            })
+    return pd.DataFrame(rows)
+
+
+def _asset_class_member_names(fund_code: str, asset_class: str,
+                              start_date: str) -> set:
+    """[start_date, 오늘] 동안 해당 자산군에 편입된 종목명 집합 (FoF 자펀드 union).
+    자산군 툴팁 종목별 분해용 (weight/trade 필터 키)."""
+    related = _get_관련_fund_list(fund_code)
+    children = [f for f in related if f != fund_code]
+    funds = children if children else [fund_code]
+    s_int = str(start_date).replace('-', '')
+    names = set()
+    for f in funds:
+        h = _load_holdings_range(f, s_int)
+        if h is None or h.empty:
+            continue
+        b = h['자산군'].map(_collapse_to_6bucket)
+        names |= set(h.loc[b == asset_class, 'ITEM_NM'].astype(str))
+    return names
+
+
+def load_asset_class_return_index(fund_code: str, asset_class: str,
+                                  start_date: str, end_date: str = None) -> tuple:
+    """자산군 바스켓 수익지수(시작=100). 클래스 내 정규화 value-weighted.
+
+    일별 r_class(t) = Σ val_i(t-1)·r_i(t) / Σ val_i(t-1)  (해당 자산군·가격커버 종목만,
+    val=EVL_AMT 전일 보유액, r=SCIP FG Return 일별수익률). 누적 → 지수 100.
+    FoF 는 자펀드 보유 union. 유동성은 가격 무의미 → 빈 결과.
+
+    Returns: (DataFrame[date, value], warning|None)
+    """
+    if asset_class == '유동성':
+        return pd.DataFrame(columns=['date', 'value']), '유동성은 수익지수 제외'
+
+    related = _get_관련_fund_list(fund_code)
+    children = [f for f in related if f != fund_code]
+    funds = children if children else [fund_code]
+    s_int = str(start_date).replace('-', '')
+    parts = []
+    for f in funds:
+        h = _load_holdings_range(f, s_int)
+        if h is not None and not h.empty:
+            parts.append(h)
+    if not parts:
+        return pd.DataFrame(columns=['date', 'value']), '보유 데이터 없음'
+
+    h = pd.concat(parts, ignore_index=True)
+    h['item_cd'] = h['ITEM_CD'].astype(str).str.strip()
+    h['bucket'] = h['자산군'].map(_collapse_to_6bucket)
+    h = h[h['bucket'] == asset_class]
+    if h.empty:
+        return pd.DataFrame(columns=['date', 'value']), f'{asset_class} 보유 없음'
+    h['date'] = pd.to_datetime(h['STD_DT'].astype(str), format='%Y%m%d').dt.strftime('%Y-%m-%d')
+    if end_date:
+        h = h[h['date'] <= end_date]
+    # 같은 날·같은 종목(여러 자펀드) 보유액 합산
+    val = h.groupby(['date', 'item_cd'])['EVL_AMT'].sum().reset_index()
+
+    isins = sorted(val['item_cd'].unique())
+    px = _load_scip_prices_batch(isins, start_date)
+    if px.empty:
+        return pd.DataFrame(columns=['date', 'value']), '가격 데이터 없음'
+    if end_date:
+        px = px[px['date'] <= end_date]
+
+    pxp = px.pivot_table(index='date', columns='item_cd', values='price', aggfunc='last').sort_index()
+    valp = val.pivot_table(index='date', columns='item_cd', values='EVL_AMT', aggfunc='sum')
+    # 타임라인=가격 영업일. 보유액은 마지막 스냅샷 ffill. 공통 종목만.
+    common = [c for c in pxp.columns if c in valp.columns]
+    if not common:
+        return pd.DataFrame(columns=['date', 'value']), '가격·보유 교집합 종목 없음'
+    pxp = pxp[common]
+    valp = valp.reindex(pxp.index)[common].ffill()
+
+    rets = pxp.pct_change()
+    w_prev = valp.shift(1)
+    mask = rets.notna() & w_prev.notna() & (w_prev > 0)
+    num = (w_prev.where(mask) * rets.where(mask)).sum(axis=1, min_count=1)
+    den = w_prev.where(mask).sum(axis=1, min_count=1)
+    r_class = num / den
+    valid = den.notna() & (den > 0)
+    if not valid.any():
+        return pd.DataFrame(columns=['date', 'value']), '계산 가능 구간 없음'
+    first = valid.idxmax()
+    r_class = r_class.loc[first:].fillna(0.0)
+    r_class.iloc[0] = 0.0  # 시작일=기준(100)
+    idx = (1.0 + r_class).cumprod() * 100.0
+    out = pd.DataFrame({'date': list(idx.index), 'value': idx.round(3).values})
+    return out.reset_index(drop=True), None
 
 
 def load_holdings_history_8class(fund_code: str, start_date: str = None) -> pd.DataFrame:
