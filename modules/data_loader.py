@@ -805,7 +805,8 @@ def load_fund_trade_detail(fund_code: str, start_date: int, end_date: int) -> pd
         try:
             return pd.read_sql("""
                 SELECT t.std_dt, t.item_cd, t.item_nm, t.curr_ds_cd,
-                       t.buy_sell_ds_cd, t.trd_amt, t.tr_cd, c.tr_nm
+                       t.buy_sell_ds_cd, t.trd_amt, t.stl_amt, t.krw_stl_amt,
+                       t.tr_cd, c.tr_nm
                 FROM DWPM10520 t
                 LEFT JOIN DWCI10160 c ON t.tr_cd = c.tr_cd AND t.synp_cd = c.synp_cd
                 WHERE t.fund_cd = %s AND t.std_dt BETWEEN %s AND %s
@@ -838,7 +839,19 @@ def load_fund_trade_detail(fund_code: str, start_date: int, end_date: int) -> pd
 
     df['자산군'] = df.apply(_classify, axis=1)
     df['매수매도'] = df.apply(lambda r: _derive_trade_side(r['buy_sell_ds_cd'], r['tr_nm']), axis=1)
-    df['금액(억)'] = pd.to_numeric(df['trd_amt'], errors='coerce').fillna(0) / 1e8
+    # 매매금액 원화 환산: 해외통화(USD/HKD/EUR/…)는 trd_amt 가 외화단위 → 실제 체결환율
+    # (원화결제금액/외화결제금액)로 환산. 국내(KRW/NULL)는 trd_amt 가 이미 원화라 그대로.
+    # 결제금액=0(예수금 등 정산성)인 해외행은 원화결제금액을 직접 사용.
+    trd = pd.to_numeric(df['trd_amt'], errors='coerce').fillna(0.0)
+    stl = pd.to_numeric(df['stl_amt'], errors='coerce').fillna(0.0)
+    krw_stl = pd.to_numeric(df['krw_stl_amt'], errors='coerce').fillna(0.0)
+    is_fx = ~df['curr_ds_cd'].astype(str).str.upper().isin(['KRW', '', 'NAN', 'NONE'])
+    rate = (krw_stl / stl.where(stl != 0)).fillna(0.0)
+    krw_amt = trd.copy()
+    krw_amt[is_fx] = (trd * rate)[is_fx]
+    fallback = is_fx & (stl == 0)
+    krw_amt[fallback] = krw_stl[fallback]
+    df['금액(억)'] = krw_amt / 1e8
     df['날짜'] = df['std_dt'].astype(str)
     df['종목명'] = df['item_nm']
 
@@ -3754,10 +3767,11 @@ def load_fund_trades_lookthrough(fund_code: str, start_date: int, end_date: int)
 
 @_ttl_cache()
 def load_fx_position_history(fund_code: str, start_date: str = None) -> tuple:
-    """달러선물 등 FX 포지션 일별 순비중(%) 시계열. 매도(숏)=음수.
+    """달러선물 등 FX 포지션 일별 순비중(%) 시계열. **매도(숏)=양수**(헤지비중 표기).
 
     DWPM10530의 ast_clsf_cd_nm='달러선물' (또는 종목명 '달러 F') 행을 pos_ds_cd
     부호 적용해 일별/계약별 합산. NAST_TAMT_AGNST_WGH 를 그대로 비중으로 사용.
+    달러선물은 환헤지 목적의 매도(숏)라 +로 표기(해외자산 비중과 비교 용이).
 
     Returns: (DataFrame[date, key(계약명), weight(%)], has_fx: bool)
     """
@@ -3787,13 +3801,104 @@ def load_fx_position_history(fund_code: str, start_date: str = None) -> tuple:
     if df.empty:
         return pd.DataFrame(), False
 
-    sign = df['pos_ds_cd'].astype(str).str.contains('매도').map({True: -1.0, False: 1.0})
-    df['weight'] = pd.to_numeric(df['wgh'], errors='coerce').fillna(0.0) * sign.fillna(1.0)
+    # 매도(숏)=+1, 매수=−1 (헤지 순비중을 양수로 표기 — 해외자산 비중과 비교 용이)
+    sign = df['pos_ds_cd'].astype(str).str.contains('매도').map({True: 1.0, False: -1.0})
+    df['weight'] = pd.to_numeric(df['wgh'], errors='coerce').fillna(0.0) * sign.fillna(-1.0)
     df['date'] = pd.to_datetime(df['std_dt'].astype(str), format='%Y%m%d').dt.strftime('%Y-%m-%d')
     agg = (df.groupby(['date', 'item_nm'], as_index=False)['weight'].sum()
            .rename(columns={'item_nm': 'key'}))
     agg['weight'] = agg['weight'].round(3)
     return agg.sort_values(['date', 'key']).reset_index(drop=True), True
+
+
+def load_usdkrw_series(start_date: str = None) -> pd.DataFrame:
+    """USD/KRW 환율 일별 시계열 (dt.DWCI10260 거래기준율 TR_STD_RT1).
+
+    Returns: DataFrame[date(YYYY-MM-DD), rate]
+    """
+    start_yyyymmdd = start_date.replace('-', '') if start_date else None
+    conn = get_pandas_connection('dt')
+    try:
+        q = ("SELECT std_dt, tr_std_rt1 AS rate FROM DWCI10260 "
+             "WHERE curr_ds_cd = 'USD'")
+        params = []
+        if start_yyyymmdd:
+            q += " AND std_dt >= %s"
+            params.append(start_yyyymmdd)
+        q += " ORDER BY std_dt"
+        df = pd.read_sql(q, conn, params=params)
+    finally:
+        conn.close()
+    if df.empty:
+        return pd.DataFrame(columns=['date', 'rate'])
+    df['rate'] = pd.to_numeric(df['rate'], errors='coerce')
+    df = df.dropna(subset=['rate'])
+    df['date'] = pd.to_datetime(df['std_dt'].astype(str), format='%Y%m%d').dt.strftime('%Y-%m-%d')
+    return df[['date', 'rate']].sort_values('date').reset_index(drop=True)
+
+
+def load_foreign_asset_weight_history(fund_code: str, start_date: str = None) -> pd.DataFrame:
+    """해외자산(해외주식 + 해외채권 + 외화예금[USD deposit 등]) 일별 합산 비중(%) 시계열.
+
+    FX 포지션 차트 보조 레이어용. _classify_6class(universe-first) 로 분류 후
+    해외주식/해외채권 + 외화표시 예금/예치금(DEPOSIT·외화예치금)을 합산.
+    (USD deposit 은 종목명 'USD' 패턴 때문에 6분류상 FX 로 떨어져 별도 포함.)
+
+    Returns: DataFrame[date(YYYY-MM-DD), weight(%)]
+    """
+    start_yyyymmdd = start_date.replace('-', '') if start_date else None
+    related = _get_관련_fund_list(fund_code)
+    children = [f for f in related if f != fund_code]
+    funds = children if children else [fund_code]
+
+    conn = get_pandas_connection('dt')
+    try:
+        fmt = ','.join(['%s'] * len(funds))
+        params = list(funds)
+        date_filter = ""
+        if start_yyyymmdd:
+            date_filter = " AND std_dt >= %s"
+            params.append(start_yyyymmdd)
+        df = pd.read_sql(f"""
+            SELECT std_dt, item_cd, item_nm, ast_clsf_cd_nm, curr_ds_cd,
+                   nast_tamt_agnst_wgh AS wgh
+            FROM DWPM10530
+            WHERE fund_cd IN ({fmt}) AND imc_cd = '003228' AND evl_amt <> 0
+              {date_filter}
+        """, conn, params=params)
+    finally:
+        conn.close()
+
+    if df.empty:
+        return pd.DataFrame(columns=['date', 'weight'])
+
+    def _is_foreign(row):
+        cls = _classify_6class({
+            'AST_CLSF_CD_NM': row.get('ast_clsf_cd_nm') or '',
+            'ITEM_CD': str(row.get('item_cd') or ''),
+            'ITEM_NM': row.get('item_nm') or '',
+            'CURR_DS_CD': row.get('curr_ds_cd') or '',
+        })
+        if cls in ('해외주식', '해외채권'):
+            return True
+        # 외화표시 예금/예치금 (USD deposit) — 6분류상 FX/유동성으로 떨어져도 포함
+        curr = str(row.get('curr_ds_cd') or '').upper()
+        if curr not in ('KRW', '', 'NAN', 'NONE'):
+            nm = str(row.get('item_nm') or '').upper()
+            ast = str(row.get('ast_clsf_cd_nm') or '')
+            if 'DEPOSIT' in nm or '외화' in ast or '예금' in ast:
+                return True
+        return False
+
+    df = df[df.apply(_is_foreign, axis=1)]
+    if df.empty:
+        return pd.DataFrame(columns=['date', 'weight'])
+    df['wgh'] = pd.to_numeric(df['wgh'], errors='coerce').fillna(0.0)
+    g = (df.groupby('std_dt', as_index=False)['wgh'].sum()
+         .rename(columns={'wgh': 'weight'}))
+    g['date'] = pd.to_datetime(g['std_dt'].astype(str), format='%Y%m%d').dt.strftime('%Y-%m-%d')
+    g['weight'] = g['weight'].round(3)
+    return g[['date', 'weight']].sort_values('date').reset_index(drop=True)
 
 
 def _scip_covered_isins(isins: list) -> set:

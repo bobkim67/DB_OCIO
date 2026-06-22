@@ -1170,6 +1170,13 @@ export interface components {
             /** Default Mapping Method */
             default_mapping_method: string;
         };
+        /** FxForeignWeightPointDTO */
+        FxForeignWeightPointDTO: {
+            /** Date */
+            date: string;
+            /** Weight */
+            weight: number;
+        };
         /**
          * FxHedgeSummaryDTO
          * @description USD 자산비중 vs 달러매도포지션 비중 → 헷지비율.
@@ -1204,6 +1211,23 @@ export interface components {
             keys: string[];
             /** Points */
             points: components["schemas"]["FxPositionPointDTO"][];
+            /**
+             * Usdkrw
+             * @default []
+             */
+            usdkrw: components["schemas"]["FxRatePointDTO"][];
+            /**
+             * Foreign Weight
+             * @default []
+             */
+            foreign_weight: components["schemas"]["FxForeignWeightPointDTO"][];
+        };
+        /** FxRatePointDTO */
+        FxRatePointDTO: {
+            /** Date */
+            date: string;
+            /** Rate */
+            rate: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1882,6 +1906,10 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
         /**
          * ValidationSummaryDTO

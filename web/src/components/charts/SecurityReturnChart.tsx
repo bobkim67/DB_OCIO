@@ -286,8 +286,9 @@ export default function SecurityReturnChart({
       data={traces}
       layout={{
         autosize: true,
-        height: 360,
-        margin: { t: 40, r: 62, b: 36, l: 56 },
+        height: 480,
+        // 하단 margin 을 WeightAreaChart 와 동일(40)하게 → side-by-side x축 baseline 정렬
+        margin: { t: 40, r: 62, b: 40, l: 56 },
         dragmode: markupMode ? "select" : "zoom",
         selectdirection: "h",
         xaxis: {

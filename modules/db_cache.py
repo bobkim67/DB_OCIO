@@ -60,9 +60,12 @@ HOLDINGS = _TableSpec("holdings", (
     ("STD_DT", "INTEGER"), ("ITEM_CD", "TEXT"), ("ITEM_NM", "TEXT"),
     ("AST_CLSF_CD_NM", "TEXT"), ("CURR_DS_CD", "TEXT"), ("EVL_AMT", "REAL"),
 ))
-TRADES = _TableSpec("trades", (
+# "trades_v2": stl_amt/krw_stl_amt(원화 환산용) 추가로 스키마 변경 → 신규 테이블명으로
+# 콜드 재조회 강제(기존 "trades" 캐시는 외화 매매금액이 외화단위로 박혀 있어 폐기).
+TRADES = _TableSpec("trades_v2", (
     ("std_dt", "INTEGER"), ("item_cd", "TEXT"), ("item_nm", "TEXT"),
     ("curr_ds_cd", "TEXT"), ("buy_sell_ds_cd", "TEXT"), ("trd_amt", "REAL"),
+    ("stl_amt", "REAL"), ("krw_stl_amt", "REAL"),
     ("tr_cd", "TEXT"), ("tr_nm", "TEXT"),
 ))
 

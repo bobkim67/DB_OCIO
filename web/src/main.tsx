@@ -14,7 +14,10 @@ const queryClient = new QueryClient({
       // mount 시 자동 refetch off — cached 데이터 즉시 노출 (수동 invalidate / staleTime 만료 시 refetch).
       refetchOnMount: false,
       refetchOnWindowFocus: false,
-      retry: 1,
+      // API error 해소될 때까지 계속 재시도 (지수 백오프, 최대 5초 간격).
+      // 단발 404 의도 케이스는 각 훅에서 retry:false 로 개별 override 유지.
+      retry: Infinity,
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
     },
   },
 });

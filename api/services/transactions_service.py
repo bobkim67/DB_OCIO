@@ -4,8 +4,10 @@ from config.funds import FUND_LIST, FUND_META
 
 from ..schemas.meta import BaseMeta, SourceBreakdown
 from ..schemas.transactions import (
+    FxForeignWeightPointDTO,
     FxPositionPointDTO,
     FxPositionResponseDTO,
+    FxRatePointDTO,
     SecuritiesResponseDTO,
     SecurityItemDTO,
     SecurityReturnPointDTO,
@@ -181,7 +183,11 @@ def build_weight_history(
 def build_fx_position(fund_code: str, start_date: str) -> FxPositionResponseDTO:
     if fund_code not in FUND_LIST:
         raise KeyError(fund_code)
-    from modules.data_loader import load_fx_position_history
+    from modules.data_loader import (
+        load_foreign_asset_weight_history,
+        load_fx_position_history,
+        load_usdkrw_series,
+    )
 
     warnings: list[str] = []
     try:
@@ -196,6 +202,8 @@ def build_fx_position(fund_code: str, start_date: str) -> FxPositionResponseDTO:
         )
 
     points, keys = [], []
+    usdkrw: list[FxRatePointDTO] = []
+    foreign_weight: list[FxForeignWeightPointDTO] = []
     if has_fx and df is not None and not df.empty:
         keys = list(dict.fromkeys(df["key"].tolist()))
         points = [
@@ -203,6 +211,21 @@ def build_fx_position(fund_code: str, start_date: str) -> FxPositionResponseDTO:
                                weight=float(r["weight"]))
             for _, r in df.iterrows()
         ]
+        # 보조 레이어 — 실패해도 FX 포지션 자체는 반환(경고만)
+        try:
+            rate_df = load_usdkrw_series(start_date)
+            usdkrw = [FxRatePointDTO(date=str(r["date"]), rate=float(r["rate"]))
+                      for _, r in rate_df.iterrows()]
+        except Exception as exc:
+            warnings.append(f"USD/KRW 로드 실패: {type(exc).__name__}")
+        try:
+            fw_df = load_foreign_asset_weight_history(fund_code, start_date)
+            foreign_weight = [
+                FxForeignWeightPointDTO(date=str(r["date"]), weight=float(r["weight"]))
+                for _, r in fw_df.iterrows()
+            ]
+        except Exception as exc:
+            warnings.append(f"해외자산 비중 로드 실패: {type(exc).__name__}")
 
     return FxPositionResponseDTO(
         meta=BaseMeta(
@@ -211,7 +234,7 @@ def build_fx_position(fund_code: str, start_date: str) -> FxPositionResponseDTO:
             is_fallback=not has_fx, warnings=warnings, generated_at=_now(),
         ),
         fund_code=fund_code, has_fx=has_fx, start_date=start_date,
-        keys=keys, points=points,
+        keys=keys, points=points, usdkrw=usdkrw, foreign_weight=foreign_weight,
     )
 
 

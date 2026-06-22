@@ -235,7 +235,8 @@ export default function WeightAreaChart({
         // 공통 x 날짜 도메인 고정 → 종목수익률 차트와 날짜 눈금 x위치 정렬
         xaxis: { title: { text: "" }, type: "date",
                  ...(xRange ? { range: xRange, autorange: false } : {}) },
-        yaxis: { title: { text: "비중 (%)" }, range: [0, 100], ticksuffix: "%" },
+        // 상단 5% 패딩 — 100% 밴드 상단의 순매수/순매도 ▲▼ 마커가 잘리지 않게.
+        yaxis: { title: { text: "비중 (%)" }, range: [0, 105], ticksuffix: "%", dtick: 20 },
         hovermode: "x unified",
         hoverlabel: { align: "left" },   // 값 우측정렬 들여쓰기 제거
         // legend 상단 가로 (종목수익률 차트와 동일 스타일)

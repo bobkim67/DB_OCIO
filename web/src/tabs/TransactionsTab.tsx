@@ -10,6 +10,7 @@ import {
 import { useFunds } from "../hooks/useFunds";
 import WeightAreaChart from "../components/charts/WeightAreaChart";
 import FxPositionChart from "../components/charts/FxPositionChart";
+import FxHedgeGapChart from "../components/charts/FxHedgeGapChart";
 import SecurityReturnChart from "../components/charts/SecurityReturnChart";
 import type { WeightHistoryLevel } from "../api/endpoints";
 
@@ -119,6 +120,7 @@ export default function TransactionsTab({ fundCode }: Props) {
   const [summaryH, setSummaryH] = useState(0);
   const [detailFullH, setDetailFullH] = useState(0);
   const [detailExpanded, setDetailExpanded] = useState(false);
+  const [detailAsset, setDetailAsset] = useState<string>(""); // "" = 전체
 
   const topN = useMemo(() => {
     const n = parseInt(topNInput, 10);
@@ -211,11 +213,24 @@ export default function TransactionsTab({ fundCode }: Props) {
       });
   }, [txnRows, level]);
 
+  // 세부내역 자산군 필터: 옵션(자산군순) + 필터 적용 행. 선택 자산군이 사라지면 전체로 리셋.
+  const detailAssetOptions = useMemo(() => {
+    const set = new Set(txnRows.map((r) => r.asset_class));
+    return [...set].sort((a, b) => (ASSET_ORDER[a] ?? 99) - (ASSET_ORDER[b] ?? 99));
+  }, [txnRows]);
+  useEffect(() => {
+    if (detailAsset && !detailAssetOptions.includes(detailAsset)) setDetailAsset("");
+  }, [detailAssetOptions, detailAsset]);
+  const filteredDetailRows = useMemo(
+    () => (detailAsset ? sortedRows.filter((r) => r.asset_class === detailAsset) : sortedRows),
+    [sortedRows, detailAsset],
+  );
+
   // 요약 표 높이(좌) + 세부내역 표 전체 높이(우) 측정 — 데이터 변경 시 재측정.
   useLayoutEffect(() => {
     if (summaryBoxRef.current) setSummaryH(summaryBoxRef.current.offsetHeight);
     if (detailTableRef.current) setDetailFullH(detailTableRef.current.offsetHeight);
-  }, [txnSummary, sortedRows, level]);
+  }, [txnSummary, filteredDetailRows, level]);
 
   const isFofTxn = txnQ.data?.lookthrough_applied ?? false;
   const showFundCol = isFofTxn;
@@ -304,6 +319,10 @@ export default function TransactionsTab({ fundCode }: Props) {
           </span>
         </div>
 
+        <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 6, lineHeight: 1.5 }}>
+          ※ 해외 종목 금액은 실제 USD 등 외화로 체결된 매매를 거래일 환율로 환산한 참고값
+        </div>
+
         {txnQ.isLoading ? (
           <div style={{ padding: 12, color: "#6b7280" }}>로딩 중…</div>
         ) : sortedRows.length === 0 ? (
@@ -311,7 +330,7 @@ export default function TransactionsTab({ fundCode }: Props) {
         ) : (
           <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
             {/* 좌: 종목별/자산군별 매수·매도·순매수 (기간 합계) — 자산군 순 → 순매수 내림차순 */}
-            <div style={{ flex: "1 1 340px", minWidth: 0 }}>
+            <div style={{ flex: "1 1 480px", minWidth: 0 }}>
               <div style={{ height: 26, display: "flex", alignItems: "center", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>
                 {level === "asset" ? "자산군별" : "종목별"} 매수·매도·순매수
               </div>
@@ -371,11 +390,22 @@ export default function TransactionsTab({ fundCode }: Props) {
             </div>
 
             {/* 우: 세부내역 (일별 거래 상세, 날짜 내림차순) — 자산군→종목명 순 */}
-            <div style={{ flex: "2 1 460px", minWidth: 0 }}>
+            <div style={{ flex: "1 1 480px", minWidth: 0 }}>
               <div style={{ height: 26, display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
                 <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>
-                  세부내역 ({sortedRows.length}건)
+                  세부내역 ({filteredDetailRows.length}건)
                 </span>
+                <select
+                  value={detailAsset}
+                  onChange={(e) => setDetailAsset(e.target.value)}
+                  style={{ fontSize: 11, padding: "2px 6px" }}
+                  title="자산군 필터"
+                >
+                  <option value="">자산군 전체</option>
+                  {detailAssetOptions.map((ac) => (
+                    <option key={ac} value={ac}>{ac}</option>
+                  ))}
+                </select>
                 <button
                   onClick={() => setDetailExpanded((o) => !o)}
                   style={{
@@ -402,7 +432,7 @@ export default function TransactionsTab({ fundCode }: Props) {
                     </tr>
                   </thead>
                   <tbody>
-                    {sortedRows.map((r, i) => (
+                    {filteredDetailRows.map((r, i) => (
                       <tr key={i} style={{ borderTop: "1px solid #f3f4f6" }}>
                         <td style={tdStyle}>{fmtD(r.date)}</td>
                         {showFundCol && <td style={tdStyle}>{r.fund_code}</td>}
@@ -424,8 +454,10 @@ export default function TransactionsTab({ fundCode }: Props) {
         )}
       </section>
 
+      {/* ===== 일별 비중추이 + 수익률 차트 side-by-side ===== */}
+      <div style={{ display: "flex", gap: 16, alignItems: "stretch", flexWrap: "wrap" }}>
       {/* ====================== 일별 비중 영역차트 ====================== */}
-      <section>
+      <section style={{ flex: "1 1 480px", minWidth: 0, display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, marginBottom: 8 }}>
           <h2 style={{ fontSize: 15, margin: 0 }}>일별 비중 추이</h2>
 
@@ -450,50 +482,32 @@ export default function TransactionsTab({ fundCode }: Props) {
           )}
         </div>
 
-        <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
-          {chartStart} ~ 현재
-          <span style={{ marginLeft: 8, color: "#9ca3af" }}>
-            · ▲ 순매수 / ▼ 순매도 (밴드 상단, 일자·{level === "asset" ? "자산군" : "종목"}별 순액)
-          </span>
-          {whQ.data?.lookthrough_applied && (
-            <span style={{ marginLeft: 8, color: "#7c3aed" }}>
-              · FoF look-through: 자펀드 종목 편입비율 가중평균
-            </span>
+        {whQ.data?.lookthrough_applied && (
+          <div style={{ fontSize: 12, color: "#7c3aed", marginBottom: 4 }}>
+            FoF look-through: 자펀드 종목 편입비율 가중평균
+          </div>
+        )}
+
+        {/* marginTop:auto → 헤더 높이와 무관하게 차트를 컬럼 하단에 정렬(우측 차트와 x축 baseline 일치) */}
+        <div style={{ marginTop: "auto" }}>
+          {whQ.isLoading ? (
+            <div style={{ padding: 12, color: "#6b7280" }}>로딩 중…</div>
+          ) : (
+            <WeightAreaChart
+              points={whQ.data?.points ?? []}
+              keys={whQ.data?.keys ?? []}
+              level={level}
+              topN={topN}
+              markers={whQ.data?.markers ?? []}
+              instanceKey={`${fundCode}-${level}-${preset}`}
+              xRange={[chartStart, today]}
+            />
           )}
         </div>
-
-        {whQ.isLoading ? (
-          <div style={{ padding: 12, color: "#6b7280" }}>로딩 중…</div>
-        ) : (
-          <WeightAreaChart
-            points={whQ.data?.points ?? []}
-            keys={whQ.data?.keys ?? []}
-            level={level}
-            topN={topN}
-            markers={whQ.data?.markers ?? []}
-            instanceKey={`${fundCode}-${level}-${preset}`}
-            xRange={[chartStart, today]}
-          />
-        )}
       </section>
 
-      {/* ====================== FX 포지션 (달러선물) ====================== */}
-      {fxQ.data?.has_fx && (
-        <section>
-          <h2 style={{ fontSize: 15, margin: "0 0 4px" }}>FX 포지션 (달러선물)</h2>
-          <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
-            {chartStart} ~ 현재 · 매도(숏) = 음수, 순비중(% NAV)
-          </div>
-          <FxPositionChart
-            points={fxQ.data.points}
-            keys={fxQ.data.keys}
-            instanceKey={`${fundCode}-fx-${preset}`}
-          />
-        </section>
-      )}
-
       {/* ============ 종목별 수익률 + 매매 태깅 (종목 기준에서만 노출) ============ */}
-      <section>
+      <section style={{ flex: "1 1 480px", minWidth: 0, display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, marginBottom: 8 }}>
           <h2 style={{ fontSize: 15, margin: 0 }}>
             {level === "asset" ? "자산군 수익률 · 매매 시점" : "종목 수익률 · 매매 시점"}
@@ -538,9 +552,6 @@ export default function TransactionsTab({ fundCode }: Props) {
               </select>
             </label>
           )}
-          <span style={{ fontSize: 12, color: "#9ca3af" }}>
-            ▲ {level === "asset" ? "순매수" : "매수/발행"} · ▼ {level === "asset" ? "순매도" : "매도/환매"}
-          </span>
           <button
             onClick={() => setRetMarkup((v) => !v)}
             style={{
@@ -553,21 +564,10 @@ export default function TransactionsTab({ fundCode }: Props) {
           >
             변화율 측정 {retMarkup ? "ON" : "OFF"}
           </button>
-          <span style={{ fontSize: 11, color: "#9ca3af" }}>
-            {retMarkup ? "드래그: 구간 %변화율" : "드래그: 줌(y 자동보정) · 더블클릭 리셋"}
-          </span>
         </div>
 
         <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 6, lineHeight: 1.6 }}>
-          {level === "asset" ? (
-            <>
-              <div>source: 일별 보유비중(DWPM10530) × 종목가격(SCIP FG Return)</div>
-              <div>
-                자산군 바스켓 수익지수: 시작일=100, 클래스 내 비중가중(Σ wᵢ·rᵢ / Σ wᵢ)
-                일별 누적 · 보조축(우): 자산군 편입비중 %
-              </div>
-            </>
-          ) : (
+          {level === "asset" ? null : (
             <>
               <div>source: SCIP FG Return(KRW 총수익 지수, 미커버 시 Total Return Index)</div>
               <div>
@@ -578,6 +578,8 @@ export default function TransactionsTab({ fundCode }: Props) {
           )}
         </div>
 
+        {/* marginTop:auto → 좌측 차트와 x축 baseline 정렬(헤더 높이 차이 흡수) */}
+        <div style={{ marginTop: "auto" }}>
         {level === "security" ? (
           !selItemCd ? (
             <div style={{ padding: 12, color: "#6b7280" }}>
@@ -613,7 +615,44 @@ export default function TransactionsTab({ fundCode }: Props) {
             markupMode={retMarkup}
           />
         )}
+        </div>
       </section>
+      </div>
+
+      {/* ====================== FX 포지션 (달러선물) ====================== */}
+      {fxQ.data?.has_fx && (
+        <section>
+          <h2 style={{ fontSize: 15, margin: "0 0 4px" }}>FX 포지션 (달러선물)</h2>
+          <div style={{ display: "flex", gap: 16, alignItems: "stretch", flexWrap: "wrap" }}>
+            {/* 좌: FX 순비중(헤지) + 해외자산 비중 */}
+            <div style={{ flex: "1 1 420px", minWidth: 0 }}>
+              <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
+                환헤지 순비중(% NAV, 매도=양수) · 해외자산 비중(해외주식+해외채권+외화예금) ·
+                점선 = 월물 롤오버 구간
+              </div>
+              <FxPositionChart
+                points={fxQ.data.points}
+                keys={fxQ.data.keys}
+                foreignWeight={fxQ.data.foreign_weight}
+                instanceKey={`${fundCode}-fx-${preset}`}
+              />
+            </div>
+            {/* 우: 헤지갭(해외−FX) 영역 + USD/KRW(우축) + 가이드상한 점선 */}
+            <div style={{ flex: "1 1 420px", minWidth: 0 }}>
+              <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
+                헤지갭(해외자산비중 − FX순비중) · 우축 USD/KRW · 빨간 점선 = 가이드상한
+                (FX매도 ≤ 해외자산비중+10%, 갭 −10%p 미만 시 위배)
+              </div>
+              <FxHedgeGapChart
+                points={fxQ.data.points}
+                foreignWeight={fxQ.data.foreign_weight}
+                usdkrw={fxQ.data.usdkrw}
+                instanceKey={`${fundCode}-fxgap-${preset}`}
+              />
+            </div>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

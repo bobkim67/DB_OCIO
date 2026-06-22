@@ -49,7 +49,17 @@ class WeightHistoryResponseDTO(BaseModel):
 class FxPositionPointDTO(BaseModel):
     date: str               # YYYY-MM-DD
     key: str                # 계약명 (예: 미국달러 F 202607)
-    weight: float           # 순비중 % (매도=음수)
+    weight: float           # 순비중 % (매도=양수, 환헤지비중 표기)
+
+
+class FxRatePointDTO(BaseModel):
+    date: str               # YYYY-MM-DD
+    rate: float             # USD/KRW 환율 (거래기준율)
+
+
+class FxForeignWeightPointDTO(BaseModel):
+    date: str               # YYYY-MM-DD
+    weight: float           # 해외자산 비중 % (해외주식+해외채권+외화예금)
 
 
 class FxPositionResponseDTO(BaseModel):
@@ -59,6 +69,8 @@ class FxPositionResponseDTO(BaseModel):
     start_date: str
     keys: list[str]
     points: list[FxPositionPointDTO]
+    usdkrw: list[FxRatePointDTO] = []            # 보조축(우): USD/KRW 환율
+    foreign_weight: list[FxForeignWeightPointDTO] = []  # 해외자산 비중 레이어
 
 
 # === 종목별 수익률 라인차트 + 매수/매도 마커 ===
