@@ -3,6 +3,7 @@ import { useBrinson } from "../hooks/useBrinson";
 import { useFunds } from "../hooks/useFunds";
 import MetaBadge from "../components/common/MetaBadge";
 import BrinsonWaterfall from "../components/charts/BrinsonWaterfall";
+import BrinsonTrendPanel from "../components/charts/BrinsonTrendPanel";
 import LoadingBar from "../components/common/LoadingBar";
 import type {
   BrinsonAssetRowDTO,
@@ -29,10 +30,6 @@ function fmtPct(v: number | null | undefined, digits = 2): string {
   if (v === null || v === undefined || Number.isNaN(v)) return "—";
   const sign = v > 0 ? "+" : "";
   return `${sign}${v.toFixed(digits)}%`;
-}
-function fmtNum(v: number | null | undefined, digits = 2): string {
-  if (v === null || v === undefined || Number.isNaN(v)) return "—";
-  return v.toFixed(digits);
 }
 // 부호 없이 % 만 붙임 (비중 등).
 function fmtWeight(v: number | null | undefined, digits = 1): string {
@@ -272,7 +269,7 @@ export default function BrinsonTab({ fundCode }: Props) {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
+          gridTemplateColumns: "repeat(3, 1fr)",
           gap: 8,
           marginBottom: 16,
         }}
@@ -284,11 +281,6 @@ export default function BrinsonTab({ fundCode }: Props) {
             label: "초과수익률",
             value: fmtPct(data.total_excess),
             color: data.total_excess >= 0 ? "#16a34a" : "#b91c1c",
-          },
-          {
-            label: "Alloc / Select / Cross",
-            value: `${fmtNum(data.total_alloc)} / ${fmtNum(data.total_select)} / ${fmtNum(data.total_cross)}`,
-            color: "#374151",
           },
         ].map((c) => (
           <div
@@ -333,6 +325,8 @@ export default function BrinsonTab({ fundCode }: Props) {
         </div>
       )}
 
+      {/* 표0(BM/SAA 구성) + 표1(자산군별 기여수익률) side-by-side */}
+      <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 16 }}>
       {/* 표 0: SAA(BM) 구성 vs AP 실제 — 자산군 비교(기본) + 펼치기 시 AP 종목 (FX 제외) */}
       {data.bm_source !== "none" && (() => {
         const isBM = data.bm_source === "BM";
@@ -365,7 +359,7 @@ export default function BrinsonTab({ fundCode }: Props) {
           .sort((a, b) => (ROW_ORDER_MAP.get(a) ?? 99) - (ROW_ORDER_MAP.get(b) ?? 99));
 
         return (
-          <div style={{ marginBottom: 16 }}>
+          <div style={{ flex: "1 1 420px", minWidth: 0 }}>
             <h3
               style={{
                 fontSize: 14,
@@ -425,16 +419,15 @@ export default function BrinsonTab({ fundCode }: Props) {
                       key={`${g}-cls`}
                       style={{ borderTop: "2px solid #e5e7eb", background: "#fcfcfd" }}
                     >
-                      <td style={{ ...td, fontWeight: 600 }}>{g}</td>
+                      <td style={td}>{g}</td>
                       <td style={{ ...td, color: "#6b7280" }}>{bmLabel}</td>
-                      <td style={{ ...tdr, fontWeight: 600 }}>{fmtWeight(bmSub, 1)}</td>
+                      <td style={tdr}>{fmtWeight(bmSub, 1)}</td>
                       <td style={tdGap} />
-                      <td style={{ ...td, fontWeight: 600 }}>{g}</td>
-                      <td style={{ ...tdr, fontWeight: 600 }}>{fmtWeight(apSub, 1)}</td>
+                      <td style={td}>{g}</td>
+                      <td style={tdr}>{fmtWeight(apSub, 1)}</td>
                       <td
                         style={{
                           ...tdr,
-                          fontWeight: 600,
                           color: diff >= 0 ? "#16a34a" : "#b91c1c",
                         }}
                       >
@@ -474,8 +467,8 @@ export default function BrinsonTab({ fundCode }: Props) {
         );
       })()}
 
-      {/* 표 1: 자산군별 기여수익률 (BM기여 + 초과기여 추가) */}
-      <div style={{ marginBottom: 16 }}>
+      {/* 표 1: 자산군별 기여수익률 (BM기여 + 초과기여) — 비중 컬럼 제거, 표0 우측 배치 */}
+      <div style={{ flex: "1 1 420px", minWidth: 0 }}>
         <h3 style={{ fontSize: 14, margin: "4px 0 8px" }}>자산군별 기여수익률</h3>
         <table
           style={{
@@ -487,8 +480,6 @@ export default function BrinsonTab({ fundCode }: Props) {
           <thead>
             <tr style={{ background: "#f9fafb" }}>
               <th style={th}>자산군</th>
-              <th style={thr}>AP비중 (vs BM)</th>
-              <th style={thr}>BM비중</th>
               <th style={thr}>AP기여</th>
               <th style={thr}>BM기여</th>
               <th style={thr}>초과기여</th>
@@ -498,14 +489,6 @@ export default function BrinsonTab({ fundCode }: Props) {
             {enrichedRows.map((r) => (
               <tr key={r.asset_class}>
                 <td style={td}>{r.asset_class}</td>
-                <td style={tdr}>
-                  {fmtWeight(r.ap_weight, 1)}
-                  <span style={{ color: "#9ca3af", fontSize: 11 }}>
-                    {" "}({r.ap_weight - r.bm_weight >= 0 ? "+" : ""}
-                    {(r.ap_weight - r.bm_weight).toFixed(1)}%p)
-                  </span>
-                </td>
-                <td style={tdr}>{fmtWeight(r.bm_weight, 1)}</td>
                 <td
                   style={{
                     ...tdr,
@@ -529,14 +512,23 @@ export default function BrinsonTab({ fundCode }: Props) {
             ))}
             <tr style={{ background: "#f3f4f6", fontWeight: 600 }}>
               <td style={td}>합계</td>
-              <td style={tdr}>—</td>
-              <td style={tdr}>—</td>
               <td style={tdr}>{fmtPct(sumApContrib)}</td>
               <td style={tdr}>{fmtPct(sumBmContrib)}</td>
               <td style={tdr}>{fmtPct(sumExcessContrib)}</td>
             </tr>
           </tbody>
         </table>
+      </div>
+      </div>
+
+      {/* B4: AP vs BM 추이 (좌=누적수익/누적기여, 우=비중추이/SAA) */}
+      <div style={{ marginBottom: 16 }}>
+        <BrinsonTrendPanel
+          daily={data.daily_brinson}
+          dailyClass={data.daily_class ?? []}
+          bmSource={data.bm_source}
+          bmComponents={data.bm_components ?? []}
+        />
       </div>
 
       {/* 표 2: Brinson 분석 (자산군별 Alloc/Select/Cross/자산군별 합계) + 워터폴 */}

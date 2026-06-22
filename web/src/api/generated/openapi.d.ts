@@ -798,6 +798,37 @@ export interface components {
             hedged: boolean;
         };
         /**
+         * BrinsonDailyClassDTO
+         * @description 자산군별 일별 시계열 (B4: AP비중 추이 + 자산군 누적기여).
+         */
+        BrinsonDailyClassDTO: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Asset Class */
+            asset_class: string;
+            /** Ap Weight */
+            ap_weight: number;
+            /** Bm Weight */
+            bm_weight: number;
+            /** Ap Contrib Cum */
+            ap_contrib_cum: number;
+            /** Bm Contrib Cum */
+            bm_contrib_cum: number;
+            /**
+             * Ap Ret Cum
+             * @default 0
+             */
+            ap_ret_cum: number;
+            /**
+             * Bm Ret Cum
+             * @default 0
+             */
+            bm_ret_cum: number;
+        };
+        /**
          * BrinsonDailyPointDTO
          * @description compute_brinson_attribution_v2['daily_brinson'] 한 행.
          */
@@ -815,6 +846,16 @@ export interface components {
             cross_cum: number;
             /** Excess Cum */
             excess_cum: number;
+            /**
+             * Ap Cum
+             * @default 0
+             */
+            ap_cum: number;
+            /**
+             * Bm Cum
+             * @default 0
+             */
+            bm_cum: number;
         };
         /** BrinsonResponseDTO */
         BrinsonResponseDTO: {
@@ -867,6 +908,11 @@ export interface components {
             sec_contrib: components["schemas"]["BrinsonSecContribDTO"][];
             /** Daily Brinson */
             daily_brinson: components["schemas"]["BrinsonDailyPointDTO"][];
+            /**
+             * Daily Class
+             * @default []
+             */
+            daily_class: components["schemas"]["BrinsonDailyClassDTO"][];
         };
         /**
          * BrinsonSecContribDTO

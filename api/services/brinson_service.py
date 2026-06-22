@@ -31,6 +31,7 @@ from config.funds import (
 from ..schemas.brinson import (
     BrinsonAssetRowDTO,
     BrinsonBmComponentDTO,
+    BrinsonDailyClassDTO,
     BrinsonDailyPointDTO,
     BrinsonResponseDTO,
     BrinsonSecContribDTO,
@@ -229,6 +230,31 @@ def _to_daily_rows(daily_df: pd.DataFrame | None) -> list[BrinsonDailyPointDTO]:
             select_cum=float(r.get("select_cum", 0.0) or 0.0),
             cross_cum=float(r.get("cross_cum", 0.0) or 0.0),
             excess_cum=float(r.get("excess_cum", 0.0) or 0.0),
+            ap_cum=float(r.get("ap_cum", 0.0) or 0.0),
+            bm_cum=float(r.get("bm_cum", 0.0) or 0.0),
+        ))
+    return out
+
+
+def _to_daily_class_rows(df: pd.DataFrame | None) -> list[BrinsonDailyClassDTO]:
+    if df is None or df.empty:
+        return []
+    out: list[BrinsonDailyClassDTO] = []
+    for _, r in df.iterrows():
+        d = r["date"]
+        if isinstance(d, pd.Timestamp):
+            d = d.date()
+        elif isinstance(d, str):
+            d = datetime.strptime(d[:10], "%Y-%m-%d").date()
+        out.append(BrinsonDailyClassDTO(
+            date=d,
+            asset_class=str(r.get("asset_class", "")),
+            ap_weight=float(r.get("ap_weight", 0.0) or 0.0),
+            bm_weight=float(r.get("bm_weight", 0.0) or 0.0),
+            ap_contrib_cum=float(r.get("ap_contrib_cum", 0.0) or 0.0),
+            bm_contrib_cum=float(r.get("bm_contrib_cum", 0.0) or 0.0),
+            ap_ret_cum=float(r.get("ap_ret_cum", 0.0) or 0.0),
+            bm_ret_cum=float(r.get("bm_ret_cum", 0.0) or 0.0),
         ))
     return out
 
@@ -271,9 +297,18 @@ def _build_bm_meta(fund_code: str, method: str):
         except Exception:
             saa = None
     if saa:
+        # SAA(MP) 키(대체투자/유동성)를 Brinson 자산군명(대체/유동성및기타)으로 정규화
+        # → asset_rows/daily_class 와 동일 클래스명으로 묶여 표0 중복행(대체 vs 대체투자) 방지
+        _norm = {"대체투자": "대체", "유동성": "유동성및기타"}
+        _agg: dict[str, float] = {}
+        for ac, w in saa.items():
+            if abs(w) <= 1e-9:
+                continue
+            k = _norm.get(ac, ac)
+            _agg[k] = _agg.get(k, 0.0) + w
         comps = [
-            BrinsonBmComponentDTO(name=ac, weight=round(w, 2), asset_class=ac)
-            for ac, w in saa.items() if abs(w) > 1e-9
+            BrinsonBmComponentDTO(name=k, weight=round(w, 2), asset_class=k)
+            for k, w in _agg.items()
         ]
         return "SAA", comps, saa
     return "none", [], None
@@ -379,6 +414,24 @@ def build_brinson(
         pa_df = _drop_fx(pa_df)
     pa_df = _sort_pa_df(pa_df)
 
+    # 빈 자산군 행 제거 — AP·BM 비중 및 AP·BM 기여가 모두 ≈0 (예: 미편입 '대체').
+    # (유동성및기타처럼 BM비중/기여가 있으면 유지)
+    def _nonempty(r) -> bool:
+        return (
+            abs(float(r.get("AP비중", 0) or 0)) > 1e-9
+            or abs(float(r.get("BM비중", 0) or 0)) > 1e-9
+            or abs(float(r.get("기여수익률", 0) or 0)) > 1e-9
+            or abs(float(r.get("BM기여", 0) or 0)) > 1e-9
+        )
+    pa_df = pa_df[pa_df.apply(_nonempty, axis=1)].copy()
+
+    # daily_class(추이/드롭다운)를 표에 남은 자산군으로 동기화
+    # (FX 분리 off → FX 제거, 빈 '대체' 제거가 드롭다운에도 반영)
+    _surviving = set(pa_df["자산군"].astype(str))
+    _dc_df = raw.get("daily_class")
+    if _dc_df is not None and not _dc_df.empty:
+        _dc_df = _dc_df[_dc_df["asset_class"].isin(_surviving)]
+
     return BrinsonResponseDTO(
         meta=BaseMeta(
             as_of_date=end_date,
@@ -409,6 +462,7 @@ def build_brinson(
         asset_rows=_to_asset_rows(pa_df),
         sec_contrib=_to_sec_rows(raw.get("sec_contrib")),
         daily_brinson=_to_daily_rows(raw.get("daily_brinson")),
+        daily_class=_to_daily_class_rows(_dc_df),
     )
 
 

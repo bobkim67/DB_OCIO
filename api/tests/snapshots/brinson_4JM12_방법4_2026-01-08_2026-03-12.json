@@ -16,17 +16,6 @@
   },
   "asset_rows": [
     {
-      "asset_class": "국내주식",
-      "ap_weight": 0.0,
-      "bm_weight": 0.0,
-      "ap_return": 0.0,
-      "bm_return": 0.0,
-      "alloc_effect": 0.0,
-      "select_effect": 0.0,
-      "cross_effect": 0.0,
-      "contrib_return": 0.0
-    },
-    {
       "asset_class": "국내채권",
       "ap_weight": 47.51,
       "bm_weight": 49.5,
@@ -47,17 +36,6 @@
       "select_effect": -0.1265,
       "cross_effect": -0.051,
       "contrib_return": -0.7428
-    },
-    {
-      "asset_class": "해외채권",
-      "ap_weight": 0.0,
-      "bm_weight": 0.0,
-      "ap_return": 0.0,
-      "bm_return": 0.0,
-      "alloc_effect": 0.0,
-      "select_effect": 0.0,
-      "cross_effect": 0.0,
-      "contrib_return": 0.0
     },
     {
       "asset_class": "FX",

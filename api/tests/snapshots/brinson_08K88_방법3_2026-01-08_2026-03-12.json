@@ -60,17 +60,6 @@
       "contrib_return": -0.0382
     },
     {
-      "asset_class": "대체",
-      "ap_weight": 0.0,
-      "bm_weight": 0.0,
-      "ap_return": 0.0,
-      "bm_return": 0.0,
-      "alloc_effect": 0.0,
-      "select_effect": 0.0,
-      "cross_effect": 0.0,
-      "contrib_return": 0.0
-    },
-    {
       "asset_class": "FX",
       "ap_weight": 60.63,
       "bm_weight": 50.4,

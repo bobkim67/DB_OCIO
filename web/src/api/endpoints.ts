@@ -98,6 +98,7 @@ export type BrinsonAssetRowDTO = S["BrinsonAssetRowDTO"];
 export type BrinsonBmComponentDTO = S["BrinsonBmComponentDTO"];
 export type BrinsonSecContribDTO = S["BrinsonSecContribDTO"];
 export type BrinsonDailyPointDTO = S["BrinsonDailyPointDTO"];
+export type BrinsonDailyClassDTO = S["BrinsonDailyClassDTO"];
 export type BrinsonResponseDTO = S["BrinsonResponseDTO"];
 export type BrinsonMappingMethod = "방법1" | "방법2" | "방법3" | "방법4";
 export type BrinsonPaMethod = "8" | "5";

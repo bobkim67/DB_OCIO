@@ -2101,6 +2101,53 @@ def compute_brinson_attribution_v2(fund_code: str,
     daily_sum_chart['select_cum'] = sel_sum.cumsum().values * 100
     daily_sum_chart['cross_cum'] = (crs_sum + liquidity_daily).cumsum().values * 100
     daily_sum_chart['excess_cum'] = (alloc_sum + sel_sum + crs_sum + liquidity_daily).cumsum().values * 100
+    # AP/BM 누적수익(%) — 이미 계산된 ap_cum/bm_cum 노출(B4 우측 차트). 기존 값 불변.
+    daily_sum_chart['ap_cum'] = (ap_cum.values - 1) * 100
+    daily_sum_chart['bm_cum'] = ((bm_cum.values - 1) * 100) if bm_available else 0.0
+
+    # ── 12) 자산군별 일별 시계열 (B4: AP비중 추이 + 자산군 기여 선택). 출력만 추가 ──
+    ap_cum_prev = ap_cum.shift(1).fillna(1.0)
+    _daily_class = []
+    for ac in asset_classes:
+        # AP 기여(누적): 일별 weight×return×AP누적_{t-1} → cumsum, 기간값(table1 AP기여)에 스케일
+        ap_contrib_raw = (ap_ret_daily[ac] * ap_wgt_daily[ac] * ap_cum_prev).cumsum() * 100
+        ap_target = ap_period_contribs.get(ac, 0) * 100
+        ap_last = float(ap_contrib_raw.iloc[-1]) if len(ap_contrib_raw) else 0.0
+        if abs(ap_last) > 1e-12:
+            # 정상: weight×return 누적을 기간 AP기여(table1)에 스케일
+            ap_contrib_cum = ap_contrib_raw * (ap_target / ap_last)
+        elif abs(ap_target) > 1e-12 and len(dates_idx):
+            # 잔차성 자산군(유동성및기타 등): raw≈0 → 목표값으로 선형 보간(끝점 일치)
+            ramp = pd.Series(range(1, len(dates_idx) + 1), index=dates_idx) / len(dates_idx)
+            ap_contrib_cum = ramp * ap_target
+        else:
+            ap_contrib_cum = ap_contrib_raw
+        # BM 기여(누적): bm_period_contrib 와 동일 공식의 누적
+        w = bm_weights.get(ac, 0) / 100.0
+        if bm_available and ac in bm_daily_df.columns:
+            bm_contrib_cum = (bm_daily_df[ac] * w * bm_cum_prev).cumsum() * 100
+        else:
+            bm_contrib_cum = pd.Series(0.0, index=dates_idx)
+        ap_w_series = ap_wgt_daily[ac] * 100
+        bm_w_static = bm_weights.get(ac, 0)  # SAA/BM 목표비중(기간 고정, %)
+        # 자산군 실제(마켓) 누적수익률 % (0% 시작, 비중 미반영) — Allocation/Selection 진단용
+        ap_ret_cum_s = ((1 + ap_ret_daily[ac]).cumprod() - 1) * 100
+        if bm_available and ac in bm_daily_df.columns:
+            bm_ret_cum_s = ((1 + bm_daily_df[ac]).cumprod() - 1) * 100
+        else:
+            bm_ret_cum_s = pd.Series(0.0, index=dates_idx)
+        for i in range(len(dates_idx)):
+            _daily_class.append({
+                'date': dates_idx[i],
+                'asset_class': ac,
+                'ap_weight': float(ap_w_series.iloc[i]),
+                'bm_weight': float(bm_w_static),
+                'ap_contrib_cum': float(ap_contrib_cum.iloc[i]),
+                'bm_contrib_cum': float(bm_contrib_cum.iloc[i]),
+                'ap_ret_cum': float(ap_ret_cum_s.iloc[i]),
+                'bm_ret_cum': float(bm_ret_cum_s.iloc[i]),
+            })
+    daily_class_df = pd.DataFrame(_daily_class)
 
     return {
         'pa_df': result_df,
@@ -2113,6 +2160,7 @@ def compute_brinson_attribution_v2(fund_code: str,
         'period_bm_return': period_bm_return,
         'sec_contrib': sec_contrib_data if not sec_contrib_data.empty else pd.DataFrame(),
         'daily_brinson': daily_sum_chart,
+        'daily_class': daily_class_df,
         'fx_contrib': ap_period_contribs.get('FX', 0) * 100,
         'residual': 0,
     }

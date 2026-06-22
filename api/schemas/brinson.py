@@ -58,6 +58,20 @@ class BrinsonDailyPointDTO(BaseModel):
     select_cum: float          # 누적 Selection (%)
     cross_cum: float           # 누적 Cross (%)
     excess_cum: float          # 누적 초과수익 (%)
+    ap_cum: float = 0.0        # 누적 AP 수익률 (%) — B4(a) 우측 차트
+    bm_cum: float = 0.0        # 누적 BM 수익률 (%) — B4(a) 우측 차트
+
+
+class BrinsonDailyClassDTO(BaseModel):
+    """자산군별 일별 시계열 (B4: AP비중 추이 + 자산군 누적기여)."""
+    date: date                 # 기준일자
+    asset_class: str           # 자산군
+    ap_weight: float           # AP 일별 비중 (%)
+    bm_weight: float           # SAA/BM 목표비중 (%, 기간 고정)
+    ap_contrib_cum: float      # AP 누적 기여수익률 (%)
+    bm_contrib_cum: float      # BM 누적 기여수익률 (%)
+    ap_ret_cum: float = 0.0    # AP 자산군 누적 실제수익률 (%, 0%시작) — Allocation/Selection 진단
+    bm_ret_cum: float = 0.0    # BM 자산군(인덱스) 누적 실제수익률 (%, 0%시작)
 
 
 class BrinsonResponseDTO(BaseModel):
@@ -88,3 +102,5 @@ class BrinsonResponseDTO(BaseModel):
     sec_contrib: list[BrinsonSecContribDTO]
     # 일별 누적 Brinson (수익률 비교 차트용)
     daily_brinson: list[BrinsonDailyPointDTO]
+    # 자산군별 일별 시계열 (B4: AP비중 추이 + 자산군 누적기여)
+    daily_class: list[BrinsonDailyClassDTO] = []
