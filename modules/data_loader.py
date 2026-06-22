@@ -1607,6 +1607,12 @@ def _map_bm_component_to_asset_class(comp_name: str, method: str = '방법3') ->
         base = '국내채권'
     elif 'BLOOMBERG' in nm or 'AGG' in nm:
         base = '해외채권'
+    elif 'GOLD' in nm:
+        base = '대체'
+    elif 'HIGH YIELD' in nm or 'HIGH-YIELD' in nm:
+        base = '해외채권'
+    elif 'GOVERNMENT BOND' in nm or 'GOVT BOND' in nm or ('EMERGING' in nm and 'BOND' in nm):
+        base = '해외채권'
     elif any(k in nm for k in ['MSCI', 'S&P', 'ACWI']):
         base = '해외주식'
     else:
@@ -1833,6 +1839,59 @@ def _load_bm_daily_returns_by_class(bm_info: dict, start_date: str, end_date: st
     return bm_weights, bm_daily, _fx_daily_for_ap
 
 
+@_ttl_cache()
+def load_saa_components(fund_code: str, as_of_date=None) -> dict:
+    """solution.saa_bm_components 에서 SAA 벤치마크 컴포넌트 로드 (리밸 날짜 버전형).
+
+    as_of_date(YYYYMMDD/YYYY-MM-DD/date) 이하 최신 리밸런싱 적용(없으면 최초/최신).
+    Returns: {'components': [{dataset_id,dataseries_id,weight(fraction),name,region,hedged,currency}]}
+             — FUND_BM 와 동일 구조라 compute 의 bm_info 로 그대로 사용. 없으면 None.
+    """
+    import datetime as _dt
+    aod = None
+    if as_of_date is not None:
+        s = str(as_of_date).replace('-', '')
+        if len(s) >= 8:
+            try:
+                aod = _dt.date(int(s[:4]), int(s[4:6]), int(s[6:8]))
+            except ValueError:
+                aod = None
+    try:
+        conn = get_pandas_connection('solution')
+        try:
+            df = pd.read_sql(
+                "SELECT rebal_date, dataset_id, dataseries_id, region, weight, "
+                "hedge_ratio, name FROM saa_bm_components WHERE fund_cd=%s "
+                "ORDER BY rebal_date", conn, params=[fund_code])
+        finally:
+            conn.close()
+    except Exception:
+        return None
+    if df.empty:
+        return None
+    df['rebal_date'] = pd.to_datetime(df['rebal_date']).dt.date
+    rebals = sorted(set(df['rebal_date']))
+    if aod is not None:
+        applicable = [r for r in rebals if r <= aod]
+        pick = applicable[-1] if applicable else rebals[0]
+    else:
+        pick = rebals[-1]
+    sub = df[df['rebal_date'] == pick]
+    comps = []
+    for _, r in sub.iterrows():
+        region = str(r['region'] or 'KR')
+        comps.append({
+            'dataset_id': int(r['dataset_id']),
+            'dataseries_id': int(r['dataseries_id']),
+            'weight': float(r['weight']) / 100.0,
+            'name': str(r['name']),
+            'region': region,
+            'hedged': bool(int(r['hedge_ratio'] or 0)),
+            'currency': 'USD' if region == 'ex_KR' else 'KRW',
+        })
+    return {'components': comps} if comps else None
+
+
 def compute_brinson_attribution_v2(fund_code: str,
                                    start_date: str, end_date: str,
                                    asset_classes: list = None,
@@ -1893,6 +1952,10 @@ def compute_brinson_attribution_v2(fund_code: str,
     # ── 3) BM 일별 수익률 로드 ──
     from config.funds import FUND_BM
     bm_info = FUND_BM.get(fund_code)
+    if bm_info is None:
+        # BM 미설정 펀드 → SAA 벤치마크(solution.saa_bm_components) 시도.
+        # 컴포넌트가 있으면 BM 과 동일 경로로 SAA 수익률/기여 분해.
+        bm_info = load_saa_components(fund_code, end_date)
 
     _BM_ASSET_CLASSES = BRINSON_METHOD_BM_CLASSES.get(mapping_method,
         ['국내주식', '해외주식', '국내채권', '해외채권', 'FX', '유동성'])

@@ -459,9 +459,15 @@ export default function BrinsonTab({ fundCode }: Props) {
               </tbody>
             </table>
             {!isBM && (
-              <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
-                ※ BM 미설정 펀드 — SAA(MP) 목표비중으로 비중만 비교 (수익률/기여 분해는 미제공).
-              </div>
+              data.bm_components.some((c) => c.name && c.name !== c.asset_class) ? (
+                <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
+                  ※ SAA 벤치마크(등록 인덱스) 기준 — 수익률·기여 분해 제공.
+                </div>
+              ) : (
+                <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
+                  ※ BM 미설정 펀드 — SAA(MP) 목표비중으로 비중만 비교 (수익률/기여 분해는 미제공).
+                </div>
+              )
             )}
           </div>
         );

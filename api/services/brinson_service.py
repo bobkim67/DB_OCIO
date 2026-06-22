@@ -259,16 +259,16 @@ def _to_daily_class_rows(df: pd.DataFrame | None) -> list[BrinsonDailyClassDTO]:
     return out
 
 
-def _build_bm_meta(fund_code: str, method: str):
-    """item4/5: BM(FUND_BM 컴포넌트) 또는 SAA(FUND_MP 목표비중) 구성을 만든다.
+def _build_bm_meta(fund_code: str, method: str, as_of=None):
+    """item4/5: BM(FUND_BM) / SAA 벤치마크(DB 인덱스) / SAA(MP 목표비중) 구성.
 
     returns (bm_source, components, saa_dict_or_None)
       - bm_source: "BM" | "SAA" | "none"
-      - components: list[BrinsonBmComponentDTO]  (인덱스/자산군 목표비중)
-      - saa_dict: SAA 펀드면 {자산군: 목표비중%} (AP 비중 비교용으로 BM비중에 주입), 아니면 None
+      - components: list[BrinsonBmComponentDTO]
+      - saa_dict: 구 weight-only SAA 면 {자산군: 목표비중%} (BM비중 주입용). DB SAA/BM 이면 None.
     """
     from config.funds import FUND_BM, FUND_MP_DIRECT, FUND_MP_MAPPING
-    from modules.data_loader import _map_bm_component_to_asset_class
+    from modules.data_loader import _map_bm_component_to_asset_class, load_saa_components
 
     bm = FUND_BM.get(fund_code)
     if bm:
@@ -284,7 +284,25 @@ def _build_bm_meta(fund_code: str, method: str):
         ]
         return "BM", comps, None
 
-    # BM 미설정 → SAA(MP) 목표비중 (item5). 비중 비교만 가능(수익률 분해 불가).
+    # BM 미설정 → SAA 벤치마크(DB 인덱스 컴포넌트). 있으면 수익률·기여 분해 가능(_saa=None).
+    try:
+        saa_db = load_saa_components(fund_code, as_of)
+    except Exception:
+        saa_db = None
+    if saa_db and saa_db.get("components"):
+        comps = [
+            BrinsonBmComponentDTO(
+                name=str(c["name"]),
+                weight=round(float(c["weight"]) * 100, 2),
+                asset_class=_map_bm_component_to_asset_class(str(c["name"]), method),
+                region=str(c.get("region", "") or ""),
+                hedged=bool(c.get("hedged", False)),
+            )
+            for c in saa_db["components"]
+        ]
+        return "SAA", comps, None
+
+    # BM/SAA-DB 둘 다 없음 → 구 SAA(MP) 목표비중 (비중 비교만, 수익률 분해 불가).
     saa = None
     if fund_code in FUND_MP_DIRECT:
         saa = {k: float(v) for k, v in FUND_MP_DIRECT[fund_code].items()}
@@ -333,8 +351,6 @@ def build_brinson(
     if method not in ALLOWED_MAPPING_METHODS:
         raise ValueError(f"mapping_method must be one of {ALLOWED_MAPPING_METHODS}")
 
-    bm_source, bm_components, _saa = _build_bm_meta(fund_code, method)
-
     if start_date is None or end_date is None:
         d_start, d_end = _resolve_default_period(fund_code)
         start_date = start_date or d_start
@@ -342,6 +358,9 @@ def build_brinson(
 
     if start_date >= end_date:
         raise ValueError("start_date must be earlier than end_date")
+
+    # 기간 종료일 기준 적용 리밸런싱(SAA DB) 으로 BM/SAA 구성 결정
+    bm_source, bm_components, _saa = _build_bm_meta(fund_code, method, _to_yyyymmdd(end_date))
 
     sources: list[SourceBreakdown] = []
     warnings: list[str] = []
