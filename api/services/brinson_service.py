@@ -369,8 +369,8 @@ def build_brinson(
         raise KeyError(fund_code)
     if pa_method not in ALLOWED_PA_METHODS:
         raise ValueError(f"pa_method must be one of {ALLOWED_PA_METHODS}")
-    if saa_mode not in ("auto", "proxy", "proxy_drift"):
-        raise ValueError("saa_mode must be 'auto' | 'proxy' | 'proxy_drift'")
+    if saa_mode not in ("auto", "auto_drift", "proxy", "proxy_drift"):
+        raise ValueError("saa_mode must be auto|auto_drift|proxy|proxy_drift")
     method = _resolve_mapping_method(fund_code, mapping_method)
     if method not in ALLOWED_MAPPING_METHODS:
         raise ValueError(f"mapping_method must be one of {ALLOWED_MAPPING_METHODS}")

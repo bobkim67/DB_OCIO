@@ -72,8 +72,12 @@ export default function BrinsonTab({ fundCode }: Props) {
   const [endDate, setEndDate] = useState(defaultEnd);
   const [method, setMethod] = useState<BrinsonMappingMethod>(defaultMethod);
   const [fxSplit, setFxSplit] = useState(true);
-  // SAA 펀드 벤치마크 모드: auto(등록 SAA) | proxy(고정비중) | proxy_drift(일별 변동비중)
-  const [saaMode, setSaaMode] = useState<"auto" | "proxy" | "proxy_drift">("auto");
+  // 벤치마크 소스(등록 SAA/proxy) × 비중방식(고정=constant-mix / drift=buy-and-hold)
+  const [saaSource, setSaaSource] = useState<"auto" | "proxy">("auto");
+  const [weightMode, setWeightMode] = useState<"fixed" | "drift">("fixed");
+  const saaMode = (
+    (saaSource === "proxy" ? "proxy" : "auto") + (weightMode === "drift" ? "_drift" : "")
+  ) as "auto" | "auto_drift" | "proxy" | "proxy_drift";
   // 표0 펼치기: 기본=자산군 비중만, 펼치면 AP 종목별 노출
   const [tbl0Expanded, setTbl0Expanded] = useState(false);
 
@@ -98,7 +102,8 @@ export default function BrinsonTab({ fundCode }: Props) {
     setEndDate(e);
     setMethod(m);
     setFxSplit(true);
-    setSaaMode("auto");
+    setSaaSource("auto");
+    setWeightMode("fixed");
     setApplied({ startDate: s, endDate: e, method: m, fxSplit: true });
   }, [fundCode, inception]);
 
@@ -267,39 +272,51 @@ export default function BrinsonTab({ fundCode }: Props) {
             변경됨 — 조회를 눌러 갱신
           </span>
         )}
-        {/* SAA 펀드(BM 미설정) 전용 — 등록 SAA 인덱스 ↔ proxy(안전자산/ACWI) */}
+        {/* 소스: 등록 SAA ↔ proxy (SAA 펀드만). 비중: 고정(constant-mix) ↔ drift(buy-and-hold, 전체) */}
         {data.bm_source !== "BM" && (
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6, marginLeft: 8 }}>
-            <span style={{ fontSize: 11, color: "#374151" }}>SAA 기준</span>
+            <span style={{ fontSize: 11, color: "#374151" }}>소스</span>
             <span style={{ display: "inline-flex", border: "1px solid #d1d5db", borderRadius: 4, overflow: "hidden" }}>
               {([
                 ["auto", "등록 SAA"],
-                ["proxy", "proxy 고정"],
-                ["proxy_drift", "proxy drift"],
+                ["proxy", "proxy(안전/ACWI)"],
               ] as const).map(([m, label]) => (
                 <button
-                  key={m}
-                  type="button"
-                  onClick={() => setSaaMode(m)}
-                  disabled={isFetching}
-                  title={
-                    m === "auto" ? "등록 SAA 인덱스"
-                    : m === "proxy" ? "안전자산(채권 ex-HY)→KAP All / 나머지→MSCI ACWI · 기간시작 고정비중"
-                    : "위 proxy를 일별 변동비중(AP 채권비중)으로 계산"
-                  }
+                  key={m} type="button" onClick={() => setSaaSource(m)} disabled={isFetching}
+                  title={m === "auto" ? "등록 SAA 인덱스"
+                    : "안전자산(채권 ex-HY)→KAP All / 나머지→MSCI ACWI"}
                   style={{
                     fontSize: 11, padding: "4px 10px", border: "none",
                     cursor: isFetching ? "default" : "pointer",
-                    background: saaMode === m ? "#2563eb" : "#fff",
-                    color: saaMode === m ? "#fff" : "#374151",
+                    background: saaSource === m ? "#2563eb" : "#fff",
+                    color: saaSource === m ? "#fff" : "#374151",
                   }}
-                >
-                  {label}
-                </button>
+                >{label}</button>
               ))}
             </span>
           </span>
         )}
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, marginLeft: 8 }}>
+          <span style={{ fontSize: 11, color: "#374151" }}>비중</span>
+          <span style={{ display: "inline-flex", border: "1px solid #d1d5db", borderRadius: 4, overflow: "hidden" }}>
+            {([
+              ["fixed", "고정"],
+              ["drift", "drift"],
+            ] as const).map(([m, label]) => (
+              <button
+                key={m} type="button" onClick={() => setWeightMode(m)} disabled={isFetching}
+                title={m === "fixed" ? "constant-mix: 매일 목표비중 리밸런싱"
+                  : "buy-and-hold: 리밸 target에서 인덱스 수익률대로 비중 표류"}
+                style={{
+                  fontSize: 11, padding: "4px 10px", border: "none",
+                  cursor: isFetching ? "default" : "pointer",
+                  background: weightMode === m ? "#2563eb" : "#fff",
+                  color: weightMode === m ? "#fff" : "#374151",
+                }}
+              >{label}</button>
+            ))}
+          </span>
+        </span>
       </div>
 
       {/* 합계 카드 */}

@@ -62,10 +62,10 @@ def get_brinson(
             detail={"code": "INVALID_PARAM",
                     "message": f"pa_method must be one of {list(ALLOWED_PA_METHODS)}"},
         )
-    if saa_mode not in ("auto", "proxy", "proxy_drift"):
+    if saa_mode not in ("auto", "auto_drift", "proxy", "proxy_drift"):
         raise HTTPException(
             status_code=400,
-            detail={"code": "INVALID_PARAM", "message": "saa_mode must be 'auto' | 'proxy' | 'proxy_drift'"},
+            detail={"code": "INVALID_PARAM", "message": "saa_mode must be auto|auto_drift|proxy|proxy_drift"},
         )
     try:
         return build_brinson(

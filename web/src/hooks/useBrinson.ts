@@ -13,7 +13,7 @@ export interface UseBrinsonArgs {
   mappingMethod?: BrinsonMappingMethod;
   paMethod?: BrinsonPaMethod;
   fxSplit?: boolean;
-  saaMode?: "auto" | "proxy" | "proxy_drift";
+  saaMode?: "auto" | "auto_drift" | "proxy" | "proxy_drift";
 }
 
 export const useBrinson = (args: UseBrinsonArgs) => {

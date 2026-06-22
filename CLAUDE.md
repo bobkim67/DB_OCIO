@@ -770,3 +770,45 @@ DashboardPage 신규 탭 "거래내역" — 거래내역 조회 + 일별 비중 
   거래 1건당 환율과 1:1 대응하지 않는다. 따라서 표시 원화금액은 *거래일 환율로 환산한
   참고값*이며 펀드가 실제 들인/회수한 원화(환전 손익 반영)와는 차이가 있을 수 있다.
 - UI 주석: `TransactionsTab.tsx` 거래내역 헤더 아래 안내문구로 명시.
+
+## 2026-06-22 세션 (성과분석 Brinson — 수익률 분석 패널 + SAA 벤치마크 + proxy/drift)
+
+### 수익률 분석 패널 (`BrinsonTrendPanel.tsx`)
+- 자산군별 기여수익률 표 아래 "수익률 분석" 패널. **전체/Allocation/Selection 라디오**(헤더 우측)
+  + 자산군 드롭다운(legend 에 BM 지수명 표기).
+- 전체: AP·BM 누적수익 + 초과(영역). 자산군 선택 시 누적기여 + 비중 vs BM.
+- Allocation/Selection: **단일 이중축**(영역=차이 좌축 base / 라인=수익률 우축 overlay,
+  라인이 영역 앞에 렌더). 0점 동기화(`alignZero`). BM=갈색 실선, AP=남색, 영역=하늘 파스텔.
+  경로적분(daily) 힌트 표기 — 끝점 곱과 부호 다를 수 있음.
+- 백엔드 출력만 추가(R-락 불변): `daily_brinson` 에 `ap_cum/bm_cum`, 신규 `daily_class`
+  (자산군별 일별 AP/BM 비중·누적기여·실제수익률 `ap_ret_cum/bm_ret_cum`).
+
+### SAA 벤치마크 DB 테이블 (BM 없는 펀드 AP vs SAA 분해)
+- **`solution.saa_bm_components`** (리밸 날짜 버전형). `tools/setup_saa_components.py` 로 적재
+  (08N33/08N81/08P22 — 사용자 제공, 08N81 라벨 오타 교정). 스키마: rebal_date, portfolio,
+  fund_cd, dataset_id, dataseries_id, region, weight(%), hedge_ratio, biz_day_adj, name …
+- `load_saa_components(fund, as_of)`: ≤기간말 최신 리밸 컴포넌트 → **FUND_BM 와 동일 구조**.
+  `compute_brinson_attribution_v2` 의 `bm_info` 주입점(`FUND_BM.get() or load_saa_components()`)
+  → SAA 도 BM 경로로 수익률/기여/Allocation/Selection 분해. `_build_bm_meta` SAA-DB 분기.
+- `_map_bm_component_to_asset_class`: HY→해외채권, Gold→대체, EM Gov Bond→해외채권 패턴 추가
+  (골든 BM 펀드엔 해당 이름 없어 불변).
+- ★ SAA 컴포넌트 자산군명 정규화(대체투자→대체, 유동성→유동성및기타) — 표0 중복행 fix.
+
+### proxy 옵션 + 비중방식(고정/drift) — `saa_mode` 4값
+- **소스 × 비중 직교 토글** (BrinsonTab). `saa_mode` = {auto, auto_drift, proxy, proxy_drift}.
+  소스: 등록 SAA(auto) / proxy. 비중: **fixed=constant-mix(매일 목표비중 리밸)** /
+  **drift=buy-and-hold(리밸 target 에서 인덱스 수익률대로 비중 표류)**. 소스 토글은 SAA 펀드만,
+  비중 토글은 BM 펀드 포함 전체.
+- **proxy**: 안전자산(AP 국내채권+해외채권 ex-HY·EM) → KAP All(257/9), 나머지 → MSCI ACWI
+  (35/15 ex_KR T-1×USDKRW). `_build_proxy_bm_info`. 안전자산 비중은 **투자개시일**(현금-only/정산
+  과도기 스냅샷 스킵: 비유동성≥50%·유동성≤30%) 기준 → 08P22 설정초 현금100% 0% 문제 fix(→75.1%).
+- **drift(buy-and-hold)**: compute 의 BM 비중을 `bm_w_daily`(일별 dict)로 전환. fixed=상수
+  broadcast(=기존 스칼라와 수치 동일 → **골든 18/18 불변**). drift=리밸 target × 인덱스 누적_{t-1}
+  / Σ 정규화. FX 오버레이는 해외주식(unhedged) 표류 추종. `saa_mode` 캐시키(‘auto’는 기존 파일명 유지).
+
+### 검증 / 미해결
+- 골든 18/18 PASS(BM 펀드 불변, 다회 재확인). 08P22 AP 7.61 vs SAA 1.17(등록)/13.88(proxy).
+  08N33 등록 SAA fixed 4.15 vs drift 5.49(외화 winner 비중 표류 상승).
+- drift 안전자산은 국내채권 일별비중 기준(현 SAA 펀드 해외채권=HY/EM 제외 대상이라 일치).
+  투자등급 해외채권 보유 펀드 생기면 일별 종목식별 확장 필요.
+- BM(FUND_BM) 은 하드코딩 유지(테이블 미이전, 골든 안전). 필요 시 테이블 통합 가능.
