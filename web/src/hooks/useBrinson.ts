@@ -13,16 +13,18 @@ export interface UseBrinsonArgs {
   mappingMethod?: BrinsonMappingMethod;
   paMethod?: BrinsonPaMethod;
   fxSplit?: boolean;
+  saaMode?: "auto" | "proxy";
 }
 
 export const useBrinson = (args: UseBrinsonArgs) => {
-  const { code, startDate, endDate, mappingMethod, paMethod, fxSplit } = args;
+  const { code, startDate, endDate, mappingMethod, paMethod, fxSplit, saaMode } = args;
   const opts: FetchBrinsonOptions = {
     startDate,
     endDate,
     mappingMethod,
     paMethod,
     fxSplit,
+    saaMode,
   };
   return useQuery({
     queryKey: [
@@ -33,6 +35,7 @@ export const useBrinson = (args: UseBrinsonArgs) => {
       mappingMethod ?? null,
       paMethod ?? "8",
       fxSplit ?? true,
+      saaMode ?? "auto",
     ],
     queryFn: () => fetchBrinson(code, opts),
     enabled: !!code,

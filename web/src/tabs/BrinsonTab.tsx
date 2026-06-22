@@ -72,6 +72,8 @@ export default function BrinsonTab({ fundCode }: Props) {
   const [endDate, setEndDate] = useState(defaultEnd);
   const [method, setMethod] = useState<BrinsonMappingMethod>(defaultMethod);
   const [fxSplit, setFxSplit] = useState(true);
+  // SAA 펀드 벤치마크 모드: auto(등록 SAA 인덱스) | proxy(안전자산→KAP All / 나머지→ACWI)
+  const [saaMode, setSaaMode] = useState<"auto" | "proxy">("auto");
   // 표0 펼치기: 기본=자산군 비중만, 펼치면 AP 종목별 노출
   const [tbl0Expanded, setTbl0Expanded] = useState(false);
 
@@ -96,6 +98,7 @@ export default function BrinsonTab({ fundCode }: Props) {
     setEndDate(e);
     setMethod(m);
     setFxSplit(true);
+    setSaaMode("auto");
     setApplied({ startDate: s, endDate: e, method: m, fxSplit: true });
   }, [fundCode, inception]);
 
@@ -116,6 +119,7 @@ export default function BrinsonTab({ fundCode }: Props) {
     mappingMethod: applied.method,
     paMethod: "8", // 8분류 고정 (사용자 요구사항 1)
     fxSplit: applied.fxSplit,
+    saaMode,
   });
 
   if (isLoading) return <LoadingBar label="Brinson 계산 중… (최대 ~1분)" />;
@@ -261,6 +265,30 @@ export default function BrinsonTab({ fundCode }: Props) {
         {isDirty && !isFetching && (
           <span style={{ fontSize: 11, color: "#b45309" }}>
             변경됨 — 조회를 눌러 갱신
+          </span>
+        )}
+        {/* SAA 펀드(BM 미설정) 전용 — 등록 SAA 인덱스 ↔ proxy(안전자산/ACWI) */}
+        {data.bm_source !== "BM" && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, marginLeft: 8 }}>
+            <span style={{ fontSize: 11, color: "#374151" }}>SAA 기준</span>
+            <span style={{ display: "inline-flex", border: "1px solid #d1d5db", borderRadius: 4, overflow: "hidden" }}>
+              {(["auto", "proxy"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setSaaMode(m)}
+                  disabled={isFetching}
+                  style={{
+                    fontSize: 11, padding: "4px 10px", border: "none",
+                    cursor: isFetching ? "default" : "pointer",
+                    background: saaMode === m ? "#2563eb" : "#fff",
+                    color: saaMode === m ? "#fff" : "#374151",
+                  }}
+                >
+                  {m === "auto" ? "등록 SAA" : "proxy(안전/ACWI)"}
+                </button>
+              ))}
+            </span>
           </span>
         )}
       </div>

@@ -379,6 +379,7 @@ export interface FetchBrinsonOptions {
   mappingMethod?: BrinsonMappingMethod;
   paMethod?: BrinsonPaMethod;
   fxSplit?: boolean;
+  saaMode?: "auto" | "proxy";
 }
 
 export const fetchBrinson = async (
@@ -391,6 +392,7 @@ export const fetchBrinson = async (
   if (opts.mappingMethod) params.mapping_method = opts.mappingMethod;
   if (opts.paMethod) params.pa_method = opts.paMethod;
   if (opts.fxSplit !== undefined) params.fx_split = opts.fxSplit;
+  if (opts.saaMode) params.saa_mode = opts.saaMode;
   // brinson 콜드 계산은 ~1분 → 공통 30s 타임아웃을 초과하므로 요청별로 상향.
   // (디스크 캐시 히트면 즉시지만, 날짜 변경 등 캐시 미스 시 재계산 대기)
   const r = await api.get<BrinsonResponseDTO>(

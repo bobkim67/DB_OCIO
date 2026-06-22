@@ -1892,10 +1892,56 @@ def load_saa_components(fund_code: str, as_of_date=None) -> dict:
     return {'components': comps} if comps else None
 
 
+def _build_proxy_bm_info(fund_code: str, start_yyyymmdd: str) -> dict:
+    """SAA proxy 벤치마크: 안전자산(국내채권+해외채권 ex-HY) → KAP All, 나머지 → MSCI ACWI.
+
+    안전자산 비중은 기간 시작일 AP 보유 기준(고정). HY 는 종목명('HIGH YIELD'/'하이일드') 제외.
+    MSCI ACWI 는 ex_KR(T-1×USDKRW, biz_day_adj=-1) — BM 경로가 자동 처리.
+    """
+    base = datetime.strptime(str(start_yyyymmdd), '%Y%m%d')
+    df = None
+    # 시작일(휴일이면 직전 영업일), 없으면 앞쪽(설정일까지 ~40일) 탐색
+    offsets = [0] + [-i for i in range(1, 8)] + list(range(1, 41))
+    for off in offsets:
+        d = (base + timedelta(days=off)).strftime('%Y%m%d')
+        try:
+            df = load_fund_holdings_weight(fund_code, int(d))
+        except Exception:
+            df = None
+        if df is not None and not df.empty:
+            break
+    if df is None or df.empty:
+        return None
+
+    def _is_risk_bond(nm):
+        # 안전자산 제외 대상: HY(하이일드) + EM 국공채(VWOB 등)
+        u = str(nm).upper()
+        return ('HIGH YIELD' in u or 'HIGH-YIELD' in u or '하이일드' in str(nm)
+                or 'EMERGING' in u or 'VWOB' in u)
+
+    safe = 0.0
+    for _, r in df.iterrows():
+        ac = r['자산군']
+        w = float(r['비중(%)'])
+        if ac == '국내채권':
+            safe += w
+        elif ac == '해외채권' and not _is_risk_bond(r['종목명']):
+            safe += w
+    sw = max(0.0, min(100.0, safe)) / 100.0
+    return {'components': [
+        {'dataset_id': 257, 'dataseries_id': 9, 'weight': sw,
+         'name': 'KAP Korea Bond Pricing All Bonds Index',
+         'region': 'KR', 'hedged': False, 'currency': 'KRW'},
+        {'dataset_id': 35, 'dataseries_id': 15, 'weight': 1.0 - sw,
+         'name': 'MSCI ACWI Index', 'region': 'ex_KR', 'hedged': False, 'currency': 'USD'},
+    ]}
+
+
 def compute_brinson_attribution_v2(fund_code: str,
                                    start_date: str, end_date: str,
                                    asset_classes: list = None,
-                                   mapping_method: str = '방법3') -> dict:
+                                   mapping_method: str = '방법3',
+                                   saa_mode: str = 'auto') -> dict:
     """
     Brinson 3-Factor Attribution — R 완벽 일치 버전.
 
@@ -1951,11 +1997,15 @@ def compute_brinson_attribution_v2(fund_code: str,
 
     # ── 3) BM 일별 수익률 로드 ──
     from config.funds import FUND_BM
-    bm_info = FUND_BM.get(fund_code)
-    if bm_info is None:
-        # BM 미설정 펀드 → SAA 벤치마크(solution.saa_bm_components) 시도.
-        # 컴포넌트가 있으면 BM 과 동일 경로로 SAA 수익률/기여 분해.
-        bm_info = load_saa_components(fund_code, end_date)
+    if saa_mode == 'proxy':
+        # SAA proxy(안전자산→KAP All / 나머지→MSCI ACWI). BM 펀드여도 proxy 우선.
+        bm_info = _build_proxy_bm_info(fund_code, start_date)
+    else:
+        bm_info = FUND_BM.get(fund_code)
+        if bm_info is None:
+            # BM 미설정 펀드 → SAA 벤치마크(solution.saa_bm_components) 시도.
+            # 컴포넌트가 있으면 BM 과 동일 경로로 SAA 수익률/기여 분해.
+            bm_info = load_saa_components(fund_code, end_date)
 
     _BM_ASSET_CLASSES = BRINSON_METHOD_BM_CLASSES.get(mapping_method,
         ['국내주식', '해외주식', '국내채권', '해외채권', 'FX', '유동성'])

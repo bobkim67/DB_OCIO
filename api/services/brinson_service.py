@@ -108,21 +108,22 @@ _DISK_DISABLED = os.environ.get("OCIO_DISABLE_DB_CACHE") == "1"
 
 
 def _brinson_disk_path(fund_code: str, start_yyyymmdd: str,
-                       end_yyyymmdd: str, mapping_method: str) -> str:
-    safe = f"{fund_code}_{start_yyyymmdd}_{end_yyyymmdd}_{mapping_method}".replace("/", "_")
+                       end_yyyymmdd: str, mapping_method: str,
+                       saa_mode: str = "auto") -> str:
+    suffix = "" if saa_mode == "auto" else f"_{saa_mode}"
+    safe = f"{fund_code}_{start_yyyymmdd}_{end_yyyymmdd}_{mapping_method}{suffix}".replace("/", "_")
     return os.path.join(_BRINSON_CACHE_DIR, safe + ".pkl")
 
 
 @lru_cache(maxsize=128)
 def _compute_cached(fund_code: str, start_yyyymmdd: str, end_yyyymmdd: str,
-                    mapping_method: str) -> dict | None:
+                    mapping_method: str, saa_mode: str = "auto") -> dict | None:
     """compute_brinson_attribution_v2 결과를 LRU(인메모리) + 디스크(.cache/brinson) 캐시.
 
-    캐시 키 (fund, start, end, method). pa_method/fx_split 은 후처리라 키 제외.
-    디스크 캐시 덕에 서버 재기동에도 콜드 재계산을 피한다. end_date 가 바뀌면
-    (새 영업일) 새 키 → 자연 재계산(런처 워밍업이 그날치를 선계산).
+    캐시 키 (fund, start, end, method, saa_mode). pa_method/fx_split 은 후처리라 키 제외.
+    saa_mode='auto'(BM/등록SAA) 는 기존 파일명 유지, 'proxy' 는 별도 파일.
     """
-    path = _brinson_disk_path(fund_code, start_yyyymmdd, end_yyyymmdd, mapping_method)
+    path = _brinson_disk_path(fund_code, start_yyyymmdd, end_yyyymmdd, mapping_method, saa_mode)
     if not _DISK_DISABLED and os.path.exists(path):
         try:
             with open(path, "rb") as f:
@@ -132,7 +133,7 @@ def _compute_cached(fund_code: str, start_yyyymmdd: str, end_yyyymmdd: str,
     from modules.data_loader import compute_brinson_attribution_v2
     raw = compute_brinson_attribution_v2(
         fund_code, start_yyyymmdd, end_yyyymmdd,
-        mapping_method=mapping_method,
+        mapping_method=mapping_method, saa_mode=saa_mode,
     )
     if raw is not None and not _DISK_DISABLED:
         try:
@@ -259,16 +260,36 @@ def _to_daily_class_rows(df: pd.DataFrame | None) -> list[BrinsonDailyClassDTO]:
     return out
 
 
-def _build_bm_meta(fund_code: str, method: str, as_of=None):
-    """item4/5: BM(FUND_BM) / SAA 벤치마크(DB 인덱스) / SAA(MP 목표비중) 구성.
+def _build_bm_meta(fund_code: str, method: str, as_of=None,
+                   saa_mode: str = "auto", start_yyyymmdd=None):
+    """item4/5: BM(FUND_BM) / SAA 벤치마크(DB 인덱스) / proxy / SAA(MP 목표비중) 구성.
 
     returns (bm_source, components, saa_dict_or_None)
       - bm_source: "BM" | "SAA" | "none"
       - components: list[BrinsonBmComponentDTO]
-      - saa_dict: 구 weight-only SAA 면 {자산군: 목표비중%} (BM비중 주입용). DB SAA/BM 이면 None.
+      - saa_dict: 구 weight-only SAA 면 {자산군: 목표비중%} (BM비중 주입용). 그 외 None.
     """
     from config.funds import FUND_BM, FUND_MP_DIRECT, FUND_MP_MAPPING
-    from modules.data_loader import _map_bm_component_to_asset_class, load_saa_components
+    from modules.data_loader import (
+        _build_proxy_bm_info, _map_bm_component_to_asset_class, load_saa_components,
+    )
+
+    if saa_mode == "proxy":
+        # proxy: 안전자산→KAP All / 나머지→MSCI ACWI (기간 시작일 AP 보유 기준)
+        info = _build_proxy_bm_info(fund_code, start_yyyymmdd) if start_yyyymmdd else None
+        if info and info.get("components"):
+            comps = [
+                BrinsonBmComponentDTO(
+                    name=str(c["name"]),
+                    weight=round(float(c["weight"]) * 100, 2),
+                    asset_class=_map_bm_component_to_asset_class(str(c["name"]), method),
+                    region=str(c.get("region", "") or ""),
+                    hedged=bool(c.get("hedged", False)),
+                )
+                for c in info["components"]
+            ]
+            return "SAA", comps, None
+        return "none", [], None
 
     bm = FUND_BM.get(fund_code)
     if bm:
@@ -342,11 +363,14 @@ def build_brinson(
     mapping_method: str | None = None,
     pa_method: str = "8",
     fx_split: bool = True,
+    saa_mode: str = "auto",
 ) -> BrinsonResponseDTO:
     if fund_code not in FUND_LIST:
         raise KeyError(fund_code)
     if pa_method not in ALLOWED_PA_METHODS:
         raise ValueError(f"pa_method must be one of {ALLOWED_PA_METHODS}")
+    if saa_mode not in ("auto", "proxy"):
+        raise ValueError("saa_mode must be 'auto' or 'proxy'")
     method = _resolve_mapping_method(fund_code, mapping_method)
     if method not in ALLOWED_MAPPING_METHODS:
         raise ValueError(f"mapping_method must be one of {ALLOWED_MAPPING_METHODS}")
@@ -359,8 +383,10 @@ def build_brinson(
     if start_date >= end_date:
         raise ValueError("start_date must be earlier than end_date")
 
-    # 기간 종료일 기준 적용 리밸런싱(SAA DB) 으로 BM/SAA 구성 결정
-    bm_source, bm_components, _saa = _build_bm_meta(fund_code, method, _to_yyyymmdd(end_date))
+    # 기간 종료일 기준 적용 리밸런싱(SAA DB) 으로 BM/SAA 구성 결정. proxy 면 안전자산 분해.
+    bm_source, bm_components, _saa = _build_bm_meta(
+        fund_code, method, _to_yyyymmdd(end_date),
+        saa_mode=saa_mode, start_yyyymmdd=_to_yyyymmdd(start_date))
 
     sources: list[SourceBreakdown] = []
     warnings: list[str] = []
@@ -369,7 +395,7 @@ def build_brinson(
     raw = _compute_cached(
         fund_code,
         _to_yyyymmdd(start_date), _to_yyyymmdd(end_date),
-        method,
+        method, saa_mode,
     )
 
     if raw is None or (raw.get("pa_df") is None) or raw["pa_df"].empty:
