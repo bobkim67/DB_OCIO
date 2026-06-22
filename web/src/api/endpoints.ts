@@ -379,7 +379,7 @@ export interface FetchBrinsonOptions {
   mappingMethod?: BrinsonMappingMethod;
   paMethod?: BrinsonPaMethod;
   fxSplit?: boolean;
-  saaMode?: "auto" | "proxy";
+  saaMode?: "auto" | "proxy" | "proxy_drift";
 }
 
 export const fetchBrinson = async (

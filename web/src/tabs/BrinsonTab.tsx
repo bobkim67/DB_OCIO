@@ -72,8 +72,8 @@ export default function BrinsonTab({ fundCode }: Props) {
   const [endDate, setEndDate] = useState(defaultEnd);
   const [method, setMethod] = useState<BrinsonMappingMethod>(defaultMethod);
   const [fxSplit, setFxSplit] = useState(true);
-  // SAA 펀드 벤치마크 모드: auto(등록 SAA 인덱스) | proxy(안전자산→KAP All / 나머지→ACWI)
-  const [saaMode, setSaaMode] = useState<"auto" | "proxy">("auto");
+  // SAA 펀드 벤치마크 모드: auto(등록 SAA) | proxy(고정비중) | proxy_drift(일별 변동비중)
+  const [saaMode, setSaaMode] = useState<"auto" | "proxy" | "proxy_drift">("auto");
   // 표0 펼치기: 기본=자산군 비중만, 펼치면 AP 종목별 노출
   const [tbl0Expanded, setTbl0Expanded] = useState(false);
 
@@ -272,12 +272,21 @@ export default function BrinsonTab({ fundCode }: Props) {
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6, marginLeft: 8 }}>
             <span style={{ fontSize: 11, color: "#374151" }}>SAA 기준</span>
             <span style={{ display: "inline-flex", border: "1px solid #d1d5db", borderRadius: 4, overflow: "hidden" }}>
-              {(["auto", "proxy"] as const).map((m) => (
+              {([
+                ["auto", "등록 SAA"],
+                ["proxy", "proxy 고정"],
+                ["proxy_drift", "proxy drift"],
+              ] as const).map(([m, label]) => (
                 <button
                   key={m}
                   type="button"
                   onClick={() => setSaaMode(m)}
                   disabled={isFetching}
+                  title={
+                    m === "auto" ? "등록 SAA 인덱스"
+                    : m === "proxy" ? "안전자산(채권 ex-HY)→KAP All / 나머지→MSCI ACWI · 기간시작 고정비중"
+                    : "위 proxy를 일별 변동비중(AP 채권비중)으로 계산"
+                  }
                   style={{
                     fontSize: 11, padding: "4px 10px", border: "none",
                     cursor: isFetching ? "default" : "pointer",
@@ -285,7 +294,7 @@ export default function BrinsonTab({ fundCode }: Props) {
                     color: saaMode === m ? "#fff" : "#374151",
                   }}
                 >
-                  {m === "auto" ? "등록 SAA" : "proxy(안전/ACWI)"}
+                  {label}
                 </button>
               ))}
             </span>

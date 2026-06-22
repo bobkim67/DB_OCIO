@@ -274,8 +274,8 @@ def _build_bm_meta(fund_code: str, method: str, as_of=None,
         _build_proxy_bm_info, _map_bm_component_to_asset_class, load_saa_components,
     )
 
-    if saa_mode == "proxy":
-        # proxy: 안전자산→KAP All / 나머지→MSCI ACWI (기간 시작일 AP 보유 기준)
+    if saa_mode in ("proxy", "proxy_drift"):
+        # proxy: 안전자산→KAP All / 나머지→MSCI ACWI (구성 동일, drift 는 비중만 일별 변동)
         info = _build_proxy_bm_info(fund_code, start_yyyymmdd) if start_yyyymmdd else None
         if info and info.get("components"):
             comps = [
@@ -369,8 +369,8 @@ def build_brinson(
         raise KeyError(fund_code)
     if pa_method not in ALLOWED_PA_METHODS:
         raise ValueError(f"pa_method must be one of {ALLOWED_PA_METHODS}")
-    if saa_mode not in ("auto", "proxy"):
-        raise ValueError("saa_mode must be 'auto' or 'proxy'")
+    if saa_mode not in ("auto", "proxy", "proxy_drift"):
+        raise ValueError("saa_mode must be 'auto' | 'proxy' | 'proxy_drift'")
     method = _resolve_mapping_method(fund_code, mapping_method)
     if method not in ALLOWED_MAPPING_METHODS:
         raise ValueError(f"mapping_method must be one of {ALLOWED_MAPPING_METHODS}")

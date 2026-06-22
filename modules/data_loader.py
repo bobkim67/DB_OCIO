@@ -1900,15 +1900,22 @@ def _build_proxy_bm_info(fund_code: str, start_yyyymmdd: str) -> dict:
     """
     base = datetime.strptime(str(start_yyyymmdd), '%Y%m%d')
     df = None
-    # 시작일(휴일이면 직전 영업일), 없으면 앞쪽(설정일까지 ~40일) 탐색
-    offsets = [0] + [-i for i in range(1, 8)] + list(range(1, 41))
+    # 시작일(휴일이면 직전 영업일), 없으면 앞쪽(설정일까지 ~45일) 탐색.
+    # 설정 직후 현금 100%·정산 과도기 스냅샷은 건너뛰고 '투자 개시'(비유동성 비중
+    # 충분 + 유동성 과도분 적음) 첫 날을 사용 → 안전자산 비중이 0 으로 잡히는 문제 방지.
+    offsets = [0] + [-i for i in range(1, 8)] + list(range(1, 46))
     for off in offsets:
         d = (base + timedelta(days=off)).strftime('%Y%m%d')
         try:
-            df = load_fund_holdings_weight(fund_code, int(d))
+            cand = load_fund_holdings_weight(fund_code, int(d))
         except Exception:
-            df = None
-        if df is not None and not df.empty:
+            cand = None
+        if cand is None or cand.empty:
+            continue
+        invested = cand[~cand['자산군'].isin(['유동성', 'FX'])]['비중(%)'].sum()
+        liq = cand[cand['자산군'] == '유동성']['비중(%)'].sum()
+        if invested >= 50 and liq <= 30:  # 투자 개시 + 정산 과도기 아님
+            df = cand
             break
     if df is None or df.empty:
         return None
@@ -1997,8 +2004,8 @@ def compute_brinson_attribution_v2(fund_code: str,
 
     # ── 3) BM 일별 수익률 로드 ──
     from config.funds import FUND_BM
-    if saa_mode == 'proxy':
-        # SAA proxy(안전자산→KAP All / 나머지→MSCI ACWI). BM 펀드여도 proxy 우선.
+    if saa_mode in ('proxy', 'proxy_drift'):
+        # SAA proxy(안전자산→KAP All / 나머지→MSCI ACWI). proxy_drift 는 비중만 일별 변동.
         bm_info = _build_proxy_bm_info(fund_code, start_date)
     else:
         bm_info = FUND_BM.get(fund_code)
@@ -2034,15 +2041,30 @@ def compute_brinson_attribution_v2(fund_code: str,
         bm_daily_df = pd.DataFrame(0.0, index=dates_idx, columns=asset_classes)
         bm_available = False
 
+    # 일별 BM 비중(fraction). 기본=고정 broadcast(=기존 스칼라와 동일). proxy_drift 면
+    # proxy 클래스(국내채권=safe_t, 해외주식·FX=1-safe_t)를 일별 AP 채권비중으로 대체.
+    bm_w_daily = {ac: pd.Series(bm_weights.get(ac, 0) / 100.0, index=dates_idx)
+                  for ac in asset_classes}
+    if saa_mode == 'proxy_drift':
+        _safe_t = ap_wgt_daily.get('국내채권')
+        if _safe_t is None:
+            _safe_t = pd.Series(0.0, index=dates_idx)
+        _safe_t = _safe_t.reindex(dates_idx).fillna(0.0).clip(0.0, 1.0)
+        if '국내채권' in bm_w_daily:
+            bm_w_daily['국내채권'] = _safe_t
+        if '해외주식' in bm_w_daily:
+            bm_w_daily['해외주식'] = 1.0 - _safe_t
+        if 'FX' in bm_w_daily:
+            bm_w_daily['FX'] = 1.0 - _safe_t
+
     # ── 4) BM 복합 일별 수익률 (RAW + 펀드별 cost) ──
     # R 프로덕션: -34bp/yr cost는 08K88에만 적용
     _BM_COST_DAILY = 34 / 10000 / 365
     _BM_COST_FUNDS = {'08K88'}
     bm_composite_daily = pd.Series(0.0, index=dates_idx)
     for ac in asset_classes:
-        w = bm_weights.get(ac, 0) / 100
         if ac in bm_daily_df.columns:
-            bm_composite_daily += bm_daily_df[ac] * w
+            bm_composite_daily += bm_daily_df[ac] * bm_w_daily[ac]
     if bm_available and fund_code in _BM_COST_FUNDS:
         bm_composite_daily -= _BM_COST_DAILY
 
@@ -2075,7 +2097,7 @@ def compute_brinson_attribution_v2(fund_code: str,
     for ac in _BRINSON_CLASSES:
         ap_w = ap_wgt_daily[ac]
         ap_r = ap_ret_daily[ac]
-        bm_w = bm_weights.get(ac, 0) / 100  # 기간 고정 (R Fixed weight)
+        bm_w = bm_w_daily.get(ac, pd.Series(0.0, index=dates_idx))  # 고정 broadcast / drift 일별
         bm_r = bm_daily_df[ac] if ac in bm_daily_df.columns else pd.Series(0.0, index=dates_idx)
 
         # R 공식 (line 529-531)
@@ -2141,7 +2163,7 @@ def compute_brinson_attribution_v2(fund_code: str,
     bm_cum_prev = bm_cum.shift(1).fillna(1.0)
     bm_period_contrib = {}
     for ac in asset_classes:
-        w = bm_weights.get(ac, 0) / 100.0
+        w = bm_w_daily.get(ac, pd.Series(0.0, index=dates_idx))
         if bm_available and ac in bm_daily_df.columns:
             bm_period_contrib[ac] = float((bm_daily_df[ac] * w * bm_cum_prev).sum() * 100)
         else:
@@ -2158,7 +2180,9 @@ def compute_brinson_attribution_v2(fund_code: str,
     results = []
     for ac in asset_classes:
         ap_w = ap_period_weights.get(ac, 0) * 100
-        bm_w = bm_weights.get(ac, 0)
+        # drift 면 표시 BM비중은 일별 평균(대표값)
+        bm_w = ((bm_w_daily[ac].mean() * 100) if (saa_mode == 'proxy_drift' and ac in bm_w_daily)
+                else bm_weights.get(ac, 0))
         ap_r = ap_period_returns.get(ac, 0) * 100
         bm_r = bm_period_returns.get(ac, 0)
         contrib = ap_period_contribs.get(ac, 0) * 100
@@ -2236,13 +2260,13 @@ def compute_brinson_attribution_v2(fund_code: str,
         else:
             ap_contrib_cum = ap_contrib_raw
         # BM 기여(누적): bm_period_contrib 와 동일 공식의 누적
-        w = bm_weights.get(ac, 0) / 100.0
+        w = bm_w_daily.get(ac, pd.Series(0.0, index=dates_idx))
         if bm_available and ac in bm_daily_df.columns:
             bm_contrib_cum = (bm_daily_df[ac] * w * bm_cum_prev).cumsum() * 100
         else:
             bm_contrib_cum = pd.Series(0.0, index=dates_idx)
         ap_w_series = ap_wgt_daily[ac] * 100
-        bm_w_static = bm_weights.get(ac, 0)  # SAA/BM 목표비중(기간 고정, %)
+        bm_w_pct = bm_w_daily.get(ac, pd.Series(0.0, index=dates_idx)) * 100  # 고정/일별 BM비중(%)
         # 자산군 실제(마켓) 누적수익률 % (0% 시작, 비중 미반영) — Allocation/Selection 진단용
         ap_ret_cum_s = ((1 + ap_ret_daily[ac]).cumprod() - 1) * 100
         if bm_available and ac in bm_daily_df.columns:
@@ -2254,7 +2278,7 @@ def compute_brinson_attribution_v2(fund_code: str,
                 'date': dates_idx[i],
                 'asset_class': ac,
                 'ap_weight': float(ap_w_series.iloc[i]),
-                'bm_weight': float(bm_w_static),
+                'bm_weight': float(bm_w_pct.iloc[i]),
                 'ap_contrib_cum': float(ap_contrib_cum.iloc[i]),
                 'bm_contrib_cum': float(bm_contrib_cum.iloc[i]),
                 'ap_ret_cum': float(ap_ret_cum_s.iloc[i]),
