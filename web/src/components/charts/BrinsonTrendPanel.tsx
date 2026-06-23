@@ -49,6 +49,10 @@ function alignZero(a: number[], b: number[]): [[number, number], [number, number
   return [[-pn * aH, qn * aH], [-pn * bH, qn * bH]];
 }
 
+// 부호 포함 2자리 문자열. Plotly 의 `%{y:+.2f}` 가 일부 버전서 무시돼 raw 값(20자리)이
+// 노출되는 문제를 피하려 customdata 에 미리 포맷한 문자열을 넣고 `%{customdata}` 로 표기.
+const signed2 = (v: number) => (v >= 0 ? "+" : "") + v.toFixed(2);
+
 type Mode = "all" | "alloc" | "select";
 
 interface Props {
@@ -113,12 +117,15 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
   const allCum: Plotly.Data[] = (() => {
     if (!sel) {
       const t: Plotly.Data[] = [];
-      if (hasBm) t.push({
-        x: dates, y: dates.map((_, i) => daily[i].ap_cum - daily[i].bm_cum),
-        type: "scatter", mode: "lines", name: `AP−${BM} 초과`, fill: "tozeroy",
-        line: { width: 0 }, fillcolor: WGT_FILL,
-        hovertemplate: "초과 %{y:+.2f}%p<extra></extra>",
-      });
+      if (hasBm) {
+        const ey = dates.map((_, i) => daily[i].ap_cum - daily[i].bm_cum);
+        t.push({
+          x: dates, y: ey, customdata: ey.map(signed2),
+          type: "scatter", mode: "lines", name: `AP−${BM} 초과`, fill: "tozeroy",
+          line: { width: 0 }, fillcolor: WGT_FILL,
+          hovertemplate: "초과 %{customdata}%p<extra></extra>",
+        });
+      }
       t.push({
         x: dates, y: daily.map((d) => d.ap_cum), type: "scatter", mode: "lines",
         name: "AP 누적", line: { width: 2, color: AP_LINE },
@@ -134,12 +141,15 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
     const rows = byClass.get(sel) ?? [];
     const x = rows.map((r) => String(r.date));
     const t: Plotly.Data[] = [];
-    if (hasBm) t.push({
-      x, y: rows.map((r) => r.ap_contrib_cum - r.bm_contrib_cum),
-      type: "scatter", mode: "lines", name: `AP−${BM} 초과기여`, fill: "tozeroy",
-      line: { width: 0 }, fillcolor: WGT_FILL,
-      hovertemplate: "초과기여 %{y:+.2f}%p<extra></extra>",
-    });
+    if (hasBm) {
+      const ecy = rows.map((r) => r.ap_contrib_cum - r.bm_contrib_cum);
+      t.push({
+        x, y: ecy, customdata: ecy.map(signed2),
+        type: "scatter", mode: "lines", name: `AP−${BM} 초과기여`, fill: "tozeroy",
+        line: { width: 0 }, fillcolor: WGT_FILL,
+        hovertemplate: "초과기여 %{customdata}%p<extra></extra>",
+      });
+    }
     t.push({
       x, y: rows.map((r) => r.ap_contrib_cum), type: "scatter", mode: "lines",
       name: `${sel} AP기여`, line: { width: 2, color: AP_LINE },
@@ -189,12 +199,13 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
     const idx = bmIndexByClass.get(c);
     if (isAlloc) {
       // 영역(좌축)=AP−BM 비중차 · 라인(우축)=BM지수 누적수익률(갈색)
+      const wd = rows.map((r) => r.ap_weight - r.bm_weight);
       return [
         {
-          x, y: rows.map((r) => r.ap_weight - r.bm_weight), type: "scatter", mode: "lines",
+          x, y: wd, customdata: wd.map(signed2), type: "scatter", mode: "lines",
           name: `AP−${BM} 비중차(좌)`, fill: "tozeroy",
           line: { width: 0 }, fillcolor: WGT_FILL,
-          hovertemplate: `AP−${BM} 비중차 %{y:+.2f}%p<extra></extra>`,
+          hovertemplate: `AP−${BM} 비중차 %{customdata}%p<extra></extra>`,
         },
         {
           x, y: rows.map((r) => r.bm_ret_cum), type: "scatter", mode: "lines",
@@ -206,12 +217,13 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
     // Selection: 영역(좌축)=AP−BM 수익률차 · 라인(우축)=AP수익률(남색)/BM수익률(갈색). BM비중은 범례.
     const bmW = rows.length ? rows[rows.length - 1].bm_weight : 0;
     const bmName = `${c} ${BM}수익률${idx ? ` (${idx})` : ""} ·비중 ${bmW.toFixed(1)}%`;
+    const rd = rows.map((r) => r.ap_ret_cum - r.bm_ret_cum);
     return [
       {
-        x, y: rows.map((r) => r.ap_ret_cum - r.bm_ret_cum), type: "scatter", mode: "lines",
+        x, y: rd, customdata: rd.map(signed2), type: "scatter", mode: "lines",
         name: `AP−${BM} 수익률차(좌)`, fill: "tozeroy",
         line: { width: 0 }, fillcolor: WGT_FILL,
-        hovertemplate: `AP−${BM} 수익률차 %{y:+.2f}%p<extra></extra>`,
+        hovertemplate: `AP−${BM} 수익률차 %{customdata}%p<extra></extra>`,
       },
       {
         x, y: rows.map((r) => r.ap_ret_cum), type: "scatter", mode: "lines",
