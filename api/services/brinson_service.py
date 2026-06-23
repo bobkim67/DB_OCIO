@@ -275,7 +275,7 @@ def _build_bm_meta(fund_code: str, method: str, as_of=None,
     )
 
     if saa_mode in ("proxy", "proxy_drift"):
-        # proxy: 안전자산→KAP All / 나머지→MSCI ACWI (구성 동일, drift 는 비중만 일별 변동)
+        # proxy: 안전자산→KIS 종합채권 / 나머지→MSCI ACWI (구성 동일, drift 는 비중만 일별 변동)
         info = _build_proxy_bm_info(fund_code, start_yyyymmdd) if start_yyyymmdd else None
         if info and info.get("components"):
             comps = [

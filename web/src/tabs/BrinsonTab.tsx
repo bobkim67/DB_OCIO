@@ -284,7 +284,7 @@ export default function BrinsonTab({ fundCode }: Props) {
                 <button
                   key={m} type="button" onClick={() => setSaaSource(m)} disabled={isFetching}
                   title={m === "auto" ? "등록 SAA 인덱스"
-                    : "안전자산(채권 ex-HY)→KAP All / 나머지→MSCI ACWI"}
+                    : "안전자산(채권 ex-HY)→KIS 종합채권 / 나머지→MSCI ACWI"}
                   style={{
                     fontSize: 11, padding: "4px 10px", border: "none",
                     cursor: isFetching ? "default" : "pointer",
@@ -392,7 +392,9 @@ export default function BrinsonTab({ fundCode }: Props) {
           if (c.asset_class === "FX") continue;
           const g = normCls(c.asset_class);
           const arr = saaByClass.get(g) ?? [];
-          arr.push({ label: isBM ? c.name : "—", weight: c.weight });
+          // BM=지수명. SAA=등록/proxy 인덱스명(name). MP 목표비중 SAA는 name===자산군명이라 "—".
+          const idxName = c.name && c.name !== c.asset_class ? c.name : "—";
+          arr.push({ label: idxName, weight: c.weight });
           saaByClass.set(g, arr);
         }
         // 자산군별 AP 보유종목 (비중 내림차순)
@@ -448,7 +450,7 @@ export default function BrinsonTab({ fundCode }: Props) {
               <thead>
                 <tr style={{ background: "#f9fafb" }}>
                   <th style={th}>자산군</th>
-                  <th style={th}>{isBM ? "BM 지수" : "SAA"}</th>
+                  <th style={th}>{isBM ? "BM 지수" : "SAA 지수"}</th>
                   <th style={thr}>{isBM ? "BM비중" : "SAA비중"}</th>
                   <th style={tdGap} />
                   <th style={th}>AP</th>

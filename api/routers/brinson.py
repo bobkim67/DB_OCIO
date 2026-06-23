@@ -46,7 +46,7 @@ def get_brinson(
     mapping_method: str | None = Query(default=None),
     pa_method: str = Query(default="8"),
     fx_split: bool = Query(default=True),
-    saa_mode: str = Query(default="auto", description="auto(BM/등록SAA) | proxy(안전자산→KAP All/나머지→ACWI)"),
+    saa_mode: str = Query(default="auto", description="auto(BM/등록SAA) | proxy(안전자산→KIS 종합채권/나머지→ACWI)"),
 ) -> BrinsonResponseDTO:
     sd = _parse_iso("start_date", start_date)
     ed = _parse_iso("end_date", end_date)

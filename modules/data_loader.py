@@ -1893,10 +1893,12 @@ def load_saa_components(fund_code: str, as_of_date=None) -> dict:
 
 
 def _build_proxy_bm_info(fund_code: str, start_yyyymmdd: str) -> dict:
-    """SAA proxy 벤치마크: 안전자산(국내채권+해외채권 ex-HY) → KAP All, 나머지 → MSCI ACWI.
+    """SAA proxy 벤치마크: 안전자산(국내채권+해외채권 ex-HY) → KIS 종합채권, 나머지 → MSCI ACWI.
 
     안전자산 비중은 기간 시작일 AP 보유 기준(고정). HY 는 종목명('HIGH YIELD'/'하이일드') 제외.
     MSCI ACWI 는 ex_KR(T-1×USDKRW, biz_day_adj=-1) — BM 경로가 자동 처리.
+    안전자산 인덱스 = KIS 종합채권시장 총수익지수(AA-이상) (dataset 188/ds 33) —
+    등록 SAA 3펀드가 쓰는 국내채권 인덱스와 동일(2026-06-23 사용자 지시, KAP All 에서 변경).
     """
     base = datetime.strptime(str(start_yyyymmdd), '%Y%m%d')
     df = None
@@ -1936,8 +1938,8 @@ def _build_proxy_bm_info(fund_code: str, start_yyyymmdd: str) -> dict:
             safe += w
     sw = max(0.0, min(100.0, safe)) / 100.0
     return {'components': [
-        {'dataset_id': 257, 'dataseries_id': 9, 'weight': sw,
-         'name': 'KAP Korea Bond Pricing All Bonds Index',
+        {'dataset_id': 188, 'dataseries_id': 33, 'weight': sw,
+         'name': 'KIS 종합채권시장 총수익지수(AA-이상)',
          'region': 'KR', 'hedged': False, 'currency': 'KRW'},
         {'dataset_id': 35, 'dataseries_id': 15, 'weight': 1.0 - sw,
          'name': 'MSCI ACWI Index', 'region': 'ex_KR', 'hedged': False, 'currency': 'USD'},
@@ -2005,7 +2007,7 @@ def compute_brinson_attribution_v2(fund_code: str,
     # ── 3) BM 일별 수익률 로드 ──
     from config.funds import FUND_BM
     if saa_mode in ('proxy', 'proxy_drift'):
-        # SAA proxy(안전자산→KAP All / 나머지→MSCI ACWI). proxy_drift 는 비중만 일별 변동.
+        # SAA proxy(안전자산→KIS 종합채권 / 나머지→MSCI ACWI). proxy_drift 는 비중만 일별 변동.
         bm_info = _build_proxy_bm_info(fund_code, start_date)
     else:
         bm_info = FUND_BM.get(fund_code)

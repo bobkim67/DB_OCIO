@@ -87,6 +87,8 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
 
   const dates = useMemo(() => daily.map((d) => String(d.date)), [daily]);
   const hasBm = bmSource !== "none";
+  // BM 없는(SAA) 펀드는 라벨을 "SAA"로 표기. (그 외 "BM")
+  const BM = bmSource === "SAA" ? "SAA" : "BM";
 
   const byClass = useMemo(() => {
     const m = new Map<string, BrinsonDailyClassDTO[]>();
@@ -113,7 +115,7 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
       const t: Plotly.Data[] = [];
       if (hasBm) t.push({
         x: dates, y: dates.map((_, i) => daily[i].ap_cum - daily[i].bm_cum),
-        type: "scatter", mode: "lines", name: "AP−BM 초과", fill: "tozeroy",
+        type: "scatter", mode: "lines", name: `AP−${BM} 초과`, fill: "tozeroy",
         line: { width: 0 }, fillcolor: WGT_FILL,
         hovertemplate: "초과 %{y:+.2f}%p<extra></extra>",
       });
@@ -124,8 +126,8 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
       });
       if (hasBm) t.push({
         x: dates, y: daily.map((d) => d.bm_cum), type: "scatter", mode: "lines",
-        name: "BM 누적", line: { width: 2, color: BM_LINE },
-        hovertemplate: "BM %{y:.2f}%<extra></extra>",
+        name: `${BM} 누적`, line: { width: 2, color: BM_LINE },
+        hovertemplate: `${BM} %{y:.2f}%<extra></extra>`,
       });
       return t;
     }
@@ -134,7 +136,7 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
     const t: Plotly.Data[] = [];
     if (hasBm) t.push({
       x, y: rows.map((r) => r.ap_contrib_cum - r.bm_contrib_cum),
-      type: "scatter", mode: "lines", name: "AP−BM 초과기여", fill: "tozeroy",
+      type: "scatter", mode: "lines", name: `AP−${BM} 초과기여`, fill: "tozeroy",
       line: { width: 0 }, fillcolor: WGT_FILL,
       hovertemplate: "초과기여 %{y:+.2f}%p<extra></extra>",
     });
@@ -145,8 +147,8 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
     });
     if (hasBm) t.push({
       x, y: rows.map((r) => r.bm_contrib_cum), type: "scatter", mode: "lines",
-      name: `${sel} BM기여`, line: { width: 2, color: BM_LINE },
-      hovertemplate: "BM기여 %{y:.2f}%<extra></extra>",
+      name: `${sel} ${BM}기여`, line: { width: 2, color: BM_LINE },
+      hovertemplate: `${BM}기여 %{y:.2f}%<extra></extra>`,
     });
     return t;
   })();
@@ -173,8 +175,8 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
     }];
     if (hasBm) t.push({
       x: rows.map((r) => String(r.date)), y: rows.map((r) => r.bm_weight),
-      type: "scatter", mode: "lines", name: `${sel} BM 비중`,
-      line: { width: 1.8, color: BM_LINE, dash: "dash" }, hovertemplate: "BM 비중 %{y:.1f}%<extra></extra>",
+      type: "scatter", mode: "lines", name: `${sel} ${BM} 비중`,
+      line: { width: 1.8, color: BM_LINE, dash: "dash" }, hovertemplate: `${BM} 비중 %{y:.1f}%<extra></extra>`,
     });
     return t;
   })();
@@ -190,9 +192,9 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
       return [
         {
           x, y: rows.map((r) => r.ap_weight - r.bm_weight), type: "scatter", mode: "lines",
-          name: "AP−BM 비중차(좌)", fill: "tozeroy",
+          name: `AP−${BM} 비중차(좌)`, fill: "tozeroy",
           line: { width: 0 }, fillcolor: WGT_FILL,
-          hovertemplate: `AP−BM 비중차 %{y:+.2f}%p<extra></extra>`,
+          hovertemplate: `AP−${BM} 비중차 %{y:+.2f}%p<extra></extra>`,
         },
         {
           x, y: rows.map((r) => r.bm_ret_cum), type: "scatter", mode: "lines",
@@ -203,13 +205,13 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
     }
     // Selection: 영역(좌축)=AP−BM 수익률차 · 라인(우축)=AP수익률(남색)/BM수익률(갈색). BM비중은 범례.
     const bmW = rows.length ? rows[rows.length - 1].bm_weight : 0;
-    const bmName = `${c} BM수익률${idx ? ` (${idx})` : ""} ·비중 ${bmW.toFixed(1)}%`;
+    const bmName = `${c} ${BM}수익률${idx ? ` (${idx})` : ""} ·비중 ${bmW.toFixed(1)}%`;
     return [
       {
         x, y: rows.map((r) => r.ap_ret_cum - r.bm_ret_cum), type: "scatter", mode: "lines",
-        name: "AP−BM 수익률차(좌)", fill: "tozeroy",
+        name: `AP−${BM} 수익률차(좌)`, fill: "tozeroy",
         line: { width: 0 }, fillcolor: WGT_FILL,
-        hovertemplate: `AP−BM 수익률차 %{y:+.2f}%p<extra></extra>`,
+        hovertemplate: `AP−${BM} 수익률차 %{y:+.2f}%p<extra></extra>`,
       },
       {
         x, y: rows.map((r) => r.ap_ret_cum), type: "scatter", mode: "lines",
@@ -219,7 +221,7 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
       {
         x, y: rows.map((r) => r.bm_ret_cum), type: "scatter", mode: "lines",
         name: bmName, yaxis: "y2", line: { width: 2, color: BM_LINE },
-        hovertemplate: `${c} BM %{y:.2f}%<extra></extra>`,
+        hovertemplate: `${c} ${BM} %{y:.2f}%<extra></extra>`,
       },
     ] as Plotly.Data[];
   });
@@ -252,13 +254,13 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
     autosize: true, height: 400, margin: { t: 28, r: 60, b: 36, l: 56 },
     xaxis: { title: { text: "" }, type: "date" },
     yaxis: {
-      title: { text: isAlloc ? "AP−BM 비중차 (%p)" : "AP−BM 수익률차 (%p)" }, ticksuffix: "%",
+      title: { text: isAlloc ? `AP−${BM} 비중차 (%p)` : `AP−${BM} 수익률차 (%p)` }, ticksuffix: "%",
       hoverformat: ".2f",
       zeroline: true, zerolinecolor: "#9ca3af", zerolinewidth: 1,
       ...(diffRange ? { range: diffRange } : {}),
     },
     yaxis2: {
-      title: { text: isAlloc ? "BM 누적수익률 (%)" : "자산군 누적수익률 (%)" }, ticksuffix: "%",
+      title: { text: isAlloc ? `${BM} 누적수익률 (%)` : "자산군 누적수익률 (%)" }, ticksuffix: "%",
       hoverformat: ".2f",
       overlaying: "y", side: "right", showgrid: false, zeroline: false,
       ...(levelRange ? { range: levelRange } : {}),
@@ -267,10 +269,10 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
   };
 
   const hint = isAlloc
-    ? "Allocation = Σ (AP−BM 비중차)ₜ × BM일별수익ₜ (경로적분). 우축 라인=BM지수 누적수익률, 좌축 영역=AP−BM 비중차 (0점 동기화)."
+    ? `Allocation = Σ (AP−${BM} 비중차)ₜ × ${BM}일별수익ₜ (경로적분). 우축 라인=${BM}지수 누적수익률, 좌축 영역=AP−${BM} 비중차 (0점 동기화).`
     : mode === "select"
-      ? "Selection = BM비중(고정) × Σ (AP−BM 일별수익차)ₜ. 우축 라인=AP·BM 자산군수익률(간격=종목선택), 좌축 영역=AP−BM 수익률차. BM비중은 범례."
-      : sel ? `좌: ${sel} AP·BM 누적기여 + 초과(영역) · 우: ${sel} 비중 vs BM` : "AP·BM 누적수익 + 초과(영역)";
+      ? `Selection = ${BM}비중(고정) × Σ (AP−${BM} 일별수익차)ₜ. 우축 라인=AP·${BM} 자산군수익률(간격=종목선택), 좌축 영역=AP−${BM} 수익률차. ${BM}비중은 범례.`
+      : sel ? `좌: ${sel} AP·${BM} 누적기여 + 초과(영역) · 우: ${sel} 비중 vs ${BM}` : `AP·${BM} 누적수익 + 초과(영역)`;
 
   const radio = (m: Mode, label: string) => (
     <button
@@ -296,7 +298,7 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
           style={{ fontSize: 12, padding: "3px 6px" }}
           title="자산군 필터"
         >
-          {mode === "all" && <option value="">전체 (AP vs BM)</option>}
+          {mode === "all" && <option value="">전체 (AP vs {BM})</option>}
           {classes.map((c) => (
             <option key={c} value={c}>{idxLabel(c)}</option>
           ))}
