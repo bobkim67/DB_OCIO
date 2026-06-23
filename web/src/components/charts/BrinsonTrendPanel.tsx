@@ -217,22 +217,23 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
     // Selection: 영역(좌축)=AP−BM 수익률차 · 라인(우축)=AP수익률(남색)/BM수익률(갈색). BM비중은 범례.
     const bmW = rows.length ? rows[rows.length - 1].bm_weight : 0;
     const bmName = `${c} ${BM}수익률${idx ? ` (${idx})` : ""} ·비중 ${bmW.toFixed(1)}%`;
+    // Selection 은 차이·라인 모두 %수익률 단위 → 단일축(동기화). 라인 간격이 곧 수익률차.
     const rd = rows.map((r) => r.ap_ret_cum - r.bm_ret_cum);
     return [
       {
         x, y: rd, customdata: rd.map(signed2), type: "scatter", mode: "lines",
-        name: `AP−${BM} 수익률차(좌)`, fill: "tozeroy",
+        name: `AP−${BM} 수익률차`, fill: "tozeroy",
         line: { width: 0 }, fillcolor: WGT_FILL,
         hovertemplate: `AP−${BM} 수익률차 %{customdata}%p<extra></extra>`,
       },
       {
         x, y: rows.map((r) => r.ap_ret_cum), type: "scatter", mode: "lines",
-        name: `${c} AP수익률`, yaxis: "y2", line: { width: 2, color: AP_LINE },
+        name: `${c} AP수익률`, line: { width: 2, color: AP_LINE },
         hovertemplate: `${c} AP %{y:.2f}%<extra></extra>`,
       },
       {
         x, y: rows.map((r) => r.bm_ret_cum), type: "scatter", mode: "lines",
-        name: bmName, yaxis: "y2", line: { width: 2, color: BM_LINE },
+        name: bmName, line: { width: 2, color: BM_LINE },
         hovertemplate: `${c} ${BM} %{y:.2f}%<extra></extra>`,
       },
     ] as Plotly.Data[];
@@ -280,10 +281,21 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
     hovermode: "x unified", hoverlabel: { align: "left" }, legend: legendCfg,
   };
 
+  // Selection 전용 단일축 — 차이 영역과 AP/BM 수익률 라인이 같은 %수익률 축 공유(동기화).
+  const selectLayout: Partial<Plotly.Layout> = {
+    autosize: true, height: 400, margin: { t: 28, r: 16, b: 36, l: 56 },
+    xaxis: { title: { text: "" }, type: "date" },
+    yaxis: {
+      title: { text: "수익률 (%)" }, ticksuffix: "%", hoverformat: ".2f",
+      zeroline: true, zerolinecolor: "#9ca3af", zerolinewidth: 1,
+    },
+    hovermode: "x unified", hoverlabel: { align: "left" }, legend: legendCfg,
+  };
+
   const hint = isAlloc
     ? `Allocation = Σ (AP−${BM} 비중차)ₜ × ${BM}일별수익ₜ (경로적분). 우축 라인=${BM}지수 누적수익률, 좌축 영역=AP−${BM} 비중차 (0점 동기화).`
     : mode === "select"
-      ? `Selection = ${BM}비중(고정) × Σ (AP−${BM} 일별수익차)ₜ. 우축 라인=AP·${BM} 자산군수익률(간격=종목선택), 좌축 영역=AP−${BM} 수익률차. ${BM}비중은 범례.`
+      ? `Selection = ${BM}비중(고정) × Σ (AP−${BM} 일별수익차)ₜ. 라인=AP·${BM} 자산군수익률(라인 간격=종목선택 효과), 영역=AP−${BM} 수익률차. 단일축(동기화). ${BM}비중은 범례.`
       : sel ? `좌: ${sel} AP·${BM} 누적기여 + 초과(영역) · 우: ${sel} 비중 vs ${BM}` : `AP·${BM} 누적수익 + 초과(영역)`;
 
   const radio = (m: Mode, label: string) => (
@@ -352,7 +364,7 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
       ) : (
         <Plot
           data={diagCombined}
-          layout={dualLayout}
+          layout={mode === "select" ? selectLayout : dualLayout}
           config={plotConfig} useResizeHandler style={{ width: "100%", height: "100%" }}
         />
       )}
