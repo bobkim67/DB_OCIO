@@ -57,9 +57,10 @@ def _securities(f: str):
 
 
 def _brinson(f: str):
-    # 디폴트 파라미터(전년말~어제, 펀드 기본 분류방법) → brinson 디스크 캐시 기록
+    # 디폴트 파라미터(전년말~어제, 펀드 기본 분류방법) → brinson 디스크 캐시 기록.
+    # 프론트 디폴트가 FX 포함(fx_split=False)이라 워밍업도 동일하게 맞춰야 첫 화면이 warm.
     from api.services.brinson_service import build_brinson
-    return build_brinson(f)
+    return build_brinson(f, fx_split=False)
 
 
 def main() -> int:
