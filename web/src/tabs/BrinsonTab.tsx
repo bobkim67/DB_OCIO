@@ -162,25 +162,26 @@ export default function BrinsonTab({ fundCode }: Props) {
   const sumBmContrib = enrichedRows.reduce((s, r) => s + r.bm_contrib, 0);
   const sumExcessContrib = enrichedRows.reduce((s, r) => s + r.excess_contrib, 0);
 
-  // 표1 펼치기용 자산군별 상세 — BM '유동성'을 AP와 동일하게 '유동성및기타'로 정규화.
+  // 표1 펼치기 — 표0(BM/SAA 구성)과 동일 행구조(같은 AP종목·정렬·FX제외)로 BM티커/AP종목 별도 컬럼.
   const normCls1 = (c: string) => (c === "유동성" ? "유동성및기타" : c);
-  // AP 종목별 기여 (자산군 → [{item_nm, contrib}], 기여 내림차순)
-  const secContribByClass = new Map<string, { item_nm: string; contrib: number }[]>();
+  // AP 종목 (FX 제외, 비중 내림차순 = 표0 동일 정렬) — 표0과 자산군당 행수 일치
+  const apSecByClass1 = new Map<string, { item_nm: string; weight: number; contrib: number }[]>();
   for (const s of data.sec_contrib) {
+    if (s.asset_class === "FX") continue;
     const g = normCls1(s.asset_class);
-    const arr = secContribByClass.get(g) ?? [];
-    arr.push({ item_nm: s.item_nm, contrib: s.contrib_pct });
-    secContribByClass.set(g, arr);
+    const arr = apSecByClass1.get(g) ?? [];
+    arr.push({ item_nm: s.item_nm, weight: s.weight_pct, contrib: s.contrib_pct });
+    apSecByClass1.set(g, arr);
   }
-  for (const arr of secContribByClass.values()) arr.sort((a, b) => b.contrib - a.contrib);
-  // 자산군별 BM 지수명 (SAA MP 목표비중처럼 name===자산군명인 경우는 제외)
-  const bmIdxByClass = new Map<string, string[]>();
+  for (const arr of apSecByClass1.values()) arr.sort((a, b) => b.weight - a.weight);
+  // 자산군별 BM 지수명(조인) — name===자산군명(MP 목표비중뿐)은 제외, FX 제외
+  const bmLabelByClass = new Map<string, string>();
   for (const c of data.bm_components) {
+    if (c.asset_class === "FX") continue;
     if (!c.name || c.name === c.asset_class) continue;
     const g = normCls1(c.asset_class);
-    const arr = bmIdxByClass.get(g) ?? [];
-    arr.push(c.name);
-    bmIdxByClass.set(g, arr);
+    const prev = bmLabelByClass.get(g);
+    bmLabelByClass.set(g, prev ? `${prev}, ${c.name}` : c.name);
   }
 
   // 종목표 정렬
@@ -592,15 +593,23 @@ export default function BrinsonTab({ fundCode }: Props) {
           <thead>
             <tr style={{ background: "#f9fafb" }}>
               <th style={th}>자산군</th>
-              <th style={thr}>AP기여</th>
+              <th style={th}>BM티커</th>
               <th style={thr}>BM기여</th>
+              <th style={tdGap} />
+              <th style={th}>AP</th>
+              <th style={thr}>AP기여</th>
               <th style={thr}>초과기여</th>
             </tr>
           </thead>
           <tbody>
             {enrichedRows.flatMap((r) => {
+              const bmLabel = bmLabelByClass.get(r.asset_class) ?? "";
               const rows: ReactNode[] = [
                 <tr key={r.asset_class}>
+                  <td style={td}>{r.asset_class}</td>
+                  <td style={{ ...td, color: "#6b7280" }}>{bmLabel}</td>
+                  <td style={tdr}>{fmtPct(r.bm_contrib)}</td>
+                  <td style={tdGap} />
                   <td style={td}>{r.asset_class}</td>
                   <td
                     style={{
@@ -611,7 +620,6 @@ export default function BrinsonTab({ fundCode }: Props) {
                   >
                     {fmtPct(r.contrib_return)}
                   </td>
-                  <td style={tdr}>{fmtPct(r.bm_contrib)}</td>
                   <td
                     style={{
                       ...tdr,
@@ -623,33 +631,16 @@ export default function BrinsonTab({ fundCode }: Props) {
                   </td>
                 </tr>,
               ];
+              // 펼침 시 AP 종목 행 (BM 컬럼 빈칸) — 표0 과 동일 행수
               if (tbl1Expanded) {
-                // BM 지수명 행 (있을 때만)
-                const idx = bmIdxByClass.get(r.asset_class) ?? [];
-                if (idx.length) {
-                  rows.push(
-                    <tr key={`${r.asset_class}-bm`}>
-                      <td
-                        style={{
-                          ...td,
-                          paddingLeft: 18,
-                          color: "#6b7280",
-                          fontStyle: "italic",
-                        }}
-                      >
-                        BM지수: {idx.join(", ")}
-                      </td>
-                      <td style={tdr} />
-                      <td style={tdr} />
-                      <td style={tdr} />
-                    </tr>,
-                  );
-                }
-                // AP 종목별 기여 행
-                const secs = secContribByClass.get(r.asset_class) ?? [];
+                const secs = apSecByClass1.get(r.asset_class) ?? [];
                 for (let i = 0; i < secs.length; i++) {
                   rows.push(
                     <tr key={`${r.asset_class}-sec-${i}`}>
+                      <td style={td} />
+                      <td style={td} />
+                      <td style={td} />
+                      <td style={tdGap} />
                       <td style={{ ...td, paddingLeft: 18, color: "#374151" }}>
                         {secs[i].item_nm}
                       </td>
@@ -662,7 +653,6 @@ export default function BrinsonTab({ fundCode }: Props) {
                         {fmtPct(secs[i].contrib)}
                       </td>
                       <td style={tdr} />
-                      <td style={tdr} />
                     </tr>,
                   );
                 }
@@ -671,8 +661,11 @@ export default function BrinsonTab({ fundCode }: Props) {
             })}
             <tr style={{ background: "#f3f4f6", fontWeight: 600 }}>
               <td style={td}>합계</td>
-              <td style={tdr}>{fmtPct(sumApContrib)}</td>
+              <td style={td} />
               <td style={tdr}>{fmtPct(sumBmContrib)}</td>
+              <td style={tdGap} />
+              <td style={td} />
+              <td style={tdr}>{fmtPct(sumApContrib)}</td>
               <td style={tdr}>{fmtPct(sumExcessContrib)}</td>
             </tr>
           </tbody>
