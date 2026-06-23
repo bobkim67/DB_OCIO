@@ -30,6 +30,17 @@ PeriodReturnsDTO = dict[str, float]
 # value: raw ratio. 누락 기간은 dict에 key 미포함으로 표현.
 
 
+class FundInfoDTO(BaseModel):
+    """펀드 기본정보(Overview 메타바). OCIO 사모라 거래소 티커 대신 KSD 표준코드."""
+    ticker: str | None = None        # KSD 표준코드 (거래소 티커 없음 — 사모)
+    inception: date | None = None    # 설정일 (DWPI10011.FRST_OPNG_DT)
+    setup_amount: float | None = None  # 설정액 = 최신 순자산(NAST_AMT), 원
+    fund_type: str | None = None     # 펀드타입 (사모 · 수익증권 등)
+    manager: str | None = None       # 운용사
+    fee_bp: float | None = None      # 총보수율 (bp, BOS3203 컴포넌트 합)
+    nav: float | None = None         # 최신 기준가 (MOD_STPR)
+
+
 class OverviewResponseDTO(BaseModel):
     meta: BaseMeta
     fund_code: str
@@ -40,3 +51,4 @@ class OverviewResponseDTO(BaseModel):
     nav_series: list[NavPointDTO]             # Week 2: bm/excess 채움(가능 시)
     period_returns: PeriodReturnsDTO = Field(default_factory=dict)
     bm_period_returns: PeriodReturnsDTO = Field(default_factory=dict)
+    fund_meta: FundInfoDTO | None = None      # 펀드 기본정보 (ticker/설정일/설정액/타입/운용사/보수/NAV)

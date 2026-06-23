@@ -9,6 +9,7 @@ from config.funds import FUND_BM, FUND_LIST, FUND_META
 
 from ..schemas.meta import BaseMeta, SourceBreakdown
 from ..schemas.overview import (
+    FundInfoDTO,
     MetricCardDTO,
     NavPointDTO,
     OverviewResponseDTO,
@@ -323,6 +324,35 @@ def build_overview(
     if bm_aligned is not None and bm_first_val is not None:
         bm_period_returns = _compute_bm_period_returns(bm_aligned)
 
+    # --- 5-ter) 펀드 기본정보 (메타바) ---
+    fund_meta_dto: FundInfoDTO | None = None
+    try:
+        from modules.data_loader import load_fund_meta
+        fm = load_fund_meta(fund_code)
+        # 설정액 = 최신 순자산(NAST_AMT)
+        setup_amt = None
+        if "NAST_AMT" in nav_df.columns:
+            _a = nav_df["NAST_AMT"].iloc[-1]
+            if _a is not None and not pd.isna(_a):
+                setup_amt = float(_a)
+        inc_meta = None
+        if fm.get("inception"):
+            try:
+                inc_meta = _parse_yyyymmdd(fm["inception"])
+            except Exception:
+                inc_meta = None
+        fund_meta_dto = FundInfoDTO(
+            ticker=fm.get("ticker"),
+            inception=inc_meta,
+            setup_amount=setup_amt,
+            fund_type=fm.get("fund_type"),
+            manager=fm.get("manager"),
+            fee_bp=fm.get("fee_bp"),
+            nav=last_nav,
+        )
+    except Exception as exc:
+        warnings.append(f"펀드 기본정보 로딩 실패: {type(exc).__name__}")
+
     # --- 6) meta.source 결정 ---
     bm_mock_present = any(
         s.component == "bm" and s.kind != "db" for s in sources
@@ -349,4 +379,5 @@ def build_overview(
         nav_series=nav_series_dto,
         period_returns=period_returns,
         bm_period_returns=bm_period_returns,
+        fund_meta=fund_meta_dto,
     )

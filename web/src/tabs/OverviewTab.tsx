@@ -22,6 +22,11 @@ const PERIOD_LABEL: Record<string, string> = {
 function fmtPct(v: number): string {
   return `${(v * 100).toFixed(2)}%`;
 }
+// 원 → 억 (콤마). null 은 "—".
+function fmtKRW(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return "—";
+  return `${Math.round(v / 1e8).toLocaleString()}억`;
+}
 
 export default function OverviewTab({ fundCode }: Props) {
   const { data, isLoading, error } = useOverview(fundCode);
@@ -79,6 +84,41 @@ export default function OverviewTab({ fundCode }: Props) {
         </h2>
         <MetaBadge meta={data.meta} />
       </div>
+
+      {/* 펀드 기본정보 바 */}
+      {data.fund_meta && (
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "6px 20px",
+            padding: "10px 14px",
+            background: "#f9fafb",
+            border: "1px solid #e5e7eb",
+            borderRadius: 6,
+            marginBottom: 16,
+            fontSize: 13,
+          }}
+        >
+          {[
+            { label: "코드", value: data.fund_code },
+            { label: "표준코드", value: data.fund_meta.ticker ?? "—" },
+            { label: "펀드타입", value: data.fund_meta.fund_type ?? "—" },
+            { label: "운용사", value: data.fund_meta.manager ?? "—" },
+            { label: "설정일", value: data.fund_meta.inception ?? "—" },
+            { label: "설정액", value: fmtKRW(data.fund_meta.setup_amount) },
+            { label: "기준가", value: data.fund_meta.nav != null ? data.fund_meta.nav.toFixed(2) : "—" },
+            { label: "총보수", value: data.fund_meta.fee_bp != null ? `${data.fund_meta.fee_bp}bp` : "—" },
+          ].map((it) => (
+            <div key={it.label} style={{ display: "flex", flexDirection: "column" }}>
+              <span style={{ fontSize: 11, color: "#9ca3af" }}>{it.label}</span>
+              <span style={{ fontWeight: 600, color: "#374151", fontVariantNumeric: "tabular-nums" }}>
+                {it.value}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div
         style={{

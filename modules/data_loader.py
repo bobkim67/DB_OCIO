@@ -1194,6 +1194,44 @@ def load_fund_nav_with_aum(fund_code: str, start_date: str = None) -> pd.DataFra
     return df.copy() if isinstance(df, pd.DataFrame) else df
 
 
+@_ttl_cache()
+def load_fund_meta(fund_code: str) -> dict:
+    """펀드 기본정보(정적) — Overview 메타바용.
+
+    KSD 표준코드(ticker 대용)·설정일·펀드타입·운용사·총보수(bp).
+    소스: DWPI10011(펀드 마스터) + BOS3203(보수 컴포넌트 합). OCIO 사모펀드라
+    협회 공시(ST_KITCA_DS)·거래소 티커(DWPI10021)엔 데이터 없음 → KSD코드로 대체.
+    NAV(기준가)·설정액(순자산)은 nav_df 최신값을 서비스단에서 채움.
+    """
+    out = {'ticker': None, 'inception': None, 'fund_type': None,
+           'manager': '한국투자신탁운용', 'fee_bp': None}
+    try:
+        conn = get_pandas_connection('dt')
+        try:
+            m = pd.read_sql(
+                "SELECT KSD_ITEM_CD, FRST_OPNG_DT, PBOF_PROFF_DS_CD, TRST_DS_CD "
+                "FROM DWPI10011 WHERE FUND_CD=%s AND IMC_CD='003228' LIMIT 1",
+                conn, params=[fund_code])
+            if len(m):
+                r = m.iloc[0]
+                out['ticker'] = str(r['KSD_ITEM_CD']).strip() or None if r['KSD_ITEM_CD'] else None
+                fo = str(r['FRST_OPNG_DT'] or '').strip()
+                out['inception'] = fo if len(fo) == 8 and fo.isdigit() else None
+                parts = [str(r['PBOF_PROFF_DS_CD'] or '').strip(), str(r['TRST_DS_CD'] or '').strip()]
+                out['fund_type'] = ' · '.join([p for p in parts if p]) or None
+            fee = pd.read_sql(
+                "SELECT fee_rate_bp, apply_frdate FROM BOS3203 WHERE fund_cd=%s "
+                "ORDER BY apply_frdate DESC", conn, params=[fund_code])
+            if len(fee):
+                latest = fee.iloc[0]['apply_frdate']
+                out['fee_bp'] = round(float(fee[fee['apply_frdate'] == latest]['fee_rate_bp'].sum()), 3)
+        finally:
+            conn.close()
+    except Exception as exc:
+        logger.warning(f"[load_fund_meta] {fund_code} 실패: {exc}")
+    return out
+
+
 # ============================================================
 # 복합 BM (Composite Benchmark)
 # 여러 지수의 가중합으로 구성된 벤치마크

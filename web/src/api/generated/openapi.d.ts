@@ -1190,6 +1190,26 @@ export interface components {
             uncited_numeric_count?: number | null;
         };
         /**
+         * FundInfoDTO
+         * @description 펀드 기본정보(Overview 메타바). OCIO 사모라 거래소 티커 대신 KSD 표준코드.
+         */
+        FundInfoDTO: {
+            /** Ticker */
+            ticker?: string | null;
+            /** Inception */
+            inception?: string | null;
+            /** Setup Amount */
+            setup_amount?: number | null;
+            /** Fund Type */
+            fund_type?: string | null;
+            /** Manager */
+            manager?: string | null;
+            /** Fee Bp */
+            fee_bp?: number | null;
+            /** Nav */
+            nav?: number | null;
+        };
+        /**
          * FundListResponseDTO
          * @description GET /api/funds — 구체 alias (Envelope Generic 회피).
          */
@@ -1663,6 +1683,7 @@ export interface components {
             bm_period_returns?: {
                 [key: string]: number;
             };
+            fund_meta?: components["schemas"]["FundInfoDTO"] | null;
         };
         /**
          * PortfolioMixSummaryDTO
@@ -2904,6 +2925,8 @@ export interface operations {
                 mapping_method?: string | null;
                 pa_method?: string;
                 fx_split?: boolean;
+                /** @description auto(BM/등록SAA) | proxy(안전자산→KIS 종합채권/나머지→ACWI) */
+                saa_mode?: string;
             };
             header?: never;
             path: {

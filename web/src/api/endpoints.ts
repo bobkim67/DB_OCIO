@@ -21,6 +21,7 @@ export type FundListResponseDTO = S["FundListResponseDTO"];
 // === Overview ===
 export type NavPointDTO = S["NavPointDTO"];
 export type MetricCardDTO = S["MetricCardDTO"];
+export type FundInfoDTO = S["FundInfoDTO"];
 export type OverviewResponseDTO = S["OverviewResponseDTO"];
 
 // === Holdings ===
