@@ -89,6 +89,8 @@ export default function BrinsonTab({ fundCode }: Props) {
   ) as "auto" | "auto_drift" | "proxy" | "proxy_drift";
   // 펼치기(공통): 벤치마크 구성 표(표0)의 토글 하나로 표0·표1 둘 다 종목 펼침/접힘.
   const [tbl0Expanded, setTbl0Expanded] = useState(false);
+  // 표1 지표: 기여(=배분비중×수익률, 합=포트수익률) / Normalized(=자산군 수익률, 배분비중 미반영)
+  const [tbl1Metric, setTbl1Metric] = useState<"contrib" | "norm">("contrib");
 
   // 적용(applied) 상태 — 실제 조회를 구동. "조회" 버튼을 눌러야 draft → applied 반영.
   const [applied, setApplied] = useState({
@@ -163,12 +165,16 @@ export default function BrinsonTab({ fundCode }: Props) {
   // 표1 펼치기 — 표0(BM/SAA 구성)과 동일 행구조(같은 AP종목·정렬·FX제외)로 BM티커/AP종목 별도 컬럼.
   const normCls1 = (c: string) => (c === "유동성" ? "유동성및기타" : c);
   // AP 종목 (FX 제외, 비중 내림차순 = 표0 동일 정렬) — 표0과 자산군당 행수 일치
-  const apSecByClass1 = new Map<string, { item_nm: string; weight: number; contrib: number }[]>();
+  // contrib=기여수익률, ret=종목 자체 수익률(Normalized 모드 표시용)
+  const apSecByClass1 = new Map<
+    string,
+    { item_nm: string; weight: number; contrib: number; ret: number }[]
+  >();
   for (const s of data.sec_contrib) {
     if (s.asset_class === "FX") continue;
     const g = normCls1(s.asset_class);
     const arr = apSecByClass1.get(g) ?? [];
-    arr.push({ item_nm: s.item_nm, weight: s.weight_pct, contrib: s.contrib_pct });
+    arr.push({ item_nm: s.item_nm, weight: s.weight_pct, contrib: s.contrib_pct, ret: s.return_pct });
     apSecByClass1.set(g, arr);
   }
   for (const arr of apSecByClass1.values()) arr.sort((a, b) => b.weight - a.weight);
@@ -554,7 +560,54 @@ export default function BrinsonTab({ fundCode }: Props) {
 
       {/* 표 1: 자산군별 기여수익률 (BM기여 + 초과기여) — 비중 컬럼 제거, 표0 우측 배치 */}
       <div style={{ flex: "1 1 420px", minWidth: 0 }}>
-        <h3 style={{ fontSize: 14, margin: "4px 0 8px" }}>자산군별 기여수익률</h3>
+        <h3
+          style={{
+            fontSize: 14,
+            margin: "4px 0 8px",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          자산군별 {tbl1Metric === "norm" ? "수익률(Normalized)" : "기여수익률"}
+          <span
+            style={{
+              display: "inline-flex",
+              border: "1px solid #d1d5db",
+              borderRadius: 4,
+              overflow: "hidden",
+            }}
+          >
+            {(
+              [
+                ["contrib", "기여"],
+                ["norm", "Normalized"],
+              ] as const
+            ).map(([m, label]) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setTbl1Metric(m)}
+                title={
+                  m === "contrib"
+                    ? "기여수익률 = 배분비중 × 자산군수익률 (합 = 포트 수익률)"
+                    : "Normalized = 자산군 자체 수익률 (배분비중 미반영, 합산 불가)"
+                }
+                style={{
+                  fontSize: 11,
+                  fontWeight: 500,
+                  padding: "2px 10px",
+                  border: "none",
+                  cursor: "pointer",
+                  background: tbl1Metric === m ? "#2563eb" : "#fff",
+                  color: tbl1Metric === m ? "#fff" : "#374151",
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </span>
+        </h3>
         <table
           style={{
             width: "100%",
@@ -566,16 +619,23 @@ export default function BrinsonTab({ fundCode }: Props) {
             <tr style={{ background: "#f9fafb" }}>
               <th style={th}>자산군</th>
               <th style={th}>BM티커</th>
-              <th style={thr}>BM기여</th>
+              <th style={thr}>
+                BM 수익률({tbl1Metric === "norm" ? "Normalized" : "기여"})
+              </th>
               <th style={tdGap} />
               <th style={th}>AP</th>
-              <th style={thr}>AP기여</th>
-              <th style={thr}>초과기여</th>
+              <th style={thr}>
+                AP 수익률({tbl1Metric === "norm" ? "Normalized" : "기여"})
+              </th>
+              {tbl1Metric !== "norm" && <th style={thr}>초과기여</th>}
             </tr>
           </thead>
           <tbody>
             {enrichedRows.flatMap((r) => {
               const bmLabel = bmLabelByClass.get(r.asset_class) ?? "";
+              const isNorm = tbl1Metric === "norm";
+              const bmVal = isNorm ? r.bm_return : r.bm_contrib;
+              const apVal = isNorm ? r.ap_return : r.contrib_return;
               const rows: ReactNode[] = [
                 <tr
                   key={r.asset_class}
@@ -583,33 +643,36 @@ export default function BrinsonTab({ fundCode }: Props) {
                 >
                   <td style={td}>{r.asset_class}</td>
                   <td style={{ ...td, color: "#6b7280" }}>{bmLabel}</td>
-                  <td style={tdr}>{fmtPct(r.bm_contrib)}</td>
+                  <td style={tdr}>{fmtPct(bmVal)}</td>
                   <td style={tdGap} />
                   <td style={td}>{r.asset_class}</td>
                   <td
                     style={{
                       ...tdr,
                       fontWeight: 600,
-                      color: r.contrib_return < 0 ? "#b91c1c" : "#16a34a",
+                      color: apVal < 0 ? "#b91c1c" : "#16a34a",
                     }}
                   >
-                    {fmtPct(r.contrib_return)}
+                    {fmtPct(apVal)}
                   </td>
-                  <td
-                    style={{
-                      ...tdr,
-                      fontWeight: 600,
-                      color: r.excess_contrib < 0 ? "#b91c1c" : "#16a34a",
-                    }}
-                  >
-                    {fmtPct(r.excess_contrib)}
-                  </td>
+                  {!isNorm && (
+                    <td
+                      style={{
+                        ...tdr,
+                        fontWeight: 600,
+                        color: r.excess_contrib < 0 ? "#b91c1c" : "#16a34a",
+                      }}
+                    >
+                      {fmtPct(r.excess_contrib)}
+                    </td>
+                  )}
                 </tr>,
               ];
               // 펼침 시 AP 종목 행 (BM 컬럼 빈칸) — 표0 과 동일 행수, 표0 토글과 연동
               if (tbl0Expanded) {
                 const secs = apSecByClass1.get(r.asset_class) ?? [];
                 for (let i = 0; i < secs.length; i++) {
+                  const secVal = isNorm ? secs[i].ret : secs[i].contrib;
                   rows.push(
                     <tr key={`${r.asset_class}-sec-${i}`}>
                       <td style={td} />
@@ -619,60 +682,61 @@ export default function BrinsonTab({ fundCode }: Props) {
                       <td style={{ ...td, paddingLeft: 18, color: "#374151" }}>
                         {secs[i].item_nm}
                       </td>
-                      <td
-                        style={{
-                          ...tdr,
-                          color: secs[i].contrib < 0 ? "#b91c1c" : "#16a34a",
-                        }}
-                      >
-                        {fmtPct(secs[i].contrib)}
+                      <td style={{ ...tdr, color: secVal < 0 ? "#b91c1c" : "#16a34a" }}>
+                        {fmtPct(secVal)}
                       </td>
-                      <td style={tdr} />
+                      {!isNorm && <td style={tdr} />}
                     </tr>,
                   );
                 }
-                // 잔차 행: 종목합 ≠ 자산군 AP기여(소계) 차이.
-                // FX 포함 모드에서 통화 cross-term 등 종목에 귀속 안 되는 분이 소계에 들어가
-                // 종목합과 어긋나는데, 그 차이를 명시해 종목합+잔차=소계로 맞춤.
-                const secSum = secs.reduce((s, x) => s + x.contrib, 0);
-                const resid = r.contrib_return - secSum;
-                if (Math.abs(resid) >= 0.005) {
-                  rows.push(
-                    <tr key={`${r.asset_class}-resid`}>
-                      <td style={td} />
-                      <td style={td} />
-                      <td style={td} />
-                      <td style={tdGap} />
-                      <td
-                        style={{
-                          ...td,
-                          paddingLeft: 18,
-                          color: "#6b7280",
-                          fontStyle: "italic",
-                        }}
-                      >
-                        기타(잔차)
-                      </td>
-                      <td
-                        style={{ ...tdr, color: resid < 0 ? "#b91c1c" : "#16a34a" }}
-                      >
-                        {fmtPct(resid)}
-                      </td>
-                      <td style={tdr} />
-                    </tr>,
-                  );
+                // 잔차 행 — 기여 모드만. (Normalized 는 수익률이라 종목 합산 불가 → 잔차 개념 없음)
+                // 기여 모드: 종목합 ≠ 자산군 소계. FX 포함 모드에서 통화 cross-term 등 종목에
+                // 귀속 안 되는 분이 소계에 들어가는데, 차이를 명시해 종목합+잔차=소계로 맞춤.
+                if (!isNorm) {
+                  const secSum = secs.reduce((s, x) => s + x.contrib, 0);
+                  const resid = r.contrib_return - secSum;
+                  if (Math.abs(resid) >= 0.005) {
+                    rows.push(
+                      <tr key={`${r.asset_class}-resid`}>
+                        <td style={td} />
+                        <td style={td} />
+                        <td style={td} />
+                        <td style={tdGap} />
+                        <td
+                          style={{
+                            ...td,
+                            paddingLeft: 18,
+                            color: "#6b7280",
+                            fontStyle: "italic",
+                          }}
+                        >
+                          기타(잔차)
+                        </td>
+                        <td
+                          style={{ ...tdr, color: resid < 0 ? "#b91c1c" : "#16a34a" }}
+                        >
+                          {fmtPct(resid)}
+                        </td>
+                        <td style={tdr} />
+                      </tr>,
+                    );
+                  }
                 }
               }
               return rows;
             })}
             <tr style={{ background: "#f3f4f6", fontWeight: 600 }}>
-              <td style={td}>합계</td>
+              <td style={td}>{tbl1Metric === "norm" ? "전체" : "합계"}</td>
               <td style={td} />
-              <td style={tdr}>{fmtPct(sumBmContrib)}</td>
+              <td style={tdr}>
+                {fmtPct(tbl1Metric === "norm" ? data.period_bm_return : sumBmContrib)}
+              </td>
               <td style={tdGap} />
               <td style={td} />
-              <td style={tdr}>{fmtPct(sumApContrib)}</td>
-              <td style={tdr}>{fmtPct(sumExcessContrib)}</td>
+              <td style={tdr}>
+                {fmtPct(tbl1Metric === "norm" ? data.period_ap_return : sumApContrib)}
+              </td>
+              {tbl1Metric !== "norm" && <td style={tdr}>{fmtPct(sumExcessContrib)}</td>}
             </tr>
           </tbody>
         </table>
