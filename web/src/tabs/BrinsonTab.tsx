@@ -631,6 +631,37 @@ export default function BrinsonTab({ fundCode }: Props) {
                     </tr>,
                   );
                 }
+                // 잔차 행: 종목합 ≠ 자산군 AP기여(소계) 차이.
+                // FX 포함 모드에서 통화 cross-term 등 종목에 귀속 안 되는 분이 소계에 들어가
+                // 종목합과 어긋나는데, 그 차이를 명시해 종목합+잔차=소계로 맞춤.
+                const secSum = secs.reduce((s, x) => s + x.contrib, 0);
+                const resid = r.contrib_return - secSum;
+                if (Math.abs(resid) >= 0.005) {
+                  rows.push(
+                    <tr key={`${r.asset_class}-resid`}>
+                      <td style={td} />
+                      <td style={td} />
+                      <td style={td} />
+                      <td style={tdGap} />
+                      <td
+                        style={{
+                          ...td,
+                          paddingLeft: 18,
+                          color: "#6b7280",
+                          fontStyle: "italic",
+                        }}
+                      >
+                        기타(잔차)
+                      </td>
+                      <td
+                        style={{ ...tdr, color: resid < 0 ? "#b91c1c" : "#16a34a" }}
+                      >
+                        {fmtPct(resid)}
+                      </td>
+                      <td style={tdr} />
+                    </tr>,
+                  );
+                }
               }
               return rows;
             })}
