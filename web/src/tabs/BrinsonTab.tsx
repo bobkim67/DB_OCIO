@@ -287,49 +287,37 @@ export default function BrinsonTab({ fundCode }: Props) {
         )}
         {/* 소스: 등록 SAA ↔ proxy (SAA 펀드만). 비중: 고정(constant-mix) ↔ drift(buy-and-hold, 전체) */}
         {data.bm_source !== "BM" && (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, marginLeft: 8 }}>
-            <span style={{ fontSize: 11, color: "#374151" }}>소스</span>
-            <span style={{ display: "inline-flex", border: "1px solid #d1d5db", borderRadius: 4, overflow: "hidden" }}>
-              {([
-                ["auto", "등록 SAA"],
-                ["proxy", "proxy(안전/ACWI)"],
-              ] as const).map(([m, label]) => (
-                <button
-                  key={m} type="button" onClick={() => setSaaSource(m)} disabled={isFetching}
-                  title={m === "auto" ? "등록 SAA 인덱스"
-                    : "안전자산(채권 ex-HY)→KIS 종합채권 / 나머지→MSCI ACWI"}
-                  style={{
-                    fontSize: 11, padding: "4px 10px", border: "none",
-                    cursor: isFetching ? "default" : "pointer",
-                    background: saaSource === m ? "#2563eb" : "#fff",
-                    color: saaSource === m ? "#fff" : "#374151",
-                  }}
-                >{label}</button>
-              ))}
-            </span>
-          </span>
+          <label style={lbl}>
+            소스
+            <select
+              value={saaSource}
+              onChange={(e) => setSaaSource(e.target.value as "auto" | "proxy")}
+              disabled={isFetching}
+              style={inp}
+              title={
+                "등록 SAA: 등록된 SAA 인덱스\nproxy: 안전자산(채권 ex-HY)→KIS 종합채권 / 나머지→MSCI ACWI"
+              }
+            >
+              <option value="auto">등록 SAA</option>
+              <option value="proxy">proxy (MSCI ACWI · KIS 종합채권)</option>
+            </select>
+          </label>
         )}
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, marginLeft: 8 }}>
-          <span style={{ fontSize: 11, color: "#374151" }}>비중</span>
-          <span style={{ display: "inline-flex", border: "1px solid #d1d5db", borderRadius: 4, overflow: "hidden" }}>
-            {([
-              ["fixed", "고정"],
-              ["drift", "drift"],
-            ] as const).map(([m, label]) => (
-              <button
-                key={m} type="button" onClick={() => setWeightMode(m)} disabled={isFetching}
-                title={m === "fixed" ? "constant-mix: 매일 목표비중 리밸런싱"
-                  : "buy-and-hold: 리밸 target에서 인덱스 수익률대로 비중 표류"}
-                style={{
-                  fontSize: 11, padding: "4px 10px", border: "none",
-                  cursor: isFetching ? "default" : "pointer",
-                  background: weightMode === m ? "#2563eb" : "#fff",
-                  color: weightMode === m ? "#fff" : "#374151",
-                }}
-              >{label}</button>
-            ))}
-          </span>
-        </span>
+        <label style={lbl}>
+          비중
+          <select
+            value={weightMode}
+            onChange={(e) => setWeightMode(e.target.value as "fixed" | "drift")}
+            disabled={isFetching}
+            style={inp}
+            title={
+              "고정(constant-mix): 매일 목표비중 리밸런싱\ndrift(buy-and-hold): 리밸 target에서 인덱스 수익률대로 비중 표류"
+            }
+          >
+            <option value="fixed">고정</option>
+            <option value="drift">drift</option>
+          </select>
+        </label>
       </div>
 
       {/* 합계 카드 */}
