@@ -605,7 +605,10 @@ export default function BrinsonTab({ fundCode }: Props) {
             {enrichedRows.flatMap((r) => {
               const bmLabel = bmLabelByClass.get(r.asset_class) ?? "";
               const rows: ReactNode[] = [
-                <tr key={r.asset_class}>
+                <tr
+                  key={r.asset_class}
+                  style={{ borderTop: "2px solid #e5e7eb", background: "#fcfcfd" }}
+                >
                   <td style={td}>{r.asset_class}</td>
                   <td style={{ ...td, color: "#6b7280" }}>{bmLabel}</td>
                   <td style={tdr}>{fmtPct(r.bm_contrib)}</td>
