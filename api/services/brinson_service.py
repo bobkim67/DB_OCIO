@@ -109,21 +109,25 @@ _DISK_DISABLED = os.environ.get("OCIO_DISABLE_DB_CACHE") == "1"
 
 def _brinson_disk_path(fund_code: str, start_yyyymmdd: str,
                        end_yyyymmdd: str, mapping_method: str,
-                       saa_mode: str = "auto") -> str:
+                       saa_mode: str = "auto", fx_split: bool = True) -> str:
     suffix = "" if saa_mode == "auto" else f"_{saa_mode}"
-    safe = f"{fund_code}_{start_yyyymmdd}_{end_yyyymmdd}_{mapping_method}{suffix}".replace("/", "_")
+    # fx_split=True(분리) 는 기존 파일명 유지(골든·기존 캐시 호환), False('FX 포함') 만 별도 파일.
+    fx_suffix = "" if fx_split else "_fxincl"
+    safe = f"{fund_code}_{start_yyyymmdd}_{end_yyyymmdd}_{mapping_method}{suffix}{fx_suffix}".replace("/", "_")
     return os.path.join(_BRINSON_CACHE_DIR, safe + ".pkl")
 
 
 @lru_cache(maxsize=128)
 def _compute_cached(fund_code: str, start_yyyymmdd: str, end_yyyymmdd: str,
-                    mapping_method: str, saa_mode: str = "auto") -> dict | None:
+                    mapping_method: str, saa_mode: str = "auto",
+                    fx_split: bool = True) -> dict | None:
     """compute_brinson_attribution_v2 결과를 LRU(인메모리) + 디스크(.cache/brinson) 캐시.
 
-    캐시 키 (fund, start, end, method, saa_mode). pa_method/fx_split 은 후처리라 키 제외.
-    saa_mode='auto'(BM/등록SAA) 는 기존 파일명 유지, 'proxy' 는 별도 파일.
+    캐시 키 (fund, start, end, method, saa_mode, fx_split). pa_method 만 후처리라 키 제외.
+    fx_split 은 환효과를 자산군 수익률에 접느냐(False) 분리하느냐(True)로 compute 입력이라 키 포함.
+    saa_mode='auto'(BM/등록SAA)·fx_split=True 는 기존 파일명 유지, 그 외 별도 파일.
     """
-    path = _brinson_disk_path(fund_code, start_yyyymmdd, end_yyyymmdd, mapping_method, saa_mode)
+    path = _brinson_disk_path(fund_code, start_yyyymmdd, end_yyyymmdd, mapping_method, saa_mode, fx_split)
     if not _DISK_DISABLED and os.path.exists(path):
         try:
             with open(path, "rb") as f:
@@ -133,7 +137,7 @@ def _compute_cached(fund_code: str, start_yyyymmdd: str, end_yyyymmdd: str,
     from modules.data_loader import compute_brinson_attribution_v2
     raw = compute_brinson_attribution_v2(
         fund_code, start_yyyymmdd, end_yyyymmdd,
-        mapping_method=mapping_method, saa_mode=saa_mode,
+        mapping_method=mapping_method, saa_mode=saa_mode, fx_split=fx_split,
     )
     if raw is not None and not _DISK_DISABLED:
         try:
@@ -395,7 +399,7 @@ def build_brinson(
     raw = _compute_cached(
         fund_code,
         _to_yyyymmdd(start_date), _to_yyyymmdd(end_date),
-        method, saa_mode,
+        method, saa_mode, fx_split,
     )
 
     if raw is None or (raw.get("pa_df") is None) or raw["pa_df"].empty:

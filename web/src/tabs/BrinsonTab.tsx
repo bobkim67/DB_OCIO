@@ -15,7 +15,15 @@ interface Props {
   fundCode: string;
 }
 
-const MAPPING_METHODS: BrinsonMappingMethod[] = ["방법1", "방법2", "방법3", "방법4"];
+// 드롭다운은 '방법N' 대신 자산군 구성으로 표기 (구성 개수 오름차순). value 는 방법N 유지.
+// (FX·유동성은 모든 방법 공통이라 라벨에서 생략 — 코어 분류만 노출)
+const MAPPING_METHODS: BrinsonMappingMethod[] = ["방법2", "방법1", "방법4", "방법3"];
+const METHOD_LABEL: Record<BrinsonMappingMethod, string> = {
+  "방법2": "주식 | 채권",
+  "방법1": "주식 | 채권 | 대체",
+  "방법4": "국내주식 | 국내채권 | 해외주식 | 해외채권",
+  "방법3": "국내주식 | 국내채권 | 해외주식 | 해외채권 | 대체",
+};
 const FUND_DEFAULT_MAPPING_METHOD: Record<string, BrinsonMappingMethod> = {
   "4JM12": "방법4",
 };
@@ -71,7 +79,8 @@ export default function BrinsonTab({ fundCode }: Props) {
   const [startDate, setStartDate] = useState(defaultStart);
   const [endDate, setEndDate] = useState(defaultEnd);
   const [method, setMethod] = useState<BrinsonMappingMethod>(defaultMethod);
-  const [fxSplit, setFxSplit] = useState(true);
+  // FX 포함(false)이 기본 — 환효과를 해외 자산 수익률에 접어넣어 별도 FX 행 없이 합=AP.
+  const [fxSplit, setFxSplit] = useState(false);
   // 벤치마크 소스(등록 SAA/proxy) × 비중방식(고정=constant-mix / drift=buy-and-hold)
   const [saaSource, setSaaSource] = useState<"auto" | "proxy">("auto");
   const [weightMode, setWeightMode] = useState<"fixed" | "drift">("fixed");
@@ -86,7 +95,7 @@ export default function BrinsonTab({ fundCode }: Props) {
     startDate: defaultStart,
     endDate: defaultEnd,
     method: defaultMethod,
-    fxSplit: true,
+    fxSplit: false,
   });
 
   // 종목표 정렬 상태
@@ -101,10 +110,10 @@ export default function BrinsonTab({ fundCode }: Props) {
     setStartDate(s);
     setEndDate(e);
     setMethod(m);
-    setFxSplit(true);
+    setFxSplit(false);
     setSaaSource("auto");
     setWeightMode("fixed");
-    setApplied({ startDate: s, endDate: e, method: m, fxSplit: true });
+    setApplied({ startDate: s, endDate: e, method: m, fxSplit: false });
   }, [fundCode, inception]);
 
   // draft 가 applied 와 다르면 "조회" 대기 상태.
@@ -236,24 +245,28 @@ export default function BrinsonTab({ fundCode }: Props) {
             value={method}
             onChange={(e) => setMethod(e.target.value as BrinsonMappingMethod)}
             style={inp}
-            title={
-              "방법1: 주식/채권/대체/FX/유동성\n방법2: 주식/채권/FX/유동성 (대체→주식)\n방법3: 국내/해외 분리 + 대체\n방법4: 국내/해외 분리 (대체→해외주식)"
-            }
+            title={"자산군 분류 기준 (FX·유동성은 모든 방식 공통)"}
           >
             {MAPPING_METHODS.map((m) => (
               <option key={m} value={m}>
-                {m}
+                {METHOD_LABEL[m]}
               </option>
             ))}
           </select>
         </label>
-        <label style={{ ...lbl, flexDirection: "row", gap: 6, alignItems: "center" }}>
-          <input
-            type="checkbox"
-            checked={fxSplit}
-            onChange={(e) => setFxSplit(e.target.checked)}
-          />
-          FX 분리
+        <label style={lbl}>
+          FX
+          <select
+            value={fxSplit ? "split" : "incl"}
+            onChange={(e) => setFxSplit(e.target.value === "split")}
+            style={inp}
+            title={
+              "FX 포함: 환효과를 해외주식/해외채권 수익률에 접어넣음 (별도 FX 자산군 없음)\nFX 분리: 환효과를 별도 FX 자산군으로 분리"
+            }
+          >
+            <option value="incl">FX 포함</option>
+            <option value="split">FX 분리</option>
+          </select>
         </label>
         <button
           type="button"

@@ -1622,12 +1622,16 @@ def _map_bm_component_to_asset_class(comp_name: str, method: str = '방법3') ->
 
 def _load_bm_daily_returns_by_class(bm_info: dict, start_date: str, end_date: str,
                                      asset_classes_8: list,
-                                     mapping_method: str = '방법3') -> tuple:
+                                     mapping_method: str = '방법3',
+                                     fx_split: bool = True) -> tuple:
     """
     BM 컴포넌트 일별 수익률 → 자산군별 집계.
 
     Args:
         mapping_method: '방법1'~'방법4' (자산군 분류 방법)
+        fx_split: True 면 unhedged ex_KR 환효과를 별도 FX 자산군으로 분리(해외주식=stock_ret).
+                  False('FX 포함') 면 오버레이 스킵 → 해외주식 BM 이 환효과 포함 원수익률 유지,
+                  FX 자산군 없음 (AP 측 compute_single_port_pa(fx_split=False) 와 대칭).
 
     Returns: (bm_weights_static, bm_daily_df)
         bm_weights_static: {자산군: 비중(%)}
@@ -1792,7 +1796,7 @@ def _load_bm_daily_returns_by_class(bm_info: dict, start_date: str, end_date: st
     # 각 unhedged 컴포넌트 x: stock_ret = (1+x_ret)/(1+r_fx) - 1; fx_only = x_ret - stock_ret
     # 해외주식 자산군에서 unhedged 기여를 원수익률 → stock_ret로 교체
     # FX 자산군 = unhedged 컴포넌트들의 fx_only 수익률 (weight 비례 평균)
-    if _bm_fx_weight > 0 and _fx_on_kr_ret is not None:
+    if fx_split and _bm_fx_weight > 0 and _fx_on_kr_ret is not None:
         try:
             fx_ret = _fx_on_kr_ret.reindex(all_dates).fillna(0)
             _unhedged_entries = [
@@ -1950,7 +1954,8 @@ def compute_brinson_attribution_v2(fund_code: str,
                                    start_date: str, end_date: str,
                                    asset_classes: list = None,
                                    mapping_method: str = '방법3',
-                                   saa_mode: str = 'auto') -> dict:
+                                   saa_mode: str = 'auto',
+                                   fx_split: bool = True) -> dict:
     """
     Brinson 3-Factor Attribution — R 완벽 일치 버전.
 
@@ -1976,7 +1981,7 @@ def compute_brinson_attribution_v2(fund_code: str,
     # ── 1) Single PA 호출 (R PA_from_MOS exact) ──
     single_pa = compute_single_port_pa(
         fund_code, start_date, end_date,
-        fx_split=True, mapping_method=mapping_method,
+        fx_split=fx_split, mapping_method=mapping_method,
     )
     if single_pa is None:
         logger.warning(f"[BrinsonV2] {fund_code} Single PA 실패")
@@ -2025,7 +2030,8 @@ def compute_brinson_attribution_v2(fund_code: str,
         _sd_dt = pd.Timestamp(f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:8]}")
         _bm_warmup_start = (_sd_dt - timedelta(days=45)).strftime('%Y%m%d')
         bm_weights_raw, bm_daily_df, _ = _load_bm_daily_returns_by_class(
-            bm_info, _bm_warmup_start, end_date, _BM_ASSET_CLASSES, mapping_method)
+            bm_info, _bm_warmup_start, end_date, _BM_ASSET_CLASSES, mapping_method,
+            fx_split=fx_split)
 
     # BM '유동성' → '유동성및기타'로 매핑
     bm_weights = {}
@@ -2158,6 +2164,18 @@ def compute_brinson_attribution_v2(fund_code: str,
     ap_period_returns = dict(zip(asset_summary['자산군'], asset_summary['개별수익률']))
     ap_period_weights = dict(zip(asset_summary['자산군'], asset_summary['순자산비중']))
     ap_period_contribs = dict(zip(asset_summary['자산군'], asset_summary['기여수익률']))
+    # FX 포함(fx_split=False): 환효과를 해외 수익률에 multiplicative 로 접으면 통화 cross-term
+    # 잔차가 남아 자산군 기여 합이 period_ap_return 과 ~0.1%p 어긋난다. BM 측(아래 _bm_resid)과
+    # 동일하게 유동성및기타(잔차)에 귀속해 합 = AP수익률 보장. fx_split=True(분리) 는 잔차가 ~0 이라
+    # 미적용(골든 스냅샷 불변). ap_period_contribs 는 fraction, period_ap_return 은 percent.
+    if not fx_split:
+        # asset_summary 엔 '포트폴리오' 총합 행이 있으므로 표시 자산군(asset_classes)만 합산(이중계상 방지).
+        _ap_resid = period_ap_return / 100.0 - sum(
+            ap_period_contribs.get(ac, 0.0) for ac in asset_classes)
+        _ap_resid_ac = '유동성및기타' if '유동성및기타' in asset_classes else (
+            asset_classes[-1] if asset_classes else None)
+        if _ap_resid_ac is not None:
+            ap_period_contribs[_ap_resid_ac] = ap_period_contribs.get(_ap_resid_ac, 0.0) + _ap_resid
 
     bm_period_returns = {}
     for ac in asset_classes:
