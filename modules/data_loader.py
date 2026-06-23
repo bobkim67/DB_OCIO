@@ -112,8 +112,9 @@ def parse_data_blob(blob, currency: str = None):
 # R benchmark: dt.DWCI10220 → holiday_calendar, selectable_dates
 # ============================================================
 
+@_ttl_cache()
 def load_holiday_calendar() -> pd.DataFrame:
-    """한국 공휴일/영업일 캘린더 로드"""
+    """한국 공휴일/영업일 캘린더 로드 (펀드무관·무인자, 호출처는 필터만 → 캐싱 안전. TTL 6h)"""
     conn = get_pandas_connection('dt')
     try:
         sql = """
@@ -250,12 +251,17 @@ def load_fund_holdings_history(fund_code: str, start_date: str = None) -> pd.Dat
 # R benchmark: dt.MA000410 → get_PA_source_data()
 # ============================================================
 
+@_ttl_cache()
 def load_pa_source(fund_code: str, start_date: str = None, end_date: str = None) -> pd.DataFrame:
     """
     펀드 PA 원천 데이터 로드 (확장).
     R: get_PA_source_data(fund_cd, start_date, end_date)
 
     Phase 4: position_gb, pl_gb, crrncy_cd, os_gb 추가.
+
+    캐시: brinson 최대 병목(MA000410, ~9.6s/콜). 유일 호출처(compute_single_port_pa)가
+    결과를 즉시 필터+copy(2764) 하므로 원본 mutation 없음 → (fund,start,end) 키 캐싱 안전.
+    같은 날짜범위에서 분류/FX/SAA 토글 시 재조회 생략. (TTL 6h)
     """
     conn = get_pandas_connection('dt')
     try:
@@ -2586,8 +2592,11 @@ def _load_usdkrw_rate(start_date: str = None, end_date: str = None,
         return _load_usdkrw_from_db(start_date, end_date)
 
 
+@_ttl_cache()
 def _load_usdkrw_from_ecos(start_date: str = None, end_date: str = None) -> pd.DataFrame:
-    """ECOS API로 USDKRW 매매기준율 로드 (R 동일: stat_code=731Y003, item=0000003)."""
+    """ECOS API로 USDKRW 매매기준율 로드 (R 동일: stat_code=731Y003, item=0000003).
+
+    캐시: 펀드무관(날짜키)·네트워크 콜 → 9펀드 워밍업서 1회만 호출. 호출처 read-only. TTL 6h."""
     import requests
     import warnings
     warnings.filterwarnings('ignore', message='Unverified HTTPS request')
@@ -2629,8 +2638,9 @@ def _load_usdkrw_from_ecos(start_date: str = None, end_date: str = None) -> pd.D
     return df
 
 
+@_ttl_cache()
 def _load_usdkrw_from_db(start_date: str = None, end_date: str = None) -> pd.DataFrame:
-    """DWCI10260에서 USDKRW 매매기준율 로드 (DB 소스)."""
+    """DWCI10260에서 USDKRW 매매기준율 로드 (DB 소스). 펀드무관·read-only → 캐싱 안전. TTL 6h."""
     conn = get_pandas_connection('dt')
     try:
         conditions = ["CURR_DS_CD = 'USD'"]
