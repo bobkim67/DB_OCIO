@@ -591,7 +591,7 @@ export default function BrinsonTab({ fundCode }: Props) {
                 title={
                   m === "contrib"
                     ? "기여수익률 = 배분비중 × 자산군수익률 (합 = 포트 수익률)"
-                    : "Normalized = 자산군 자체 수익률 (배분비중 미반영, 합산 불가)"
+                    : "순수 수익률 (편입비중 반영X)"
                 }
                 style={{
                   fontSize: 11,
@@ -725,19 +725,17 @@ export default function BrinsonTab({ fundCode }: Props) {
               }
               return rows;
             })}
-            <tr style={{ background: "#f3f4f6", fontWeight: 600 }}>
-              <td style={td}>{tbl1Metric === "norm" ? "전체" : "합계"}</td>
-              <td style={td} />
-              <td style={tdr}>
-                {fmtPct(tbl1Metric === "norm" ? data.period_bm_return : sumBmContrib)}
-              </td>
-              <td style={tdGap} />
-              <td style={td} />
-              <td style={tdr}>
-                {fmtPct(tbl1Metric === "norm" ? data.period_ap_return : sumApContrib)}
-              </td>
-              {tbl1Metric !== "norm" && <td style={tdr}>{fmtPct(sumExcessContrib)}</td>}
-            </tr>
+            {tbl1Metric !== "norm" && (
+              <tr style={{ background: "#f3f4f6", fontWeight: 600 }}>
+                <td style={td}>합계</td>
+                <td style={td} />
+                <td style={tdr}>{fmtPct(sumBmContrib)}</td>
+                <td style={tdGap} />
+                <td style={td} />
+                <td style={tdr}>{fmtPct(sumApContrib)}</td>
+                <td style={tdr}>{fmtPct(sumExcessContrib)}</td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
