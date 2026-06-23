@@ -87,10 +87,8 @@ export default function BrinsonTab({ fundCode }: Props) {
   const saaMode = (
     (saaSource === "proxy" ? "proxy" : "auto") + (weightMode === "drift" ? "_drift" : "")
   ) as "auto" | "auto_drift" | "proxy" | "proxy_drift";
-  // 표0 펼치기: 기본=자산군 비중만, 펼치면 AP 종목별 노출
+  // 펼치기(공통): 벤치마크 구성 표(표0)의 토글 하나로 표0·표1 둘 다 종목 펼침/접힘.
   const [tbl0Expanded, setTbl0Expanded] = useState(false);
-  // 표1(자산군별 기여수익률) 펼치기: 펼치면 자산군 아래 BM지수 + AP 종목별 기여 노출
-  const [tbl1Expanded, setTbl1Expanded] = useState(false);
 
   // 적용(applied) 상태 — 실제 조회를 구동. "조회" 버튼을 눌러야 draft → applied 반영.
   const [applied, setApplied] = useState({
@@ -556,33 +554,7 @@ export default function BrinsonTab({ fundCode }: Props) {
 
       {/* 표 1: 자산군별 기여수익률 (BM기여 + 초과기여) — 비중 컬럼 제거, 표0 우측 배치 */}
       <div style={{ flex: "1 1 420px", minWidth: 0 }}>
-        <h3
-          style={{
-            fontSize: 14,
-            margin: "4px 0 8px",
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-          }}
-        >
-          자산군별 기여수익률
-          <button
-            type="button"
-            onClick={() => setTbl1Expanded((v) => !v)}
-            style={{
-              fontSize: 11,
-              fontWeight: 500,
-              padding: "2px 10px",
-              border: "1px solid #d1d5db",
-              borderRadius: 4,
-              background: "#fff",
-              cursor: "pointer",
-              color: "#374151",
-            }}
-          >
-            {tbl1Expanded ? "▲ 접기" : "▼ 종목 펼치기"}
-          </button>
-        </h3>
+        <h3 style={{ fontSize: 14, margin: "4px 0 8px" }}>자산군별 기여수익률</h3>
         <table
           style={{
             width: "100%",
@@ -634,8 +606,8 @@ export default function BrinsonTab({ fundCode }: Props) {
                   </td>
                 </tr>,
               ];
-              // 펼침 시 AP 종목 행 (BM 컬럼 빈칸) — 표0 과 동일 행수
-              if (tbl1Expanded) {
+              // 펼침 시 AP 종목 행 (BM 컬럼 빈칸) — 표0 과 동일 행수, 표0 토글과 연동
+              if (tbl0Expanded) {
                 const secs = apSecByClass1.get(r.asset_class) ?? [];
                 for (let i = 0; i < secs.length; i++) {
                   rows.push(
