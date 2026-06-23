@@ -89,6 +89,8 @@ export default function BrinsonTab({ fundCode }: Props) {
   ) as "auto" | "auto_drift" | "proxy" | "proxy_drift";
   // 표0 펼치기: 기본=자산군 비중만, 펼치면 AP 종목별 노출
   const [tbl0Expanded, setTbl0Expanded] = useState(false);
+  // 표1(자산군별 기여수익률) 펼치기: 펼치면 자산군 아래 BM지수 + AP 종목별 기여 노출
+  const [tbl1Expanded, setTbl1Expanded] = useState(false);
 
   // 적용(applied) 상태 — 실제 조회를 구동. "조회" 버튼을 눌러야 draft → applied 반영.
   const [applied, setApplied] = useState({
@@ -159,6 +161,27 @@ export default function BrinsonTab({ fundCode }: Props) {
   const sumApContrib = enrichedRows.reduce((s, r) => s + r.contrib_return, 0);
   const sumBmContrib = enrichedRows.reduce((s, r) => s + r.bm_contrib, 0);
   const sumExcessContrib = enrichedRows.reduce((s, r) => s + r.excess_contrib, 0);
+
+  // 표1 펼치기용 자산군별 상세 — BM '유동성'을 AP와 동일하게 '유동성및기타'로 정규화.
+  const normCls1 = (c: string) => (c === "유동성" ? "유동성및기타" : c);
+  // AP 종목별 기여 (자산군 → [{item_nm, contrib}], 기여 내림차순)
+  const secContribByClass = new Map<string, { item_nm: string; contrib: number }[]>();
+  for (const s of data.sec_contrib) {
+    const g = normCls1(s.asset_class);
+    const arr = secContribByClass.get(g) ?? [];
+    arr.push({ item_nm: s.item_nm, contrib: s.contrib_pct });
+    secContribByClass.set(g, arr);
+  }
+  for (const arr of secContribByClass.values()) arr.sort((a, b) => b.contrib - a.contrib);
+  // 자산군별 BM 지수명 (SAA MP 목표비중처럼 name===자산군명인 경우는 제외)
+  const bmIdxByClass = new Map<string, string[]>();
+  for (const c of data.bm_components) {
+    if (!c.name || c.name === c.asset_class) continue;
+    const g = normCls1(c.asset_class);
+    const arr = bmIdxByClass.get(g) ?? [];
+    arr.push(c.name);
+    bmIdxByClass.set(g, arr);
+  }
 
   // 종목표 정렬
   const sortedSec: BrinsonSecContribDTO[] = [...data.sec_contrib].sort((a, b) => {
@@ -532,7 +555,33 @@ export default function BrinsonTab({ fundCode }: Props) {
 
       {/* 표 1: 자산군별 기여수익률 (BM기여 + 초과기여) — 비중 컬럼 제거, 표0 우측 배치 */}
       <div style={{ flex: "1 1 420px", minWidth: 0 }}>
-        <h3 style={{ fontSize: 14, margin: "4px 0 8px" }}>자산군별 기여수익률</h3>
+        <h3
+          style={{
+            fontSize: 14,
+            margin: "4px 0 8px",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          자산군별 기여수익률
+          <button
+            type="button"
+            onClick={() => setTbl1Expanded((v) => !v)}
+            style={{
+              fontSize: 11,
+              fontWeight: 500,
+              padding: "2px 10px",
+              border: "1px solid #d1d5db",
+              borderRadius: 4,
+              background: "#fff",
+              cursor: "pointer",
+              color: "#374151",
+            }}
+          >
+            {tbl1Expanded ? "▲ 접기" : "▼ 종목 펼치기"}
+          </button>
+        </h3>
         <table
           style={{
             width: "100%",
@@ -549,30 +598,77 @@ export default function BrinsonTab({ fundCode }: Props) {
             </tr>
           </thead>
           <tbody>
-            {enrichedRows.map((r) => (
-              <tr key={r.asset_class}>
-                <td style={td}>{r.asset_class}</td>
-                <td
-                  style={{
-                    ...tdr,
-                    fontWeight: 600,
-                    color: r.contrib_return < 0 ? "#b91c1c" : "#16a34a",
-                  }}
-                >
-                  {fmtPct(r.contrib_return)}
-                </td>
-                <td style={tdr}>{fmtPct(r.bm_contrib)}</td>
-                <td
-                  style={{
-                    ...tdr,
-                    fontWeight: 600,
-                    color: r.excess_contrib < 0 ? "#b91c1c" : "#16a34a",
-                  }}
-                >
-                  {fmtPct(r.excess_contrib)}
-                </td>
-              </tr>
-            ))}
+            {enrichedRows.flatMap((r) => {
+              const rows: ReactNode[] = [
+                <tr key={r.asset_class}>
+                  <td style={td}>{r.asset_class}</td>
+                  <td
+                    style={{
+                      ...tdr,
+                      fontWeight: 600,
+                      color: r.contrib_return < 0 ? "#b91c1c" : "#16a34a",
+                    }}
+                  >
+                    {fmtPct(r.contrib_return)}
+                  </td>
+                  <td style={tdr}>{fmtPct(r.bm_contrib)}</td>
+                  <td
+                    style={{
+                      ...tdr,
+                      fontWeight: 600,
+                      color: r.excess_contrib < 0 ? "#b91c1c" : "#16a34a",
+                    }}
+                  >
+                    {fmtPct(r.excess_contrib)}
+                  </td>
+                </tr>,
+              ];
+              if (tbl1Expanded) {
+                // BM 지수명 행 (있을 때만)
+                const idx = bmIdxByClass.get(r.asset_class) ?? [];
+                if (idx.length) {
+                  rows.push(
+                    <tr key={`${r.asset_class}-bm`}>
+                      <td
+                        style={{
+                          ...td,
+                          paddingLeft: 18,
+                          color: "#6b7280",
+                          fontStyle: "italic",
+                        }}
+                      >
+                        BM지수: {idx.join(", ")}
+                      </td>
+                      <td style={tdr} />
+                      <td style={tdr} />
+                      <td style={tdr} />
+                    </tr>,
+                  );
+                }
+                // AP 종목별 기여 행
+                const secs = secContribByClass.get(r.asset_class) ?? [];
+                for (let i = 0; i < secs.length; i++) {
+                  rows.push(
+                    <tr key={`${r.asset_class}-sec-${i}`}>
+                      <td style={{ ...td, paddingLeft: 18, color: "#374151" }}>
+                        {secs[i].item_nm}
+                      </td>
+                      <td
+                        style={{
+                          ...tdr,
+                          color: secs[i].contrib < 0 ? "#b91c1c" : "#16a34a",
+                        }}
+                      >
+                        {fmtPct(secs[i].contrib)}
+                      </td>
+                      <td style={tdr} />
+                      <td style={tdr} />
+                    </tr>,
+                  );
+                }
+              }
+              return rows;
+            })}
             <tr style={{ background: "#f3f4f6", fontWeight: 600 }}>
               <td style={td}>합계</td>
               <td style={tdr}>{fmtPct(sumApContrib)}</td>
