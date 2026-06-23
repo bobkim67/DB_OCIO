@@ -4,7 +4,7 @@ import { useFunds } from "../hooks/useFunds";
 import MetaBadge from "../components/common/MetaBadge";
 import BrinsonWaterfall from "../components/charts/BrinsonWaterfall";
 import BrinsonTrendPanel from "../components/charts/BrinsonTrendPanel";
-import LoadingBar from "../components/common/LoadingBar";
+import BrinsonProgressBar from "../components/common/BrinsonProgressBar";
 import type {
   BrinsonAssetRowDTO,
   BrinsonMappingMethod,
@@ -136,7 +136,7 @@ export default function BrinsonTab({ fundCode }: Props) {
     saaMode,
   });
 
-  if (isLoading) return <LoadingBar label="Brinson 계산 중… (최대 ~1분)" />;
+  if (isLoading) return <BrinsonProgressBar label="Brinson 계산 중" />;
   if (error || !data) {
     return <div style={{ color: "#dc2626" }}>failed to load brinson</div>;
   }
@@ -203,7 +203,7 @@ export default function BrinsonTab({ fundCode }: Props) {
       </div>
       {isFetching && (
         <div style={{ marginTop: -8, marginBottom: 8 }}>
-          <LoadingBar label="재계산 중… (날짜/조건 변경 — 캐시 미스 시 최대 ~1분)" height={4} />
+          <BrinsonProgressBar label="재계산 중 (조건 변경)" height={4} />
         </div>
       )}
 
