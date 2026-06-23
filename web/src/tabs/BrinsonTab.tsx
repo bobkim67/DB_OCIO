@@ -4,6 +4,8 @@ import { useFunds } from "../hooks/useFunds";
 import MetaBadge from "../components/common/MetaBadge";
 import BrinsonWaterfall from "../components/charts/BrinsonWaterfall";
 import BrinsonTrendPanel from "../components/charts/BrinsonTrendPanel";
+import BrinsonMetricsPanel from "../components/charts/BrinsonMetricsPanel";
+import BrinsonFactorTrendChart from "../components/charts/BrinsonFactorTrendChart";
 import BrinsonProgressBar from "../components/common/BrinsonProgressBar";
 import type {
   BrinsonAssetRowDTO,
@@ -390,6 +392,11 @@ export default function BrinsonTab({ fundCode }: Props) {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* ④ 위험조정 성과지표 (연율화수익·변동성·MDD + TE·IR) */}
+      <div style={{ marginBottom: 16, maxWidth: 460 }}>
+        <BrinsonMetricsPanel daily={data.daily_brinson} hasBm={data.bm_source !== "none"} />
       </div>
 
       {isFallback && (
@@ -818,6 +825,13 @@ export default function BrinsonTab({ fundCode }: Props) {
           excess={data.total_excess}
         />
       </div>
+
+      {/* ① 요인별 초과수익 누적 추이 (워터폴의 시계열 버전) */}
+      {data.bm_source !== "none" && (
+        <div style={{ marginBottom: 16 }}>
+          <BrinsonFactorTrendChart daily={data.daily_brinson} />
+        </div>
+      )}
 
       {/* 종목별 기여수익률 (전체 종목 + 비중 + 정렬, 스크롤 X) */}
       <div>
