@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useBrinson } from "../hooks/useBrinson";
 import { useFunds } from "../hooks/useFunds";
 import MetaBadge from "../components/common/MetaBadge";
@@ -67,6 +67,33 @@ type SecSortKey = keyof Pick<
   BrinsonSecContribDTO,
   "asset_class" | "item_nm" | "weight_pct" | "return_pct" | "contrib_pct"
 >;
+
+// 자동 진행 날짜 입력 — 연(4)·월(2) 채우면 다음 칸으로 포커스 이동. 값=YYYY-MM-DD.
+function DateField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [y = "", m = "", d = ""] = (value || "").split("-");
+  const mRef = useRef<HTMLInputElement>(null);
+  const dRef = useRef<HTMLInputElement>(null);
+  const seg: CSSProperties = {
+    border: "none", outline: "none", textAlign: "center", fontSize: 13,
+    fontVariantNumeric: "tabular-nums", padding: 0, background: "transparent",
+  };
+  const emit = (yy: string, mm: string, dd: string) => onChange(`${yy}-${mm}-${dd}`);
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 2, border: "1px solid #d1d5db", borderRadius: 4, padding: "4px 6px", background: "#fff" }}>
+      <input aria-label="연" inputMode="numeric" placeholder="YYYY" maxLength={4} value={y}
+        onChange={(e) => { const v = e.target.value.replace(/\D/g, "").slice(0, 4); emit(v, m, d); if (v.length === 4) mRef.current?.focus(); }}
+        style={{ ...seg, width: 38 }} />
+      <span style={{ color: "#9ca3af" }}>-</span>
+      <input ref={mRef} aria-label="월" inputMode="numeric" placeholder="MM" maxLength={2} value={m}
+        onChange={(e) => { const v = e.target.value.replace(/\D/g, "").slice(0, 2); emit(y, v, d); if (v.length === 2) dRef.current?.focus(); }}
+        style={{ ...seg, width: 22 }} />
+      <span style={{ color: "#9ca3af" }}>-</span>
+      <input ref={dRef} aria-label="일" inputMode="numeric" placeholder="DD" maxLength={2} value={d}
+        onChange={(e) => { const v = e.target.value.replace(/\D/g, "").slice(0, 2); emit(y, m, v); }}
+        style={{ ...seg, width: 22 }} />
+    </span>
+  );
+}
 
 export default function BrinsonTab({ fundCode }: Props) {
   const { data: fundsData } = useFunds();
@@ -253,21 +280,11 @@ export default function BrinsonTab({ fundCode }: Props) {
       >
         <label style={lbl}>
           시작
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            style={inp}
-          />
+          <DateField value={startDate} onChange={setStartDate} />
         </label>
         <label style={lbl}>
           종료
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            style={inp}
-          />
+          <DateField value={endDate} onChange={setEndDate} />
         </label>
         <label style={lbl}>
           분류
@@ -577,6 +594,26 @@ export default function BrinsonTab({ fundCode }: Props) {
           }}
         >
           자산군별 {tbl1Metric === "norm" ? "수익률(Normalized)" : "기여수익률"}
+          <button
+            type="button"
+            onClick={() => setTbl0Expanded((v) => !v)}
+            style={{
+              marginLeft: "auto",
+              fontSize: 11,
+              fontWeight: 500,
+              padding: "2px 10px",
+              border: "1px solid #d1d5db",
+              borderRadius: 4,
+              background: "#fff",
+              cursor: "pointer",
+              color: "#374151",
+            }}
+          >
+            {tbl0Expanded ? "▲ 접기" : "▼ 종목 펼치기"}
+          </button>
+        </h3>
+        {/* 기여/Normalized 토글 — 테이블 우측 상단 */}
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
           <span
             style={{
               display: "inline-flex",
@@ -614,7 +651,7 @@ export default function BrinsonTab({ fundCode }: Props) {
               </button>
             ))}
           </span>
-        </h3>
+        </div>
         <table
           style={{
             width: "100%",
