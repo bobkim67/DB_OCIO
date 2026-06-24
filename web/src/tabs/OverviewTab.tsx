@@ -1,7 +1,5 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useOverview } from "../hooks/useOverview";
-import MetaBadge from "../components/common/MetaBadge";
-import MetricCard from "../components/common/MetricCard";
 import NavChart from "../components/charts/NavChart";
 import LoadingBar from "../components/common/LoadingBar";
 
@@ -9,29 +7,35 @@ interface Props {
   fundCode: string;
 }
 
-const PERIOD_ORDER = ["1M", "3M", "6M", "YTD", "1Y", "SI"] as const;
+type RetMode = "SI" | "YTD";
+
+const STRIP_PERIODS = ["1W", "1M", "3M", "6M", "YTD", "SI"] as const;
 const PERIOD_LABEL: Record<string, string> = {
-  "1M": "1M",
-  "3M": "3M",
-  "6M": "6M",
-  YTD: "YTD",
-  "1Y": "1Y",
-  SI: "설정후",
+  "1W": "1W", "1M": "1M", "3M": "3M", "6M": "6M", YTD: "YTD", SI: "설정후",
 };
 
-function fmtPct(v: number): string {
-  return `${(v * 100).toFixed(2)}%`;
-}
-// 원 → 억 (콤마). null 은 "—".
-function fmtKRW(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  return `${Math.round(v / 1e8).toLocaleString()}억`;
-}
+// ---------- 포맷 ----------
+const pct = (v: number | null | undefined) =>
+  v == null || !Number.isFinite(v) ? "—" : `${(v * 100).toFixed(2)}%`;
+const pctSigned = (v: number | null | undefined) =>
+  v == null || !Number.isFinite(v) ? "—" : `${v >= 0 ? "+" : ""}${(v * 100).toFixed(2)}%`;
+const pctpSigned = (v: number | null | undefined) =>
+  v == null || !Number.isFinite(v) ? "" : `${v >= 0 ? "+" : ""}${(v * 100).toFixed(2)}%p`;
+// 원 → 억 (콤마)
+const eok = (v: number | null | undefined) =>
+  v == null || !Number.isFinite(v) ? "—" : `${Math.round(v / 1e8).toLocaleString()}억`;
+const sign = (v: number | null | undefined) => (v != null && v >= 0 ? "pos" : "neg");
+const daysBetween = (aIso: string, bIso: string) =>
+  (Date.parse(bIso) - Date.parse(aIso)) / 86_400_000;
 
 export default function OverviewTab({ fundCode }: Props) {
   const { data, isLoading, error } = useOverview(fundCode);
 
-  // 조회기간(날짜 윈도우) — 기본 전체 구간. 펀드 변경 시 리셋.
+  const [retMode, setRetMode] = useState<RetMode>("SI");
+  // 비교 기준선: 목표(target) vs 벤치(SAA/BM) — 차트 pcard 에서 둘 중 하나만 ON.
+  const [baseMode, setBaseMode] = useState<"target" | "bench">("bench");
+
+  // 조회기간(날짜 윈도우) — 기본 전체 구간(설정후). 펀드 변경 시 리셋.
   const series = data?.nav_series ?? [];
   const fullStart = series[0]?.date ?? "";
   const fullEnd = series.length ? series[series.length - 1].date : "";
@@ -40,218 +44,308 @@ export default function OverviewTab({ fundCode }: Props) {
   useEffect(() => {
     setStart(fullStart);
     setEnd(fullEnd);
+    setRetMode("SI");
+    // 목표 있는 BM-less 펀드는 목표 기준 디폴트, 아니면 벤치(SAA/BM) 기준
+    const ht = data?.benchmark_kind === "SAA" && data?.fund_meta?.target_return_annual != null;
+    setBaseMode(ht ? "target" : "bench");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fundCode, fullStart, fullEnd]);
 
-  // 선택 구간 슬라이스 + 조회기간 수익률(포트/BM/초과)
   const sliced = useMemo(
     () => series.filter((p) => p.date >= start && p.date <= end),
     [series, start, end],
   );
-  const periodRet = useMemo(() => {
-    if (sliced.length < 2) return null;
-    const f = sliced[0], l = sliced[sliced.length - 1];
-    const port = f.nav ? l.nav / f.nav - 1 : null;
-    const hasBm = f.bm != null && l.bm != null;
-    const bm = hasBm ? (l.bm as number) / (f.bm as number) - 1 : null;
-    const excess = port != null && bm != null ? port - bm : null;
-    return { port, bm, excess, from: f.date, to: l.date };
-  }, [sliced]);
 
   if (isLoading) return <LoadingBar label="loading overview..." />;
-  if (error || !data) {
-    return (
-      <div style={{ color: "#dc2626" }}>failed to load overview</div>
-    );
-  }
+  if (error || !data) return <div style={{ color: "#dc2626" }}>failed to load overview</div>;
+
+  const fm = data.fund_meta;
+  const benchKind = data.benchmark_kind;
+  const benchLabel = data.benchmark_label ?? (benchKind === "BM" ? "BM" : "SAA");
+  const hasBench = benchKind !== "none";
+  const target = fm?.target_return_annual ?? null;
+  // 07G04 등 BM 펀드는 목표를 메타바에만 표기 → 차트/카드 목표선은 SAA 펀드 전용.
+  const hasTarget = benchKind === "SAA" && target != null;
+  const baseIsTarget = baseMode === "target" && hasTarget;
+  const baseLabel = baseIsTarget ? "목표" : benchLabel;
 
   const pr = data.period_returns ?? {};
-  const bmPr = data.bm_period_returns ?? {};
-  const hasAnyPeriod = PERIOD_ORDER.some((k) => k in pr);
+  const bmpr = data.bm_period_returns ?? {};
+  const asof = data.meta.as_of_date ?? null;
+  const inception = fm?.inception ?? null;
+
+  // 목표 누적수익률 (기간별 일수 환산)
+  const TARGET_DAYS: Record<string, number> = { "1W": 7, "1M": 30.44, "3M": 91.31, "6M": 182.62 };
+  const targetForPeriod = (k: string): number | null => {
+    if (target == null || !asof) return null;
+    let days: number;
+    if (k === "SI") days = inception ? daysBetween(inception, asof) : NaN;
+    else if (k === "YTD") {
+      const jan1 = `${asof.slice(0, 4)}-01-01`;
+      days = daysBetween(inception && inception > jan1 ? inception : jan1, asof);
+    } else days = TARGET_DAYS[k];
+    if (!Number.isFinite(days)) return null;
+    return Math.pow(1 + target, Math.max(days, 0) / 365) - 1;
+  };
+  // 활성 기준선(목표 or 벤치)의 기간별 값
+  const baseForPeriod = (k: string): number | null =>
+    baseIsTarget ? targetForPeriod(k) : bmpr[k] ?? null;
+
+  // 지표카드 데이터
+  const navPrice = fm?.nav ?? series[series.length - 1]?.nav ?? null;
+  const last = series[series.length - 1];
+  const prev = series[series.length - 2];
+  const prevDelta =
+    last && prev && prev.nav ? { abs: last.nav - prev.nav, pct: last.nav / prev.nav - 1 } : null;
+  // 순자산 카드 = 현재 순자산(최신 NAST = nav_series 마지막 aum). 설정액(메타)과 구분.
+  const navTotal = series[series.length - 1]?.aum ?? null;
+  // 변동성 — 수익률 토글(retMode)과 동기화: 설정후=누적, YTD=YTD
+  const portVol = retMode === "SI" ? data.cards.find((c) => c.key === "vol")?.value ?? null : data.volatility_ytd ?? null;
+  const benchVol = retMode === "SI" ? data.bm_volatility ?? null : data.bm_volatility_ytd ?? null;
+  // 주식비중 (포트 look-through vs 벤치)
+  const eqW = data.equity_weight ?? null;
+  const bmEqW = data.bm_equity_weight ?? null;
+  const eqDiff = eqW != null && bmEqW != null ? eqW - bmEqW : null;
+
+  // 수익률 카드(설정후/YTD 토글) — 활성 기준선 대비
+  const portRet = pr[retMode] ?? null;
+  const baseRet = baseForPeriod(retMode);
+  const baseDelta = portRet != null && baseRet != null ? portRet - baseRet : null;
+
+  // 차트 윈도우(pcards) 수익률
+  const wf = sliced[0];
+  const wl = sliced[sliced.length - 1];
+  const winPort = sliced.length >= 2 && wf?.nav ? wl.nav / wf.nav - 1 : null;
+  const winBench =
+    hasBench && wf?.bm != null && wl?.bm != null && wf.bm ? wl.bm / wf.bm - 1 : null;
+  const winTarget =
+    target != null && wf && wl ? Math.pow(1 + target, Math.max(daysBetween(wf.date, wl.date), 0) / 365) - 1 : null;
+
+  // 프리셋 (윈도우 시작일 변경)
+  const applyPreset = (p: "MTD" | "QTD" | "YTD" | "SI") => {
+    if (!asof) return;
+    let s = fullStart;
+    if (p === "MTD") s = `${asof.slice(0, 7)}-01`;
+    else if (p === "YTD") s = `${asof.slice(0, 4)}-01-01`;
+    else if (p === "QTD") {
+      const m = Number(asof.slice(5, 7));
+      const qm = m - ((m - 1) % 3);
+      s = `${asof.slice(0, 4)}-${String(qm).padStart(2, "0")}-01`;
+    }
+    if (s < fullStart) s = fullStart;
+    setStart(s);
+    setEnd(fullEnd);
+  };
+  const activePreset = (() => {
+    if (start === fullStart) return "SI";
+    if (asof && start === `${asof.slice(0, 4)}-01-01`) return "YTD";
+    if (asof && start === `${asof.slice(0, 7)}-01`) return "MTD";
+    return null;
+  })();
+
+  const metaRows = [
+    { k: "코드", v: data.fund_code, num: true },
+    { k: "표준코드", v: fm?.ticker ?? "—", num: true },
+    { k: "펀드타입", v: fm?.fund_type ?? "—" },
+    { k: "수익자", v: fm?.beneficiary ?? "—" },
+    { k: "운용사", v: fm?.manager ?? "—" },
+    { k: "총보수", v: fm?.fee_bp != null ? `${fm.fee_bp}bp` : "—", num: true },
+  ];
 
   return (
-    <section>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          gap: 12,
-          marginBottom: 12,
-        }}
-      >
-        <h2 style={{ fontSize: 16, margin: 0 }}>
-          {data.fund_name}{" "}
-          <span style={{ color: "#6b7280" }}>({data.fund_code})</span>
-        </h2>
-        <MetaBadge meta={data.meta} />
-      </div>
-
-      {/* 펀드 기본정보 바 */}
-      {data.fund_meta && (
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "6px 20px",
-            padding: "10px 14px",
-            background: "#f9fafb",
-            border: "1px solid #e5e7eb",
-            borderRadius: 6,
-            marginBottom: 16,
-            fontSize: 13,
-          }}
-        >
-          {[
-            { label: "코드", value: data.fund_code },
-            { label: "표준코드", value: data.fund_meta.ticker ?? "—" },
-            { label: "펀드타입", value: data.fund_meta.fund_type ?? "—" },
-            { label: "운용사", value: data.fund_meta.manager ?? "—" },
-            { label: "설정일", value: data.fund_meta.inception ?? "—" },
-            { label: "설정액", value: fmtKRW(data.fund_meta.setup_amount) },
-            { label: "기준가", value: data.fund_meta.nav != null ? data.fund_meta.nav.toFixed(2) : "—" },
-            { label: "총보수", value: data.fund_meta.fee_bp != null ? `${data.fund_meta.fee_bp}bp` : "—" },
-          ].map((it) => (
-            <div key={it.label} style={{ display: "flex", flexDirection: "column" }}>
-              <span style={{ fontSize: 11, color: "#9ca3af" }}>{it.label}</span>
-              <span style={{ fontWeight: 600, color: "#374151", fontVariantNumeric: "tabular-nums" }}>
-                {it.value}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div
-        style={{
-          display: "flex",
-          gap: 12,
-          marginBottom: 16,
-          flexWrap: "wrap",
-        }}
-      >
-        {data.cards.length === 0 ? (
-          <div style={{ color: "#6b7280" }}>카드 없음 (fallback)</div>
-        ) : (
-          data.cards.map((c) => <MetricCard key={c.key} card={c} />)
-        )}
-      </div>
-
-      {hasAnyPeriod && (
-        <div
-          style={{
-            display: "flex",
-            gap: 16,
-            padding: "8px 12px",
-            background: "#f9fafb",
-            borderRadius: 6,
-            marginBottom: 16,
-            flexWrap: "wrap",
-            fontSize: 13,
-          }}
-        >
-          {PERIOD_ORDER.filter((k) => k in pr).map((k) => {
-            const portVal = pr[k];
-            const hasBm = k in bmPr;
-            return (
-              <div key={k}>
-                <span style={{ color: "#6b7280", marginRight: 4 }}>
-                  {PERIOD_LABEL[k]}:
-                </span>
-                <span
-                  style={{
-                    color: portVal >= 0 ? "#dc2626" : "#2563eb",
-                    fontWeight: 600,
-                  }}
-                >
-                  {fmtPct(portVal)}
-                </span>
-                {hasBm && (
-                  <span
-                    style={{
-                      color: "#9ca3af",
-                      marginLeft: 4,
-                      fontSize: 11,
-                    }}
-                  >
-                    (BM {fmtPct(bmPr[k])})
-                  </span>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* 조회기간(날짜 윈도우) 위젯 + 해당 기간 수익률 카드 */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-end",
-          gap: 12,
-          flexWrap: "wrap",
-          marginBottom: 12,
-        }}
-      >
-        <label style={lbl}>
-          시작
-          <input type="date" value={start} min={fullStart} max={end}
-            onChange={(e) => setStart(e.target.value)} style={inp} />
-        </label>
-        <label style={lbl}>
-          종료
-          <input type="date" value={end} min={start} max={fullEnd}
-            onChange={(e) => setEnd(e.target.value)} style={inp} />
-        </label>
-        <button
-          type="button"
-          onClick={() => { setStart(fullStart); setEnd(fullEnd); }}
-          style={btn}
-        >
-          전체
-        </button>
-        {periodRet && (
-          <div style={{ display: "flex", gap: 8, marginLeft: 4 }}>
-            {[
-              { label: "포트 수익률", v: periodRet.port },
-              ...(periodRet.bm != null ? [{ label: "BM 수익률", v: periodRet.bm }] : []),
-              ...(periodRet.excess != null ? [{ label: "초과수익", v: periodRet.excess, ex: true }] : []),
-            ].map((c) => (
-              <div key={c.label} style={card}>
-                <div style={{ fontSize: 11, color: "#6b7280" }}>{c.label}</div>
-                <div
-                  style={{
-                    fontSize: 16, fontWeight: 600, fontVariantNumeric: "tabular-nums",
-                    color: c.v == null ? "#6b7280"
-                      : c.ex ? (c.v >= 0 ? "#16a34a" : "#b91c1c")
-                      : (c.v >= 0 ? "#dc2626" : "#2563eb"),
-                  }}
-                >
-                  {c.v == null ? "—" : `${c.v >= 0 ? "+" : ""}${(c.v * 100).toFixed(2)}%`}
-                </div>
-              </div>
-            ))}
+    <section className="ov-root">
+      {/* 헤더 — 목표 있는 펀드는 타이틀 우측에 목표수익률 노출 */}
+      <div className="ov-head">
+        <h1>
+          {data.fund_name} <span className="code">{data.fund_code}</span>
+        </h1>
+        {target != null && (
+          <div className="ov-target-card">
+            <div className="k">목표수익률</div>
+            <div className="v num">연 {(target * 100).toFixed(1)}%</div>
           </div>
         )}
       </div>
 
-      <NavChart
-        points={sliced}
-        title="누적수익률 / BM / 초과수익"
-        instanceKey={`${fundCode}-${start}-${end}-${sliced.length}`}
-      />
+      {/* 메타바 */}
+      <div className="ov-meta">
+        {metaRows.map((it) => (
+          <div key={it.k}>
+            <div className="k">{it.k}</div>
+            <div className={`v ${it.num ? "num" : ""}`}>{it.v}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* 지표카드 — 필드명(좌)+값(우) 한 줄 */}
+      <div className="ov-stats">
+        {/* 기준일자 */}
+        <div className="ov-stat">
+          <div className="ov-stat-top">
+            <span className="label">기준일자</span>
+            <span className="val num date">{asof ?? "—"}</span>
+          </div>
+          <div className="cmp">설정일 <span className="num">{inception ?? "—"}</span></div>
+        </div>
+
+        {/* 기준가 */}
+        <div className="ov-stat">
+          <div className="ov-stat-top">
+            <span className="label">기준가</span>
+            <span className="val num">{navPrice != null ? navPrice.toFixed(2) : "—"}</span>
+          </div>
+          <div className="cmp">
+            전일대비{" "}
+            {prevDelta ? (
+              <span className={`${sign(prevDelta.abs)} num`}>
+                {prevDelta.abs >= 0 ? "▲" : "▼"} {Math.abs(prevDelta.abs).toFixed(2)} ({pctSigned(prevDelta.pct)})
+              </span>
+            ) : <span className="num">—</span>}
+          </div>
+        </div>
+
+        {/* 순자산 */}
+        <div className="ov-stat">
+          <div className="ov-stat-top">
+            <span className="label">순자산 (NAV)</span>
+            <span className="val num">{eok(navTotal)}</span>
+          </div>
+          <div className="cmp">
+            설정액 <span className="num">{eok(fm?.setup_amount)}</span>
+          </div>
+        </div>
+
+        {/* 수익률 (설정후/YTD 토글) */}
+        <div className="ov-stat">
+          <div className="ov-stat-top">
+            <span className="label">수익률</span>
+            <div className="ov-ctoggle">
+              <button type="button" className={retMode === "SI" ? "on" : ""} onClick={() => setRetMode("SI")}>설정후</button>
+              <button type="button" className={retMode === "YTD" ? "on" : ""} onClick={() => setRetMode("YTD")}>YTD</button>
+            </div>
+            <span className={`val num ${sign(portRet)}`}>{pctSigned(portRet)}</span>
+          </div>
+          <div className="cmp">
+            {baseIsTarget || hasBench ? (
+              <>
+                {baseLabel} <span className="num">{pct(baseRet)}</span>{" "}
+                {baseDelta != null && <span className={`delta ${sign(baseDelta)} num`}>({pctpSigned(baseDelta)})</span>}
+              </>
+            ) : <span className="num">{" "}</span>}
+          </div>
+        </div>
+
+        {/* 변동성 (수익률과 동기화된 설정후/YTD 토글) */}
+        <div className="ov-stat">
+          <div className="ov-stat-top">
+            <span className="label">변동성</span>
+            <div className="ov-ctoggle">
+              <button type="button" className={retMode === "SI" ? "on" : ""} onClick={() => setRetMode("SI")}>설정후</button>
+              <button type="button" className={retMode === "YTD" ? "on" : ""} onClick={() => setRetMode("YTD")}>YTD</button>
+            </div>
+            <span className="val num">{pct(portVol)}</span>
+          </div>
+          <div className="cmp">
+            {!baseIsTarget && hasBench && benchVol != null ? (
+              <>
+                {benchLabel} <span className="num">{pct(benchVol)}</span> ·{" "}
+                <span className={`delta ${sign(portVol != null ? portVol - benchVol : null)} num`}>
+                  {pctpSigned(portVol != null ? portVol - benchVol : null)}
+                </span>
+              </>
+            ) : <span className="num">{" "}</span>}
+          </div>
+        </div>
+
+        {/* 주식비중 (포트 vs 벤치) */}
+        <div className="ov-stat">
+          <div className="ov-stat-top">
+            <span className="label">주식비중</span>
+            <span className="val num">{pct(eqW)}</span>
+          </div>
+          <div className="cmp">
+            {!baseIsTarget && hasBench && bmEqW != null ? (
+              <>
+                {benchLabel} <span className="num">{pct(bmEqW)}</span>{" "}
+                <span className={`delta ${sign(eqDiff)} num`}>{pctpSigned(eqDiff)}</span>
+              </>
+            ) : <span className="num">{" "}</span>}
+          </div>
+        </div>
+      </div>
+
+      {/* 기간 스트립 */}
+      <div className="ov-strip">
+        {STRIP_PERIODS.map((k) => {
+          const p = pr[k] ?? null;
+          const b = baseForPeriod(k);
+          const d = p != null && b != null ? p - b : null;
+          return (
+            <div className="cell" key={k}>
+              <div className="cell-top">
+                <span className="p">{PERIOD_LABEL[k]}</span>
+                <span className={`r num ${sign(p)}`}>{pctSigned(p)}</span>
+              </div>
+              <div className="b num">{baseIsTarget || hasBench ? <>{baseLabel} {pctSigned(b)}{d != null && <> (<span className={sign(d)}>{pctpSigned(d)}</span>)</>}</> : " "}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* 차트 카드 */}
+      <div className="ov-card">
+        <div className="ov-toolbar">
+          <div className="ov-field">
+            <label>시작</label>
+            <input type="date" value={start} min={fullStart} max={end} onChange={(e) => setStart(e.target.value)} />
+          </div>
+          <div className="ov-field">
+            <label>종료</label>
+            <input type="date" value={end} min={start} max={fullEnd} onChange={(e) => setEnd(e.target.value)} />
+          </div>
+          <div className="ov-field">
+            <label>기간</label>
+            <div className="ov-presets">
+              {(["MTD", "QTD", "YTD", "SI"] as const).map((p) => (
+                <button key={p} type="button" className={activePreset === p ? "on" : ""} onClick={() => applyPreset(p)}>
+                  {p === "SI" ? "설정후" : p}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="ov-pcards">
+            <div className="ov-pcard">
+              <div className="k">포트</div>
+              <div className={`v num ${sign(winPort)}`}>{pctSigned(winPort)}</div>
+            </div>
+            {hasTarget && (
+              <div className={`ov-pcard goal ${baseMode === "target" ? "sel" : "off"}`} onClick={() => setBaseMode("target")}>
+                <div className="k">목표<span className="tag">{baseMode === "target" ? "ON" : "OFF"}</span></div>
+                <div className="v num">{pctSigned(winTarget)}</div>
+              </div>
+            )}
+            {hasBench && (
+              <div className={`ov-pcard saa ${baseMode === "bench" ? "sel" : "off"}`} onClick={() => setBaseMode("bench")}>
+                <div className="k">{benchLabel}<span className="tag">{baseMode === "bench" ? "ON" : "OFF"}</span></div>
+                <div className="v num">{pctSigned(winBench)}</div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="ov-chartwrap">
+          <NavChart
+            points={sliced}
+            benchmarkKind={benchKind}
+            benchmarkLabel={benchLabel}
+            showBm={baseMode === "bench" && hasBench}
+            showTarget={baseIsTarget}
+            targetAnnual={target}
+            inceptionDate={inception ?? undefined}
+            instanceKey={`${fundCode}-${start}-${end}-${sliced.length}`}
+          />
+        </div>
+      </div>
     </section>
   );
 }
-
-const lbl: CSSProperties = {
-  display: "flex", flexDirection: "column", fontSize: 11, color: "#374151", gap: 4,
-};
-const inp: CSSProperties = {
-  fontSize: 13, padding: "4px 6px", border: "1px solid #d1d5db", borderRadius: 4,
-};
-const btn: CSSProperties = {
-  fontSize: 13, padding: "6px 14px", border: "1px solid #d1d5db", borderRadius: 4,
-  background: "#fff", cursor: "pointer", color: "#374151",
-};
-const card: CSSProperties = {
-  padding: "6px 12px", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 6,
-};

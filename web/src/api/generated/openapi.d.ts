@@ -1208,6 +1208,10 @@ export interface components {
             fee_bp?: number | null;
             /** Nav */
             nav?: number | null;
+            /** Beneficiary */
+            beneficiary?: string | null;
+            /** Target Return Annual */
+            target_return_annual?: number | null;
         };
         /**
          * FundListResponseDTO
@@ -1684,6 +1688,26 @@ export interface components {
                 [key: string]: number;
             };
             fund_meta?: components["schemas"]["FundInfoDTO"] | null;
+            /**
+             * Benchmark Kind
+             * @default none
+             * @enum {string}
+             */
+            benchmark_kind: "BM" | "SAA" | "none";
+            /** Benchmark Label */
+            benchmark_label?: string | null;
+            /** Bm Volatility */
+            bm_volatility?: number | null;
+            /** Operating Profit Krw */
+            operating_profit_krw?: number | null;
+            /** Volatility Ytd */
+            volatility_ytd?: number | null;
+            /** Bm Volatility Ytd */
+            bm_volatility_ytd?: number | null;
+            /** Equity Weight */
+            equity_weight?: number | null;
+            /** Bm Equity Weight */
+            bm_equity_weight?: number | null;
         };
         /**
          * PortfolioMixSummaryDTO
@@ -1973,10 +1997,6 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
-            /** Input */
-            input?: unknown;
-            /** Context */
-            ctx?: Record<string, never>;
         };
         /**
          * ValidationSummaryDTO

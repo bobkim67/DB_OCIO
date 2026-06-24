@@ -86,18 +86,36 @@ def test_overview_nav_series_has_bm_for_08K88(client):
             assert len(non_null_bm) > 0
 
 
-def test_overview_bmless_fund_07G02(client):
-    """07G02는 bm_configured=false → nav_series.bm/excess 전부 null"""
+def test_overview_bmless_saa_unavailable_07G02(client, monkeypatch):
+    """07G02는 BM 미설정 → SAA 시도. SAA 로더 실패 주입 시 bm/excess 전부 null,
+    benchmark_kind='none'. (실제 proxy SAA 계산은 느려 테스트에선 차단)"""
+    import api.services.overview_service as svc
+    monkeypatch.setattr(svc, "_load_saa_series", lambda code, start, as_of: None)
     r = client.get("/api/funds/07G02/overview")
     assert r.status_code == 200
     body = r.json()
     assert body["bm_configured"] is False
+    assert body["benchmark_kind"] == "none"
     for p in body["nav_series"]:
         assert p.get("bm") is None
         assert p.get("excess") is None
-    # BM 설정 없는 펀드는 source=db (mixed가 아님)
-    if not body["meta"]["is_fallback"]:
-        assert body["meta"]["source"] == "db"
+
+
+def test_overview_bmless_saa_filled_08N33(client):
+    """08N33은 등록 SAA 펀드 → benchmark_kind='SAA', nav_series.bm 일부 채워짐."""
+    r = client.get("/api/funds/08N33/overview")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["bm_configured"] is False
+    if body["meta"]["is_fallback"]:
+        return
+    if "SAA 로딩 실패" in body["meta"]["warnings"]:
+        return
+    assert body["benchmark_kind"] == "SAA"
+    non_null = [p for p in body["nav_series"] if p.get("bm") is not None]
+    assert len(non_null) > 0
+    # 목표수익률(6%)은 메타바에 표기
+    assert body["fund_meta"]["target_return_annual"] == 0.06
 
 
 def test_overview_4jm12_base_preserved(client):
@@ -116,7 +134,7 @@ def test_overview_period_returns_keys(client):
     """period_returns 키는 {1M, 3M, 6M, YTD, 1Y, SI} 의 부분집합"""
     r = client.get("/api/funds/08K88/overview")
     body = r.json()
-    allowed = {"1M", "3M", "6M", "YTD", "1Y", "SI"}
+    allowed = {"1W", "1M", "3M", "6M", "YTD", "1Y", "SI"}
     assert set(body["period_returns"].keys()) <= allowed
 
 
@@ -129,7 +147,7 @@ def test_overview_bm_period_returns_keys_when_bm_ok(client):
         return
     if "BM 로딩 실패" in body["meta"]["warnings"]:
         return
-    allowed = {"1M", "3M", "6M", "YTD", "1Y", "SI"}
+    allowed = {"1W", "1M", "3M", "6M", "YTD", "1Y", "SI"}
     bmpr = body["bm_period_returns"]
     assert set(bmpr.keys()) <= allowed
     # bm_aligned 첫 값이 검증되었으므로 SI는 항상 채워져야 함
@@ -140,8 +158,10 @@ def test_overview_bm_period_returns_keys_when_bm_ok(client):
         assert abs(v) < 10.0
 
 
-def test_overview_bm_period_returns_empty_for_bmless_fund(client):
-    """BM 미설정 펀드(07G02)는 bm_period_returns = {}"""
+def test_overview_bm_period_returns_empty_when_saa_unavailable(client, monkeypatch):
+    """BM 미설정 + SAA 로더 실패(주입) → bm_period_returns = {}"""
+    import api.services.overview_service as svc
+    monkeypatch.setattr(svc, "_load_saa_series", lambda code, start, as_of: None)
     r = client.get("/api/funds/07G02/overview")
     body = r.json()
     assert body["bm_configured"] is False

@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 import numpy as np
@@ -69,6 +69,7 @@ def _load_bm_series(fund_code: str, start_date: str) -> pd.DataFrame | None:
 #                  '1M'/'3M'/'6M'/'1Y'/'YTD': {...} } }
 _PERIOD_ALIAS_TO_DTO = {
     "누적": "SI",
+    "1W": "1W",
     "1M": "1M",
     "3M": "3M",
     "6M": "6M",
@@ -76,13 +77,135 @@ _PERIOD_ALIAS_TO_DTO = {
     "YTD": "YTD",
 }
 
+# Redesign 기간 스트립: 1W·1M·3M·6M·YTD·SI. 1Y 도 함께 산출(하위호환).
+_STATS_PERIODS = ["누적", "1W", "1M", "3M", "6M", "1Y", "YTD"]
+
 
 def _try_compute_stats(fund_code: str, end_date: date) -> dict[str, Any] | None:
     try:
         from modules.data_loader import compute_full_performance_stats
         return compute_full_performance_stats(
-            fund_code, end_date.strftime("%Y%m%d"),
+            fund_code, end_date.strftime("%Y%m%d"), periods=_STATS_PERIODS,
         )
+    except Exception:
+        return None
+
+
+def _load_saa_series(
+    fund_code: str, start_yyyymmdd: str, as_of: date | None,
+) -> "pd.DataFrame | None":
+    """BM-less 펀드용 SAA 시계열. 등록 SAA → proxy SAA → 복합지수 복원.
+
+    load_composite_bm_prices 와 동일 포맷(기준일자, value) 반환 → BM 정렬 로직 재사용.
+    """
+    try:
+        from modules.data_loader import (
+            _build_proxy_bm_info,
+            load_composite_bm_prices,
+            load_saa_components,
+        )
+    except Exception:
+        return None
+    info = None
+    try:
+        info = load_saa_components(
+            fund_code, as_of.strftime("%Y%m%d") if as_of else None,
+        )
+    except Exception:
+        info = None
+    if not info or not info.get("components"):
+        try:
+            info = _build_proxy_bm_info(fund_code, start_yyyymmdd)
+        except Exception:
+            info = None
+    if not info or not info.get("components"):
+        return None
+    # 워밍업: 복합지수는 pct_change 로 첫날을 잃어 시작일이 설정일보다 하루 늦다.
+    # NAV 설정일을 ffill 로 덮으려면 ~30일 앞에서 로드(서비스단 재rebase 라 절대레벨 무관).
+    try:
+        warm = (
+            datetime.strptime(str(start_yyyymmdd), "%Y%m%d") - timedelta(days=30)
+        ).strftime("%Y%m%d")
+    except Exception:
+        warm = start_yyyymmdd
+    try:
+        comp = load_composite_bm_prices(info["components"], warm)
+        if comp is not None and len(comp) > 0:
+            return comp
+    except Exception:
+        pass
+    return None
+
+
+def _weekly_vol(aligned: "pd.Series | None") -> float | None:
+    """벤치마크 연환산 변동성 ≈ 주간(W-FRI) 수익률 std(ddof=1) × √52.
+
+    bm_aligned 는 NAV 영업일에 ffill 정렬된 시계열. 포트 변동성(R 파이프라인)과
+    방법이 미세하게 달라 정확 일치는 아니며 델타 표시용 근사값.
+    """
+    if aligned is None or len(aligned) < 3:
+        return None
+    s = aligned.dropna()
+    if len(s) < 3:
+        return None
+    wk = s.resample("W-FRI").last().dropna()
+    rets = wk.pct_change().dropna()
+    if len(rets) < 2:
+        return None
+    v = float(rets.std(ddof=1) * np.sqrt(52))
+    return None if np.isnan(v) else v
+
+
+def _portfolio_equity_weight(fund_code: str) -> float | None:
+    """포트 주식비중(국내+해외, look-through 최신 스냅샷). fraction(0~1) 반환."""
+    try:
+        from modules.data_loader import load_fund_holdings_lookthrough
+        df = load_fund_holdings_lookthrough(fund_code)
+        if df is None or len(df) == 0 or "자산군" not in df.columns:
+            return None
+        w = df[df["자산군"].isin(["국내주식", "해외주식"])]["비중(%)"].sum()
+        return float(w) / 100.0
+    except Exception:
+        return None
+
+
+def _benchmark_equity_weight(
+    fund_code: str, kind: str, as_of: date | None, start_yyyymmdd: str,
+) -> float | None:
+    """벤치마크(BM/SAA) 주식비중 — 컴포넌트를 자산군 매핑(방법3)해 국내+해외주식 합. fraction."""
+    comps = None
+    if kind == "BM":
+        from config.funds import FUND_BM
+        info = FUND_BM.get(fund_code)
+        comps = info.get("components") if info else None
+    elif kind == "SAA":
+        try:
+            from modules.data_loader import (
+                _build_proxy_bm_info,
+                load_saa_components,
+            )
+            info = None
+            try:
+                info = load_saa_components(
+                    fund_code, as_of.strftime("%Y%m%d") if as_of else None,
+                )
+            except Exception:
+                info = None
+            if not info or not info.get("components"):
+                info = _build_proxy_bm_info(fund_code, start_yyyymmdd)
+            comps = info.get("components") if info else None
+        except Exception:
+            comps = None
+    if not comps:
+        return None
+    try:
+        from modules.data_loader import _map_bm_component_to_asset_class
+        eq = 0.0
+        for c in comps:
+            ac = _map_bm_component_to_asset_class(c["name"], "방법3")
+            if ac in ("국내주식", "해외주식"):
+                eq += float(c["weight"])
+        return eq
     except Exception:
         return None
 
@@ -134,6 +257,7 @@ def _compute_bm_period_returns(bm_aligned: pd.Series) -> PeriodReturnsDTO:
         return {}
     end_dt = pd.Timestamp(bm_aligned.index[-1])
     targets = {
+        "1W": end_dt - pd.Timedelta(days=7),
         "1M": end_dt - relativedelta(months=1),
         "3M": end_dt - relativedelta(months=3),
         "6M": end_dt - relativedelta(months=6),
@@ -229,42 +353,55 @@ def build_overview(
     as_of_raw = nav_df["기준일자"].iloc[-1]
     as_of = as_of_raw.date() if hasattr(as_of_raw, "date") else as_of_raw
 
-    # --- 2) BM (BM 설정된 펀드만 시도) ---
+    # --- 2) 벤치마크 (BM 설정 펀드 → BM, 아니면 SAA[등록→proxy]) ---
     bm_aligned: pd.Series | None = None
     bm_first_val: float | None = None
+    benchmark_kind: str = "none"
+    benchmark_label: str | None = None
+    bm_df: pd.DataFrame | None = None
     if bm_configured:
+        benchmark_kind, benchmark_label = "BM", "BM"
         bm_df = _load_bm_series(fund_code, _start)
         if bm_df is None or len(bm_df) == 0:
             warnings.append("BM 로딩 실패")
             sources.append(SourceBreakdown(
                 component="bm", kind="mock", note="BM load failed",
             ))
+    else:
+        bm_df = _load_saa_series(fund_code, _start, as_of)
+        if bm_df is not None and len(bm_df) > 0:
+            benchmark_kind, benchmark_label = "SAA", "SAA"
         else:
-            if "value" not in bm_df.columns:
-                warnings.append("BM 컬럼 인식 실패")
+            warnings.append("SAA 로딩 실패")
+            sources.append(SourceBreakdown(
+                component="bm", kind="mock", note="SAA load failed",
+            ))
+
+    if bm_df is not None and len(bm_df) > 0:
+        if "value" not in bm_df.columns:
+            warnings.append("벤치마크 컬럼 인식 실패")
+            sources.append(SourceBreakdown(
+                component="bm", kind="mock", note="value column missing",
+            ))
+        else:
+            bm_df = bm_df.sort_values("기준일자").reset_index(drop=True)
+            bm_series = pd.Series(
+                bm_df["value"].astype(float).values,
+                index=pd.to_datetime(bm_df["기준일자"]),
+            )
+            nav_dates = pd.to_datetime(nav_df["기준일자"])
+            bm_aligned = bm_series.reindex(nav_dates, method="ffill")
+            # 첫 값 결측 체크
+            _b0 = bm_aligned.iloc[0]
+            if pd.isna(_b0) or _b0 == 0:
+                warnings.append("벤치마크 첫 값 결측 — 표시 생략")
+                bm_aligned = None
                 sources.append(SourceBreakdown(
-                    component="bm", kind="mock", note="BM column missing",
+                    component="bm", kind="mock", note="head missing",
                 ))
             else:
-                bm_df = bm_df.sort_values("기준일자").reset_index(drop=True)
-                bm_series = pd.Series(
-                    bm_df["value"].astype(float).values,
-                    index=pd.to_datetime(bm_df["기준일자"]),
-                )
-                nav_dates = pd.to_datetime(nav_df["기준일자"])
-                bm_aligned = bm_series.reindex(nav_dates, method="ffill")
-                # 첫 값 결측 체크
-                _b0 = bm_aligned.iloc[0]
-                if pd.isna(_b0) or _b0 == 0:
-                    warnings.append("BM 첫 값 결측 — BM 표시 생략")
-                    bm_aligned = None
-                    # sources는 db로 유지하지 않고 mock로 기록
-                    sources.append(SourceBreakdown(
-                        component="bm", kind="mock", note="BM head missing",
-                    ))
-                else:
-                    bm_first_val = float(_b0)
-                    sources.append(SourceBreakdown(component="bm", kind="db"))
+                bm_first_val = float(_b0)
+                sources.append(SourceBreakdown(component="bm", kind="db"))
 
     # --- 3) nav_series 조립 (bm/excess 채움) ---
     nav_arr = nav_df["MOD_STPR"].astype(float).to_numpy()
@@ -324,17 +461,40 @@ def build_overview(
     if bm_aligned is not None and bm_first_val is not None:
         bm_period_returns = _compute_bm_period_returns(bm_aligned)
 
-    # --- 5-ter) 펀드 기본정보 (메타바) ---
+    # --- 5-ter) 펀드 기본정보 (메타바) + 운용수익 ---
+    from config.funds import FUND_BENEFICIARY, FUND_TARGET_RETURN
+    target_ann = FUND_TARGET_RETURN.get(fund_code)
+    # 운용수익(보수차감후순) = 현재순자산 − 설정원본환산.
+    #   설정원본환산 = 현재순자산 / (1+설정후수익률) = 현재순자산 × base/last_nav.
+    #   → 운용수익 = 현재순자산 × (1 − base/last_nav). 자금 유출입 타이밍은 무시한 근사.
+    operating_profit_krw: float | None = None
     fund_meta_dto: FundInfoDTO | None = None
     try:
         from modules.data_loader import load_fund_meta
         fm = load_fund_meta(fund_code)
-        # 설정액 = 최신 순자산(NAST_AMT)
+        # 순자산(현재)은 최신 NAST_AMT.
         setup_amt = None
+        current_nast = None
         if "NAST_AMT" in nav_df.columns:
-            _a = nav_df["NAST_AMT"].iloc[-1]
-            if _a is not None and not pd.isna(_a):
-                setup_amt = float(_a)
+            _first = nav_df["NAST_AMT"].iloc[0]
+            _last = nav_df["NAST_AMT"].iloc[-1]
+            if _first is not None and not pd.isna(_first):
+                setup_amt = float(_first)        # fallback (DWPM12880 실패 시)
+            if _last is not None and not pd.isna(_last):
+                current_nast = float(_last)
+        # 설정액 = 누적 순설정(설정−해지 누계, DWPM12880). 실패 시 첫 영업일 NAST.
+        try:
+            from modules.data_loader import _load_net_subscription
+            _ns = _load_net_subscription(fund_code, inc_str)
+            if _ns is not None and len(_ns):
+                _tot = float(_ns["net_subscription"].sum())
+                if _tot and not np.isnan(_tot):
+                    setup_amt = _tot
+        except Exception:
+            pass
+        # 운용수익(보수차감후순) = 현재순자산 × (1 − base/last_nav)
+        if current_nast is not None and last_nav and base:
+            operating_profit_krw = current_nast * (1.0 - base / last_nav)
         inc_meta = None
         if fm.get("inception"):
             try:
@@ -349,9 +509,25 @@ def build_overview(
             manager=fm.get("manager"),
             fee_bp=fm.get("fee_bp"),
             nav=last_nav,
+            beneficiary=FUND_BENEFICIARY.get(fund_code),
+            target_return_annual=target_ann,
         )
     except Exception as exc:
         warnings.append(f"펀드 기본정보 로딩 실패: {type(exc).__name__}")
+
+    # --- 5-quater) 변동성 (설정후/누적 + YTD) ---
+    bm_vol = _weekly_vol(bm_aligned)
+    vol_ytd = _stats_value(stats, "YTD", "annualized_risk")
+    bm_vol_ytd = None
+    if bm_aligned is not None and as_of is not None:
+        _y0 = pd.Timestamp(f"{as_of.year}-01-01")
+        bm_vol_ytd = _weekly_vol(bm_aligned[bm_aligned.index >= _y0])
+
+    # --- 5-quinque) 주식비중 (포트 look-through vs 벤치마크 컴포넌트) ---
+    equity_weight = _portfolio_equity_weight(fund_code)
+    bm_equity_weight = _benchmark_equity_weight(
+        fund_code, benchmark_kind, as_of, _start,
+    )
 
     # --- 6) meta.source 결정 ---
     bm_mock_present = any(
@@ -380,4 +556,12 @@ def build_overview(
         period_returns=period_returns,
         bm_period_returns=bm_period_returns,
         fund_meta=fund_meta_dto,
+        benchmark_kind=benchmark_kind,        # type: ignore[arg-type]
+        benchmark_label=benchmark_label,
+        bm_volatility=bm_vol,
+        operating_profit_krw=operating_profit_krw,
+        volatility_ytd=vol_ytd,
+        bm_volatility_ytd=bm_vol_ytd,
+        equity_weight=equity_weight,
+        bm_equity_weight=bm_equity_weight,
     )

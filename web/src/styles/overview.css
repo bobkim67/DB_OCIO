@@ -1,0 +1,147 @@
+/* ============================================================
+ * Overview 리디자인 — 모든 규칙은 .ov-root 하위로 스코프(다른 탭 영향 차단).
+ * 토큰: styles/tokens.css 의 var(--ace-*). 시안: Overview Redesign v2 (SAA+목표).
+ * ============================================================ */
+.ov-root {
+  font-family: "Pretendard Variable", Pretendard, -apple-system, system-ui,
+    "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  color: var(--ace-ink);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  /* 뷰포트 높이를 채우는 flex 컬럼 → 차트가 남는 공간을 모두 차지(스크롤 없이). */
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 174px);
+  padding-bottom: 14px;
+}
+.ov-root * { box-sizing: border-box; }
+.ov-root .num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+.ov-root .pos { color: var(--ace-up); }
+.ov-root .neg { color: var(--ace-down); }
+.ov-root .muted { color: var(--ace-ink-3); }
+
+/* ---- 헤더 ---- */
+.ov-head {
+  display: flex; align-items: center; justify-content: flex-start;
+  gap: 14px; margin-bottom: 12px; flex-wrap: wrap;
+}
+.ov-head h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; margin: 0; }
+.ov-head .code { color: var(--ace-ink-3); font-weight: 600; font-size: 15px; }
+.ov-target-card {
+  padding: 5px 14px;
+  border: 1px solid rgba(176, 122, 43, 0.35); background: rgba(176, 122, 43, 0.07);
+  border-radius: var(--ace-radius-sm);
+}
+.ov-target-card .k { font-size: 11px; color: var(--ace-ink-3); }
+.ov-target-card .v { font-size: 16px; font-weight: 800; color: var(--ace-saa); line-height: 1.25; }
+.ov-asof { display: flex; align-items: center; gap: 8px; }
+.ov-asof .lbl { font-size: 11px; color: var(--ace-ink-3); font-weight: 600; }
+.ov-chip {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600;
+  color: var(--ace-brand); background: rgba(85, 126, 170, 0.1);
+  border: 1px solid rgba(85, 126, 170, 0.18); padding: 4px 10px; border-radius: 999px;
+}
+.ov-chip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ace-brand); }
+
+/* ---- 메타바 (5열) ---- */
+.ov-meta {
+  /* 카드/스트립과 동일한 6열 그리드 → 컬럼 좌우 정렬 일치 */
+  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); column-gap: 10px;
+  background: var(--ace-surface); border: 1px solid var(--ace-line);
+  border-radius: var(--ace-radius); box-shadow: var(--ace-shadow);
+  padding: 11px 0; margin-bottom: 9px;
+}
+.ov-meta > div { padding: 0 14px; }
+.ov-meta .k { font-size: 11px; color: var(--ace-ink-3); margin-bottom: 3px; }
+.ov-meta .v { font-size: 14px; font-weight: 600; color: var(--ace-ink); }
+
+/* ---- 지표카드 4개 ---- */
+.ov-stats { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-bottom: 9px; }
+.ov-stat {
+  background: var(--ace-surface); border: 1px solid var(--ace-line);
+  border-radius: var(--ace-radius); box-shadow: var(--ace-shadow); padding: 11px 14px;
+}
+/* 카드 상단: 필드명(좌) + 값(우) 한 줄 → 카드 높이 축소 */
+.ov-stat-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; min-height: 22px; }
+.ov-stat-top .val { margin-left: auto; text-align: right; }
+.ov-stat .label { font-size: 12px; color: var(--ace-ink-3); font-weight: 600; }
+.ov-stat .label .sub { font-weight: 500; color: var(--ace-ink-3); }
+.ov-stat .val { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; line-height: 1; }
+.ov-stat .val.date { font-size: 16px; letter-spacing: 0; }
+.ov-stat .cmp {
+  display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 7px;
+  font-size: 12px; color: var(--ace-ink-2); flex-wrap: wrap; text-align: right;
+}
+.ov-stat .cmp2 {
+  margin-top: 7px; font-size: 12px; color: var(--ace-ink-2);
+  display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right;
+}
+.ov-stat .cmp .delta, .ov-stat .cmp2 .delta { font-weight: 700; }
+.ov-stat .delta.pos { color: var(--ace-up); }
+.ov-stat .delta.neg { color: var(--ace-down); }
+.ov-ctoggle {
+  display: inline-flex; border: 1px solid var(--ace-line-2); border-radius: 6px;
+  overflow: hidden; flex-shrink: 0;
+}
+.ov-ctoggle button {
+  font-size: 10px; padding: 3px 8px; border: none; border-right: 1px solid var(--ace-line);
+  background: #fff; color: var(--ace-ink-3); cursor: pointer; font-weight: 600; font-family: inherit;
+}
+.ov-ctoggle button:last-child { border-right: none; }
+.ov-ctoggle button.on { background: var(--ace-brand); color: #fff; }
+
+/* ---- 기간 스트립 6칸 ---- */
+.ov-strip {
+  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); column-gap: 10px;
+  background: var(--ace-surface); border: 1px solid var(--ace-line); border-radius: var(--ace-radius);
+  box-shadow: var(--ace-shadow); margin-bottom: 9px;
+}
+.ov-strip .cell { padding: 8px 14px; }
+.ov-strip .cell-top { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+.ov-strip .p { font-size: 11px; color: var(--ace-ink-3); font-weight: 600; }
+.ov-strip .r { font-size: 16px; font-weight: 700; }
+.ov-strip .b { font-size: 11px; color: var(--ace-ink-3); margin-top: 4px; text-align: right; }
+
+/* ---- 차트 카드 ---- */
+.ov-card {
+  background: var(--ace-surface); border: 1px solid var(--ace-line);
+  border-radius: var(--ace-radius); box-shadow: var(--ace-shadow); padding: 12px 18px 14px;
+  display: flex; flex-direction: column; flex: 1; min-height: 0;
+}
+.ov-chartwrap { flex: 1; min-height: 0; }
+.ov-toolbar { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+.ov-toolbar .grow { flex: 1; }
+.ov-field { display: flex; flex-direction: column; gap: 4px; }
+.ov-field label { font-size: 11px; color: var(--ace-ink-3); }
+.ov-field input {
+  font-size: 13px; padding: 7px 11px; border: 1px solid var(--ace-line-2);
+  border-radius: var(--ace-radius-sm); background: #fff; color: var(--ace-ink);
+  font-family: inherit; font-variant-numeric: tabular-nums;
+}
+.ov-presets {
+  display: inline-flex; border: 1px solid var(--ace-line-2);
+  border-radius: var(--ace-radius-sm); overflow: hidden;
+}
+.ov-presets button {
+  font-size: 13px; padding: 7px 13px; border: none; border-right: 1px solid var(--ace-line);
+  background: #fff; color: var(--ace-ink-2); cursor: pointer; font-weight: 600; font-family: inherit;
+}
+.ov-presets button:last-child { border-right: none; }
+.ov-presets button.on { background: var(--ace-brand); color: #fff; }
+.ov-pcards { display: flex; gap: 10px; }
+.ov-pcard {
+  padding: 8px 14px; border: 1px solid var(--ace-line);
+  border-radius: var(--ace-radius-sm); background: var(--ace-surface-2); min-width: 96px;
+}
+.ov-pcard .k { font-size: 11px; color: var(--ace-ink-3); }
+.ov-pcard .v { font-size: 17px; font-weight: 700; }
+.ov-pcard.saa.sel { cursor: pointer; border-color: rgba(176, 122, 43, 0.45); background: rgba(176, 122, 43, 0.07); }
+.ov-pcard.saa.sel .v { color: var(--ace-saa); }
+.ov-pcard.saa.off { cursor: pointer; opacity: 0.45; }
+.ov-pcard.goal.sel { cursor: pointer; border-color: rgba(46, 125, 82, 0.4); background: rgba(46, 125, 82, 0.06); }
+.ov-pcard.goal.sel .v { color: var(--ace-ok); }
+.ov-pcard.goal.off { cursor: pointer; opacity: 0.45; border-style: dashed; }
+.ov-pcard .tag { font-size: 9px; font-weight: 700; margin-left: 4px; }
+.ov-pcard.saa .tag { color: var(--ace-saa); }
+.ov-pcard.goal .tag { color: var(--ace-ink-3); }

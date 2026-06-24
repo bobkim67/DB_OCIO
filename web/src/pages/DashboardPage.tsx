@@ -80,6 +80,11 @@ export default function DashboardPage() {
               ))}
           </select>
         </label>
+        <img
+          src="/ki-logo.png"
+          alt="한국투자신탁운용"
+          style={{ height: 42, width: "auto", marginLeft: "auto" }}
+        />
       </header>
 
       <WarmupGate />

@@ -1,0 +1,29 @@
+/* ============================================================
+ * Design tokens — ACE ETF 브랜드 팔레트 (클린 미니멀 리디자인)
+ * 출처: reference_redesign_ace_brand. Overview 부터 적용, 이후 확산.
+ * 색 규칙: 양수=코랄(빨강) / 음수=스틸블루(파랑) — 국내관행 & 브랜드 일치.
+ * ============================================================ */
+:root {
+  /* 브랜드 / 손익 */
+  --ace-brand: #557EAA;   /* 포트/브랜드/음수 = 스틸블루 */
+  --ace-up: #E8473B;      /* 양수 = 코랄 */
+  --ace-down: #557EAA;    /* 음수 = 스틸블루 */
+  --ace-saa: #B07A2B;     /* SAA 라인 = brown */
+  --ace-ok: #2E7D52;      /* 목표 달성 = 초록 */
+  --ace-bad: #C0392B;     /* 목표 미달 = 빨강 */
+
+  /* 잉크(텍스트) / 라인 / 면 */
+  --ace-ink: #2A2E34;
+  --ace-ink-2: #5B6573;
+  --ace-ink-3: #98A0AD;
+  --ace-line: #ECEEF1;
+  --ace-line-2: #E3E6EB;
+  --ace-surface: #FFFFFF;
+  --ace-surface-2: #FAFBFC;
+  --ace-bg: #F4F6F8;
+
+  /* shape */
+  --ace-shadow: 0 1px 2px rgba(24, 39, 75, 0.04), 0 2px 6px rgba(24, 39, 75, 0.05);
+  --ace-radius: 12px;
+  --ace-radius-sm: 8px;
+}
