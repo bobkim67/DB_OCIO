@@ -32,16 +32,21 @@
 
 /* 컴플 게이지 */
 .hd-gauges { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
-/* === 컴플 게이지 v2 — 허용/위반 음영 + 기준선 + 초과분 분리 === */
-.hd-g2 { padding: 12px 15px 13px; }
-.hd-g2 .t { display: flex; align-items: baseline; gap: 7px; }
+/* === 컴플 게이지 (시안 A) — 값 아래 색상 서브라인 + 트랙 + 기준선 마커 레전드 === */
+.hd-g2 { padding: 12px 15px 12px; }
+.hd-g2 .t { display: flex; align-items: center; gap: 7px; }
 .hd-g2 .lbl { font-size: 12.5px; color: var(--ace-ink-2); font-weight: 700; }
-.hd-g2 .st { font-size: 10px; font-weight: 700; padding: 1.5px 7px; border-radius: 999px; }
+.hd-g2 .st { margin-left: auto; font-size: 10px; font-weight: 700; padding: 1.5px 7px; border-radius: 999px; flex: none; }
 .hd-g2 .st.ok { color: var(--ace-ok); background: rgba(46, 125, 82, 0.1); }
 .hd-g2 .st.warn { color: #C8862B; background: rgba(200, 134, 43, 0.12); }
 .hd-g2 .st.breach { color: var(--ace-bad); background: rgba(192, 57, 43, 0.12); }
 .hd-g2 .st.none { color: var(--ace-ink-3); background: var(--ace-surface-2); }
-.hd-g2 .v { margin-left: auto; font-size: 19px; font-weight: 800; }
+.hd-g2 .vrow { display: flex; align-items: baseline; flex-wrap: nowrap; gap: 9px; margin-top: 7px; }
+.hd-g2 .v { font-size: 23px; font-weight: 800; line-height: 1.1; }
+.hd-g2 .vn { font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+.hd-g2 .vn.ok { color: var(--ace-ok); }
+.hd-g2 .vn.bad { color: var(--ace-bad); }
+.hd-g2 .vn.ref { color: var(--ace-ink-3); }
 .hd-g2 .track2 { position: relative; height: 14px; border-radius: 5px; background: #EEF1F4; margin-top: 10px; overflow: hidden; }
 .hd-g2 .zone { position: absolute; top: 0; height: 100%; }
 .hd-g2 .zone.ok { background: rgba(46, 125, 82, 0.12); }
@@ -50,41 +55,44 @@
 .hd-g2 .fill2.over { border-radius: 0 4px 4px 0; background: #C0392B; }
 .hd-g2 .gap2 { position: absolute; top: 3px; height: 8px; border-radius: 2px; background: repeating-linear-gradient(45deg, rgba(192,57,43,0.55) 0 4px, transparent 4px 8px); }
 .hd-g2 .mk { position: absolute; top: -2px; height: 18px; width: 3px; background: var(--ace-ink); border-radius: 2px; z-index: 4; }
-.hd-g2 .gx { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-top: 7px; }
-.hd-g2 .gx .g { font-size: 11.5px; color: var(--ace-ink-2); font-weight: 600; }
-.hd-g2 .gx .n { font-size: 11px; font-weight: 700; }
-.hd-g2 .gx .n.bad { color: var(--ace-bad); }
-.hd-g2 .gx .n.ok { color: var(--ace-ok); }
-.hd-g2 .gx .n.ref { color: var(--ace-ink-3); }
-/* 게이지 범례 */
-.hd-glegend { display: flex; gap: 14px; align-items: center; font-size: 11px; color: var(--ace-ink-3); margin: 0 2px 8px; flex-wrap: wrap; }
-.hd-glegend span { display: inline-flex; align-items: center; gap: 5px; }
-.hd-glegend .sw { display: inline-block; width: 14px; height: 9px; border-radius: 3px; }
-.hd-glegend .sw.zok { background: rgba(46, 125, 82, 0.30); }
-.hd-glegend .sw.zbad { background: rgba(192, 57, 43, 0.28); }
-.hd-glegend .mk2 { display: inline-block; width: 3px; height: 13px; background: var(--ace-ink); border-radius: 2px; }
+/* 카드 내 하단 레전드 — 허용/위반 구간 + 가이드 기준선 */
+.hd-g2 .mleg { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 9px; font-size: 11px; color: var(--ace-ink-2); font-weight: 600; }
+.hd-g2 .mleg .li { display: inline-flex; align-items: center; gap: 5px; }
+.hd-g2 .mleg .zsw { display: inline-block; width: 11px; height: 9px; border-radius: 2px; flex: none; }
+.hd-g2 .mleg .zsw.zok { background: rgba(46, 125, 82, 0.30); }
+.hd-g2 .mleg .zsw.zbad { background: rgba(192, 57, 43, 0.28); }
+.hd-g2 .mleg .mk-sw { display: inline-block; width: 3px; height: 12px; background: var(--ace-ink); border-radius: 2px; flex: none; }
+/* 커서 추종 즉시 툴팁 */
+.hd-tip2 { position: fixed; z-index: 1000; pointer-events: none; background: #2A2E34; color: #fff; padding: 7px 10px; border-radius: 7px; font-size: 11.5px; line-height: 1.5; box-shadow: 0 4px 14px rgba(0,0,0,0.18); }
+.hd-tip2 div { white-space: nowrap; }
+.hd-tip2 .h { font-weight: 700; }
 .hd-expand { margin-left: auto; font-size: 11.5px; font-weight: 700; color: var(--ace-brand); background: rgba(85,126,170,0.08); border: 1px solid var(--ace-line-2); border-radius: 6px; padding: 3px 10px; cursor: pointer; font-family: inherit; }
 
-.hd-cols { display: grid; grid-template-columns: 1.03fr 1fr; gap: 11px; align-items: start; }
+.hd-cols { display: grid; grid-template-columns: 0.92fr 1fr; gap: 11px; align-items: start; }
 @media (max-width: 980px) { .hd-cols { grid-template-columns: 1fr; } }
 
 /* 테이블 */
 .hd-tbl { padding: 12px 4px 8px; }
 .hd-tbl h3 { font-size: 15px; font-weight: 700; margin: 2px 14px 6px; color: var(--ace-ink); }
-.hd-tbl table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.hd-tbl thead th { font-size: 10.5px; color: var(--ace-ink-3); font-weight: 600; text-align: right; padding: 5px 12px; border-bottom: 1px solid var(--ace-line); }
+.hd-tbl table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
+.hd-tbl thead th { font-size: 12px; color: var(--ace-ink-2); font-weight: 700; text-align: right; padding: 8px 14px; border-bottom: 1px solid var(--ace-line); }
 .hd-tbl thead th.l { text-align: left; }
-.hd-tbl .grp td { padding: 7px 12px 5px; background: var(--ace-surface-2); }
+/* 비중 미니바 칼럼 — 자산군 바=비중 왼쪽(우→좌 성장), 종목 바=비중 오른쪽(좌→우 성장). 비중 기준 앵커 */
+.hd-tbl th.wbl, .hd-tbl td.wbl { text-align: right; padding-left: 6px; padding-right: 6px; }
+.hd-tbl td.wbl .hd-wbar { direction: rtl; }
+.hd-tbl th.wbr, .hd-tbl td.wbr { text-align: left; padding-left: 6px; padding-right: 6px; }
+.hd-tbl .grp td { padding: 10px 14px 8px; background: var(--ace-surface-2); }
 .hd-tbl .grp .gn { font-size: 12px; font-weight: 700; }
 .hd-tbl .grp .dt { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
 .hd-tbl .grp .gw { font-weight: 800; font-size: 12.5px; }
 .hd-tbl .grp .gd { color: var(--ace-ink-3); font-weight: 600; font-size: 11.5px; }
-.hd-tbl tbody td { padding: 5px 12px; border-bottom: 1px solid #F4F6F8; text-align: right; }
-.hd-tbl tbody td.l { text-align: left; color: var(--ace-ink); }
+.hd-tbl tbody td { padding: 8px 14px; border-bottom: 1px solid #F4F6F8; text-align: right; }
+.hd-tbl tbody td.l { text-align: left; color: var(--ace-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hd-tbl tbody tr:not(.grp) td.l { padding-left: 28px; }  /* 자산군 하위 종목 들여쓰기 */
 .hd-tbl tbody td.sub { color: var(--ace-ink-3); font-size: 11px; }
 .hd-tbl tbody tr.hd-clickrow { cursor: pointer; }
 .hd-tbl tbody tr.hd-clickrow:hover td { background: #F4F6F8; }
-.hd-wbar { display: inline-block; width: 42px; height: 6px; border-radius: 3px; background: #EEF1F4; overflow: hidden; vertical-align: middle; margin-right: 7px; }
+.hd-wbar { display: inline-block; width: 44px; height: 6px; border-radius: 3px; background: #EEF1F4; overflow: hidden; vertical-align: middle; }
 .hd-wbar i { display: block; height: 100%; border-radius: 3px; }
 .hd-hytag { font-size: 9px; font-weight: 700; color: var(--ace-up); background: rgba(232, 71, 59, 0.1); padding: 1px 5px; border-radius: 3px; margin-left: 5px; }
 
@@ -109,4 +117,3 @@
 .hd-tilt .tleg { display: flex; flex-wrap: wrap; gap: 3px 10px; margin-top: 5px; font-size: 10.5px; color: var(--ace-ink-3); }
 .hd-tilt .tleg span { display: inline-flex; align-items: center; gap: 4px; }
 .hd-tilt .tleg i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
-.hd-foot { margin-top: 11px; font-size: 10.5px; color: var(--ace-ink-3); }

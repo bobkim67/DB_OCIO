@@ -23,6 +23,7 @@ class HoldingItemDTO(BaseModel):
     is_short: bool = False          # 매도 포지션 여부 (DWPM10530 POS_DS_CD='매도')
     duration: float | None = None   # 모듈 duration_fetcher 매핑 종목만 채움
     ytm: float | None = None        # 단위: % (예: 3.73)
+    first_date: str | None = None   # 최초 편입일 YYYY-MM-DD (DWPM10530 전이력 MIN)
 
 
 class FxHedgeSummaryDTO(BaseModel):

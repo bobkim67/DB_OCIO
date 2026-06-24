@@ -11,6 +11,8 @@ interface Props { fundCode: string; }
 
 // 포커스 "종목" 뷰 선택 — 종목 OR 자산군
 type HoldSel = { kind: "sec"; cd: string; nm: string } | { kind: "asset"; ac: string };
+// 커서 추종 즉시 툴팁 (native title 지연 제거)
+type Tip = { x: number; y: number; lines: string[] } | null;
 
 const ASSET_ORDER = ["국내주식", "해외주식", "국내채권", "해외채권", "대체투자", "FX", "모펀드", "유동성"];
 const ASSET_COLOR: Record<string, string> = {
@@ -28,6 +30,7 @@ export default function HoldingsTab({ fundCode }: Props) {
   const [focus, setFocus] = useState<"eq" | "bd" | "sec">("eq");
   const [expandTable, setExpandTable] = useState(false);
   const [sel, setSel] = useState<HoldSel | null>(null);
+  const [tip, setTip] = useState<Tip>(null);
   const { data, isLoading, error } = useHoldings(fundCode, lookthrough);
 
   // 종목/자산군 차트(비중·수익률·거래) — 선택 1년 구간. hooks 규칙상 early return 전 호출.
@@ -61,6 +64,7 @@ export default function HoldingsTab({ fundCode }: Props) {
 
   const ord = (ac: string) => { const i = ASSET_ORDER.indexOf(ac); return i < 0 ? 99 : i; };
   const sortedAcw = [...acw].sort((a, b) => ord(a.asset_class) - ord(b.asset_class));
+  const maxGroupW = Math.max(...sortedAcw.map((w) => w.weight), 0.0001);
 
   return (
     <section className="hd-root">
@@ -82,7 +86,8 @@ export default function HoldingsTab({ fundCode }: Props) {
             <div className="hd-stack">
               {sortedAcw.map((w) => (
                 <div key={w.asset_class}
-                  title={`${w.asset_class} ${(w.weight * 100).toFixed(1)}% · ${eok(w.evl_amt)} · ${w.item_count}종목`}
+                  onMouseMove={(e) => setTip({ x: e.clientX, y: e.clientY, lines: [`${w.asset_class} ${(w.weight * 100).toFixed(1)}%`, `${eok(w.evl_amt)} · ${w.item_count}종목`] })}
+                  onMouseLeave={() => setTip(null)}
                   style={{ width: `${w.weight * 100}%`, background: w.color ?? ASSET_COLOR[w.asset_class] ?? "#AAB2BD" }}>
                   {w.weight >= 0.08 ? `${w.asset_class} ${(w.weight * 100).toFixed(1)}%` : ""}
                 </div>
@@ -98,14 +103,8 @@ export default function HoldingsTab({ fundCode }: Props) {
           {/* 컴플 게이지 */}
           {data.compliance.length > 0 && (
             <div className="hd-mb">
-              <div className="hd-glegend">
-                <span><span className="sw zok" />허용 구간</span>
-                <span><span className="sw zbad" />위반·초과 구간</span>
-                <span><span className="mk2" />가이드 기준선</span>
-                <span>· 펀드 가이드라인 대비 적합 / 주의 / 위반 · 비교(SAA 목표)</span>
-              </div>
               <div className="hd-gauges">
-                {data.compliance.map((c) => <Gauge key={c.key} c={c} />)}
+                {data.compliance.map((c) => <Gauge key={c.key} c={c} setTip={setTip} />)}
               </div>
             </div>
           )}
@@ -120,10 +119,21 @@ export default function HoldingsTab({ fundCode }: Props) {
                 </button>
               </div>
               <table>
-                <thead><tr><th className="l">종목</th><th>비중</th><th>평가액</th><th>Dur</th><th>YTM</th></tr></thead>
+                <colgroup>
+                  <col />
+                  <col style={{ width: 50 }} />
+                  <col style={{ width: 58 }} />
+                  <col style={{ width: 50 }} />
+                  <col style={{ width: 84 }} />
+                  <col style={{ width: 52 }} />
+                  <col style={{ width: 56 }} />
+                  <col style={{ width: 92 }} />
+                </colgroup>
+                <thead><tr><th className="l">종목</th><th className="wbl" /><th>비중</th><th className="wbr" /><th>평가액</th><th>Dur</th><th>YTM</th><th>최초 편입일</th></tr></thead>
                 <tbody>
                   {sortedAcw.map((g) => {
                     const bucket = items.filter((it) => it.asset_class === g.asset_class);
+                    const bucketRows = g.asset_class === "유동성" ? collapseLiquidity(bucket) : bucket;
                     const col = g.color ?? ASSET_COLOR[g.asset_class] ?? "#AAB2BD";
                     const hasBond = g.asset_class === "국내채권" || g.asset_class === "해외채권";
                     const gDur = hasBond ? avgWeighted(bucket, (b) => b.duration) : null;
@@ -133,23 +143,29 @@ export default function HoldingsTab({ fundCode }: Props) {
                         onClick={() => { setSel({ kind: "asset", ac: g.asset_class }); setFocus("sec"); }}
                         title={`클릭 → ${g.asset_class} 비중·수익률·거래 차트`}>
                         <td className="l"><span className="dt" style={{ background: col }} /><span className="gn">{g.asset_class}</span></td>
+                        <td className="wbl"><span className="hd-wbar gwb"><i style={{ width: `${(g.weight / maxGroupW) * 100}%`, background: col }} /></span></td>
                         <td><span className="gw num">{pct1(g.weight)}</span></td>
+                        <td className="wbr" />
                         <td className="num gd">{eok(g.evl_amt)}</td>
                         <td className="num gd">{num(gDur, 1)}</td>
                         <td className="num gd">{gYtm == null ? "—" : num(gYtm, 2)}</td>
+                        <td className="num gd" />
                       </tr>,
-                      ...(expandTable ? bucket.map((it, i) => {
-                        const clickable = it.item_cd !== "_CASH_RESIDUAL_";
+                      ...(expandTable ? bucketRows.map((it, i) => {
+                        const clickable = it.item_cd !== "_CASH_RESIDUAL_" && it.item_cd !== "_LIQ_ETC_";
                         return (
                         <tr key={`${g.asset_class}-${it.item_cd}-${i}`}
                           className={clickable ? "hd-clickrow" : undefined}
                           onClick={clickable ? () => { setSel({ kind: "sec", cd: it.item_cd, nm: it.item_nm }); setFocus("sec"); } : undefined}
                           title={clickable ? "클릭 → 종목 비중·수익률·거래 차트" : undefined}>
-                          <td className="l">{it.item_nm}{it.asset_class === "해외채권" ? <span className="hd-hytag">HY</span> : null}{it.is_short ? <span className="hd-hytag">SHORT</span> : null}</td>
-                          <td><span className="hd-wbar"><i style={{ width: `${Math.min((it.weight / Math.max(g.weight, 0.0001)) * 100, 100)}%`, background: col }} /></span><b className="num">{pct1(it.weight)}</b></td>
+                          <td className="l">{it.item_nm}{it.is_short ? <span className="hd-hytag">SHORT</span> : null}</td>
+                          <td className="wbl" />
+                          <td><b className="num">{pct1(it.weight)}</b></td>
+                          <td className="wbr"><span className="hd-wbar"><i style={{ width: `${Math.min((it.weight / Math.max(g.weight, 0.0001)) * 100, 100)}%`, background: col }} /></span></td>
                           <td className="num sub">{eok(it.evl_amt)}</td>
                           <td className="num sub">{num(it.duration, 1)}</td>
                           <td className="num sub">{it.ytm == null ? "—" : num(it.ytm, 2)}</td>
+                          <td className="num sub">{it.first_date ?? "—"}</td>
                         </tr>
                         );
                       }) : []),
@@ -251,8 +267,30 @@ export default function HoldingsTab({ fundCode }: Props) {
           </div>
         </>
       )}
+      {tip && (
+        <div className="hd-tip2" style={{ left: tip.x + 14, top: tip.y + 14 }}>
+          {tip.lines.map((l, i) => <div key={i} className={i === 0 ? "h" : undefined}>{l}</div>)}
+        </div>
+      )}
     </section>
   );
+}
+
+// 유동성 = 예금·USD Deposit·현금/미수금만 개별 노출, 나머지(콜론·MMF·REPO 등)는 "기타"로 합산
+function collapseLiquidity(items: HoldingItemDTO[]): HoldingItemDTO[] {
+  const keep: HoldingItemDTO[] = [];
+  let etcW = 0, etcE = 0, etcBase: HoldingItemDTO | null = null;
+  for (const it of items) {
+    const nm = it.item_nm.toUpperCase();
+    const show = it.item_cd === "_CASH_RESIDUAL_"
+      || it.item_cd.toUpperCase() === "USMUSD022001"
+      || nm.includes("DEPOSIT")
+      || it.item_nm.includes("예금");
+    if (show) keep.push(it);
+    else { etcW += it.weight; etcE += it.evl_amt; etcBase = it; }
+  }
+  if (etcBase) keep.push({ ...etcBase, item_cd: "_LIQ_ETC_", item_nm: "기타", weight: etcW, evl_amt: etcE, duration: null, ytm: null, is_short: false, first_date: null });
+  return keep;
 }
 
 function avgWeighted(items: HoldingItemDTO[], pick: (it: HoldingItemDTO) => number | null | undefined): number | null {
@@ -265,8 +303,8 @@ function avgWeighted(items: HoldingItemDTO[], pick: (it: HoldingItemDTO) => numb
   return den > 0 ? num / den : null;
 }
 
-// 컴플 게이지 — 허용/위반 구간 음영 + 가이드 기준선 + 값(허용분/초과분 분리) + 여유·초과 라벨
-function Gauge({ c }: { c: ComplianceItemDTO }) {
+// 컴플 게이지 (시안 A) — 라벨+상태 / 큰 값 / 여유·초과 색상 서브라인 / 트랙(허용·위반 음영+기준선+초과분) / 기준선 마커 레전드
+function Gauge({ c, setTip }: { c: ComplianceItemDTO; setTip: (t: Tip) => void }) {
   const lo = c.band_low, hi = c.band_high;
   const isRef = c.status === "none" && hi != null; // SAA 비교용
   const V = c.value;
@@ -277,32 +315,41 @@ function Gauge({ c }: { c: ComplianceItemDTO }) {
   const axisMax = Math.max(V, axisRef ?? V, 0.0001) * 1.18;
   const P = (x: number) => Math.min(100, Math.max(0, (x / axisMax) * 100));
   const pp = (x: number) => `${P(x)}%`;
+  const pc0 = (x: number) => `${(x * 100).toFixed(0)}%`;
 
   const stColor =
     c.status === "breach" ? "#C0392B" : c.status === "warn" ? "#C8862B" : c.status === "ok" ? "#2E9E7B" : "#557EAA";
   const over = kind === "max" && hi != null && V > hi ? V - hi : 0;
   const short = kind === "min" && lo != null && V < lo ? lo - V : 0;
 
-  const guide =
-    kind === "ref" ? `SAA 목표 ${(hi! * 100).toFixed(0)}%`
-    : kind === "max" ? `가이드 ≤ ${(hi! * 100).toFixed(0)}%`
-    : kind === "min" ? `가이드 ≥ ${(lo! * 100).toFixed(0)}%`
-    : kind === "band" ? `가이드 ${(lo! * 100).toFixed(0)}~${(hi! * 100).toFixed(0)}%`
+  // 기준선 마커 레전드 (가이드 임계값 포함)
+  const markerLeg =
+    kind === "ref" ? `SAA 목표 ${pc0(hi!)}`
+    : kind === "max" ? `가이드 기준선(≤${pc0(hi!)})`
+    : kind === "min" ? `가이드 기준선(≥${pc0(lo!)})`
+    : kind === "band" ? `가이드 기준선(${pc0(lo!)}~${pc0(hi!)})`
     : "가이드 미설정";
 
   let note = "", noteCls = "ok";
   if (over > 0) { note = `초과 +${(over * 100).toFixed(1)}%p`; noteCls = "bad"; }
   else if (short > 0) { note = `미달 −${(short * 100).toFixed(1)}%p`; noteCls = "bad"; }
   else if (isRef) { const d = V - hi!; note = `현재 ${d >= 0 ? "+" : "−"}${(Math.abs(d) * 100).toFixed(1)}%p vs SAA`; noteCls = "ref"; }
-  else if (kind === "max") { note = `여유 ${((hi! - V) * 100).toFixed(1)}%p`; noteCls = "ok"; }
+  else if (kind === "max") { note = `여유 +${((hi! - V) * 100).toFixed(1)}%p`; noteCls = "ok"; }
   else if (kind === "min") { note = `여유 +${((V - lo!) * 100).toFixed(1)}%p`; noteCls = "ok"; }
 
+  const tipLines = [c.label, `현재 ${pct1(V)} · ${markerLeg}`, `${isRef ? "비교" : STATUS_LABEL[c.status]}${note ? ` · ${note}` : ""}`];
+
   return (
-    <div className="hd-card hd-g2" title={`${c.label}\n현재 ${pct1(V)} · ${guide} · ${isRef ? "비교" : STATUS_LABEL[c.status]}${note ? ` · ${note}` : ""}`}>
+    <div className="hd-card hd-g2"
+      onMouseMove={(e) => setTip({ x: e.clientX, y: e.clientY, lines: tipLines })}
+      onMouseLeave={() => setTip(null)}>
       <div className="t">
         <span className="lbl">{c.label}</span>
         <span className={`st ${c.status}`}>{isRef ? "비교" : STATUS_LABEL[c.status]}</span>
+      </div>
+      <div className="vrow">
         <span className="v num">{pct1(V)}</span>
+        {note && <span className={`vn ${noteCls}`}>{note}</span>}
       </div>
       <div className="track2">
         {kind === "max" && (<><div className="zone ok" style={{ left: 0, width: pp(hi!) }} /><div className="zone bad" style={{ left: pp(hi!), right: 0 }} /></>)}
@@ -316,9 +363,14 @@ function Gauge({ c }: { c: ComplianceItemDTO }) {
         {/* 가이드 기준선 */}
         {T != null && <div className="mk" style={{ left: pp(T) }} />}
       </div>
-      <div className="gx">
-        <span className="g">{guide}</span>
-        {note && <span className={`n ${noteCls}`}>{note}</span>}
+      <div className="mleg">
+        {kind !== "ref" && kind !== "none" && (
+          <>
+            <span className="li"><span className="zsw zok" />허용 구간</span>
+            <span className="li"><span className="zsw zbad" />위반·초과 구간</span>
+          </>
+        )}
+        <span className="li"><span className="mk-sw" />{markerLeg}</span>
       </div>
     </div>
   );

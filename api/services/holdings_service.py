@@ -1,3 +1,6 @@
+import json
+import os
+import threading
 from datetime import date, datetime, timezone
 from typing import Any
 
@@ -340,6 +343,86 @@ def _load_opng(fund_code: str, as_of: date | None) -> float | None:
         return None
 
 
+_FIRST_DATE_CACHE_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    ".cache", "holdings_first_dates.json",
+)
+_first_date_lock = threading.Lock()
+_first_date_cache: dict[str, dict[str, str | None]] | None = None
+
+
+def _first_date_store() -> dict[str, dict[str, str | None]]:
+    global _first_date_cache
+    if _first_date_cache is None:
+        try:
+            with open(_FIRST_DATE_CACHE_PATH, encoding="utf-8") as fp:
+                _first_date_cache = json.load(fp)
+        except Exception:
+            _first_date_cache = {}
+    return _first_date_cache
+
+
+def _query_first_dates_db(fund_code: str, item_cds: list[str]) -> dict[str, str]:
+    """DWPM10530 전이력 MIN(STD_DT) per ITEM_CD (현재 보유 ITEM_CD 한정)."""
+    from modules.data_loader import _get_관련_fund_list, get_connection
+    funds = _get_관련_fund_list(fund_code) or [fund_code]
+    fph = ",".join(["%s"] * len(funds))
+    iph = ",".join(["%s"] * len(item_cds))
+    conn = get_connection("dt")
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT ITEM_CD, MIN(STD_DT) AS f FROM DWPM10530 "
+                f"WHERE FUND_CD IN ({fph}) AND ITEM_CD IN ({iph}) "
+                f"AND EVL_AMT > 0 GROUP BY ITEM_CD",
+                tuple(funds) + tuple(item_cds),
+            )
+            rows = cur.fetchall()
+    finally:
+        conn.close()
+    out: dict[str, str] = {}
+    for row in rows:
+        cd = row.get("ITEM_CD") if isinstance(row, dict) else row[0]
+        f = row.get("f") if isinstance(row, dict) else row[1]
+        if cd is None or f is None:
+            continue
+        s = str(f).strip()
+        if len(s) == 8 and s.isdigit():
+            out[str(cd)] = f"{s[:4]}-{s[4:6]}-{s[6:8]}"
+    return out
+
+
+def _load_first_dates(fund_code: str, item_cds: list[str]) -> dict[str, str]:
+    """ITEM_CD별 최초 편입일(YYYY-MM-DD). 정적 데이터라 영속 JSON 캐시.
+
+    캐시 미스(신규 종목)만 DB 조회 → 캐시 갱신·저장. 전이력 GROUP BY 풀스캔(~7s)은
+    펀드별 최초 1회만(이후 영구 instant). warmup_cli 가 build_holdings 호출로 선채움.
+    """
+    item_cds = [c for c in item_cds if c and not c.startswith("_")]
+    if not item_cds:
+        return {}
+    store = _first_date_store()
+    fund_cache = store.get(fund_code, {})
+    missing = [c for c in item_cds if c not in fund_cache]
+    if missing:
+        try:
+            fresh = _query_first_dates_db(fund_code, missing)
+        except Exception:
+            fresh = {}
+        with _first_date_lock:
+            fund_cache = dict(fund_cache)
+            for c in missing:                 # 못 찾은 종목도 None 저장 → 재조회 방지
+                fund_cache[c] = fresh.get(c)
+            store[fund_code] = fund_cache
+            try:
+                os.makedirs(os.path.dirname(_FIRST_DATE_CACHE_PATH), exist_ok=True)
+                with open(_FIRST_DATE_CACHE_PATH, "w", encoding="utf-8") as fp:
+                    json.dump(store, fp, ensure_ascii=False)
+            except Exception:
+                pass
+    return {c: fund_cache[c] for c in item_cds if fund_cache.get(c)}
+
+
 def _val(row: pd.Series, *names: str, default: Any = None) -> Any:
     for n in names:
         if n in row:
@@ -584,6 +667,17 @@ def build_holdings(
             sources.append(SourceBreakdown(component="duration", kind="db"))
     except Exception as exc:
         warnings.append(f"듀레이션 fetch 실패: {type(exc).__name__}")
+
+    # 8.5) 최초 편입일 join (DWPM10530 전이력 MIN)
+    try:
+        first_map = _load_first_dates(fund_code, [it.item_cd for it in items])
+        if first_map:
+            for it in items:
+                fd = first_map.get(it.item_cd)
+                if fd:
+                    it.first_date = fd
+    except Exception as exc:
+        warnings.append(f"편입일 조회 실패: {type(exc).__name__}")
 
     # 9) 포트폴리오 mix 카드 (주식/채권/위험자산/현금)
     portfolio_mix = _build_portfolio_mix(items)

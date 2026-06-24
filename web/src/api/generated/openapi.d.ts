@@ -1427,6 +1427,8 @@ export interface components {
             duration?: number | null;
             /** Ytm */
             ytm?: number | null;
+            /** First Date */
+            first_date?: string | null;
         };
         /** HoldingsResponseDTO */
         HoldingsResponseDTO: {
