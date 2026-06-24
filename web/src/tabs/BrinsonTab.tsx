@@ -668,8 +668,16 @@ export default function BrinsonTab({ fundCode }: Props) {
               </th>
               <th style={tdGap} />
               <th style={th}>AP</th>
-              <th style={thr}>
+              <th
+                style={thr}
+                title={
+                  "AP 자산군 수익률 = 펀드 실현손익 기준 금액가중(money-weighted) 수익률.\n" +
+                  "기간 중 매매·포지션 사이징이 반영되므로, 지수(BM)·단순보유(buy-and-hold) 수익률과\n" +
+                  "다를 수 있습니다. (예: 상승장에 비중을 키우면 지수보다 높게 잡힘 = 매매 타이밍 효과)"
+                }
+              >
                 AP 수익률({tbl1Metric === "norm" ? "Normalized" : "기여"})
+                <span style={{ color: "#9ca3af", fontWeight: 400, marginLeft: 3 }}>ⓘ</span>
               </th>
               {tbl1Metric !== "norm" && <th style={thr}>초과기여</th>}
             </tr>
@@ -782,6 +790,10 @@ export default function BrinsonTab({ fundCode }: Props) {
             )}
           </tbody>
         </table>
+        <p style={{ fontSize: 11, color: "#6b7280", margin: "6px 2px 0", lineHeight: 1.5 }}>
+          ※ AP 자산군 수익률은 펀드 실현손익 기준 <b>금액가중(money-weighted)</b> 수익률로, 기간 중
+          매매·포지션 사이징이 반영됩니다 → 지수(BM)·단순보유 수익률과 다를 수 있습니다.
+        </p>
       </div>
       </div>
 
