@@ -67,6 +67,43 @@ class WeightedDurationDTO(BaseModel):
     coverage_ratio: float = 0.0             # covered / total (0~1)
 
 
+class EquityHoldingDTO(BaseModel):
+    """주식 포커스 산점도용 — 보유 주식 ETF 의 proxy 밸류에이션."""
+    item_nm: str
+    asset_class: str
+    weight: float
+    proxy_ticker: str | None = None   # VUG/VTV/SPY/VWO/EFA/EWY
+    per: float | None = None
+    eps_growth: float | None = None   # YoY, fraction
+
+
+class EquityProxyRefDTO(BaseModel):
+    """산점도 참조 스타일 점 (proxy ETF 밸류에이션 지도)."""
+    ticker: str
+    per: float | None = None
+    eps_growth: float | None = None
+
+
+class EquityFocusDTO(BaseModel):
+    equity_weight: float = 0.0
+    weighted_per: float | None = None
+    weighted_eps_growth: float | None = None
+    holdings: list[EquityHoldingDTO] = []
+    references: list[EquityProxyRefDTO] = []
+    region_tilt: dict[str, float] = {}   # {국내, 해외} weight 합
+    style_tilt: dict[str, float] = {}    # {성장, 가치, 기타}
+
+
+class ComplianceItemDTO(BaseModel):
+    """컴플라이언스 게이지 — 현재 비중 vs 가이드라인 밴드."""
+    key: str                          # equity/bond/risk_asset/cash
+    label: str
+    value: float                      # 현재 비중 (fraction)
+    band_low: float | None = None
+    band_high: float | None = None
+    status: str = "none"              # ok / warn / breach / none
+
+
 class HoldingsResponseDTO(BaseModel):
     meta: BaseMeta
     fund_code: str
@@ -80,3 +117,5 @@ class HoldingsResponseDTO(BaseModel):
     fx_hedge: FxHedgeSummaryDTO | None = None
     duration_summary: WeightedDurationDTO | None = None
     portfolio_mix: PortfolioMixSummaryDTO | None = None
+    equity_focus: EquityFocusDTO | None = None       # 주식 포커스 (PER×EPS성장)
+    compliance: list[ComplianceItemDTO] = []         # 컴플 게이지

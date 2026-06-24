@@ -3637,6 +3637,83 @@ MACRO_DATASETS = {
 }
 
 
+# ============================================================
+# 주식 밸류에이션 proxy (편입종목 탭 주식 포커스 — PER × EPS성장)
+# 보유 ETF 를 지역/스타일 proxy ETF 로 매핑해 SCIP PE(ds24)/EPS(ds31) 사용.
+# (개별종목이 아닌 ETF 래퍼라 proxy 근사 — reference_macro_etf_proxy)
+# ============================================================
+EQUITY_PROXY_DATASETS = {
+    'VUG': 11,    # Vanguard Growth (미국 대형성장)
+    'VTV': 12,    # Vanguard Value (미국 가치)
+    'SPY': 24,    # S&P 500 (미국 광의)
+    'VWO': 37,    # MSCI EM (신흥)
+    'EFA': 63,    # MSCI EAFE (선진 ex-US ≈ VEA)
+    'EWY': 144,   # MSCI Korea (국내)
+}
+
+
+def _classify_equity_proxy(item_cd: str, item_nm: str, asset_class: str):
+    """보유 주식 ETF → proxy 티커. 국내=EWY, 해외=스타일/지역 키워드 분기(기본 SPY)."""
+    nm = (item_nm or '').upper()
+    if asset_class == '국내주식':
+        return 'EWY'
+    if asset_class == '해외주식':
+        if '성장' in nm or 'GROWTH' in nm:
+            return 'VUG'
+        if '가치' in nm or 'VALUE' in nm:
+            return 'VTV'
+        if '신흥' in nm or 'EMERGING' in nm or 'EM ' in nm:
+            return 'VWO'
+        if '선진' in nm or 'EAFE' in nm or 'DEVELOPED' in nm:
+            return 'EFA'
+        return 'SPY'   # 미국/광의 기본
+    return None
+
+
+@_ttl_cache()
+def load_equity_proxy_valuations() -> dict:
+    """proxy 티커별 최신 PER + EPS YoY 성장률.
+
+    Returns: {ticker: {'per': float|None, 'eps_growth': float|None(fraction), 'as_of': str|None}}
+    EPS 성장 = 최신 EPS / (~365일 전 EPS) - 1.
+    """
+    import datetime as _dt
+    out: dict = {}
+    try:
+        conn = get_pandas_connection('SCIP')
+    except Exception:
+        return {tk: {'per': None, 'eps_growth': None, 'as_of': None}
+                for tk in EQUITY_PROXY_DATASETS}
+    try:
+        for tk, dsid in EQUITY_PROXY_DATASETS.items():
+            rec = {'per': None, 'eps_growth': None, 'as_of': None}
+            try:
+                pe = pd.read_sql(
+                    "SELECT DATE(timestamp_observation) d, data FROM back_datapoint "
+                    "WHERE dataset_id=%s AND dataseries_id=24 AND timestamp_ineffective IS NULL "
+                    "ORDER BY timestamp_observation", conn, params=[dsid])
+                if len(pe):
+                    rec['per'] = float(parse_data_blob(pe['data'].iloc[-1]))
+                    rec['as_of'] = str(pe['d'].iloc[-1])
+                ep = pd.read_sql(
+                    "SELECT DATE(timestamp_observation) d, data FROM back_datapoint "
+                    "WHERE dataset_id=%s AND dataseries_id=31 AND timestamp_ineffective IS NULL "
+                    "ORDER BY timestamp_observation", conn, params=[dsid])
+                if len(ep) >= 2:
+                    ep['v'] = ep['data'].apply(lambda b: float(parse_data_blob(b)))
+                    last_v, last_d = ep['v'].iloc[-1], ep['d'].iloc[-1]
+                    tgt = last_d - _dt.timedelta(days=365)
+                    prior = ep[ep['d'] <= tgt]
+                    if len(prior) and prior['v'].iloc[-1]:
+                        rec['eps_growth'] = last_v / float(prior['v'].iloc[-1]) - 1.0
+            except Exception:
+                pass
+            out[tk] = rec
+    finally:
+        conn.close()
+    return out
+
+
 def load_macro_timeseries(indicator_keys: list = None,
                           start_date: str = '2017-01-01') -> dict:
     """

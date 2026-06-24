@@ -1106,6 +1106,93 @@ export interface components {
             traces: components["schemas"]["CommentTraceListItemDTO"][];
         };
         /**
+         * ComplianceItemDTO
+         * @description 컴플라이언스 게이지 — 현재 비중 vs 가이드라인 밴드.
+         */
+        ComplianceItemDTO: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Value */
+            value: number;
+            /** Band Low */
+            band_low?: number | null;
+            /** Band High */
+            band_high?: number | null;
+            /**
+             * Status
+             * @default none
+             */
+            status: string;
+        };
+        /** EquityFocusDTO */
+        EquityFocusDTO: {
+            /**
+             * Equity Weight
+             * @default 0
+             */
+            equity_weight: number;
+            /** Weighted Per */
+            weighted_per?: number | null;
+            /** Weighted Eps Growth */
+            weighted_eps_growth?: number | null;
+            /**
+             * Holdings
+             * @default []
+             */
+            holdings: components["schemas"]["EquityHoldingDTO"][];
+            /**
+             * References
+             * @default []
+             */
+            references: components["schemas"]["EquityProxyRefDTO"][];
+            /**
+             * Region Tilt
+             * @default {}
+             */
+            region_tilt: {
+                [key: string]: number;
+            };
+            /**
+             * Style Tilt
+             * @default {}
+             */
+            style_tilt: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * EquityHoldingDTO
+         * @description 주식 포커스 산점도용 — 보유 주식 ETF 의 proxy 밸류에이션.
+         */
+        EquityHoldingDTO: {
+            /** Item Nm */
+            item_nm: string;
+            /** Asset Class */
+            asset_class: string;
+            /** Weight */
+            weight: number;
+            /** Proxy Ticker */
+            proxy_ticker?: string | null;
+            /** Per */
+            per?: number | null;
+            /** Eps Growth */
+            eps_growth?: number | null;
+        };
+        /**
+         * EquityProxyRefDTO
+         * @description 산점도 참조 스타일 점 (proxy ETF 밸류에이션 지도).
+         */
+        EquityProxyRefDTO: {
+            /** Ticker */
+            ticker: string;
+            /** Per */
+            per?: number | null;
+            /** Eps Growth */
+            eps_growth?: number | null;
+        };
+        /**
          * EvidenceAnnotationDTO
          * @description draft.json `evidence_annotations` 항목 1건.
          *
@@ -1363,6 +1450,12 @@ export interface components {
             fx_hedge?: components["schemas"]["FxHedgeSummaryDTO"] | null;
             duration_summary?: components["schemas"]["WeightedDurationDTO"] | null;
             portfolio_mix?: components["schemas"]["PortfolioMixSummaryDTO"] | null;
+            equity_focus?: components["schemas"]["EquityFocusDTO"] | null;
+            /**
+             * Compliance
+             * @default []
+             */
+            compliance: components["schemas"]["ComplianceItemDTO"][];
         };
         /**
          * IndicatorChartDTO

@@ -7,6 +7,10 @@ import pandas as pd
 from config.funds import FUND_LIST, FUND_META
 
 from ..schemas.holdings import (
+    ComplianceItemDTO,
+    EquityFocusDTO,
+    EquityHoldingDTO,
+    EquityProxyRefDTO,
     FxHedgeSummaryDTO,
     HoldingAssetClassDTO,
     HoldingItemDTO,
@@ -87,6 +91,82 @@ def _build_portfolio_mix(items: list[HoldingItemDTO]) -> PortfolioMixSummaryDTO:
         cash_weight=cash_w,
         cash_amount=cash_amt,
     )
+
+
+def _build_equity_focus(items: list[HoldingItemDTO]) -> EquityFocusDTO:
+    """주식(국내+해외) 보유 → proxy PER/EPS성장 매핑 + 가중집계 + 틸트. (금 제외)"""
+    from modules.data_loader import (
+        _classify_equity_proxy,
+        load_equity_proxy_valuations,
+    )
+    try:
+        vals = load_equity_proxy_valuations()
+    except Exception:
+        vals = {}
+    eq_items = [it for it in items if it.asset_class in _EQUITY_ACS]
+    tot_w = sum(it.weight for it in eq_items)
+    holdings: list[EquityHoldingDTO] = []
+    per_num = gr_num = per_cov = gr_cov = 0.0
+    region = {"국내": 0.0, "해외": 0.0}
+    style = {"성장": 0.0, "가치": 0.0, "기타": 0.0}
+    for it in eq_items:
+        tk = _classify_equity_proxy(it.item_cd, it.item_nm, it.asset_class)
+        v = vals.get(tk, {}) if tk else {}
+        per, gr = v.get("per"), v.get("eps_growth")
+        holdings.append(EquityHoldingDTO(
+            item_nm=it.item_nm, asset_class=it.asset_class, weight=it.weight,
+            proxy_ticker=tk, per=per, eps_growth=gr,
+        ))
+        if per is not None:
+            per_num += it.weight * per; per_cov += it.weight
+        if gr is not None:
+            gr_num += it.weight * gr; gr_cov += it.weight
+        region["국내" if it.asset_class == "국내주식" else "해외"] += it.weight
+        nm = (it.item_nm or "").upper()
+        sk = "성장" if ("성장" in nm or "GROWTH" in nm) else (
+            "가치" if ("가치" in nm or "VALUE" in nm) else "기타")
+        style[sk] += it.weight
+    refs = [
+        EquityProxyRefDTO(ticker=tk, per=v.get("per"), eps_growth=v.get("eps_growth"))
+        for tk, v in vals.items()
+    ]
+    return EquityFocusDTO(
+        equity_weight=tot_w,
+        weighted_per=(per_num / per_cov) if per_cov > 0 else None,
+        weighted_eps_growth=(gr_num / gr_cov) if gr_cov > 0 else None,
+        holdings=holdings, references=refs,
+        region_tilt=region, style_tilt=style,
+    )
+
+
+def _build_compliance(
+    fund_code: str, mix: PortfolioMixSummaryDTO,
+) -> list[ComplianceItemDTO]:
+    """현재 비중 vs 펀드별 가이드라인 밴드 → 적합/주의/위반."""
+    from config.funds import DEFAULT_COMPLIANCE_GUIDE, FUND_COMPLIANCE_GUIDE
+    guide = FUND_COMPLIANCE_GUIDE.get(fund_code, DEFAULT_COMPLIANCE_GUIDE)
+    rows: list[ComplianceItemDTO] = []
+    for key, label, val in [
+        ("equity", "주식비중", mix.equity_weight),
+        ("bond", "채권비중", mix.bond_weight),
+        ("risk_asset", "위험자산", mix.risk_asset_weight),
+        ("cash", "유동성", mix.cash_weight),
+    ]:
+        band = guide.get(key) or (None, None)
+        low, high = band[0], band[1]
+        if low is None and high is None:
+            status = "none"
+        elif (high is not None and val > high) or (low is not None and val < low):
+            status = "breach"
+        elif high is not None and val > high * 0.95:
+            status = "warn"
+        else:
+            status = "ok"
+        rows.append(ComplianceItemDTO(
+            key=key, label=label, value=val,
+            band_low=low, band_high=high, status=status,
+        ))
+    return rows
 
 
 def _reclassify_fx_deposit(item_cd: str, item_nm: str, ac: str) -> str:
@@ -419,6 +499,14 @@ def build_holdings(
     # 9) 포트폴리오 mix 카드 (주식/채권/위험자산/현금)
     portfolio_mix = _build_portfolio_mix(items)
 
+    # 10) 주식 포커스 (PER×EPS성장) + 컴플라이언스 게이지
+    try:
+        equity_focus = _build_equity_focus(items)
+    except Exception as exc:
+        warnings.append(f"주식 밸류에이션 실패: {type(exc).__name__}")
+        equity_focus = None
+    compliance = _build_compliance(fund_code, portfolio_mix)
+
     return HoldingsResponseDTO(
         meta=BaseMeta(
             as_of_date=as_of,
@@ -439,4 +527,6 @@ def build_holdings(
         fx_hedge=fx_hedge,
         duration_summary=duration_summary,
         portfolio_mix=portfolio_mix,
+        equity_focus=equity_focus,
+        compliance=compliance,
     )

@@ -42,6 +42,17 @@ FUND_TARGET_RETURN = {
     '07G04': 0.073,
 }
 
+# 펀드별 컴플라이언스 가이드라인 (편입종목 탭 게이지). band=(lower, upper) fraction, None=무제한.
+# ⚠️ 아래 값은 예시 placeholder — 실제 펀드별 가이드라인으로 교체 필요 (사용자 제공 예정).
+DEFAULT_COMPLIANCE_GUIDE = {
+    'equity': (None, None), 'bond': (None, None),
+    'risk_asset': (None, None), 'cash': (None, None),
+}
+FUND_COMPLIANCE_GUIDE = {
+    # 예시(08N33 베이직): 주식+금 ≤40% · 채권 50~75% · 위험자산 ≤45% · 유동성 ≥0%
+    '08N33': {'equity': (None, 0.40), 'bond': (0.50, 0.75), 'risk_asset': (None, 0.45), 'cash': (0.0, None)},
+}
+
 # 펀드 그룹 분류
 FUND_GROUPS = {
     'OCIO 알아서': ['07G04', '08K88', '08N33', '08N81', '08P22'],
