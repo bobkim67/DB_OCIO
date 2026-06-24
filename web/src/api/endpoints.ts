@@ -30,6 +30,10 @@ export type HoldingItemDTO = S["HoldingItemDTO"];
 export type FxHedgeSummaryDTO = S["FxHedgeSummaryDTO"];
 export type WeightedDurationDTO = S["WeightedDurationDTO"];
 export type PortfolioMixSummaryDTO = S["PortfolioMixSummaryDTO"];
+export type EquityHoldingDTO = S["EquityHoldingDTO"];
+export type EquityProxyRefDTO = S["EquityProxyRefDTO"];
+export type EquityFocusDTO = S["EquityFocusDTO"];
+export type ComplianceItemDTO = S["ComplianceItemDTO"];
 export type HoldingsResponseDTO = S["HoldingsResponseDTO"];
 
 // === Macro ===

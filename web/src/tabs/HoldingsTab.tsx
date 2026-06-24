@@ -1,518 +1,342 @@
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useState } from "react";
 import { useHoldings } from "../hooks/useHoldings";
-import MetaBadge from "../components/common/MetaBadge";
-import AssetClassPie from "../components/charts/AssetClassPie";
+import { useAssetClassReturn, useSecurityReturn } from "../hooks/useTransactions";
 import LoadingBar from "../components/common/LoadingBar";
-import type { HoldingItemDTO } from "../api/endpoints";
+import EquityFocusChart from "../components/charts/EquityFocusChart";
+import BondDurationChart from "../components/charts/BondDurationChart";
+import SecurityReturnChart from "../components/charts/SecurityReturnChart";
+import type { HoldingItemDTO, ComplianceItemDTO } from "../api/endpoints";
 
-const ASSET_CLASS_ORDER = [
-  "국내주식", "해외주식", "국내채권", "해외채권",
-  "대체투자", "FX", "모펀드", "유동성",
-];
+interface Props { fundCode: string; }
 
-interface Props {
-  fundCode: string;
-}
+// 포커스 "종목" 뷰 선택 — 종목 OR 자산군
+type HoldSel = { kind: "sec"; cd: string; nm: string } | { kind: "asset"; ac: string };
 
-function fmtPct(v: number): string {
-  return `${(v * 100).toFixed(2)}%`;
-}
+const ASSET_ORDER = ["국내주식", "해외주식", "국내채권", "해외채권", "대체투자", "FX", "모펀드", "유동성"];
+const ASSET_COLOR: Record<string, string> = {
+  국내주식: "#E8473B", 해외주식: "#557EAA", 국내채권: "#2E9E7B", 해외채권: "#8E7CC3",
+  대체투자: "#D9A441", FX: "#19D3F3", 모펀드: "#FF6692", 유동성: "#AAB2BD",
+};
+const STATUS_LABEL: Record<string, string> = { ok: "적합", warn: "주의", breach: "위반", none: "—" };
 
-function fmtKrw(v: number): string {
-  return (
-    (v / 1e8).toLocaleString("ko-KR", { maximumFractionDigits: 1 }) + "억"
-  );
-}
-
-function fmtKrwExact(v: number): string {
-  return Math.round(v).toLocaleString("ko-KR") + "원";
-}
-
-function fmtNum(v: number | null | undefined, digits = 2, suffix = ""): string {
-  if (v === null || v === undefined) return "—";
-  return v.toFixed(digits) + suffix;
-}
-
-function fmtPctOrDash(v: number | null | undefined): string {
-  if (v === null || v === undefined) return "—";
-  return fmtPct(v);
-}
-
-// 유동성 자산군 내부에서 예금/USD Deposit 외 종목은 "기타 (N종목)" 1행으로 병합.
-function _isCashKeep(it: HoldingItemDTO): boolean {
-  const nm = (it.item_nm || "").toUpperCase();
-  if (nm.includes("예금")) return true;
-  if (nm.includes("DEPOSIT")) return true;
-  if (it.item_cd.toUpperCase() === "USMUSD022001") return true;
-  return false;
-}
-
-function collapseLiquidityOthers(items: HoldingItemDTO[]): HoldingItemDTO[] {
-  const liq: HoldingItemDTO[] = [];
-  const others: HoldingItemDTO[] = [];
-  const rest: HoldingItemDTO[] = [];
-  for (const it of items) {
-    if (it.asset_class !== "유동성") {
-      rest.push(it);
-      continue;
-    }
-    if (_isCashKeep(it)) liq.push(it);
-    else others.push(it);
-  }
-  if (others.length === 0) return items;
-  const collapsed: HoldingItemDTO = {
-    item_cd: "_OTHER_LIQUIDITY_",
-    item_nm: `기타 (${others.length}종목)`,
-    asset_class: "유동성",
-    weight: others.reduce((s, x) => s + x.weight, 0),
-    evl_amt: others.reduce((s, x) => s + x.evl_amt, 0),
-    sub_fund_cd: null,
-    is_short: false,
-  };
-  return [...rest, ...liq, collapsed];
-}
+const pct1 = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? "—" : `${(v * 100).toFixed(1)}%`);
+const eok =(v: number | null | undefined) => (v == null || !Number.isFinite(v) ? "—" : `${(v / 1e8).toLocaleString("ko-KR", { maximumFractionDigits: 1 })}억`);
+const num = (v: number | null | undefined, d = 1, s = "") => (v == null || !Number.isFinite(v) ? "—" : v.toFixed(d) + s);
 
 export default function HoldingsTab({ fundCode }: Props) {
   const [lookthrough, setLookthrough] = useState(true);
+  const [focus, setFocus] = useState<"eq" | "bd" | "sec">("eq");
+  const [expandTable, setExpandTable] = useState(false);
+  const [sel, setSel] = useState<HoldSel | null>(null);
   const { data, isLoading, error } = useHoldings(fundCode, lookthrough);
 
-  if (isLoading) return <LoadingBar label="loading holdings..." />;
-  if (error || !data) {
-    return (
-      <div style={{ color: "#dc2626" }}>failed to load holdings</div>
-    );
-  }
+  // 종목/자산군 차트(비중·수익률·거래) — 선택 1년 구간. hooks 규칙상 early return 전 호출.
+  const _asof = data?.as_of_date ?? "";
+  const secStart = _asof.length >= 10 ? `${Number(_asof.slice(0, 4)) - 1}${_asof.slice(4)}` : "";
+  const secRetQ = useSecurityReturn(fundCode, sel?.kind === "sec" ? sel.cd : "", sel?.kind === "sec" ? sel.nm : "", secStart, _asof);
+  const assetRetQ = useAssetClassReturn(fundCode, sel?.kind === "asset" ? sel.ac : "", secStart, _asof);
 
-  const isEmpty = data.holdings_items.length === 0;
-  const displayItems = collapseLiquidityOthers(data.holdings_items);
-  const mix = data.portfolio_mix ?? null;
-  const opngAmt = data.opng_amt ?? null;
+  if (isLoading) return <LoadingBar label="loading holdings..." />;
+  if (error || !data) return <div style={{ color: "#dc2626" }}>failed to load holdings</div>;
+
+  const acw = data.asset_class_weights ?? [];
+  const items = data.holdings_items ?? [];
+  const isEmpty = items.length === 0;
+  const ds = data.duration_summary;
+  const ef = data.equity_focus;
+  const mix = data.portfolio_mix;
+  const bonds = items.filter((it) => it.asset_class === "국내채권" || it.asset_class === "해외채권");
+
+  // 만기/신용 틸트 (채권)
+  const bondW = bonds.reduce((s, b) => s + b.weight, 0) || 1;
+  const matBuckets = { 단기: 0, 중기: 0, 장기: 0 };
+  bonds.forEach((b) => {
+    if (b.duration == null) return;
+    if (b.duration < 3) matBuckets.단기 += b.weight;
+    else if (b.duration < 10) matBuckets.중기 += b.weight;
+    else matBuckets.장기 += b.weight;
+  });
+  const krBondW = bonds.filter((b) => b.asset_class === "국내채권").reduce((s, b) => s + b.weight, 0);
+  const ovBondW = bonds.filter((b) => b.asset_class === "해외채권").reduce((s, b) => s + b.weight, 0);
+
+  const ord = (ac: string) => { const i = ASSET_ORDER.indexOf(ac); return i < 0 ? 99 : i; };
+  const sortedAcw = [...acw].sort((a, b) => ord(a.asset_class) - ord(b.asset_class));
 
   return (
-    <section>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          gap: 12,
-          marginBottom: 12,
-          flexWrap: "wrap",
-        }}
-      >
-        <h2 style={{ fontSize: 16, margin: 0 }}>
-          {data.fund_name}{" "}
-          <span style={{ color: "#6b7280" }}>({data.fund_code})</span>
-        </h2>
-        <MetaBadge meta={data.meta} />
-        <label
-          style={{
-            fontSize: 13,
-            color: "#374151",
-            marginLeft: "auto",
-            alignSelf: "center",
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={lookthrough}
-            onChange={(e) => setLookthrough(e.target.checked)}
-            style={{ marginRight: 6, verticalAlign: "middle" }}
-          />
-          look-through{" "}
-          {data.lookthrough_applied && (
-            <span style={{ color: "#6b7280", fontSize: 11 }}>
-              (applied)
-            </span>
-          )}
+    <section className="hd-root">
+      <div className="hd-head">
+        <h2>{data.fund_name} <span className="code">{data.fund_code}</span></h2>
+        <div className="nav num">순자산 <b>{eok(data.nast_amt)}</b>{data.as_of_date ? ` · 기준일자 ${data.as_of_date}` : ""}</div>
+        <label className="hd-lt">
+          <input type="checkbox" checked={lookthrough} onChange={(e) => setLookthrough(e.target.checked)} />
+          look-through{data.lookthrough_applied ? " (적용)" : ""}
         </label>
       </div>
 
-      {/* 요약 카드 6개: 순자산 · Duration · YTM · 주식/채권 · 위험자산 · 현금 */}
-      {!isEmpty && (mix || data.duration_summary || data.nast_amt != null) && (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(6, 1fr)",
-            gap: 8,
-            marginBottom: 16,
-          }}
-        >
-          {(
-            [
-              {
-                label: "NAV",
-                value:
-                  data.nast_amt != null ? fmtKrw(data.nast_amt) : "—",
-                hint: opngAmt != null ? `설정액: ${fmtKrw(opngAmt)}` : "",
-              },
-              {
-                label: "Duration",
-                value: fmtNum(
-                  data.duration_summary?.duration_overall, 2, "년",
-                ),
-                hint: `채권 Dur: ${fmtNum(
-                  data.duration_summary?.duration_bond, 1, "년",
-                )}`,
-              },
-              {
-                label: "YTM",
-                value: fmtNum(data.duration_summary?.ytm_overall, 2, "%"),
-                hint: `채권 YTM: ${fmtNum(
-                  data.duration_summary?.ytm_bond, 2, "%",
-                )}`,
-              },
-              {
-                label: "주식·채권 비중",
-                value: `${fmtPctOrDash(mix?.equity_weight)} | ${fmtPctOrDash(
-                  mix?.bond_weight,
-                )}`,
-                hint: "주식+금 | 채권 비중",
-              },
-              {
-                label: "위험자산 비중",
-                value: fmtPctOrDash(mix?.risk_asset_weight),
-                hint: "주식 + 금 + USHY",
-              },
-              {
-                label: "유동성",
-                value: fmtPctOrDash(mix?.cash_weight),
-                hint:
-                  mix && mix.cash_amount > 0
-                    ? `${fmtKrwExact(mix.cash_amount)} · 예금+USD Deposit`
-                    : "예금+USD Deposit",
-              },
-            ] satisfies { label: string; value: ReactNode; hint: string }[]
-          ).map((card) => (
-            <div
-              key={card.label}
-              style={{
-                padding: "10px 12px",
-                background: "#f9fafb",
-                border: "1px solid #e5e7eb",
-                borderRadius: 6,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "#374151",
-                  marginBottom: 4,
-                }}
-              >
-                {card.label}
-              </div>
-              <div
-                style={{
-                  fontSize: 18,
-                  fontWeight: 600,
-                  fontVariantNumeric: "tabular-nums",
-                }}
-              >
-                {card.value}
-              </div>
-              {card.hint && (
-                <div
-                  style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}
-                >
-                  {card.hint}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
       {isEmpty ? (
-        <div style={{ color: "#6b7280", padding: 16 }}>
-          데이터 없음 (fallback)
-        </div>
+        <div style={{ color: "#6b7280", padding: 16 }}>데이터 없음 (fallback)</div>
       ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(300px, 1fr) minmax(300px, 1fr)",
-            gap: 16,
-          }}
-        >
-          {/* 왼쪽 컬럼: Pie */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <AssetClassPie weights={data.asset_class_weights} />
+        <>
+          {/* 스택바 */}
+          <div className="hd-card hd-hero hd-mb">
+            <div className="hd-stack">
+              {sortedAcw.map((w) => (
+                <div key={w.asset_class}
+                  title={`${w.asset_class} ${(w.weight * 100).toFixed(1)}% · ${eok(w.evl_amt)} · ${w.item_count}종목`}
+                  style={{ width: `${w.weight * 100}%`, background: w.color ?? ASSET_COLOR[w.asset_class] ?? "#AAB2BD" }}>
+                  {w.weight >= 0.08 ? `${w.asset_class} ${(w.weight * 100).toFixed(1)}%` : ""}
+                </div>
+              ))}
+            </div>
+            <div className="hd-legend">
+              {sortedAcw.map((w) => (
+                <span key={w.asset_class}><i style={{ background: w.color ?? ASSET_COLOR[w.asset_class] ?? "#AAB2BD" }} />{w.asset_class} {(w.weight * 100).toFixed(1)}%</span>
+              ))}
+            </div>
           </div>
 
-          {/* 오른쪽 컬럼: 자산군 표 + FX 헷지 요약 + 종목 상세 (자산군 그룹핑) */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div>
-              <h3 style={{ fontSize: 14, margin: "4px 0 8px" }}>
-                자산군별 비중
-              </h3>
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  fontSize: 13,
-                }}
-              >
-                <thead>
-                  <tr style={{ background: "#f9fafb", textAlign: "left" }}>
-                    <th style={th}>자산군</th>
-                    <th style={thr}>비중</th>
-                    <th style={thr}>평가금액</th>
-                    <th style={thr}>종목수</th>
-                  </tr>
-                </thead>
+          {/* 컴플 게이지 */}
+          {data.compliance.length > 0 && (
+            <div className="hd-mb">
+              <div className="hd-glegend">
+                <span><span className="sw zok" />허용 구간</span>
+                <span><span className="sw zbad" />위반·초과 구간</span>
+                <span><span className="mk2" />가이드 기준선</span>
+                <span>· 펀드 가이드라인 대비 적합 / 주의 / 위반 · 비교(SAA 목표)</span>
+              </div>
+              <div className="hd-gauges">
+                {data.compliance.map((c) => <Gauge key={c.key} c={c} />)}
+              </div>
+            </div>
+          )}
+
+          <div className="hd-cols">
+            {/* 편입종목 테이블 */}
+            <div className="hd-card hd-tbl">
+              <div style={{ display: "flex", alignItems: "center", margin: "2px 14px 6px" }}>
+                <h3 style={{ margin: 0 }}>편입 현황</h3>
+                <button type="button" className="hd-expand" onClick={() => setExpandTable((v) => !v)}>
+                  {expandTable ? "접기 ▴" : "펼치기 ▾"}
+                </button>
+              </div>
+              <table>
+                <thead><tr><th className="l">종목</th><th>비중</th><th>평가액</th><th>Dur</th><th>YTM</th></tr></thead>
                 <tbody>
-                  {data.asset_class_weights.map((w) => (
-                    <tr key={w.asset_class}>
-                      <td style={td}>
-                        <span
-                          style={{
-                            display: "inline-block",
-                            width: 10,
-                            height: 10,
-                            borderRadius: 2,
-                            background: w.color ?? "#9ca3af",
-                            marginRight: 6,
-                            verticalAlign: "middle",
-                          }}
-                        />
-                        {w.asset_class}
-                      </td>
-                      <td style={tdr}>{fmtPct(w.weight)}</td>
-                      <td style={tdr}>{fmtKrw(w.evl_amt)}</td>
-                      <td style={tdr}>{w.item_count}</td>
-                    </tr>
-                  ))}
+                  {sortedAcw.map((g) => {
+                    const bucket = items.filter((it) => it.asset_class === g.asset_class);
+                    const col = g.color ?? ASSET_COLOR[g.asset_class] ?? "#AAB2BD";
+                    const hasBond = g.asset_class === "국내채권" || g.asset_class === "해외채권";
+                    const gDur = hasBond ? avgWeighted(bucket, (b) => b.duration) : null;
+                    const gYtm = hasBond ? avgWeighted(bucket, (b) => b.ytm) : null;
+                    return [
+                      <tr className="grp hd-clickrow" key={`g-${g.asset_class}`}
+                        onClick={() => { setSel({ kind: "asset", ac: g.asset_class }); setFocus("sec"); }}
+                        title={`클릭 → ${g.asset_class} 비중·수익률·거래 차트`}>
+                        <td className="l"><span className="dt" style={{ background: col }} /><span className="gn">{g.asset_class}</span></td>
+                        <td><span className="gw num">{pct1(g.weight)}</span></td>
+                        <td className="num gd">{eok(g.evl_amt)}</td>
+                        <td className="num gd">{num(gDur, 1)}</td>
+                        <td className="num gd">{gYtm == null ? "—" : num(gYtm, 2)}</td>
+                      </tr>,
+                      ...(expandTable ? bucket.map((it, i) => {
+                        const clickable = it.item_cd !== "_CASH_RESIDUAL_";
+                        return (
+                        <tr key={`${g.asset_class}-${it.item_cd}-${i}`}
+                          className={clickable ? "hd-clickrow" : undefined}
+                          onClick={clickable ? () => { setSel({ kind: "sec", cd: it.item_cd, nm: it.item_nm }); setFocus("sec"); } : undefined}
+                          title={clickable ? "클릭 → 종목 비중·수익률·거래 차트" : undefined}>
+                          <td className="l">{it.item_nm}{it.asset_class === "해외채권" ? <span className="hd-hytag">HY</span> : null}{it.is_short ? <span className="hd-hytag">SHORT</span> : null}</td>
+                          <td><span className="hd-wbar"><i style={{ width: `${Math.min((it.weight / Math.max(g.weight, 0.0001)) * 100, 100)}%`, background: col }} /></span><b className="num">{pct1(it.weight)}</b></td>
+                          <td className="num sub">{eok(it.evl_amt)}</td>
+                          <td className="num sub">{num(it.duration, 1)}</td>
+                          <td className="num sub">{it.ytm == null ? "—" : num(it.ytm, 2)}</td>
+                        </tr>
+                        );
+                      }) : []),
+                    ];
+                  })}
                 </tbody>
               </table>
-              {data.nast_amt != null && (
-                <div
-                  style={{
-                    marginTop: 8,
-                    fontSize: 12,
-                    color: "#6b7280",
-                  }}
-                >
-                  순자산: {fmtKrw(data.nast_amt)}
-                </div>
-              )}
-              {data.fx_hedge && data.fx_hedge.usd_short_weight > 0 && (
-                <div
-                  style={{
-                    marginTop: 10,
-                    padding: "8px 10px",
-                    background: "#f0f9ff",
-                    border: "1px solid #bfdbfe",
-                    borderRadius: 6,
-                    fontSize: 12,
-                  }}
-                >
-                  <div
-                    style={{
-                      fontWeight: 600,
-                      marginBottom: 4,
-                      color: "#1e40af",
-                    }}
-                  >
-                    FX 헷지 요약
-                  </div>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr auto",
-                      gap: "2px 8px",
-                    }}
-                  >
-                    <span style={{ color: "#374151" }}>USD 자산비중</span>
-                    <strong style={{ fontVariantNumeric: "tabular-nums" }}>
-                      {fmtPct(data.fx_hedge.usd_asset_weight)}
-                    </strong>
-                    <span style={{ color: "#374151" }}>
-                      달러매도포지션 비중
-                    </span>
-                    <strong
-                      style={{
-                        fontVariantNumeric: "tabular-nums",
-                        color: "#b91c1c",
-                      }}
-                    >
-                      −{fmtPct(data.fx_hedge.usd_short_weight)}
-                    </strong>
-                    <span style={{ color: "#374151" }}>헷지비율</span>
-                    <strong
-                      style={{
-                        fontVariantNumeric: "tabular-nums",
-                        color: "#1e40af",
-                      }}
-                    >
-                      {data.fx_hedge.hedge_ratio !== null &&
-                      data.fx_hedge.hedge_ratio !== undefined
-                        ? fmtPct(data.fx_hedge.hedge_ratio)
-                        : "—"}
-                    </strong>
-                  </div>
-                </div>
-              )}
             </div>
 
-            {/* 종목별 상세 (자산군 그룹핑) */}
-            <div>
-              <h3 style={{ fontSize: 14, margin: "8px 0" }}>
-                종목별 상세 ({displayItems.length})
-              </h3>
-              <div
-                style={{
-                  maxHeight: 720,
-                  overflowY: "auto",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: 6,
-                }}
-              >
-                <table
-                  style={{
-                    width: "100%",
-                    borderCollapse: "collapse",
-                    fontSize: 13,
-                  }}
-                >
-                  <thead>
-                    <tr
-                      style={{
-                        background: "#f9fafb",
-                        textAlign: "left",
-                        position: "sticky",
-                        top: 0,
-                        zIndex: 1,
-                      }}
-                    >
-                      <th style={th}>종목코드</th>
-                      <th style={th}>종목명</th>
-                      <th style={thr}>비중</th>
-                      <th style={thr}>평가금액</th>
-                      <th style={thr}>Dur</th>
-                      <th style={thr}>YTM</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(() => {
-                      const groups = new Map<string, HoldingItemDTO[]>();
-                      for (const it of displayItems) {
-                        const arr = groups.get(it.asset_class) ?? [];
-                        arr.push(it);
-                        groups.set(it.asset_class, arr);
-                      }
-                      const orderedClasses = [
-                        ...ASSET_CLASS_ORDER.filter((ac) => groups.has(ac)),
-                        ...Array.from(groups.keys()).filter(
-                          (ac) => !ASSET_CLASS_ORDER.includes(ac),
-                        ),
-                      ];
-                      const rows: JSX.Element[] = [];
-                      for (const ac of orderedClasses) {
-                        const bucket = groups.get(ac)!;
-                        const acW = data.asset_class_weights.find(
-                          (x) => x.asset_class === ac,
-                        );
-                        rows.push(
-                          <tr key={`grp-${ac}`} style={groupHeaderRow}>
-                            <td colSpan={6} style={groupHeaderCell}>
-                              <span
-                                style={{
-                                  display: "inline-block",
-                                  width: 10,
-                                  height: 10,
-                                  borderRadius: 2,
-                                  background: acW?.color ?? "#9ca3af",
-                                  marginRight: 6,
-                                  verticalAlign: "middle",
-                                }}
-                              />
-                              {ac}
-                              <span
-                                style={{
-                                  marginLeft: 8,
-                                  color: "#6b7280",
-                                  fontWeight: 400,
-                                }}
-                              >
-                                {acW ? fmtPct(acW.weight) : ""} ·{" "}
-                                {bucket.length}종목
-                              </span>
-                            </td>
-                          </tr>,
-                        );
-                        bucket.forEach((it, i) =>
-                          rows.push(
-                            <tr key={`${ac}-${it.item_cd}-${i}`}>
-                              <td style={td}>
-                                {it.item_cd === "_OTHER_LIQUIDITY_"
-                                  ? "—"
-                                  : it.item_cd}
-                              </td>
-                              <td style={td}>
-                                {it.item_nm}
-                                {it.is_short && (
-                                  <span
-                                    style={{
-                                      marginLeft: 6,
-                                      padding: "0 5px",
-                                      fontSize: 10,
-                                      background: "#fee2e2",
-                                      color: "#b91c1c",
-                                      borderRadius: 3,
-                                      fontWeight: 600,
-                                    }}
-                                  >
-                                    SHORT
-                                  </span>
-                                )}
-                              </td>
-                              <td style={tdr}>
-                                {it.is_short ? "−" : ""}
-                                {fmtPct(it.weight)}
-                              </td>
-                              <td style={tdr}>{fmtKrw(it.evl_amt)}</td>
-                              <td style={tdr}>{fmtNum(it.duration, 2)}</td>
-                              <td style={tdr}>{fmtNum(it.ytm, 2)}</td>
-                            </tr>,
-                          ),
-                        );
-                      }
-                      return rows;
-                    })()}
-                  </tbody>
-                </table>
+            {/* 포커스 토글 패널 */}
+            <div className="hd-card hd-focus">
+              <div className="hd-ftop">
+                <span className="ft">{focus === "eq" ? "주식 포커스 — 밸류에이션 × 실적" : focus === "bd" ? "채권 포커스 — 듀레이션 분포" : sel?.kind === "asset" ? `자산군 — ${sel.ac}` : sel?.kind === "sec" ? `종목 — ${sel.nm}` : "종목·자산군 추이"}</span>
+                <div className="hd-seg">
+                  <button type="button" className={focus === "eq" ? "on" : ""} onClick={() => setFocus("eq")}>주식 포커스</button>
+                  <button type="button" className={focus === "bd" ? "on" : ""} onClick={() => setFocus("bd")}>채권 포커스</button>
+                  <button type="button" className={focus === "sec" ? "on" : ""} onClick={() => setFocus("sec")}>종목</button>
+                </div>
               </div>
+
+              {focus === "eq" && ef && (
+                <div>
+                  <div className="hd-bsum">
+                    <div><div className="k">주식 비중</div><div className="v num">{pct1(ef.equity_weight)}</div></div>
+                    <div><div className="k">가중 PER</div><div className="v num">{num(ef.weighted_per, 1, "x")}</div></div>
+                    <div><div className="k">가중 EPS성장</div><div className="v num" style={{ color: "#2E7D52" }}>{ef.weighted_eps_growth == null ? "—" : `+${(ef.weighted_eps_growth * 100).toFixed(0)}%`}</div></div>
+                  </div>
+                  <EquityFocusChart focus={ef} instanceKey={`${fundCode}-eq`} />
+                  <div className="hd-fmeta">
+                    <div className="hd-tilt"><TiltBar label="지역" parts={[["국내", ef.region_tilt?.["국내"] ?? 0, "#E8473B"], ["해외", ef.region_tilt?.["해외"] ?? 0, "#557EAA"]]} /></div>
+                    <div className="hd-tilt"><TiltBar label="스타일" parts={[["성장", ef.style_tilt?.["성장"] ?? 0, "#7C6FE0"], ["가치", ef.style_tilt?.["가치"] ?? 0, "#557EAA"], ["기타", ef.style_tilt?.["기타"] ?? 0, "#AAB2BD"]]} /></div>
+                  </div>
+                </div>
+              )}
+
+              {focus === "bd" && (
+                <div>
+                  <div className="hd-bsum">
+                    <div><div className="k">채권 비중</div><div className="v num">{pct1(mix?.bond_weight)}</div></div>
+                    <div><div className="k">가중 듀레이션</div><div className="v num">{num(ds?.duration_bond, 1, "년")}</div></div>
+                    <div><div className="k">가중 YTM</div><div className="v num">{ds?.ytm_bond == null ? "—" : num(ds.ytm_bond, 2, "%")}</div></div>
+                  </div>
+                  <BondDurationChart bonds={bonds} avgDuration={ds?.duration_bond ?? null} instanceKey={`${fundCode}-bd`} />
+                  <div className="hd-fmeta">
+                    <div className="hd-tilt"><TiltBar label="만기" parts={[["단기", matBuckets.단기 / bondW, "#9FD3BE"], ["중기", matBuckets.중기 / bondW, "#2E9E7B"], ["장기", matBuckets.장기 / bondW, "#1F6F54"]]} /></div>
+                    <div className="hd-tilt"><TiltBar label="신용" parts={[["국채/IG", krBondW / bondW, "#2E9E7B"], ["HY", ovBondW / bondW, "#8E7CC3"]]} /></div>
+                  </div>
+                </div>
+              )}
+
+              {focus === "sec" && (!sel ? (
+                <div style={{ padding: "48px 16px", color: "var(--ace-ink-3)", textAlign: "center", fontSize: 13 }}>
+                  좌측 표에서 <b>자산군</b> 또는 <b>종목</b>을 클릭하면 비중·수익률·거래내역이 표시됩니다.
+                </div>
+              ) : sel.kind === "asset" ? (
+                <div>
+                  <div className="hd-bsum">
+                    <div><div className="k">자산군</div><div className="v" style={{ fontSize: 14 }}>{sel.ac}</div></div>
+                    <div><div className="k">비중</div><div className="v num">{pct1(acw.find((w) => w.asset_class === sel.ac)?.weight)}</div></div>
+                    <div><div className="k">평가액</div><div className="v num">{eok(acw.find((w) => w.asset_class === sel.ac)?.evl_amt)}</div></div>
+                  </div>
+                  {assetRetQ.isLoading ? (
+                    <div style={{ padding: 40, color: "var(--ace-ink-3)", textAlign: "center" }}>로딩 중…</div>
+                  ) : (
+                    <SecurityReturnChart
+                      points={assetRetQ.data?.points ?? []}
+                      trades={assetRetQ.data?.trades ?? []}
+                      weights={assetRetQ.data?.weights ?? []}
+                      weightComponents={assetRetQ.data?.weight_components ?? []}
+                      tradeComponents={assetRetQ.data?.trade_components ?? []}
+                      itemNm={sel.ac}
+                      instanceKey={`${fundCode}-asset-${sel.ac}`}
+                      xRange={[secStart, _asof]}
+                    />
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <div className="hd-bsum">
+                    <div><div className="k">종목</div><div className="v" style={{ fontSize: 13 }}>{sel.nm}</div></div>
+                    <div><div className="k">비중</div><div className="v num">{pct1(items.find((it) => it.item_cd === sel.cd)?.weight)}</div></div>
+                    <div><div className="k">자산군</div><div className="v" style={{ fontSize: 13 }}>{items.find((it) => it.item_cd === sel.cd)?.asset_class ?? "—"}</div></div>
+                  </div>
+                  {secRetQ.isLoading ? (
+                    <div style={{ padding: 40, color: "var(--ace-ink-3)", textAlign: "center" }}>로딩 중…</div>
+                  ) : (
+                    <SecurityReturnChart
+                      points={secRetQ.data?.points ?? []}
+                      trades={secRetQ.data?.trades ?? []}
+                      weights={secRetQ.data?.weights ?? []}
+                      itemNm={sel.nm}
+                      instanceKey={`${fundCode}-sec-${sel.cd}`}
+                      xRange={[secStart, _asof]}
+                    />
+                  )}
+                </div>
+              ))}
             </div>
           </div>
-        </div>
+        </>
       )}
     </section>
   );
 }
 
-const th: CSSProperties = {
-  padding: "6px 8px",
-  borderBottom: "1px solid #e5e7eb",
-};
-const thr: CSSProperties = { ...th, textAlign: "right" };
-const td: CSSProperties = {
-  padding: "5px 8px",
-  borderBottom: "1px solid #f3f4f6",
-};
-const tdr: CSSProperties = {
-  ...td,
-  textAlign: "right",
-  fontVariantNumeric: "tabular-nums",
-};
-const groupHeaderRow: CSSProperties = {
-  background: "#f3f4f6",
-};
-const groupHeaderCell: CSSProperties = {
-  padding: "6px 8px",
-  borderTop: "1px solid #d1d5db",
-  borderBottom: "1px solid #d1d5db",
-  fontWeight: 600,
-  fontSize: 12.5,
-  color: "#111827",
-};
+function avgWeighted(items: HoldingItemDTO[], pick: (it: HoldingItemDTO) => number | null | undefined): number | null {
+  let num = 0, den = 0;
+  for (const it of items) {
+    const v = pick(it);
+    if (v == null || !Number.isFinite(v)) continue;
+    num += v * it.weight; den += it.weight;
+  }
+  return den > 0 ? num / den : null;
+}
+
+// 컴플 게이지 — 허용/위반 구간 음영 + 가이드 기준선 + 값(허용분/초과분 분리) + 여유·초과 라벨
+function Gauge({ c }: { c: ComplianceItemDTO }) {
+  const lo = c.band_low, hi = c.band_high;
+  const isRef = c.status === "none" && hi != null; // SAA 비교용
+  const V = c.value;
+  const kind: "band" | "ref" | "max" | "min" | "none" =
+    lo != null && hi != null ? "band" : hi != null ? (isRef ? "ref" : "max") : lo != null ? "min" : "none";
+  const T = kind === "min" ? lo! : hi ?? null; // 기준선 위치
+  const axisRef = kind === "band" ? hi! : T ?? V;
+  const axisMax = Math.max(V, axisRef ?? V, 0.0001) * 1.18;
+  const P = (x: number) => Math.min(100, Math.max(0, (x / axisMax) * 100));
+  const pp = (x: number) => `${P(x)}%`;
+
+  const stColor =
+    c.status === "breach" ? "#C0392B" : c.status === "warn" ? "#C8862B" : c.status === "ok" ? "#2E9E7B" : "#557EAA";
+  const over = kind === "max" && hi != null && V > hi ? V - hi : 0;
+  const short = kind === "min" && lo != null && V < lo ? lo - V : 0;
+
+  const guide =
+    kind === "ref" ? `SAA 목표 ${(hi! * 100).toFixed(0)}%`
+    : kind === "max" ? `가이드 ≤ ${(hi! * 100).toFixed(0)}%`
+    : kind === "min" ? `가이드 ≥ ${(lo! * 100).toFixed(0)}%`
+    : kind === "band" ? `가이드 ${(lo! * 100).toFixed(0)}~${(hi! * 100).toFixed(0)}%`
+    : "가이드 미설정";
+
+  let note = "", noteCls = "ok";
+  if (over > 0) { note = `초과 +${(over * 100).toFixed(1)}%p`; noteCls = "bad"; }
+  else if (short > 0) { note = `미달 −${(short * 100).toFixed(1)}%p`; noteCls = "bad"; }
+  else if (isRef) { const d = V - hi!; note = `현재 ${d >= 0 ? "+" : "−"}${(Math.abs(d) * 100).toFixed(1)}%p vs SAA`; noteCls = "ref"; }
+  else if (kind === "max") { note = `여유 ${((hi! - V) * 100).toFixed(1)}%p`; noteCls = "ok"; }
+  else if (kind === "min") { note = `여유 +${((V - lo!) * 100).toFixed(1)}%p`; noteCls = "ok"; }
+
+  return (
+    <div className="hd-card hd-g2" title={`${c.label}\n현재 ${pct1(V)} · ${guide} · ${isRef ? "비교" : STATUS_LABEL[c.status]}${note ? ` · ${note}` : ""}`}>
+      <div className="t">
+        <span className="lbl">{c.label}</span>
+        <span className={`st ${c.status}`}>{isRef ? "비교" : STATUS_LABEL[c.status]}</span>
+        <span className="v num">{pct1(V)}</span>
+      </div>
+      <div className="track2">
+        {kind === "max" && (<><div className="zone ok" style={{ left: 0, width: pp(hi!) }} /><div className="zone bad" style={{ left: pp(hi!), right: 0 }} /></>)}
+        {kind === "min" && (<><div className="zone bad" style={{ left: 0, width: pp(lo!) }} /><div className="zone ok" style={{ left: pp(lo!), right: 0 }} /></>)}
+        {kind === "band" && (<><div className="zone bad" style={{ left: 0, width: pp(lo!) }} /><div className="zone ok" style={{ left: pp(lo!), width: `${P(hi!) - P(lo!)}%` }} /><div className="zone bad" style={{ left: pp(hi!), right: 0 }} /></>)}
+        {kind === "ref" && <div className="zone neu" style={{ left: 0, right: 0 }} />}
+        {/* 값 막대: 초과 시 허용분(녹)+초과분(빨강) 분리 */}
+        <div className="fill2" style={{ width: pp(over > 0 ? hi! : V), background: over > 0 ? "#2E9E7B" : stColor }} />
+        {over > 0 && <div className="fill2 over" style={{ left: pp(hi!), width: `${P(V) - P(hi!)}%` }} />}
+        {short > 0 && <div className="gap2" style={{ left: pp(V), width: `${P(lo!) - P(V)}%` }} />}
+        {/* 가이드 기준선 */}
+        {T != null && <div className="mk" style={{ left: pp(T) }} />}
+      </div>
+      <div className="gx">
+        <span className="g">{guide}</span>
+        {note && <span className={`n ${noteCls}`}>{note}</span>}
+      </div>
+    </div>
+  );
+}
+
+function TiltBar({ label, parts }: { label: string; parts: [string, number, string][] }) {
+  const tot = parts.reduce((s, p) => s + p[1], 0) || 1;
+  const pctOf = (v: number) => (v / tot * 100).toFixed(0);
+  const tip = `${label} — ` + parts.filter((p) => p[1] > 0).map((p) => `${p[0]} ${pctOf(p[1])}%`).join(" · ");
+  return (
+    <>
+      <div className="lab"><span>{label}</span></div>
+      <div className="bar" title={tip}>{parts.map((p) => <i key={p[0]} style={{ width: `${p[1] / tot * 100}%`, background: p[2] }} />)}</div>
+      <div className="tleg">
+        {parts.filter((p) => p[1] > 0).map((p) => (
+          <span key={p[0]}><i style={{ background: p[2] }} />{p[0]} {pctOf(p[1])}%</span>
+        ))}
+      </div>
+    </>
+  );
+}

@@ -1,0 +1,112 @@
+/* ============================================================
+ * 편입종목(Holdings) 탭 리디자인 — .hd-root 스코프. 토큰: tokens.css.
+ * 시안: Holdings Sample H (포커스 토글 + 테이블 side-by-side).
+ * 자산군 색은 인라인(컴포넌트)에서 지정.
+ * ============================================================ */
+.hd-root {
+  font-family: "Pretendard Variable", Pretendard, -apple-system, system-ui,
+    "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  color: var(--ace-ink); line-height: 1.45; -webkit-font-smoothing: antialiased;
+  padding-bottom: 18px;
+}
+.hd-root * { box-sizing: border-box; }
+.hd-root .num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+.hd-card { background: var(--ace-surface); border: 1px solid var(--ace-line); border-radius: var(--ace-radius); box-shadow: var(--ace-shadow); }
+.hd-mb { margin-bottom: 11px; }
+
+/* 헤더 */
+.hd-head { display: flex; align-items: center; gap: 12px; margin-bottom: 13px; flex-wrap: wrap; }
+.hd-head h2 { font-size: 19px; font-weight: 700; margin: 0; }
+.hd-head .code { color: var(--ace-ink-3); font-weight: 600; font-size: 14px; }
+.hd-head .nav { margin-left: auto; font-size: 13px; color: var(--ace-ink-2); }
+.hd-head .nav b { font-size: 15px; color: var(--ace-ink); }
+.hd-lt { font-size: 12px; color: var(--ace-ink-2); display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+
+/* 스택바 */
+.hd-hero { padding: 14px 18px 12px; }
+.hd-stack { display: flex; height: 30px; border-radius: 7px; overflow: hidden; margin-bottom: 8px; }
+.hd-stack > div { display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; white-space: nowrap; min-width: 0; overflow: hidden; }
+.hd-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 11.5px; color: var(--ace-ink-2); }
+.hd-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.hd-legend i { width: 10px; height: 10px; border-radius: 3px; }
+
+/* 컴플 게이지 */
+.hd-gauges { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+/* === 컴플 게이지 v2 — 허용/위반 음영 + 기준선 + 초과분 분리 === */
+.hd-g2 { padding: 12px 15px 13px; }
+.hd-g2 .t { display: flex; align-items: baseline; gap: 7px; }
+.hd-g2 .lbl { font-size: 12.5px; color: var(--ace-ink-2); font-weight: 700; }
+.hd-g2 .st { font-size: 10px; font-weight: 700; padding: 1.5px 7px; border-radius: 999px; }
+.hd-g2 .st.ok { color: var(--ace-ok); background: rgba(46, 125, 82, 0.1); }
+.hd-g2 .st.warn { color: #C8862B; background: rgba(200, 134, 43, 0.12); }
+.hd-g2 .st.breach { color: var(--ace-bad); background: rgba(192, 57, 43, 0.12); }
+.hd-g2 .st.none { color: var(--ace-ink-3); background: var(--ace-surface-2); }
+.hd-g2 .v { margin-left: auto; font-size: 19px; font-weight: 800; }
+.hd-g2 .track2 { position: relative; height: 14px; border-radius: 5px; background: #EEF1F4; margin-top: 10px; overflow: hidden; }
+.hd-g2 .zone { position: absolute; top: 0; height: 100%; }
+.hd-g2 .zone.ok { background: rgba(46, 125, 82, 0.12); }
+.hd-g2 .zone.bad { background: rgba(192, 57, 43, 0.10); }
+.hd-g2 .fill2 { position: absolute; top: 3px; height: 8px; left: 0; border-radius: 4px; }
+.hd-g2 .fill2.over { border-radius: 0 4px 4px 0; background: #C0392B; }
+.hd-g2 .gap2 { position: absolute; top: 3px; height: 8px; border-radius: 2px; background: repeating-linear-gradient(45deg, rgba(192,57,43,0.55) 0 4px, transparent 4px 8px); }
+.hd-g2 .mk { position: absolute; top: -2px; height: 18px; width: 3px; background: var(--ace-ink); border-radius: 2px; z-index: 4; }
+.hd-g2 .gx { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-top: 7px; }
+.hd-g2 .gx .g { font-size: 11.5px; color: var(--ace-ink-2); font-weight: 600; }
+.hd-g2 .gx .n { font-size: 11px; font-weight: 700; }
+.hd-g2 .gx .n.bad { color: var(--ace-bad); }
+.hd-g2 .gx .n.ok { color: var(--ace-ok); }
+.hd-g2 .gx .n.ref { color: var(--ace-ink-3); }
+/* 게이지 범례 */
+.hd-glegend { display: flex; gap: 14px; align-items: center; font-size: 11px; color: var(--ace-ink-3); margin: 0 2px 8px; flex-wrap: wrap; }
+.hd-glegend span { display: inline-flex; align-items: center; gap: 5px; }
+.hd-glegend .sw { display: inline-block; width: 14px; height: 9px; border-radius: 3px; }
+.hd-glegend .sw.zok { background: rgba(46, 125, 82, 0.30); }
+.hd-glegend .sw.zbad { background: rgba(192, 57, 43, 0.28); }
+.hd-glegend .mk2 { display: inline-block; width: 3px; height: 13px; background: var(--ace-ink); border-radius: 2px; }
+.hd-expand { margin-left: auto; font-size: 11.5px; font-weight: 700; color: var(--ace-brand); background: rgba(85,126,170,0.08); border: 1px solid var(--ace-line-2); border-radius: 6px; padding: 3px 10px; cursor: pointer; font-family: inherit; }
+
+.hd-cols { display: grid; grid-template-columns: 1.03fr 1fr; gap: 11px; align-items: start; }
+@media (max-width: 980px) { .hd-cols { grid-template-columns: 1fr; } }
+
+/* 테이블 */
+.hd-tbl { padding: 12px 4px 8px; }
+.hd-tbl h3 { font-size: 15px; font-weight: 700; margin: 2px 14px 6px; color: var(--ace-ink); }
+.hd-tbl table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.hd-tbl thead th { font-size: 10.5px; color: var(--ace-ink-3); font-weight: 600; text-align: right; padding: 5px 12px; border-bottom: 1px solid var(--ace-line); }
+.hd-tbl thead th.l { text-align: left; }
+.hd-tbl .grp td { padding: 7px 12px 5px; background: var(--ace-surface-2); }
+.hd-tbl .grp .gn { font-size: 12px; font-weight: 700; }
+.hd-tbl .grp .dt { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.hd-tbl .grp .gw { font-weight: 800; font-size: 12.5px; }
+.hd-tbl .grp .gd { color: var(--ace-ink-3); font-weight: 600; font-size: 11.5px; }
+.hd-tbl tbody td { padding: 5px 12px; border-bottom: 1px solid #F4F6F8; text-align: right; }
+.hd-tbl tbody td.l { text-align: left; color: var(--ace-ink); }
+.hd-tbl tbody td.sub { color: var(--ace-ink-3); font-size: 11px; }
+.hd-tbl tbody tr.hd-clickrow { cursor: pointer; }
+.hd-tbl tbody tr.hd-clickrow:hover td { background: #F4F6F8; }
+.hd-wbar { display: inline-block; width: 42px; height: 6px; border-radius: 3px; background: #EEF1F4; overflow: hidden; vertical-align: middle; margin-right: 7px; }
+.hd-wbar i { display: block; height: 100%; border-radius: 3px; }
+.hd-hytag { font-size: 9px; font-weight: 700; color: var(--ace-up); background: rgba(232, 71, 59, 0.1); padding: 1px 5px; border-radius: 3px; margin-left: 5px; }
+
+/* 포커스 토글 패널 */
+.hd-focus { padding: 14px 18px 4px; min-height: 640px; }
+.hd-ftop { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.hd-ftop .ft { font-size: 15px; font-weight: 700; }
+.hd-seg { margin-left: auto; display: inline-flex; border: 1px solid var(--ace-line-2); border-radius: 7px; overflow: hidden; }
+.hd-seg button { font-size: 11px; font-weight: 700; padding: 5px 11px; border: none; border-right: 1px solid var(--ace-line); background: #fff; color: var(--ace-ink-3); cursor: pointer; font-family: inherit; }
+.hd-seg button:last-child { border-right: none; }
+.hd-seg button.on { background: var(--ace-brand); color: #fff; }
+.hd-bsum { display: flex; border: 1px solid var(--ace-line); border-radius: var(--ace-radius-sm); overflow: hidden; margin-bottom: 12px; }
+.hd-bsum > div { flex: 1; padding: 7px 11px; border-right: 1px solid var(--ace-line); }
+.hd-bsum > div:last-child { border-right: none; }
+.hd-bsum .k { font-size: 10.5px; color: var(--ace-ink-3); font-weight: 600; }
+.hd-bsum .v { font-size: 17px; font-weight: 800; margin-top: 2px; }
+/* 지역/스타일(또는 만기/신용) 틸트 — side by side */
+.hd-fmeta { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 12px; align-items: start; }
+.hd-tilt .lab { font-size: 12px; color: var(--ace-ink-2); font-weight: 700; display: flex; justify-content: space-between; margin-bottom: 4px; }
+.hd-tilt .bar { height: 11px; border-radius: 6px; overflow: hidden; display: flex; }
+.hd-tilt .bar i { height: 100%; }
+.hd-tilt .tleg { display: flex; flex-wrap: wrap; gap: 3px 10px; margin-top: 5px; font-size: 10.5px; color: var(--ace-ink-3); }
+.hd-tilt .tleg span { display: inline-flex; align-items: center; gap: 4px; }
+.hd-tilt .tleg i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+.hd-foot { margin-top: 11px; font-size: 10.5px; color: var(--ace-ink-3); }

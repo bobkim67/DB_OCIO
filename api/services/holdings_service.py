@@ -139,33 +139,119 @@ def _build_equity_focus(items: list[HoldingItemDTO]) -> EquityFocusDTO:
     )
 
 
-def _build_compliance(
-    fund_code: str, mix: PortfolioMixSummaryDTO,
-) -> list[ComplianceItemDTO]:
-    """현재 비중 vs 펀드별 가이드라인 밴드 → 적합/주의/위반."""
-    from config.funds import DEFAULT_COMPLIANCE_GUIDE, FUND_COMPLIANCE_GUIDE
-    guide = FUND_COMPLIANCE_GUIDE.get(fund_code, DEFAULT_COMPLIANCE_GUIDE)
-    rows: list[ComplianceItemDTO] = []
-    for key, label, val in [
-        ("equity", "주식비중", mix.equity_weight),
-        ("bond", "채권비중", mix.bond_weight),
-        ("risk_asset", "위험자산", mix.risk_asset_weight),
-        ("cash", "유동성", mix.cash_weight),
-    ]:
-        band = guide.get(key) or (None, None)
-        low, high = band[0], band[1]
-        if low is None and high is None:
-            status = "none"
-        elif (high is not None and val > high) or (low is not None and val < low):
-            status = "breach"
-        elif high is not None and val > high * 0.95:
-            status = "warn"
-        else:
-            status = "ok"
-        rows.append(ComplianceItemDTO(
-            key=key, label=label, value=val,
-            band_low=low, band_high=high, status=status,
+def _risk_excl_safe(items: list[HoldingItemDTO]) -> float:
+    """위험자산 = 안전자산(국내채권+유동성) 외 전부 (사용자 확정)."""
+    return sum(it.weight for it in items if it.asset_class not in ("국내채권", "유동성"))
+
+
+def _liquidity_weight(items: list[HoldingItemDTO]) -> float:
+    """유동성 자산군 비중 (현금·미수금 잔여 포함). 컴플 '유동성' 기준."""
+    return sum(it.weight for it in items if it.asset_class == "유동성")
+
+
+def _ci(key: str, label: str, value: float,
+        low: float | None = None, high: float | None = None) -> ComplianceItemDTO:
+    if low is None and high is None:
+        status = "none"
+    elif (high is not None and value > high) or (low is not None and value < low):
+        status = "breach"
+    elif (high is not None and value > high * 0.97) or (low is not None and value < low * 1.03):
+        status = "warn"
+    else:
+        status = "ok"
+    return ComplianceItemDTO(key=key, label=label, value=value,
+                             band_low=low, band_high=high, status=status)
+
+
+def _subfund_metrics(fund_code: str) -> dict | None:
+    """하위펀드 단독 보유(EVL 비중) → {equity, risk}. 07G04 의 ISP/RSP 한도용.
+
+    equity = 주식+금(_build_portfolio_mix), risk = 안전자산 외 전부.
+    """
+    try:
+        df = _load_holdings_df(fund_code, None, lookthrough=False)
+    except Exception:
+        return None
+    if df is None or len(df) == 0 or "EVL_AMT" not in df.columns:
+        return None
+    tot = float(df["EVL_AMT"].sum())
+    if tot <= 0:
+        return None
+    items: list[HoldingItemDTO] = []
+    for _, row in df.iterrows():
+        evl = _val(row, "EVL_AMT")
+        if evl is None:
+            continue
+        try:
+            evl_f = float(evl)
+        except (TypeError, ValueError):
+            continue
+        cd = str(_val(row, "ITEM_CD", default=""))
+        nm = str(_val(row, "ITEM_NM", default=""))
+        ac = _reclassify_fx_deposit(
+            cd, nm, str(_val(row, "자산군", "AST_CLSF_CD_NM", default="기타")))
+        items.append(HoldingItemDTO(
+            item_cd=cd, item_nm=nm, asset_class=ac,
+            weight=evl_f / tot, evl_amt=evl_f,
         ))
+    return {
+        "equity": _build_portfolio_mix(items).equity_weight,
+        "risk": _risk_excl_safe(items),
+    }
+
+
+def _build_compliance(
+    fund_code: str, items: list[HoldingItemDTO],
+    mix: PortfolioMixSummaryDTO, fx_hedge: FxHedgeSummaryDTO | None,
+) -> list[ComplianceItemDTO]:
+    """펀드별 실제 가이드라인 (2026-06-24 사용자 제공)."""
+    rows: list[ComplianceItemDTO] = []
+    risk = _risk_excl_safe(items)   # 위험자산 = 안전자산(국내채권+유동성) 외 전부
+    liq = _liquidity_weight(items)  # 유동성 자산군(현금·미수금 포함)
+
+    if fund_code == "08K88":
+        rows.append(_ci("risk_asset", "위험자산", risk, high=0.92))
+
+    elif fund_code == "2JM23":
+        # 위험자산 ≤80% (= 안전자산 ≥20% 동치, 타 펀드와 표기 일관성)
+        rows.append(_ci("risk_asset", "위험자산", risk, high=0.80))
+        rows.append(_ci("cash", "유동성", liq, low=0.02))
+
+    elif fund_code == "4JM12":
+        # 위험자산 ≤50% (= 안전자산 ≥50% 동치, 타 펀드와 표기 일관성)
+        rows.append(_ci("risk_asset", "위험자산", risk, high=0.50))
+        rows.append(_ci("cash", "유동성", liq, low=0.05))
+        hr = fx_hedge.hedge_ratio if fx_hedge else None
+        if hr is not None:
+            rows.append(_ci("hedge", "환헤지(USD매도/USD자산)", hr, high=1.10))
+
+    elif fund_code == "07G04":
+        for sub, nm, eq_lim, risk_lim in [
+            ("07G02", "ISP", 0.20, 0.20), ("07G03", "RSP", 0.55, 0.70),
+        ]:
+            m = _subfund_metrics(sub)
+            if m is None:
+                continue
+            rows.append(_ci(f"{sub}_eq", f"{nm} 주식비중", m["equity"], high=eq_lim))
+            rows.append(_ci(f"{sub}_risk", f"{nm} 위험자산", m["risk"], high=risk_lim))
+
+    elif fund_code in ("08N33", "08N81", "08P22"):
+        # SAA 펀드 = 위반 판정 없이 현재 비중 vs SAA 목표 고지(비교용) only.
+        # SAA는 중립배분 기준선이라 상·하한 한도가 아님 → status="none",
+        # band_high 에 SAA 목표를 실어 프론트에서 참고 마커로 렌더.
+        from config.funds import FUND_MP_DIRECT
+        mp = FUND_MP_DIRECT.get(fund_code, {})
+        t_eq = (mp.get("국내주식", 0) + mp.get("해외주식", 0) + mp.get("대체투자", 0)) / 100.0
+        t_risk = sum(
+            mp.get(k, 0) for k in mp if k not in ("국내채권", "유동성")
+        ) / 100.0
+        rows.append(ComplianceItemDTO(
+            key="equity", label="주식비중", value=mix.equity_weight,
+            band_low=None, band_high=t_eq, status="none"))
+        rows.append(ComplianceItemDTO(
+            key="risk_asset", label="위험자산", value=risk,
+            band_low=None, band_high=t_risk, status="none"))
+
     return rows
 
 
@@ -407,6 +493,35 @@ def build_holdings(
             is_short=is_short,
         ))
 
+    # 4.5) USD 노출/헷지 — FX 파생 포지션 제거 전에 산출 (4JM12 환헤지 게이지용)
+    usd_asset_ac = {"해외주식", "해외채권", "대체투자"}
+    usd_asset_w = sum(it.weight for it in items if it.asset_class in usd_asset_ac)
+    usd_asset_w += sum(
+        it.weight for it in items
+        if it.asset_class == "유동성"
+        and (it.item_cd.upper() == "USMUSD022001" or "DEPOSIT" in it.item_nm.upper())
+    )
+    usd_short_w = sum(
+        it.weight for it in items if it.asset_class == "FX" and it.is_short
+    )
+    fx_hedge = FxHedgeSummaryDTO(
+        usd_asset_weight=usd_asset_w,
+        usd_short_weight=usd_short_w,
+        hedge_ratio=(usd_short_w / usd_asset_w) if usd_asset_w > 0 else None,
+    )
+
+    # 4.6) FX(달러선물 등)는 포지션(notional)이지 NAV 구성이 아니므로 제외 (2026-06-24 사용자 확정)
+    items = [it for it in items if it.asset_class != "FX"]
+
+    # 4.7) 현금·미수금 = NAST − Σ보유증권 (DWPM10530 미포함분, 예: 매도 후 미수금) → 유동성 추가
+    if nast and nast > 0 and denom == nast:
+        resid = nast - sum(it.evl_amt for it in items)
+        if resid > nast * 0.005:
+            items.append(HoldingItemDTO(
+                item_cd="_CASH_RESIDUAL_", item_nm="현금·미수금",
+                asset_class="유동성", weight=resid / nast, evl_amt=resid,
+            ))
+
     # 5) 자산군 집계
     by_class: dict[str, list[HoldingItemDTO]] = {}
     for it in items:
@@ -438,32 +553,6 @@ def build_holdings(
     # 6) 종목 정렬: 자산군 순서 → weight desc
     order_idx = {ac: i for i, ac in enumerate(_ASSET_CLASS_ORDER)}
     items.sort(key=lambda it: (order_idx.get(it.asset_class, 99), -it.weight))
-
-    # 7) USD 노출 요약 (USD 자산비중 / 달러매도포지션 / 헷지비율)
-    usd_asset_ac = {"해외주식", "해외채권", "대체투자"}
-    usd_asset_w = sum(
-        it.weight for it in items if it.asset_class in usd_asset_ac
-    )
-    # USD 예치금 (유동성으로 재분류된 USMUSD022001 / USD DEPOSIT류) 도 USD 노출에 포함
-    usd_asset_w += sum(
-        it.weight for it in items
-        if it.asset_class == "유동성"
-        and (
-            it.item_cd.upper() == "USMUSD022001"
-            or "DEPOSIT" in it.item_nm.upper()
-        )
-    )
-    usd_short_w = sum(
-        it.weight for it in items if it.asset_class == "FX" and it.is_short
-    )
-    hedge = None
-    if usd_asset_w > 0:
-        hedge = usd_short_w / usd_asset_w
-    fx_hedge = FxHedgeSummaryDTO(
-        usd_asset_weight=usd_asset_w,
-        usd_short_weight=usd_short_w,
-        hedge_ratio=hedge,
-    )
 
     # 8) 가중평균 듀레이션 + 종목별 dur/ytm join
     duration_summary: WeightedDurationDTO | None = None
@@ -505,7 +594,7 @@ def build_holdings(
     except Exception as exc:
         warnings.append(f"주식 밸류에이션 실패: {type(exc).__name__}")
         equity_focus = None
-    compliance = _build_compliance(fund_code, portfolio_mix)
+    compliance = _build_compliance(fund_code, items, portfolio_mix, fx_hedge)
 
     return HoldingsResponseDTO(
         meta=BaseMeta(
