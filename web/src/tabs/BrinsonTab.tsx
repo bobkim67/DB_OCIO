@@ -450,17 +450,28 @@ export default function BrinsonTab({ fundCode }: Props) {
           arr.push({ label: idxName, weight: c.weight });
           saaByClass.set(g, arr);
         }
-        // 자산군별 AP 보유종목 (비중 내림차순)
+        // 자산군별 AP — 기말 보유 스냅샷(ap_composition, 현금·미수금 포함) 우선, 없으면 period sec_contrib.
+        const apComp = data.ap_composition ?? [];
+        const useSnapshot = apComp.length > 0;
         const apByClass = new Map<string, { label: string; weight: number }[]>();
-        for (const s of data.sec_contrib) {
-          if (s.asset_class === "FX") continue;
-          const g = normCls(s.asset_class);
-          const arr = apByClass.get(g) ?? [];
-          arr.push({ label: s.item_nm, weight: s.weight_pct });
-          apByClass.set(g, arr);
+        const apSnapSub = new Map<string, number>();
+        if (useSnapshot) {
+          for (const c of apComp) {
+            const g = normCls(c.asset_class);
+            apByClass.set(g, c.items.map((it) => ({ label: it.item_nm, weight: it.weight_pct })));
+            apSnapSub.set(g, (apSnapSub.get(g) ?? 0) + c.weight_pct);
+          }
+        } else {
+          for (const s of data.sec_contrib) {
+            if (s.asset_class === "FX") continue;
+            const g = normCls(s.asset_class);
+            const arr = apByClass.get(g) ?? [];
+            arr.push({ label: s.item_nm, weight: s.weight_pct });
+            apByClass.set(g, arr);
+          }
+          for (const arr of apByClass.values()) arr.sort((a, b) => b.weight - a.weight);
         }
-        for (const arr of apByClass.values()) arr.sort((a, b) => b.weight - a.weight);
-        // 자산군 소계는 asset_rows(정확값) 기준으로 조회 (반올림 누적 방지)
+        // 소계: 스냅샷이면 ap_composition, 아니면 asset_rows(period). BM 소계는 항상 asset_rows.
         const subByClass = new Map(enrichedRows.map((r) => [r.asset_class, r]));
         // 자산군 합집합(FX 제외) → ROW_ORDER 순
         const classes = [...new Set([...saaByClass.keys(), ...apByClass.keys()])]
@@ -480,7 +491,7 @@ export default function BrinsonTab({ fundCode }: Props) {
             >
               {isBM ? "벤치마크(BM) 구성" : "전략적 자산배분(SAA) 구성"}
               <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 400 }}>
-                목표 셋팅 vs AP 실제 (FX 제외)
+                목표 셋팅 vs AP 기말 보유 (현금 포함·FX 제외)
               </span>
               <button
                 type="button"
@@ -516,7 +527,7 @@ export default function BrinsonTab({ fundCode }: Props) {
                   const saa = saaByClass.get(g) ?? [];
                   const ap = apByClass.get(g) ?? [];
                   const sub = subByClass.get(g);
-                  const apSub = sub?.ap_weight ?? ap.reduce((s, x) => s + x.weight, 0);
+                  const apSub = useSnapshot ? (apSnapSub.get(g) ?? 0) : (sub?.ap_weight ?? ap.reduce((s, x) => s + x.weight, 0));
                   const bmSub = sub?.bm_weight ?? saa.reduce((s, x) => s + x.weight, 0);
                   const diff = apSub - bmSub;
                   // BM은 자산군당 한 줄 — 지수명 합치고 비중은 소계 표시

@@ -29,6 +29,8 @@ from config.funds import (
 )
 
 from ..schemas.brinson import (
+    BrinsonApCompItemDTO,
+    BrinsonApCompositionDTO,
     BrinsonAssetRowDTO,
     BrinsonBmComponentDTO,
     BrinsonDailyClassDTO,
@@ -359,6 +361,48 @@ def _build_bm_meta(fund_code: str, method: str, as_of=None,
 
 # -------------------- public --------------------
 
+# build_holdings 8class → 표0(Brinson) 자산군. FX 는 build_holdings 가 이미 NAV 제외.
+_H8_TO_BRINSON = {"대체투자": "대체", "유동성": "유동성및기타", "모펀드": "유동성및기타"}
+
+
+def _build_ap_composition(
+    fund_code: str, end_date: date, method: str,
+) -> list[BrinsonApCompositionDTO]:
+    """표0 AP비중 = 기말 보유 스냅샷(build_holdings, FX 제외·현금/미수금 포함) → 자산군 구성.
+
+    period PA 비중과 별개(구성=스냅샷/기여=기간). 실패 시 [] → 프론트가 period 비중 fallback.
+    """
+    try:
+        from collections import defaultdict
+        from modules.data_loader import _collapse_asset_class
+        from .holdings_service import build_holdings
+        hold = build_holdings(fund_code, lookthrough=True, as_of_date=end_date.isoformat())
+        # 기말 데이터 완전성 가드: DT 미게시(T+1)로 NAST 불완전이면 Σ증권/NAST 가 100% 크게 이탈
+        # (현금잔여 음수 → 누락). 이 경우 [] 반환 → 프론트가 period 비중 fallback. 데이터 완전해지면 자동 정상화.
+        _tot = sum(it.weight for it in hold.holdings_items)
+        if _tot > 1.03 or _tot < 0.90:
+            return []
+        w_by: dict[str, float] = defaultdict(float)
+        items_by: dict[str, list[tuple[str, float]]] = defaultdict(list)
+        for it in hold.holdings_items:
+            if it.asset_class == "FX":
+                continue
+            bc = _collapse_asset_class(_H8_TO_BRINSON.get(it.asset_class, it.asset_class), method)
+            if not bc or bc == "FX":
+                continue
+            w_by[bc] += it.weight
+            items_by[bc].append((it.item_nm, it.weight))
+        out: list[BrinsonApCompositionDTO] = []
+        for bc, w in w_by.items():
+            items = [BrinsonApCompItemDTO(item_nm=nm, weight_pct=round(wt * 100, 2))
+                     for nm, wt in sorted(items_by[bc], key=lambda x: -x[1])]
+            out.append(BrinsonApCompositionDTO(
+                asset_class=bc, weight_pct=round(w * 100, 2), items=items))
+        return out
+    except Exception:
+        return []
+
+
 def build_brinson(
     fund_code: str,
     *,
@@ -510,6 +554,7 @@ def build_brinson(
         bm_components=bm_components,
         asset_rows=_to_asset_rows(pa_df),
         sec_contrib=_to_sec_rows(raw.get("sec_contrib")),
+        ap_composition=_build_ap_composition(fund_code, end_date, method),
         daily_brinson=_to_daily_rows(raw.get("daily_brinson")),
         daily_class=_to_daily_class_rows(_dc_df),
     )

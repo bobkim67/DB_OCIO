@@ -750,6 +750,28 @@ export interface components {
             generated_at: string;
         };
         /**
+         * BrinsonApCompItemDTO
+         * @description 표0 AP 구성 — 기말 보유 스냅샷(현금 포함) 종목.
+         */
+        BrinsonApCompItemDTO: {
+            /** Item Nm */
+            item_nm: string;
+            /** Weight Pct */
+            weight_pct: number;
+        };
+        /**
+         * BrinsonApCompositionDTO
+         * @description 표0 AP비중 = 기말 보유 스냅샷(현금·미수금 포함, FX 제외). period PA 비중과 별개.
+         */
+        BrinsonApCompositionDTO: {
+            /** Asset Class */
+            asset_class: string;
+            /** Weight Pct */
+            weight_pct: number;
+            /** Items */
+            items: components["schemas"]["BrinsonApCompItemDTO"][];
+        };
+        /**
          * BrinsonAssetRowDTO
          * @description compute_brinson_attribution_v2['pa_df'] 한 행.
          */
@@ -906,6 +928,11 @@ export interface components {
             asset_rows: components["schemas"]["BrinsonAssetRowDTO"][];
             /** Sec Contrib */
             sec_contrib: components["schemas"]["BrinsonSecContribDTO"][];
+            /**
+             * Ap Composition
+             * @default []
+             */
+            ap_composition: components["schemas"]["BrinsonApCompositionDTO"][];
             /** Daily Brinson */
             daily_brinson: components["schemas"]["BrinsonDailyPointDTO"][];
             /**

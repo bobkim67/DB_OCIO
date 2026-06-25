@@ -51,6 +51,19 @@ class BrinsonSecContribDTO(BaseModel):
     contrib_pct: float         # 기여수익률(%)
 
 
+class BrinsonApCompItemDTO(BaseModel):
+    """표0 AP 구성 — 기말 보유 스냅샷(현금 포함) 종목."""
+    item_nm: str
+    weight_pct: float          # 순자산대비 비중(%)
+
+
+class BrinsonApCompositionDTO(BaseModel):
+    """표0 AP비중 = 기말 보유 스냅샷(현금·미수금 포함, FX 제외). period PA 비중과 별개."""
+    asset_class: str           # 표0 자산군 (국내주식/.../유동성및기타)
+    weight_pct: float          # 자산군 비중 합(%)
+    items: list[BrinsonApCompItemDTO]
+
+
 class BrinsonDailyPointDTO(BaseModel):
     """compute_brinson_attribution_v2['daily_brinson'] 한 행."""
     date: date                 # 기준일자
@@ -100,6 +113,8 @@ class BrinsonResponseDTO(BaseModel):
     asset_rows: list[BrinsonAssetRowDTO]
     # 종목별 기여 (top 20)
     sec_contrib: list[BrinsonSecContribDTO]
+    # 표0 AP 구성 = 기말 보유 스냅샷(현금 포함). 빈 리스트=fallback(프론트가 period 비중 사용)
+    ap_composition: list[BrinsonApCompositionDTO] = []
     # 일별 누적 Brinson (수익률 비교 차트용)
     daily_brinson: list[BrinsonDailyPointDTO]
     # 자산군별 일별 시계열 (B4: AP비중 추이 + 자산군 누적기여)
