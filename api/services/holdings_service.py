@@ -449,6 +449,54 @@ def _extract_as_of(df: pd.DataFrame) -> date | None:
     return None
 
 
+def _fund_std_status(fund_code: str, hint: str | None = None, n: int = 12) -> list[tuple[str, float]]:
+    """최근 n 영업일(≤hint) STD_DT별 Σ증권평가/NAST 비율 (내림차순).
+
+    ratio>1.02 → 환매미지급 정산중(증권>NAST로 비중 왜곡). 실패 시 [].
+    """
+    try:
+        from modules.data_loader import get_connection
+        conn = get_connection("dt")
+        try:
+            with conn.cursor() as cur:
+                hb = " AND STD_DT <= %s" if hint else ""
+                args: tuple = (fund_code, hint, n) if hint else (fund_code, n)
+                cur.execute(
+                    f"SELECT STD_DT s, SUM(EVL_AMT) sevl FROM DWPM10530 "
+                    f"WHERE FUND_CD=%s AND EVL_AMT>0{hb} "
+                    f"GROUP BY STD_DT ORDER BY STD_DT DESC LIMIT %s", args)
+                evl = {str(r["s"]): float(r["sevl"] or 0) for r in cur.fetchall()}
+                if not evl:
+                    return []
+                dts = sorted(evl.keys(), reverse=True)
+                ph = ",".join(["%s"] * len(dts))
+                cur.execute(
+                    f"SELECT STD_DT s, NAST_AMT n FROM DWPM10510 "
+                    f"WHERE FUND_CD=%s AND STD_DT IN ({ph})", (fund_code, *dts))
+                nast = {str(r["s"]): float(r["n"] or 0) for r in cur.fetchall()}
+        finally:
+            conn.close()
+        return [(d, (evl[d] / nast[d]) if nast.get(d, 0) > 0 else 99.0) for d in dts]
+    except Exception:
+        return []
+
+
+def _resolve_clean_as_of(
+    fund_code: str, hint: str | None,
+) -> tuple[str | None, str | None, bool]:
+    """(clean_yyyymmdd, latest_raw_yyyymmdd, requested_pending).
+
+    hint=None → 최신 정상일. hint 지정 → 그 날 정산중 여부 + 그 이하 최신 정상일.
+    """
+    status = _fund_std_status(fund_code, hint)
+    if not status:
+        return None, None, False
+    latest_raw = status[0][0]
+    requested_pending = status[0][1] > 1.02
+    clean = next((d for d, r in status if r <= 1.02), None)
+    return clean, latest_raw, requested_pending
+
+
 def _resolve_as_of_from_db(fund_code: str, hint: str | None) -> date | None:
     """as_of hint(YYYYMMDD)가 있으면 그대로, 없으면 DWPM10530 최신 STD_DT 조회.
 
@@ -493,7 +541,15 @@ def build_holdings(
     sources: list[SourceBreakdown] = []
     source_kind: str = "db"
 
-    as_of_param = _iso_to_yyyymmdd(as_of_date) if as_of_date else None
+    # 환매정산중(증권>NAST·비중 왜곡) 회피: 요청/기본 무관 항상 최신 '정상'일로 resolve.
+    _requested = _iso_to_yyyymmdd(as_of_date) if as_of_date else None
+    _clean, _latest_raw, _ = _resolve_clean_as_of(fund_code, _requested)
+    data_pending = False
+    data_note: str | None = None
+    as_of_param = _clean or _requested or _latest_raw
+    _raw_for_note = _requested or _latest_raw
+    if _clean and _raw_for_note and _clean != _raw_for_note:
+        data_note = f"{_raw_for_note[4:6]}-{_raw_for_note[6:8]} 환매정산중 — {_clean[4:6]}-{_clean[6:8]} 기준 표시"
 
     # 1) holdings DataFrame
     try:
@@ -703,6 +759,8 @@ def build_holdings(
         fund_name=meta_f.get("name", fund_code),
         as_of_date=as_of,
         lookthrough_applied=lookthrough,
+        data_pending=data_pending,
+        data_note=data_note,
         nast_amt=nast,
         opng_amt=opng,
         asset_class_weights=asset_class_weights,

@@ -111,6 +111,8 @@ class HoldingsResponseDTO(BaseModel):
     fund_name: str
     as_of_date: date | None
     lookthrough_applied: bool
+    data_pending: bool = False        # 현재 기준일이 환매정산중(증권>NAST, 비중 왜곡)
+    data_note: str | None = None      # 배지 안내 (정산중 스킵/경고)
     nast_amt: float | None = None
     opng_amt: float | None = None
     asset_class_weights: list[HoldingAssetClassDTO]

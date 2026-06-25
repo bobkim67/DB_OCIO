@@ -428,6 +428,21 @@ def build_brinson(
         start_date = start_date or d_start
         end_date = end_date or d_end
 
+    # 환매정산중(증권>NAST·비중 왜곡) 회피: 종료일을 항상 최신 '정상'일로 resolve.
+    data_pending = False
+    data_note: str | None = None
+    try:
+        from .holdings_service import _resolve_clean_as_of
+        _req = _to_yyyymmdd(end_date)
+        _clean, _raw, _ = _resolve_clean_as_of(fund_code, _req)
+        if _clean and _clean != _req:
+            _ce = datetime.strptime(_clean, "%Y%m%d").date()
+            if _ce < end_date:
+                end_date = _ce
+                data_note = f"{_req[4:6]}-{_req[6:8]} 환매정산중 — {_clean[4:6]}-{_clean[6:8]} 기준"
+    except Exception:
+        pass
+
     if start_date >= end_date:
         raise ValueError("start_date must be earlier than end_date")
 
@@ -473,6 +488,8 @@ def build_brinson(
             mapping_method=method,
             pa_method=pa_method,
             fx_split=fx_split,
+            data_pending=data_pending,
+            data_note=data_note,
             period_ap_return=0.0,
             period_bm_return=0.0,
             total_alloc=0.0,
@@ -541,6 +558,8 @@ def build_brinson(
         mapping_method=method,
         pa_method=pa_method,
         fx_split=fx_split,
+        data_pending=data_pending,
+        data_note=data_note,
         period_ap_return=float(raw.get("period_ap_return", 0.0) or 0.0),
         period_bm_return=float(raw.get("period_bm_return", 0.0) or 0.0),
         total_alloc=float(raw.get("total_alloc", 0.0) or 0.0),

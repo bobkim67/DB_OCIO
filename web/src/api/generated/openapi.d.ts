@@ -902,6 +902,13 @@ export interface components {
             pa_method: string;
             /** Fx Split */
             fx_split: boolean;
+            /**
+             * Data Pending
+             * @default false
+             */
+            data_pending: boolean;
+            /** Data Note */
+            data_note?: string | null;
             /** Period Ap Return */
             period_ap_return: number;
             /** Period Bm Return */
@@ -1468,6 +1475,13 @@ export interface components {
             as_of_date: string | null;
             /** Lookthrough Applied */
             lookthrough_applied: boolean;
+            /**
+             * Data Pending
+             * @default false
+             */
+            data_pending: boolean;
+            /** Data Note */
+            data_note?: string | null;
             /** Nast Amt */
             nast_amt?: number | null;
             /** Opng Amt */

@@ -96,6 +96,8 @@ class BrinsonResponseDTO(BaseModel):
     mapping_method: str        # "방법1"|"방법2"|"방법3"|"방법4"
     pa_method: str             # "8"|"5"
     fx_split: bool             # FX 분리 토글 echo
+    data_pending: bool = False # 종료일이 환매정산중(증권>NAST)
+    data_note: str | None = None  # 배지 안내 (정산중 스킵/경고)
     # 합계 (모두 %)
     period_ap_return: float
     period_bm_return: float

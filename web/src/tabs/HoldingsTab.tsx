@@ -70,7 +70,19 @@ export default function HoldingsTab({ fundCode }: Props) {
     <section className="hd-root">
       <div className="hd-head">
         <h2>{data.fund_name} <span className="code">{data.fund_code}</span></h2>
-        <div className="nav num">순자산 <b>{eok(data.nast_amt)}</b>{data.as_of_date ? ` · 기준일자 ${data.as_of_date}` : ""}</div>
+        <div className="nav num">순자산 <b>{eok(data.nast_amt)}</b>{data.as_of_date ? ` · 기준일자 ${data.as_of_date}` : ""}
+          {data.data_note ? (
+            <span title="환매정산중: 환매가 잡혔으나 증권 미매도로 증권평가>NAST → 비중이 왜곡되어 직전 정상일을 표시합니다."
+              style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, padding: "1px 7px", borderRadius: 999,
+                color: data.data_pending ? "#9a3412" : "#92400e",
+                background: data.data_pending ? "#fee2e2" : "#fef3c7",
+                border: `1px solid ${data.data_pending ? "#fecaca" : "#fde68a"}` }}>
+              {data.data_pending ? "⚠ " : ""}{data.data_note}
+            </span>
+          ) : (
+            <span style={{ marginLeft: 8, fontSize: 11, color: "#16a34a", fontWeight: 600 }}>✔ 확정</span>
+          )}
+        </div>
         <label className="hd-lt">
           <input type="checkbox" checked={lookthrough} onChange={(e) => setLookthrough(e.target.checked)} />
           look-through{data.lookthrough_applied ? " (적용)" : ""}

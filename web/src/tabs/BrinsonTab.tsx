@@ -259,6 +259,17 @@ export default function BrinsonTab({ fundCode }: Props) {
           <span style={{ color: "#6b7280" }}>({data.fund_code})</span>
         </h2>
         <MetaBadge meta={data.meta} />
+        {data.data_note ? (
+          <span title="환매정산중: 환매가 잡혔으나 증권 미매도로 증권평가>NAST → 비중 왜곡. 직전 정상일 기준으로 표시합니다."
+            style={{ fontSize: 11, fontWeight: 600, padding: "1px 7px", borderRadius: 999,
+              color: data.data_pending ? "#9a3412" : "#92400e",
+              background: data.data_pending ? "#fee2e2" : "#fef3c7",
+              border: `1px solid ${data.data_pending ? "#fecaca" : "#fde68a"}` }}>
+            {data.data_pending ? "⚠ " : ""}{data.data_note}
+          </span>
+        ) : (
+          <span style={{ fontSize: 11, color: "#16a34a", fontWeight: 600 }}>✔ 확정</span>
+        )}
         {isFetching && (
           <span style={{ fontSize: 11, color: "#2563eb" }}>● 재계산 중…</span>
         )}
