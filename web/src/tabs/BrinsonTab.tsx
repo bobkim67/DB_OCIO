@@ -75,20 +75,25 @@ function DateField({ value, onChange }: { value: string; onChange: (v: string) =
   const dRef = useRef<HTMLInputElement>(null);
   const seg: CSSProperties = {
     border: "none", outline: "none", textAlign: "center", fontSize: 13,
-    fontVariantNumeric: "tabular-nums", padding: 0, background: "transparent",
+    fontFamily: "inherit", fontVariantNumeric: "tabular-nums", padding: 0,
+    background: "transparent", color: "inherit",
   };
   const emit = (yy: string, mm: string, dd: string) => onChange(`${yy}-${mm}-${dd}`);
+  // 포커스·클릭 시 해당 칸 전체 선택 → 한 번에 덮어쓰기 (자동진행 .focus() 도 트리거)
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 2, border: "1px solid #d1d5db", borderRadius: 4, padding: "4px 6px", background: "#fff" }}>
       <input aria-label="연" inputMode="numeric" placeholder="YYYY" maxLength={4} value={y}
+        onFocus={(e) => e.currentTarget.select()} onClick={(e) => e.currentTarget.select()}
         onChange={(e) => { const v = e.target.value.replace(/\D/g, "").slice(0, 4); emit(v, m, d); if (v.length === 4) mRef.current?.focus(); }}
         style={{ ...seg, width: 38 }} />
       <span style={{ color: "#9ca3af" }}>-</span>
       <input ref={mRef} aria-label="월" inputMode="numeric" placeholder="MM" maxLength={2} value={m}
+        onFocus={(e) => e.currentTarget.select()} onClick={(e) => e.currentTarget.select()}
         onChange={(e) => { const v = e.target.value.replace(/\D/g, "").slice(0, 2); emit(y, v, d); if (v.length === 2) dRef.current?.focus(); }}
         style={{ ...seg, width: 22 }} />
       <span style={{ color: "#9ca3af" }}>-</span>
       <input ref={dRef} aria-label="일" inputMode="numeric" placeholder="DD" maxLength={2} value={d}
+        onFocus={(e) => e.currentTarget.select()} onClick={(e) => e.currentTarget.select()}
         onChange={(e) => { const v = e.target.value.replace(/\D/g, "").slice(0, 2); emit(y, m, v); }}
         style={{ ...seg, width: 22 }} />
     </span>
@@ -411,11 +416,6 @@ export default function BrinsonTab({ fundCode }: Props) {
         ))}
       </div>
 
-      {/* ④ 위험조정 성과지표 (연율화수익·변동성·MDD + TE·IR) */}
-      <div style={{ marginBottom: 16, maxWidth: 460 }}>
-        <BrinsonMetricsPanel daily={data.daily_brinson} hasBm={data.bm_source !== "none"} />
-      </div>
-
       {isFallback && (
         <div
           style={{
@@ -432,7 +432,7 @@ export default function BrinsonTab({ fundCode }: Props) {
         </div>
       )}
 
-      {/* 표0(BM/SAA 구성) + 표1(자산군별 기여수익률) side-by-side */}
+      {/* 표0(BM/SAA 구성) + 표1(자산군별 기여수익률) + 위험조정 성과지표 side-by-side */}
       <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 16 }}>
       {/* 표 0: SAA(BM) 구성 vs AP 실제 — 자산군 비교(기본) + 펼치기 시 AP 종목 (FX 제외) */}
       {data.bm_source !== "none" && (() => {
@@ -598,7 +598,6 @@ export default function BrinsonTab({ fundCode }: Props) {
             type="button"
             onClick={() => setTbl0Expanded((v) => !v)}
             style={{
-              marginLeft: "auto",
               fontSize: 11,
               fontWeight: 500,
               padding: "2px 10px",
@@ -611,9 +610,6 @@ export default function BrinsonTab({ fundCode }: Props) {
           >
             {tbl0Expanded ? "▲ 접기" : "▼ 종목 펼치기"}
           </button>
-        </h3>
-        {/* 기여/Normalized 토글 — 테이블 우측 상단 */}
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
           <span
             style={{
               display: "inline-flex",
@@ -651,7 +647,7 @@ export default function BrinsonTab({ fundCode }: Props) {
               </button>
             ))}
           </span>
-        </div>
+        </h3>
         <table
           style={{
             width: "100%",
@@ -670,11 +666,7 @@ export default function BrinsonTab({ fundCode }: Props) {
               <th style={th}>AP</th>
               <th
                 style={thr}
-                title={
-                  "AP 자산군 수익률 = 펀드 실현손익 기준 금액가중(money-weighted) 수익률.\n" +
-                  "기간 중 매매·포지션 사이징이 반영되므로, 지수(BM)·단순보유(buy-and-hold) 수익률과\n" +
-                  "다를 수 있습니다. (예: 상승장에 비중을 키우면 지수보다 높게 잡힘 = 매매 타이밍 효과)"
-                }
+                title="금액가중(money-weighted) 수익률로, 기간 중 매매·포지션 사이징이 반영됩니다."
               >
                 AP 수익률({tbl1Metric === "norm" ? "Normalized" : "기여"})
                 <span style={{ color: "#9ca3af", fontWeight: 400, marginLeft: 3 }}>ⓘ</span>
@@ -790,11 +782,10 @@ export default function BrinsonTab({ fundCode }: Props) {
             )}
           </tbody>
         </table>
-        <p style={{ fontSize: 11, color: "#6b7280", margin: "6px 2px 0", lineHeight: 1.5 }}>
-          ※ AP 자산군 수익률은 펀드 실현손익 기준 <b>금액가중(money-weighted)</b> 수익률로, 기간 중
-          매매·포지션 사이징이 반영됩니다 → 지수(BM)·단순보유 수익률과 다를 수 있습니다.
-        </p>
       </div>
+        <div style={{ flex: "1 1 320px", minWidth: 0 }}>
+          <BrinsonMetricsPanel daily={data.daily_brinson} hasBm={data.bm_source !== "none"} />
+        </div>
       </div>
 
       {/* B4: AP vs BM 추이 (좌=누적수익/누적기여, 우=비중추이/SAA) */}
