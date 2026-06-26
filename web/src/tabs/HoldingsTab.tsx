@@ -172,8 +172,8 @@ export default function HoldingsTab({ fundCode }: Props) {
                           title={clickable ? "클릭 → 종목 비중·수익률·거래 차트" : undefined}>
                           <td className="l">{it.item_nm}{it.is_short ? <span className="hd-hytag">SHORT</span> : null}</td>
                           <td className="wbl" />
-                          <td><b className="num">{pct1(it.weight)}</b></td>
-                          <td className="wbr"><span className="hd-wbar"><i style={{ width: `${Math.min((it.weight / Math.max(g.weight, 0.0001)) * 100, 100)}%`, background: col }} /></span></td>
+                          <td><b className="num" style={it.weight < 0 ? { color: "#C0392B" } : undefined}>{pct1(it.weight)}</b></td>
+                          <td className="wbr"><span className="hd-wbar"><i style={{ width: `${Math.max(0, Math.min((it.weight / Math.max(g.weight, 0.0001)) * 100, 100))}%`, background: it.weight < 0 ? "#C0392B" : col }} /></span></td>
                           <td className="num sub">{eok(it.evl_amt)}</td>
                           <td className="num sub">{num(it.duration, 1)}</td>
                           <td className="num sub">{it.ytm == null ? "—" : num(it.ytm, 2)}</td>
@@ -295,6 +295,7 @@ function collapseLiquidity(items: HoldingItemDTO[]): HoldingItemDTO[] {
   for (const it of items) {
     const nm = it.item_nm.toUpperCase();
     const show = it.item_cd === "_CASH_RESIDUAL_"
+      || it.item_cd === "_REDEMPTION_PAYABLE_"
       || it.item_cd.toUpperCase() === "USMUSD022001"
       || nm.includes("DEPOSIT")
       || it.item_nm.includes("예금");

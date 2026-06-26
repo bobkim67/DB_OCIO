@@ -365,23 +365,14 @@ def _build_bm_meta(fund_code: str, method: str, as_of=None,
 _H8_TO_BRINSON = {"대체투자": "대체", "유동성": "유동성및기타", "모펀드": "유동성및기타"}
 
 
-def _build_ap_composition(
-    fund_code: str, end_date: date, method: str,
-) -> list[BrinsonApCompositionDTO]:
-    """표0 AP비중 = 기말 보유 스냅샷(build_holdings, FX 제외·현금/미수금 포함) → 자산군 구성.
+def _build_ap_composition(hold, method: str) -> list[BrinsonApCompositionDTO]:
+    """표0 AP비중 = 기말 보유 스냅샷(build_holdings 결과, FX 제외·현금/환매미지급금 포함) → 자산군 구성.
 
-    period PA 비중과 별개(구성=스냅샷/기여=기간). 실패 시 [] → 프론트가 period 비중 fallback.
+    period PA 비중과 별개(구성=스냅샷/기여=기간). 환매미지급금(음수 유동성)도 유동성및기타에 반영.
     """
     try:
         from collections import defaultdict
         from modules.data_loader import _collapse_asset_class
-        from .holdings_service import build_holdings
-        hold = build_holdings(fund_code, lookthrough=True, as_of_date=end_date.isoformat())
-        # 기말 데이터 완전성 가드: DT 미게시(T+1)로 NAST 불완전이면 Σ증권/NAST 가 100% 크게 이탈
-        # (현금잔여 음수 → 누락). 이 경우 [] 반환 → 프론트가 period 비중 fallback. 데이터 완전해지면 자동 정상화.
-        _tot = sum(it.weight for it in hold.holdings_items)
-        if _tot > 1.03 or _tot < 0.90:
-            return []
         w_by: dict[str, float] = defaultdict(float)
         items_by: dict[str, list[tuple[str, float]]] = defaultdict(list)
         for it in hold.holdings_items:
@@ -428,20 +419,9 @@ def build_brinson(
         start_date = start_date or d_start
         end_date = end_date or d_end
 
-    # 환매정산중(증권>NAST·비중 왜곡) 회피: 종료일을 항상 최신 '정상'일로 resolve.
+    # 종료일은 요청/기본 그대로(스킵 없음). 환매정산중은 표0 환매미지급금 라인으로 균형 + 배지 안내.
     data_pending = False
     data_note: str | None = None
-    try:
-        from .holdings_service import _resolve_clean_as_of
-        _req = _to_yyyymmdd(end_date)
-        _clean, _raw, _ = _resolve_clean_as_of(fund_code, _req)
-        if _clean and _clean != _req:
-            _ce = datetime.strptime(_clean, "%Y%m%d").date()
-            if _ce < end_date:
-                end_date = _ce
-                data_note = f"{_req[4:6]}-{_req[6:8]} 환매정산중 — {_clean[4:6]}-{_clean[6:8]} 기준"
-    except Exception:
-        pass
 
     if start_date >= end_date:
         raise ValueError("start_date must be earlier than end_date")
@@ -542,6 +522,18 @@ def build_brinson(
     if _dc_df is not None and not _dc_df.empty:
         _dc_df = _dc_df[_dc_df["asset_class"].isin(_surviving)]
 
+    # 표0 AP 구성 = 기말 보유 스냅샷(build_holdings) + 환매정산중 플래그(배지 안내) — 한 번만 호출.
+    ap_composition: list[BrinsonApCompositionDTO] = []
+    try:
+        from .holdings_service import build_holdings
+        _hold = build_holdings(fund_code, lookthrough=True, as_of_date=end_date.isoformat())
+        ap_composition = _build_ap_composition(_hold, method)
+        data_pending = _hold.data_pending
+        if _hold.data_note:
+            data_note = _hold.data_note
+    except Exception:
+        pass
+
     return BrinsonResponseDTO(
         meta=BaseMeta(
             as_of_date=end_date,
@@ -573,7 +565,7 @@ def build_brinson(
         bm_components=bm_components,
         asset_rows=_to_asset_rows(pa_df),
         sec_contrib=_to_sec_rows(raw.get("sec_contrib")),
-        ap_composition=_build_ap_composition(fund_code, end_date, method),
+        ap_composition=ap_composition,
         daily_brinson=_to_daily_rows(raw.get("daily_brinson")),
         daily_class=_to_daily_class_rows(_dc_df),
     )
