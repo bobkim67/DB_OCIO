@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import { useBrinson } from "../hooks/useBrinson";
 import { useFunds } from "../hooks/useFunds";
 import { useOverview } from "../hooks/useOverview";
+import { computeBrinsonMetrics } from "../lib/brinsonMetrics";
 import MetaBadge from "../components/common/MetaBadge";
 import BrinsonWaterfall from "../components/charts/BrinsonWaterfall";
 import BrinsonTrendPanel from "../components/charts/BrinsonTrendPanel";
@@ -258,6 +259,10 @@ export default function BrinsonTab({ fundCode }: Props) {
   const pr = ovData?.period_returns ?? {};
   const bmpr = ovData?.bm_period_returns ?? {};
 
+  // 위험조정 지표(연환산·샤프 등) — KPI 연환산 인라인과 위험지표 스트립이 동일 소스 사용.
+  const hasBm = data.bm_source !== "none";
+  const metrics = computeBrinsonMetrics(data.daily_brinson, data.rf_annual);
+
   return (
     <section className="bn-root">
       {/* 헤더 */}
@@ -360,26 +365,35 @@ export default function BrinsonTab({ fundCode }: Props) {
         )}
       </div>
 
-      {/* KPI 3카드 */}
+      {/* KPI 3카드 — 기간수익률(큰값) + 연환산(우측 인라인, 위험지표 패널과 동일 소스) */}
       <div className="bn-kpis">
         <div className="bn-kpi">
           <div className="k">AP 수익률</div>
-          <div className={`v num ${rc(data.period_ap_return)}`}>{fmtPct(data.period_ap_return)}</div>
+          <div className="vrow">
+            <span className={`v num ${rc(data.period_ap_return)}`}>{fmtPct(data.period_ap_return)}</span>
+            {metrics.valid && <span className="ann num">연환산 {fmtPct(metrics.apAnnRet)}</span>}
+          </div>
         </div>
         <div className="bn-kpi">
           <div className="k">BM 수익률</div>
-          <div className={`v num ${rc(data.period_bm_return)}`}>{fmtPct(data.period_bm_return)}</div>
+          <div className="vrow">
+            <span className={`v num ${rc(data.period_bm_return)}`}>{fmtPct(data.period_bm_return)}</span>
+            {metrics.valid && hasBm && <span className="ann num">연환산 {fmtPct(metrics.bmAnnRet)}</span>}
+          </div>
         </div>
         <div className="bn-kpi">
           <div className="k">초과수익률</div>
-          <div className={`v num ${ec(data.total_excess)}`}>{fmtPct(data.total_excess)}</div>
+          <div className="vrow">
+            <span className={`v num ${ec(data.total_excess)}`}>{fmtPct(data.total_excess)}</span>
+            {metrics.valid && hasBm && <span className="ann num">연환산 {fmtPct(metrics.annExcess)}</span>}
+          </div>
         </div>
       </div>
 
       {/* 위험지표 (전폭 카드) */}
-      {data.daily_brinson.length >= 2 && (
+      {metrics.valid && (
         <div className="bn-card">
-          <BrinsonMetricsPanel daily={data.daily_brinson} hasBm={data.bm_source !== "none"} />
+          <BrinsonMetricsPanel daily={data.daily_brinson} hasBm={hasBm} rfAnnual={data.rf_annual} />
         </div>
       )}
 
@@ -389,10 +403,8 @@ export default function BrinsonTab({ fundCode }: Props) {
         </div>
       )}
 
-      {/* 2컬럼 본문: 좌=표 스택 / 우=차트 스택 */}
+      {/* 벤치마크(BM)구성 | 자산군별 기여수익률 — side-by-side (전폭) */}
       <div className="bn-cols">
-        {/* ── 좌 컬럼: 표 스택 ── */}
-        <div className="bn-stack">
           {/* 표 0: BM/SAA 구성 vs AP 실제 */}
           {data.bm_source !== "none" && (() => {
             const isBM = data.bm_source === "BM";
@@ -641,8 +653,13 @@ export default function BrinsonTab({ fundCode }: Props) {
               </tbody>
             </table>
           </div>
+      </div>
 
-          {/* 표 2: Brinson 분석 (자산군별 Alloc/Select/Cross) */}
+      {/* 본문 2컬럼: 좌=분석표/워터폴/요인추이, 우=수익률분석(+기간표)/종목 */}
+      <div className="bn-cols">
+        {/* ── 좌 컬럼: Brinson 분석표 → 워터폴 → 요인추이 ── */}
+        <div className="bn-stack">
+          {/* Brinson 분석 (자산군별 Alloc/Select/Cross) */}
           <div className="bn-card bn-sec">
             <div className="bn-head2">
               <h3>Brinson 분석 (Allocation / Selection / Cross)</h3>
@@ -681,47 +698,25 @@ export default function BrinsonTab({ fundCode }: Props) {
             </table>
           </div>
 
-          {/* 종목별 기여수익률 (전체 종목 + 비중 + 정렬) */}
+          {/* 초과성과 요인분해 워터폴 */}
           <div className="bn-card bn-sec">
-            <div className="bn-head2">
-              <h3>종목별 기여수익률</h3>
-            </div>
-            <table className="bn-tbl">
-              <thead>
-                <tr>
-                  <th className="sort" onClick={() => onSecSort("asset_class")}>
-                    자산군{sortGlyph("asset_class")}
-                  </th>
-                  <th className="sort" onClick={() => onSecSort("item_nm")}>
-                    종목명{sortGlyph("item_nm")}
-                  </th>
-                  <th className="r sort" onClick={() => onSecSort("weight_pct")}>
-                    비중{sortGlyph("weight_pct")}
-                  </th>
-                  <th className="r sort" onClick={() => onSecSort("return_pct")}>
-                    수익률{sortGlyph("return_pct")}
-                  </th>
-                  <th className="r sort" onClick={() => onSecSort("contrib_pct")}>
-                    기여수익률{sortGlyph("contrib_pct")}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedSec.map((s, i) => (
-                  <tr key={`${s.item_nm}-${i}`}>
-                    <td>{s.asset_class}</td>
-                    <td>{s.item_nm}</td>
-                    <td className="r">{fmtWeight(s.weight_pct, 2)}</td>
-                    <td className={`r ${rc(s.return_pct)}`}>{fmtPct(s.return_pct)}</td>
-                    <td className={`r b ${rc(s.contrib_pct)}`}>{fmtPct(s.contrib_pct)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <BrinsonWaterfall
+              alloc={data.total_alloc}
+              select={data.total_select}
+              cross={data.total_cross}
+              excess={data.total_excess}
+            />
           </div>
+
+          {/* 요인별 초과수익 누적 추이 */}
+          {hasBm && (
+            <div className="bn-card bn-sec">
+              <BrinsonFactorTrendChart daily={data.daily_brinson} />
+            </div>
+          )}
         </div>
 
-        {/* ── 우 컬럼: 차트 스택 ── */}
+        {/* ── 우 컬럼: 수익률분석(+기간표) → 종목별 기여 ── */}
         <div className="bn-stack">
           {/* 수익률 분석 + 기간별 수익률 표 */}
           <div className="bn-card bn-sec">
@@ -730,6 +725,7 @@ export default function BrinsonTab({ fundCode }: Props) {
               dailyClass={data.daily_class ?? []}
               bmSource={data.bm_source}
               bmComponents={data.bm_components ?? []}
+              height={460}
             />
             <div className="bn-ptbl">
               <div className="t">기간별 수익률</div>
@@ -783,22 +779,44 @@ export default function BrinsonTab({ fundCode }: Props) {
             </div>
           </div>
 
-          {/* 초과성과 요인분해 워터폴 */}
+          {/* 종목별 기여수익률 (전체 종목 + 비중 + 정렬) */}
           <div className="bn-card bn-sec">
-            <BrinsonWaterfall
-              alloc={data.total_alloc}
-              select={data.total_select}
-              cross={data.total_cross}
-              excess={data.total_excess}
-            />
-          </div>
-
-          {/* 요인별 초과수익 누적 추이 */}
-          {data.bm_source !== "none" && (
-            <div className="bn-card bn-sec">
-              <BrinsonFactorTrendChart daily={data.daily_brinson} />
+            <div className="bn-head2">
+              <h3>종목별 기여수익률</h3>
             </div>
-          )}
+            <table className="bn-tbl">
+              <thead>
+                <tr>
+                  <th className="sort" onClick={() => onSecSort("asset_class")}>
+                    자산군{sortGlyph("asset_class")}
+                  </th>
+                  <th className="sort" onClick={() => onSecSort("item_nm")}>
+                    종목명{sortGlyph("item_nm")}
+                  </th>
+                  <th className="r sort" onClick={() => onSecSort("weight_pct")}>
+                    비중{sortGlyph("weight_pct")}
+                  </th>
+                  <th className="r sort" onClick={() => onSecSort("return_pct")}>
+                    수익률{sortGlyph("return_pct")}
+                  </th>
+                  <th className="r sort" onClick={() => onSecSort("contrib_pct")}>
+                    기여수익률{sortGlyph("contrib_pct")}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedSec.map((s, i) => (
+                  <tr key={`${s.item_nm}-${i}`}>
+                    <td>{s.asset_class}</td>
+                    <td>{s.item_nm}</td>
+                    <td className="r">{fmtWeight(s.weight_pct, 2)}</td>
+                    <td className={`r ${rc(s.return_pct)}`}>{fmtPct(s.return_pct)}</td>
+                    <td className={`r b ${rc(s.contrib_pct)}`}>{fmtPct(s.contrib_pct)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </section>

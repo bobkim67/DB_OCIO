@@ -266,6 +266,40 @@ def _to_daily_class_rows(df: pd.DataFrame | None) -> list[BrinsonDailyClassDTO]:
     return out
 
 
+@lru_cache(maxsize=256)
+def _rf_annual_pct(start_yyyymmdd: str, end_yyyymmdd: str) -> float | None:
+    """기간(start~end) 무위험 연율화수익률(%) — KIS CD Index 총수익(결과6 v3 동일).
+
+    `compute_rf_annualized_metrics` 의 '누적'(= start 기준) 과 동일한 v3 기하연율화
+    `(P_end/P_start)^(365.25/days) − 1` 를 직접 계산. 단, 시작일이 RF 첫 데이터일보다
+    이르면(예: 펀드 inception 직후) 내부 load 가 start 이상만 가져와 start 가격 lookup 이
+    NaN → nan 이 되는 문제를 피하려 **30일 버퍼 load 후 ffill lookup**. (동일 기간 값 일치 검증)
+    RF 시계열 로드 실패/결측 시 None (프론트 샤프비율은 rf=0 안전 처리). 캐시 키 (start, end).
+    """
+    try:
+        from modules.data_loader import load_rf_index_from_db
+        start_dt = pd.Timestamp(start_yyyymmdd)
+        end_dt = pd.Timestamp(end_yyyymmdd)
+        buf_start = (start_dt - pd.Timedelta(days=30)).strftime("%Y%m%d")
+        df = load_rf_index_from_db(buf_start, end_yyyymmdd)
+        if df is None or df.empty:
+            return None
+        s = df.set_index("기준일자")["기준가"].sort_index()
+
+        def _at(d: pd.Timestamp) -> float:
+            sub = s[s.index <= d]
+            return float(sub.iloc[-1]) if len(sub) else float("nan")
+
+        p0, p1 = _at(start_dt), _at(end_dt)
+        days = (end_dt - start_dt).days
+        if not (p0 > 0) or days <= 0 or p1 != p1:  # p1!=p1 → NaN
+            return None
+        ann = (1.0 + (p1 / p0 - 1.0)) ** (365.25 / days) - 1.0
+        return round(ann * 100, 4)
+    except Exception:
+        return None
+
+
 def _build_bm_meta(fund_code: str, method: str, as_of=None,
                    saa_mode: str = "auto", start_yyyymmdd=None):
     """item4/5: BM(FUND_BM) / SAA 벤치마크(DB 인덱스) / proxy / SAA(MP 목표비중) 구성.
@@ -426,6 +460,9 @@ def build_brinson(
     if start_date >= end_date:
         raise ValueError("start_date must be earlier than end_date")
 
+    # 무위험 연율화수익률(%) — 샤프비율(프론트)용. 실패 시 None.
+    rf_annual = _rf_annual_pct(_to_yyyymmdd(start_date), _to_yyyymmdd(end_date))
+
     # 기간 종료일 기준 적용 리밸런싱(SAA DB) 으로 BM/SAA 구성 결정. proxy 면 안전자산 분해.
     bm_source, bm_components, _saa = _build_bm_meta(
         fund_code, method, _to_yyyymmdd(end_date),
@@ -479,6 +516,7 @@ def build_brinson(
             total_excess_relative=0.0,
             fx_contrib=0.0,
             residual=0.0,
+            rf_annual=rf_annual,
             bm_source=bm_source,
             bm_components=bm_components,
             asset_rows=[],
@@ -561,6 +599,7 @@ def build_brinson(
         total_excess_relative=float(raw.get("total_excess_relative", 0.0) or 0.0),
         fx_contrib=float(raw.get("fx_contrib", 0.0) or 0.0),
         residual=float(raw.get("residual", 0.0) or 0.0),
+        rf_annual=rf_annual,
         bm_source=bm_source,
         bm_components=bm_components,
         asset_rows=_to_asset_rows(pa_df),

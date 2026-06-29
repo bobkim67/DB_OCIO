@@ -60,12 +60,13 @@ interface Props {
   dailyClass: BrinsonDailyClassDTO[];
   bmSource: string; // "BM" | "SAA" | "none"
   bmComponents: BrinsonBmComponentDTO[];
+  height?: number; // 차트 높이(px). 기본 340 (전체/Selection), Allocation 이중축은 +60.
 }
 
 const plotConfig = { displayModeBar: false, responsive: true } as const;
 const legendCfg = { orientation: "h", x: 0, y: 1.08, xanchor: "left", yanchor: "bottom", font: { size: 11 } } as const;
 
-export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmComponents }: Props) {
+export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmComponents, height = 340 }: Props) {
   const classes = useMemo(() => {
     const set = new Set(dailyClass.map((r) => r.asset_class));
     return [...set].sort((a, b) => (ORDER_MAP.get(a) ?? 99) - (ORDER_MAP.get(b) ?? 99));
@@ -216,7 +217,7 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
 
   // 전체 모드용 단순 레이아웃
   const baseLayout = (yTitle: string, rangeTo100?: boolean): Partial<Plotly.Layout> => ({
-    autosize: true, height: 340, margin: { t: 28, r: 16, b: 36, l: 52 },
+    autosize: true, height, margin: { t: 28, r: 16, b: 36, l: 52 },
     xaxis: { title: { text: "" }, type: "date" },
     yaxis: {
       title: { text: yTitle }, ticksuffix: "%", hoverformat: ".2f",
@@ -235,7 +236,7 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
     : [undefined, undefined];
 
   const dualLayout: Partial<Plotly.Layout> = {
-    autosize: true, height: 400, margin: { t: 28, r: 60, b: 36, l: 56 },
+    autosize: true, height: height + 60, margin: { t: 28, r: 60, b: 36, l: 56 },
     xaxis: { title: { text: "" }, type: "date" },
     yaxis: {
       title: { text: `AP−${BM} 비중차 (%p)` }, ticksuffix: "%",

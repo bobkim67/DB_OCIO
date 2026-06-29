@@ -927,6 +927,8 @@ export interface components {
             fx_contrib: number;
             /** Residual */
             residual: number;
+            /** Rf Annual */
+            rf_annual?: number | null;
             /** Bm Source */
             bm_source: string;
             /** Bm Components */

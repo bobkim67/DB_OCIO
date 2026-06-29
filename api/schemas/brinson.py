@@ -108,6 +108,8 @@ class BrinsonResponseDTO(BaseModel):
     total_excess_relative: float
     fx_contrib: float
     residual: float
+    # 무위험 연율화수익률 (%, KIS CD Index 총수익) — 샤프비율 계산용. 로드 실패 시 None.
+    rf_annual: float | None = None
     # BM/SAA 구성 (item4: BM 셋팅 vs AP 비교 표). bm_source: "BM"|"SAA"|"none"
     bm_source: str
     bm_components: list[BrinsonBmComponentDTO]
