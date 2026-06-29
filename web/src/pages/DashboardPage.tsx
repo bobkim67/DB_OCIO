@@ -6,7 +6,6 @@ import OverviewTab from "../tabs/OverviewTab";
 import HoldingsTab from "../tabs/HoldingsTab";
 import TransactionsTab from "../tabs/TransactionsTab";
 import BrinsonTab from "../tabs/BrinsonTab";
-import MacroTab from "../tabs/MacroTab";
 import ReportTab from "../tabs/ReportTab";
 import AdminTab from "../tabs/AdminTab";
 
@@ -15,7 +14,6 @@ type TabKey =
   | "holdings"
   | "transactions"
   | "brinson"
-  | "macro"
   | "report"
   | "admin";
 
@@ -94,7 +92,6 @@ export default function DashboardPage() {
         {tabBtn("holdings", "편입종목")}
         {tabBtn("transactions", "거래내역")}
         {tabBtn("brinson", "성과분석")}
-        {tabBtn("macro", "Macro")}
         {tabBtn("report", "운용보고")}
         {tabBtn("admin", "Admin")}
       </div>
@@ -107,8 +104,6 @@ export default function DashboardPage() {
         <TransactionsTab fundCode={selected} />
       ) : tab === "brinson" ? (
         <BrinsonTab fundCode={selected} />
-      ) : tab === "macro" ? (
-        <MacroTab />
       ) : tab === "report" ? (
         <ReportTab fundCode={selected} />
       ) : (
