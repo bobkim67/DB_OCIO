@@ -105,6 +105,7 @@ export type BrinsonPaMethod = "8" | "5";
 
 // === Transactions (거래내역 탭) ===
 export type TransactionRowDTO = S["TransactionRowDTO"];
+export type CashflowRowDTO = S["CashflowRowDTO"];
 export type TransactionsResponseDTO = S["TransactionsResponseDTO"];
 export type WeightHistoryPointDTO = S["WeightHistoryPointDTO"];
 export type WeightMarkerDTO = S["WeightMarkerDTO"];

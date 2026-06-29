@@ -949,6 +949,15 @@ export interface components {
             /** Contrib Pct */
             contrib_pct: number;
         };
+        /** CashflowRowDTO */
+        CashflowRowDTO: {
+            /** Date */
+            date: string;
+            /** Side */
+            side: string;
+            /** Amount Eok */
+            amount_eok: number;
+        };
         /**
          * ClaimCitationDTO
          * @description 코멘트 본문 `[claim:hash]` inline 인용 → research claim store 해석 1건.
@@ -2080,6 +2089,11 @@ export interface components {
             end_date: string;
             /** Rows */
             rows: components["schemas"]["TransactionRowDTO"][];
+            /**
+             * Cashflows
+             * @default []
+             */
+            cashflows: components["schemas"]["CashflowRowDTO"][];
         };
         /** ValidationError */
         ValidationError: {

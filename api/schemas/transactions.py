@@ -12,6 +12,12 @@ class TransactionRowDTO(BaseModel):
     amount_eok: float       # 거래금액 (억원)
 
 
+class CashflowRowDTO(BaseModel):
+    date: str               # YYYY-MM-DD
+    side: str               # 설정 (자금 유입) / 해지 (자금 유출)
+    amount_eok: float       # 금액(억, 양수)
+
+
 class TransactionsResponseDTO(BaseModel):
     meta: BaseMeta
     fund_code: str
@@ -20,6 +26,8 @@ class TransactionsResponseDTO(BaseModel):
     start_date: str                 # YYYY-MM-DD
     end_date: str                   # YYYY-MM-DD
     rows: list[TransactionRowDTO]
+    # 펀드 설정/해지 현금흐름 (DWPM12880, 부모펀드 기준). 세부내역 표에 합류.
+    cashflows: list[CashflowRowDTO] = []
 
 
 class WeightHistoryPointDTO(BaseModel):

@@ -51,11 +51,11 @@ const TXN_PRESETS: { key: TxnPreset; label: string }[] = [
   { key: "custom", label: "직접 지정" },
 ];
 
-// 매수/매도/기타 → 손익 색 클래스 (ACE 토큰)
+// 매수/매도/설정/해지/기타 → 손익 색 클래스 (ACE 토큰). 설정=유입(up), 해지=유출(dn)
 const sideClass = (side: string) =>
-  side.includes("매수") || side.includes("발행")
+  side.includes("매수") || side.includes("발행") || side.includes("설정")
     ? "up"
-    : side.includes("매도") || side.includes("환매")
+    : side.includes("매도") || side.includes("환매") || side.includes("해지")
       ? "dn"
       : "muted";
 
@@ -225,11 +225,37 @@ export default function TransactionsTab({ fundCode }: Props) {
     [sortedRows, detailAsset],
   );
 
+  // 세부내역 = 거래 + 펀드 설정/해지 현금흐름(자산군 필터 없을 때만). 날짜 내림차순 병합.
+  // 설정/해지는 자산군 무관(부모펀드 자금 유출입)이라 자산군 필터 적용 시 제외.
+  type DetailEntry = {
+    date: string; fund_code: string; asset_class: string;
+    item_nm: string; side: string; amount_eok: number; kind: "trade" | "cashflow";
+  };
+  const detailEntries = useMemo<DetailEntry[]>(() => {
+    const tr: DetailEntry[] = filteredDetailRows.map((r) => ({
+      date: r.date, fund_code: r.fund_code, asset_class: r.asset_class,
+      item_nm: r.item_nm, side: r.side, amount_eok: r.amount_eok, kind: "trade",
+    }));
+    const cf: DetailEntry[] = detailAsset
+      ? []
+      : (txnQ.data?.cashflows ?? []).map((c) => ({
+          date: c.date.replace(/-/g, ""), fund_code: fundCode, asset_class: "설정/해지",
+          item_nm: c.side === "설정" ? "펀드 설정 (자금 유입)" : "펀드 해지 (자금 유출)",
+          side: c.side, amount_eok: c.amount_eok, kind: "cashflow",
+        }));
+    return [...tr, ...cf].sort((a, b) => {
+      const da = a.date.replace(/-/g, ""), db = b.date.replace(/-/g, "");
+      if (da !== db) return db < da ? -1 : 1; // 최신 우선
+      if (a.kind !== b.kind) return a.kind === "cashflow" ? -1 : 1; // 같은 날 현금흐름 먼저
+      return a.item_nm < b.item_nm ? -1 : 1;
+    });
+  }, [filteredDetailRows, txnQ.data, detailAsset, fundCode]);
+
   // 요약 표 높이(좌) + 세부내역 표 전체 높이(우) 측정 — 데이터 변경 시 재측정.
   useLayoutEffect(() => {
     if (summaryBoxRef.current) setSummaryH(summaryBoxRef.current.offsetHeight);
     if (detailTableRef.current) setDetailFullH(detailTableRef.current.offsetHeight);
-  }, [txnSummary, filteredDetailRows, level]);
+  }, [txnSummary, detailEntries, level]);
 
   // ---- 기간 전환 등으로 재계산이 길어질 때(>350ms) 로딩 플래시 ----
   // 설정후(inception~) 는 데이터가 많아 4~5초 걸려 → 빠른 전환엔 안 깜빡이게 디바운스.
@@ -382,7 +408,12 @@ export default function TransactionsTab({ fundCode }: Props) {
             {/* 우: 세부내역 (일별 거래 상세, 날짜 내림차순) */}
             <div>
               <div className="tx-coltitle">
-                세부내역 ({filteredDetailRows.length}건)
+                세부내역 ({detailEntries.length}건)
+                {!detailAsset && (txnQ.data?.cashflows?.length ?? 0) > 0 && (
+                  <span className="muted" style={{ fontWeight: 400, marginLeft: 6 }}>
+                    · 설정/해지 {txnQ.data?.cashflows?.length}건 포함
+                  </span>
+                )}
                 <select className="tx-flt" value={detailAsset}
                   onChange={(e) => setDetailAsset(e.target.value)} title="자산군 필터">
                   <option value="">자산군 전체</option>
@@ -407,8 +438,8 @@ export default function TransactionsTab({ fundCode }: Props) {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredDetailRows.map((r, i) => (
-                      <tr key={i}>
+                    {detailEntries.map((r, i) => (
+                      <tr key={i} className={r.kind === "cashflow" ? "tx-cfrow" : undefined}>
                         <td className="l muted">{fmtD(r.date)}</td>
                         {showFundCol && <td>{r.fund_code}</td>}
                         <td className="l">{r.asset_class}</td>

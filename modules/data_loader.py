@@ -4600,26 +4600,39 @@ def load_fund_total_return_index(fund_code: str, start_date: str,
 
 def load_fund_cashflow_markers(fund_code: str, start_date: str,
                                end_date: str) -> list:
-    """펀드 설정/해지(순설정금액 DWPM12880) 마커 — 자산군 '전체' 차트 현금 유출입.
+    """펀드 설정/해지(DWPM12880) 현금흐름 — 자산군 '전체' 차트 + 거래내역 세부.
 
-    설정(자금 유입, +)/해지(자금 유출, −). 0.005억 미만(반올림 0)은 노이즈로 제외.
-    Returns: list[{date, side('설정'|'해지'), amount(억, 양수)}]
+    방향은 **tr_cd** 로 판별 (ocpy_flct_amt 는 항상 양수 magnitude):
+      A010=설정(자금 유입) / A030 일부해지·A230 외화일부해지=해지(자금 유출).
+    같은 날·같은 방향 합산. 0.005억 미만(반올림 0)은 노이즈로 제외.
+    Returns: list[{date, side('설정'|'해지'), amount(억, 양수)}] (날짜·설정먼저 정렬)
     """
     s8 = str(start_date).replace('-', '')
     e8 = str(end_date).replace('-', '')
-    df = _load_net_subscription(fund_code, s8, e8)
+    conn = get_pandas_connection('dt')
+    try:
+        df = pd.read_sql(
+            """
+            SELECT tr_dt, tr_cd, SUM(ocpy_flct_amt) AS amt
+            FROM DWPM12880
+            WHERE fund_cd = %s AND tr_dt >= %s AND tr_dt <= %s
+            GROUP BY tr_dt, tr_cd
+            """, conn, params=[fund_code, s8, e8])
+    finally:
+        conn.close()
     if df is None or df.empty:
         return []
+    df['side'] = df['tr_cd'].map(lambda c: '설정' if str(c).strip() == 'A010' else '해지')
+    g = df.groupby(['tr_dt', 'side'])['amt'].sum().reset_index()
     out = []
-    for _, r in df.iterrows():
-        amt = float(r['net_subscription'])
-        eok = round(abs(amt) / 1e8, 2)
+    for _, r in g.iterrows():
+        eok = round(float(r['amt']) / 1e8, 2)
         if eok == 0:
             continue
         ds = str(r['tr_dt'])
         date_iso = f"{ds[:4]}-{ds[4:6]}-{ds[6:8]}" if len(ds) == 8 else ds
-        out.append({'date': date_iso,
-                    'side': '설정' if amt > 0 else '해지', 'amount': eok})
+        out.append({'date': date_iso, 'side': str(r['side']), 'amount': eok})
+    out.sort(key=lambda x: (x['date'], 0 if x['side'] == '설정' else 1))
     return out
 
 

@@ -52,6 +52,8 @@
 .tx-tbl th.l, .tx-tbl td.l { text-align: left; }
 .tx-tbl td { padding: 7px 12px; border-top: 1px solid #F4F6F8; text-align: right; white-space: nowrap; }
 .tx-tbl tr.tot td { font-weight: 800; border-top: 1.5px solid var(--ace-line-2); background: var(--ace-surface-2); }
+/* 설정/해지 현금흐름 행 — 거래와 시각 구분(옅은 음영) */
+.tx-tbl tr.tx-cfrow td { background: #FBFAF5; font-style: italic; }
 .tx-tbl thead.sticky th { position: sticky; top: 0; z-index: 1; }
 
 /* 차트 */

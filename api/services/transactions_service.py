@@ -4,6 +4,7 @@ from config.funds import FUND_LIST, FUND_META
 
 from ..schemas.meta import BaseMeta, SourceBreakdown
 from ..schemas.transactions import (
+    CashflowRowDTO,
     FxForeignWeightPointDTO,
     FxPositionPointDTO,
     FxPositionResponseDTO,
@@ -41,7 +42,10 @@ def build_transactions(
         raise KeyError(fund_code)
 
     # 지연 import (무거운 modules.data_loader 의존성 격리, 다른 서비스 동일 패턴)
-    from modules.data_loader import load_fund_trades_lookthrough
+    from modules.data_loader import (
+        load_fund_cashflow_markers,
+        load_fund_trades_lookthrough,
+    )
 
     warnings: list[str] = []
     rows: list[TransactionRowDTO] = []
@@ -83,6 +87,16 @@ def build_transactions(
     if not rows:
         warnings.append("해당 기간 거래내역 없음")
 
+    # 펀드 설정/해지 현금흐름 (부모펀드 기준 — 투자자 자금 유출입). 실패해도 거래내역은 반환.
+    cashflows: list[CashflowRowDTO] = []
+    try:
+        for cf in load_fund_cashflow_markers(fund_code, start_date, end_date):
+            cashflows.append(CashflowRowDTO(
+                date=str(cf["date"]), side=str(cf["side"]),
+                amount_eok=float(cf["amount"])))
+    except Exception as exc:
+        warnings.append(f"설정/해지 로드 실패: {type(exc).__name__}")
+
     return TransactionsResponseDTO(
         meta=BaseMeta(
             source="db",
@@ -97,6 +111,7 @@ def build_transactions(
         start_date=start_date,
         end_date=end_date,
         rows=rows,
+        cashflows=cashflows,
     )
 
 
