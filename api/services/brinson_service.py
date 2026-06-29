@@ -267,13 +267,14 @@ def _to_daily_class_rows(df: pd.DataFrame | None) -> list[BrinsonDailyClassDTO]:
 
 
 @lru_cache(maxsize=256)
-def _rf_annual_pct(start_yyyymmdd: str, end_yyyymmdd: str) -> float | None:
-    """기간(start~end) 무위험 연율화수익률(%) — KIS CD Index 총수익(결과6 v3 동일).
+def _rf_period_pct(start_yyyymmdd: str, end_yyyymmdd: str) -> float | None:
+    """기간(start~end) 무위험 누적수익률(%) — KIS CD Index 총수익.
 
-    `compute_rf_annualized_metrics` 의 '누적'(= start 기준) 과 동일한 v3 기하연율화
-    `(P_end/P_start)^(365.25/days) − 1` 를 직접 계산. 단, 시작일이 RF 첫 데이터일보다
-    이르면(예: 펀드 inception 직후) 내부 load 가 start 이상만 가져와 start 가격 lookup 이
-    NaN → nan 이 되는 문제를 피하려 **30일 버퍼 load 후 ffill lookup**. (동일 기간 값 일치 검증)
+    `(P_end/P_start − 1)` 의 '기간(누적) 수익률' 을 반환한다. **연율화는 하지 않는다** —
+    프론트(brinsonMetrics.ts)가 AP/BM 과 동일한 252영업일 기준(`^(252/n)`)으로 연율화해
+    샤프비율 분자/분모 기준을 통일하기 위함(이전 365.25 캘린더 연율화는 분자만 달라 불일치).
+    시작일이 RF 첫 데이터일보다 이르면(예: 펀드 inception 직후) 내부 load 가 start 이상만
+    가져와 start 가격 lookup 이 NaN 이 되는 문제를 피하려 **30일 버퍼 load 후 ffill lookup**.
     RF 시계열 로드 실패/결측 시 None (프론트 샤프비율은 rf=0 안전 처리). 캐시 키 (start, end).
     """
     try:
@@ -294,8 +295,7 @@ def _rf_annual_pct(start_yyyymmdd: str, end_yyyymmdd: str) -> float | None:
         days = (end_dt - start_dt).days
         if not (p0 > 0) or days <= 0 or p1 != p1:  # p1!=p1 → NaN
             return None
-        ann = (1.0 + (p1 / p0 - 1.0)) ** (365.25 / days) - 1.0
-        return round(ann * 100, 4)
+        return round((p1 / p0 - 1.0) * 100, 4)
     except Exception:
         return None
 
@@ -460,8 +460,8 @@ def build_brinson(
     if start_date >= end_date:
         raise ValueError("start_date must be earlier than end_date")
 
-    # 무위험 연율화수익률(%) — 샤프비율(프론트)용. 실패 시 None.
-    rf_annual = _rf_annual_pct(_to_yyyymmdd(start_date), _to_yyyymmdd(end_date))
+    # 무위험 기간 누적수익률(%) — 샤프비율(프론트에서 252d 연율화)용. 실패 시 None.
+    rf_period = _rf_period_pct(_to_yyyymmdd(start_date), _to_yyyymmdd(end_date))
 
     # 기간 종료일 기준 적용 리밸런싱(SAA DB) 으로 BM/SAA 구성 결정. proxy 면 안전자산 분해.
     bm_source, bm_components, _saa = _build_bm_meta(
@@ -516,7 +516,7 @@ def build_brinson(
             total_excess_relative=0.0,
             fx_contrib=0.0,
             residual=0.0,
-            rf_annual=rf_annual,
+            rf_period=rf_period,
             bm_source=bm_source,
             bm_components=bm_components,
             asset_rows=[],
@@ -599,7 +599,7 @@ def build_brinson(
         total_excess_relative=float(raw.get("total_excess_relative", 0.0) or 0.0),
         fx_contrib=float(raw.get("fx_contrib", 0.0) or 0.0),
         residual=float(raw.get("residual", 0.0) or 0.0),
-        rf_annual=rf_annual,
+        rf_period=rf_period,
         bm_source=bm_source,
         bm_components=bm_components,
         asset_rows=_to_asset_rows(pa_df),

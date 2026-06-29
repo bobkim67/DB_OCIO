@@ -5,7 +5,9 @@ import type { BrinsonDailyPointDTO } from "../api/endpoints";
  *
  * KPI(연환산 인라인)와 위험지표 스트립(BrinsonMetricsPanel)이 동일 소스를 쓰도록 추출.
  * 252 영업일 기준 일별 시계열 파생값(R 주간 연율화와 방법 다름 → '일별 기준' 명시).
- * 샤프비율 = (연율화수익 − RF연율) / 연율화변동성 (RF 는 백엔드 rf_annual, %).
+ * 샤프비율 = (연율화수익 − RF연율) / 연율화변동성. RF 는 백엔드가 '기간 누적수익률'
+ * (rf_period, %)을 주면 여기서 AP/BM 과 동일한 252d 공식(^(252/n))으로 연율화 → 분자/분모
+ * 연율화 기준을 통일(이전엔 RF 만 365.25 캘린더 연율화라 혼재).
  */
 const TD = 252;
 
@@ -53,9 +55,9 @@ export interface BrinsonMetrics {
   bmMdd: number;
   te: number;              // 트래킹에러 (%)
   ir: number;              // 정보비율
-  apSharpe: number;        // (apAnnRet − rf) / apVol
+  apSharpe: number;        // (apAnnRet − rfAnn) / apVol
   bmSharpe: number;
-  rfAnnual: number;        // 무위험 연율(%) — null 시 0
+  rfAnnual: number;        // 무위험 연율(%, 252d 기준으로 연율화) — null 시 0
 }
 
 const EMPTY: BrinsonMetrics = {
@@ -66,7 +68,7 @@ const EMPTY: BrinsonMetrics = {
 
 export function computeBrinsonMetrics(
   daily: BrinsonDailyPointDTO[],
-  rfAnnualPct?: number | null,
+  rfPeriodPct?: number | null,
 ): BrinsonMetrics {
   if (!daily || daily.length < 2) return EMPTY;
   const n = daily.length;
@@ -88,8 +90,9 @@ export function computeBrinsonMetrics(
   const annExcess = apAnnRet - bmAnnRet;
   const ir = te > 1e-9 ? annExcess / te : NaN;
 
-  // 샤프 = (연율화수익 − RF연율) / 연율화변동성. RF 결측 시 0 (안전 처리).
-  const rf = rfAnnualPct ?? 0;
+  // 샤프 = (연율화수익 − RF연율) / 연율화변동성. RF 는 '기간 누적수익률' 을 AP/BM 과 동일한
+  // 252d 공식으로 연율화(annReturn)해 분자/분모 기준 통일. RF 결측 시 0 (안전 처리).
+  const rf = rfPeriodPct != null ? annReturn(rfPeriodPct, n) : 0;
   const apSharpe = apVol > 1e-9 ? (apAnnRet - rf) / apVol : NaN;
   const bmSharpe = bmVol > 1e-9 ? (bmAnnRet - rf) / bmVol : NaN;
 

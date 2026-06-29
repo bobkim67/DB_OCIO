@@ -322,7 +322,7 @@ export default function BrinsonTab({ fundCode }: Props) {
 
   // 위험조정 지표(연환산·샤프 등) — KPI 연환산 인라인과 위험지표 스트립이 동일 소스 사용.
   const hasBm = data.bm_source !== "none";
-  const metrics = computeBrinsonMetrics(data.daily_brinson, data.rf_annual);
+  const metrics = computeBrinsonMetrics(data.daily_brinson, data.rf_period);
 
   return (
     <section className="bn-root">
@@ -468,7 +468,7 @@ export default function BrinsonTab({ fundCode }: Props) {
       {/* 위험지표 (전폭 카드) */}
       {metrics.valid && (
         <div className="bn-card">
-          <BrinsonMetricsPanel daily={data.daily_brinson} hasBm={hasBm} rfAnnual={data.rf_annual} />
+          <BrinsonMetricsPanel daily={data.daily_brinson} hasBm={hasBm} rfPeriod={data.rf_period} />
         </div>
       )}
 

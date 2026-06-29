@@ -108,8 +108,11 @@ class BrinsonResponseDTO(BaseModel):
     total_excess_relative: float
     fx_contrib: float
     residual: float
-    # 무위험 연율화수익률 (%, KIS CD Index 총수익) — 샤프비율 계산용. 로드 실패 시 None.
-    rf_annual: float | None = None
+    # 무위험 기간(start~end) 누적수익률 (%, KIS CD Index 총수익) — 샤프비율 계산용.
+    # 프론트가 AP/BM 연율화(252영업일 기준)와 동일 공식으로 연율화하도록 '기간수익률'을
+    # 그대로 전달 (이전 rf_annual 은 365.25 캘린더 연율화라 분자/분모 기준 불일치였음).
+    # 로드 실패 시 None.
+    rf_period: float | None = None
     # BM/SAA 구성 (item4: BM 셋팅 vs AP 비교 표). bm_source: "BM"|"SAA"|"none"
     bm_source: str
     bm_components: list[BrinsonBmComponentDTO]

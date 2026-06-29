@@ -24,11 +24,11 @@ function fmtNum(v: number, digits = 2): string {
 interface Props {
   daily: BrinsonDailyPointDTO[];
   hasBm: boolean;
-  rfAnnual?: number | null;
+  rfPeriod?: number | null;
 }
 
-export default function BrinsonMetricsPanel({ daily, hasBm, rfAnnual }: Props) {
-  const m = computeBrinsonMetrics(daily, rfAnnual);
+export default function BrinsonMetricsPanel({ daily, hasBm, rfPeriod }: Props) {
+  const m = computeBrinsonMetrics(daily, rfPeriod);
   if (!m.valid) return null;
 
   return (
