@@ -72,23 +72,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/macro/timeseries": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Macro Timeseries */
-        get: operations["get_macro_timeseries_api_macro_timeseries_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/admin/evidence-quality": {
         parameters: {
             query?: never;
@@ -1735,37 +1718,6 @@ export interface components {
             /** Source Consistency Note */
             source_consistency_note?: string | null;
         };
-        /** MacroPointDTO */
-        MacroPointDTO: {
-            /**
-             * Date
-             * Format: date
-             */
-            date: string;
-            /** Value */
-            value: number;
-        };
-        /** MacroSeriesDTO */
-        MacroSeriesDTO: {
-            /** Key */
-            key: string;
-            /** Label */
-            label: string;
-            /**
-             * Unit
-             * @default raw
-             * @enum {string}
-             */
-            unit: "pct" | "bp" | "idx" | "ratio" | "krw" | "usd" | "raw";
-            /** Points */
-            points: components["schemas"]["MacroPointDTO"][];
-        };
-        /** MacroTimeseriesResponseDTO */
-        MacroTimeseriesResponseDTO: {
-            meta: components["schemas"]["BaseMeta"];
-            /** Series */
-            series: components["schemas"]["MacroSeriesDTO"][];
-        };
         /** MetricCardDTO */
         MetricCardDTO: {
             /** Key */
@@ -2137,6 +2089,10 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
         /**
          * ValidationSummaryDTO
@@ -2545,38 +2501,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HoldingsResponseDTO"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_macro_timeseries_api_macro_timeseries_get: {
-        parameters: {
-            query?: {
-                keys?: string[] | null;
-                start?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MacroTimeseriesResponseDTO"];
                 };
             };
             /** @description Validation Error */

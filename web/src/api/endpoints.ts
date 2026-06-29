@@ -36,11 +36,6 @@ export type EquityFocusDTO = S["EquityFocusDTO"];
 export type ComplianceItemDTO = S["ComplianceItemDTO"];
 export type HoldingsResponseDTO = S["HoldingsResponseDTO"];
 
-// === Macro ===
-export type MacroPointDTO = S["MacroPointDTO"];
-export type MacroSeriesDTO = S["MacroSeriesDTO"];
-export type MacroTimeseriesResponseDTO = S["MacroTimeseriesResponseDTO"];
-
 // === Admin ===
 export type AdminEvidenceQualityRowDTO = S["AdminEvidenceQualityRowDTO"];
 export type AdminEvidenceQualityResponseDTO = S["AdminEvidenceQualityResponseDTO"];
@@ -153,19 +148,6 @@ export const fetchHoldings = async (
   if (asOfDate) params.as_of_date = asOfDate;
   const r = await api.get<HoldingsResponseDTO>(
     `/funds/${code}/holdings`,
-    { params },
-  );
-  return r.data;
-};
-
-export const fetchMacro = async (
-  keys: string[],
-  start?: string,
-): Promise<MacroTimeseriesResponseDTO> => {
-  const params: Record<string, string> = { keys: keys.join(",") };
-  if (start) params.start = start;
-  const r = await api.get<MacroTimeseriesResponseDTO>(
-    "/macro/timeseries",
     { params },
   );
   return r.data;
