@@ -5,6 +5,7 @@ import App from "./App";
 import "./styles/tokens.css";
 import "./styles/overview.css";
 import "./styles/holdings.css";
+import "./styles/transactions.css";
 
 const queryClient = new QueryClient({
   defaultOptions: {

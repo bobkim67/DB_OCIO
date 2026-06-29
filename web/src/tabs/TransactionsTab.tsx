@@ -42,25 +42,22 @@ function startOfYear(): Date {
 type TxnPreset = "MTD" | "1M" | "3M" | "6M" | "YTD" | "since" | "custom";
 
 const TXN_PRESETS: { key: TxnPreset; label: string }[] = [
-  { key: "MTD", label: "당월(MTD)" },
-  { key: "1M", label: "직전 1개월" },
-  { key: "3M", label: "직전 3개월" },
-  { key: "6M", label: "직전 6개월" },
+  { key: "MTD", label: "당월" },
+  { key: "1M", label: "1개월" },
+  { key: "3M", label: "3개월" },
+  { key: "6M", label: "6개월" },
   { key: "YTD", label: "연초이후" },
   { key: "since", label: "설정후" },
   { key: "custom", label: "직접 지정" },
 ];
 
-const BUY_COLOR = "#EF553B"; // 매수 빨강
-const SELL_COLOR = "#636EFA"; // 매도 파랑
-const NEUTRAL_COLOR = "#6b7280"; // 기타(코드 없음) 회색
-
-const sideColor = (side: string) =>
+// 매수/매도/기타 → 손익 색 클래스 (ACE 토큰)
+const sideClass = (side: string) =>
   side.includes("매수") || side.includes("발행")
-    ? BUY_COLOR
+    ? "up"
     : side.includes("매도") || side.includes("환매")
-      ? SELL_COLOR
-      : NEUTRAL_COLOR;
+      ? "dn"
+      : "muted";
 
 // 자산군 정렬 순서 (거래내역 asset_class 값 기준). 미정의는 뒤로(99).
 const ASSET_ORDER: Record<string, number> = {
@@ -189,10 +186,9 @@ export default function TransactionsTab({ fundCode }: Props) {
     }
     return { buySum: buy, sellSum: sell };
   }, [txnRows]);
+  const net = buySum - sellSum;
 
   // 종목별/자산군별 매수·매도·순매수 (기간 합계) — 마스터 토글 기준.
-  // 합계 의미는 위 한 줄 요약과 동일(매수/매도만, BA정산·환전 제외)하여 총계가 일치한다.
-  // 정렬: 자산군 순서 → 자산군 내 순매수 내림차순.
   const txnSummary = useMemo(() => {
     const map = new Map<string, { asset: string; buy: number; sell: number }>();
     for (const r of txnRows) {
@@ -213,7 +209,7 @@ export default function TransactionsTab({ fundCode }: Props) {
       });
   }, [txnRows, level]);
 
-  // 세부내역 자산군 필터: 옵션(자산군순) + 필터 적용 행. 선택 자산군이 사라지면 전체로 리셋.
+  // 세부내역 자산군 필터: 옵션(자산군순) + 필터 적용 행.
   const detailAssetOptions = useMemo(() => {
     const set = new Set(txnRows.map((r) => r.asset_class));
     return [...set].sort((a, b) => (ASSET_ORDER[a] ?? 99) - (ASSET_ORDER[b] ?? 99));
@@ -232,156 +228,147 @@ export default function TransactionsTab({ fundCode }: Props) {
     if (detailTableRef.current) setDetailFullH(detailTableRef.current.offsetHeight);
   }, [txnSummary, filteredDetailRows, level]);
 
+  // ---- 기간 전환 등으로 재계산이 길어질 때(>350ms) 로딩 플래시 ----
+  // 설정후(inception~) 는 데이터가 많아 4~5초 걸려 → 빠른 전환엔 안 깜빡이게 디바운스.
+  const anyFetching =
+    txnQ.isFetching || whQ.isFetching || fxQ.isFetching ||
+    secQ.isFetching || assetRetQ.isFetching || secRetQ.isFetching;
+  const [showLoading, setShowLoading] = useState(false);
+  useEffect(() => {
+    if (!anyFetching) { setShowLoading(false); return; }
+    const t = setTimeout(() => setShowLoading(true), 350);
+    return () => clearTimeout(t);
+  }, [anyFetching]);
+
   const isFofTxn = txnQ.data?.lookthrough_applied ?? false;
   const showFundCol = isFofTxn;
   const fmtD = (d: string) =>
     d.length === 8 ? `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}` : d;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      {/* ============ 마스터 컨트롤: 기준(자산군↔종목) + 기간 (공통 적용) ============ */}
-      <div
-        style={{
-          display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
-          padding: "8px 10px", background: "#f9fafb",
-          border: "1px solid #e5e7eb", borderRadius: 6,
-        }}
-      >
-        <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>기준</span>
-        <div style={{ display: "inline-flex", border: "1px solid #d1d5db", borderRadius: 4, overflow: "hidden" }}>
-          {(["asset", "security"] as WeightHistoryLevel[]).map((lv) => (
+    <div className="tx-root">
+      {showLoading && (
+        <div className="tx-flash"><span className="tx-spin" />데이터 불러오는 중…</div>
+      )}
+      {/* ============ 컨트롤: 기준(자산군↔종목) + 기간 + 직접지정 ============ */}
+      <div className="tx-card">
+        <div className="tx-ctrl">
+          <span className="lab">기준</span>
+          <div className="tx-seg">
+            {(["asset", "security"] as WeightHistoryLevel[]).map((lv) => (
+              <button key={lv} className={level === lv ? "on" : ""} onClick={() => setLevel(lv)}>
+                {lv === "asset" ? "자산군" : "종목"}
+              </button>
+            ))}
+          </div>
+          <span className="div" />
+          <span className="lab">기간</span>
+          {TXN_PRESETS.map((p) => (
             <button
-              key={lv}
-              onClick={() => setLevel(lv)}
-              style={{
-                fontSize: 12, padding: "5px 14px", border: "none",
-                background: level === lv ? "#2563eb" : "#fff",
-                color: level === lv ? "#fff" : "#374151", cursor: "pointer",
-              }}
+              key={p.key}
+              className={`tx-chip ${preset === p.key ? "on" : ""}`}
+              onClick={() => setPreset(p.key)}
             >
-              {lv === "asset" ? "자산군 기준" : "종목 기준"}
+              {p.label}
             </button>
           ))}
+          {preset === "custom" && (
+            <span className="tx-date">
+              <input
+                type="date" value={customStart} max={customEnd}
+                onChange={(e) => setCustomStart(e.target.value)}
+              />
+              ~
+              <input
+                type="date" value={customEnd} min={customStart}
+                onChange={(e) => setCustomEnd(e.target.value)}
+              />
+            </span>
+          )}
         </div>
+      </div>
 
-        <span style={{ width: 1, height: 20, background: "#e5e7eb", margin: "0 4px" }} />
-        <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>기간</span>
-        {TXN_PRESETS.map((p) => (
-          <label
-            key={p.key}
-            style={{
-              fontSize: 12, padding: "4px 10px",
-              border: "1px solid #e5e7eb", borderRadius: 4,
-              background: preset === p.key ? "#eff6ff" : "#fff", cursor: "pointer",
-            }}
-          >
-            <input
-              type="radio"
-              name="txn-preset"
-              checked={preset === p.key}
-              onChange={() => setPreset(p.key)}
-              style={{ marginRight: 4 }}
-            />
-            {p.label}
-          </label>
-        ))}
-        {preset === "custom" && (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12 }}>
-            <input
-              type="date" value={customStart} max={customEnd}
-              onChange={(e) => setCustomStart(e.target.value)}
-              style={{ fontSize: 12, padding: "3px 6px" }}
-            />
-            ~
-            <input
-              type="date" value={customEnd} min={customStart}
-              onChange={(e) => setCustomEnd(e.target.value)}
-              style={{ fontSize: 12, padding: "3px 6px" }}
-            />
-          </span>
-        )}
+      {/* ============ KPI 4카드 ============ */}
+      <div className="tx-kpis">
+        <div className="tx-kpi">
+          <div className="k">매수</div>
+          <div className="v num up">{buySum.toFixed(1)}<small>억</small></div>
+          <div className="d">{txnStart} ~ {txnEnd}</div>
+        </div>
+        <div className="tx-kpi">
+          <div className="k">매도</div>
+          <div className="v num dn">{sellSum.toFixed(1)}<small>억</small></div>
+          <div className="d">{txnRows.length}건</div>
+        </div>
+        <div className="tx-kpi">
+          <div className="k">순매수</div>
+          <div className={`v num ${net >= 0 ? "up" : "dn"}`}>
+            {net >= 0 ? "+" : "−"}{Math.abs(net).toFixed(1)}<small>억</small>
+          </div>
+          <div className="d">{net >= 0 ? "순매수 우위" : "순매도 우위"}</div>
+        </div>
+        <div className="tx-kpi">
+          <div className="k">거래 건수</div>
+          <div className="v num">{txnRows.length}<small>건</small></div>
+          <div className="d">{level === "asset" ? "자산군 기준" : "종목 기준"}</div>
+        </div>
       </div>
 
       {/* ====================== 거래내역 ====================== */}
-      <section>
-        <h2 style={{ fontSize: 15, margin: "0 0 8px" }}>거래내역</h2>
-
-        <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 6 }}>
-          조회기간 {txnStart} ~ {txnEnd}
-          {isFofTxn && (
-            <span style={{ marginLeft: 8, color: "#7c3aed" }}>
-              · FoF look-through: 자펀드 {(txnQ.data?.funds_queried ?? []).join(", ")} 거래 표시
-            </span>
-          )}
-          <span style={{ marginLeft: 8 }}>
-            · 매수 {buySum.toFixed(1)}억 / 매도 {sellSum.toFixed(1)}억 / 순매수{" "}
-            {(buySum - sellSum).toFixed(1)}억 ({txnRows.length}건)
-          </span>
+      <section className="tx-card tx-sec">
+        <div className="tx-head">
+          <h3>거래내역</h3>
+          <div className="right tx-sub">
+            {isFofTxn && (
+              <span className="tx-fofnote">
+                FoF: {(txnQ.data?.funds_queried ?? []).join(", ")} 거래 포함
+              </span>
+            )}
+            <span>{txnStart} ~ {txnEnd}</span>
+          </div>
         </div>
-
-        <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 6, lineHeight: 1.5 }}>
+        <div className="tx-note">
           ※ 해외 종목 금액은 실제 USD 등 외화로 체결된 매매를 거래일 환율로 환산한 참고값
         </div>
 
         {txnQ.isLoading ? (
-          <div style={{ padding: 12, color: "#6b7280" }}>로딩 중…</div>
+          <div className="tx-loading">로딩 중…</div>
         ) : sortedRows.length === 0 ? (
-          <div style={{ padding: 12, color: "#6b7280" }}>해당 기간 거래내역 없음</div>
+          <div className="tx-loading">해당 기간 거래내역 없음</div>
         ) : (
-          <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
-            {/* 좌: 종목별/자산군별 매수·매도·순매수 (기간 합계) — 자산군 순 → 순매수 내림차순 */}
-            <div style={{ flex: "1 1 480px", minWidth: 0 }}>
-              <div style={{ height: 26, display: "flex", alignItems: "center", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>
-                {level === "asset" ? "자산군별" : "종목별"} 매수·매도·순매수
-              </div>
-              <div ref={summaryBoxRef} style={{ border: "1px solid #e5e7eb", borderRadius: 4, overflow: "hidden" }}>
-                <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
+          <div className="tx-cols">
+            {/* 좌: 자산군별/종목별 매수·매도·순매수 (기간 합계) */}
+            <div>
+              <div className="tx-coltitle">{level === "asset" ? "자산군별" : "종목별"} 매수·매도·순매수</div>
+              <div ref={summaryBoxRef} className="tx-tblbox">
+                <table className="tx-tbl">
                   <thead>
-                    <tr style={{ background: "#f9fafb" }}>
-                      <th style={{ ...thStyle, textAlign: "left" }}>자산군</th>
-                      {level === "security" && (
-                        <th style={{ ...thStyle, textAlign: "left" }}>종목명</th>
-                      )}
-                      <th style={{ ...thStyle, textAlign: "right" }}>매수(억)</th>
-                      <th style={{ ...thStyle, textAlign: "right" }}>매도(억)</th>
-                      <th style={{ ...thStyle, textAlign: "right" }}>순매수(억)</th>
+                    <tr>
+                      <th className="l">자산군</th>
+                      {level === "security" && <th className="l">종목명</th>}
+                      <th>매수(억)</th>
+                      <th>매도(억)</th>
+                      <th>순매수(억)</th>
                     </tr>
                   </thead>
                   <tbody>
                     {txnSummary.map((g) => (
-                      <tr key={g.key} style={{ borderTop: "1px solid #f3f4f6" }}>
-                        <td style={{ ...tdStyle, textAlign: "left" }}>{g.asset}</td>
-                        {level === "security" && (
-                          <td style={{ ...tdStyle, textAlign: "left" }}>{g.key}</td>
-                        )}
-                        <td style={{ ...tdStyle, textAlign: "right", color: g.buy ? BUY_COLOR : "#9ca3af" }}>
-                          {g.buy.toFixed(2)}
-                        </td>
-                        <td style={{ ...tdStyle, textAlign: "right", color: g.sell ? SELL_COLOR : "#9ca3af" }}>
-                          {g.sell.toFixed(2)}
-                        </td>
-                        <td style={{
-                          ...tdStyle, textAlign: "right", fontWeight: 600,
-                          color: g.net > 0 ? BUY_COLOR : g.net < 0 ? SELL_COLOR : "#9ca3af",
-                        }}>
+                      <tr key={g.key}>
+                        <td className="l">{g.asset}</td>
+                        {level === "security" && <td className="l">{g.key}</td>}
+                        <td className={`num ${g.buy ? "up" : "muted"}`}>{g.buy.toFixed(2)}</td>
+                        <td className={`num ${g.sell ? "dn" : "muted"}`}>{g.sell.toFixed(2)}</td>
+                        <td className={`num ${g.net > 0 ? "up" : g.net < 0 ? "dn" : "muted"}`} style={{ fontWeight: 600 }}>
                           {g.net >= 0 ? "+" : ""}{g.net.toFixed(2)}
                         </td>
                       </tr>
                     ))}
-                    <tr style={{ borderTop: "2px solid #e5e7eb", background: "#fcfcfd" }}>
-                      <td style={{ ...tdStyle, textAlign: "left", fontWeight: 600 }}
-                          colSpan={level === "security" ? 2 : 1}>합계</td>
-                      <td style={{ ...tdStyle, textAlign: "right", fontWeight: 600, color: BUY_COLOR }}>
-                        {buySum.toFixed(2)}
-                      </td>
-                      <td style={{ ...tdStyle, textAlign: "right", fontWeight: 600, color: SELL_COLOR }}>
-                        {sellSum.toFixed(2)}
-                      </td>
-                      <td style={{
-                        ...tdStyle, textAlign: "right", fontWeight: 700,
-                        color: buySum - sellSum >= 0 ? BUY_COLOR : SELL_COLOR,
-                      }}>
-                        {buySum - sellSum >= 0 ? "+" : ""}{(buySum - sellSum).toFixed(2)}
+                    <tr className="tot">
+                      <td className="l" colSpan={level === "security" ? 2 : 1}>합계</td>
+                      <td className="num up">{buySum.toFixed(2)}</td>
+                      <td className="num dn">{sellSum.toFixed(2)}</td>
+                      <td className={`num ${net >= 0 ? "up" : "dn"}`}>
+                        {net >= 0 ? "+" : ""}{net.toFixed(2)}
                       </td>
                     </tr>
                   </tbody>
@@ -389,61 +376,42 @@ export default function TransactionsTab({ fundCode }: Props) {
               </div>
             </div>
 
-            {/* 우: 세부내역 (일별 거래 상세, 날짜 내림차순) — 자산군→종목명 순 */}
-            <div style={{ flex: "1 1 480px", minWidth: 0 }}>
-              <div style={{ height: 26, display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>
-                  세부내역 ({filteredDetailRows.length}건)
-                </span>
-                <select
-                  value={detailAsset}
-                  onChange={(e) => setDetailAsset(e.target.value)}
-                  style={{ fontSize: 11, padding: "2px 6px" }}
-                  title="자산군 필터"
-                >
+            {/* 우: 세부내역 (일별 거래 상세, 날짜 내림차순) */}
+            <div>
+              <div className="tx-coltitle">
+                세부내역 ({filteredDetailRows.length}건)
+                <select className="tx-flt" value={detailAsset}
+                  onChange={(e) => setDetailAsset(e.target.value)} title="자산군 필터">
                   <option value="">자산군 전체</option>
-                  {detailAssetOptions.map((ac) => (
-                    <option key={ac} value={ac}>{ac}</option>
-                  ))}
+                  {detailAssetOptions.map((ac) => <option key={ac} value={ac}>{ac}</option>)}
                 </select>
-                <button
-                  onClick={() => setDetailExpanded((o) => !o)}
-                  style={{
-                    fontSize: 11, padding: "2px 8px", border: "1px solid #d1d5db",
-                    borderRadius: 4, background: "#fff", color: "#374151", cursor: "pointer",
-                  }}
-                >
+                <button className="tx-btn" onClick={() => setDetailExpanded((o) => !o)}>
                   {detailExpanded ? "접기" : "펼치기"}
                 </button>
               </div>
-              <div style={{
+              <div className="tx-scroll" style={{
                 maxHeight: detailExpanded ? (detailFullH || undefined) : (summaryH || 420),
-                overflow: "auto", border: "1px solid #e5e7eb", borderRadius: 4,
               }}>
-                <table ref={detailTableRef} style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
-                  <thead>
-                    <tr style={{ background: "#f9fafb", position: "sticky", top: 0 }}>
-                      <th style={thStyle}>날짜</th>
-                      {showFundCol && <th style={thStyle}>펀드</th>}
-                      <th style={thStyle}>자산군</th>
-                      <th style={{ ...thStyle, textAlign: "left" }}>종목명</th>
-                      <th style={thStyle}>매수/매도</th>
-                      <th style={{ ...thStyle, textAlign: "right" }}>금액(억)</th>
+                <table ref={detailTableRef} className="tx-tbl">
+                  <thead className="sticky">
+                    <tr>
+                      <th className="l">날짜</th>
+                      {showFundCol && <th>펀드</th>}
+                      <th className="l">자산군</th>
+                      <th className="l">종목명</th>
+                      <th>매수/매도</th>
+                      <th>금액(억)</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredDetailRows.map((r, i) => (
-                      <tr key={i} style={{ borderTop: "1px solid #f3f4f6" }}>
-                        <td style={tdStyle}>{fmtD(r.date)}</td>
-                        {showFundCol && <td style={tdStyle}>{r.fund_code}</td>}
-                        <td style={tdStyle}>{r.asset_class}</td>
-                        <td style={{ ...tdStyle, textAlign: "left" }}>{r.item_nm}</td>
-                        <td style={{ ...tdStyle, color: sideColor(r.side) }}>
-                          {r.side}
-                        </td>
-                        <td style={{ ...tdStyle, textAlign: "right", color: sideColor(r.side) }}>
-                          {r.amount_eok.toFixed(2)}
-                        </td>
+                      <tr key={i}>
+                        <td className="l muted">{fmtD(r.date)}</td>
+                        {showFundCol && <td>{r.fund_code}</td>}
+                        <td className="l">{r.asset_class}</td>
+                        <td className="l">{r.item_nm}</td>
+                        <td className={sideClass(r.side)}>{r.side}</td>
+                        <td className={`num ${sideClass(r.side)}`}>{r.amount_eok.toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -455,180 +423,136 @@ export default function TransactionsTab({ fundCode }: Props) {
       </section>
 
       {/* ===== 일별 비중추이 + 수익률 차트 side-by-side ===== */}
-      <div style={{ display: "flex", gap: 16, alignItems: "stretch", flexWrap: "wrap" }}>
-      {/* ====================== 일별 비중 영역차트 ====================== */}
-      <section style={{ flex: "1 1 480px", minWidth: 0, display: "flex", flexDirection: "column" }}>
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, marginBottom: 8 }}>
-          <h2 style={{ fontSize: 15, margin: 0 }}>일별 비중 추이</h2>
-
-          {/* 상위 N (종목 기준에서만) */}
-          {level === "security" && (
-            <label style={{ fontSize: 12, color: "#374151" }}>
-              상위 N:&nbsp;
-              <input
-                type="number"
-                min={1}
-                placeholder="전체"
-                value={topNInput}
-                onChange={(e) => setTopNInput(e.target.value)}
-                style={{ fontSize: 12, padding: "3px 6px", width: 64 }}
-              />
-              <span style={{ marginLeft: 4, color: "#9ca3af" }}>
-                {topN > 0
-                  ? `상위 ${topN}개 + 기타`
-                  : `전체 ${whQ.data?.keys.length ?? 0}개`}
-              </span>
-            </label>
-          )}
-        </div>
-
-        {whQ.data?.lookthrough_applied && (
-          <div style={{ fontSize: 12, color: "#7c3aed", marginBottom: 4 }}>
-            FoF look-through: 자펀드 종목 편입비율 가중평균
-          </div>
-        )}
-
-        {/* marginTop:auto → 헤더 높이와 무관하게 차트를 컬럼 하단에 정렬(우측 차트와 x축 baseline 일치) */}
-        <div style={{ marginTop: "auto" }}>
-          {whQ.isLoading ? (
-            <div style={{ padding: 12, color: "#6b7280" }}>로딩 중…</div>
-          ) : (
-            <WeightAreaChart
-              points={whQ.data?.points ?? []}
-              keys={whQ.data?.keys ?? []}
-              level={level}
-              topN={topN}
-              markers={whQ.data?.markers ?? []}
-              instanceKey={`${fundCode}-${level}-${preset}`}
-              xRange={[chartStart, today]}
-            />
-          )}
-        </div>
-      </section>
-
-      {/* ============ 종목별 수익률 + 매매 태깅 (종목 기준에서만 노출) ============ */}
-      <section style={{ flex: "1 1 480px", minWidth: 0, display: "flex", flexDirection: "column" }}>
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, marginBottom: 8 }}>
-          <h2 style={{ fontSize: 15, margin: 0 }}>
-            {level === "asset" ? "자산군 수익률 · 매매 시점" : "종목 수익률 · 매매 시점"}
-          </h2>
-          {level === "security" ? (
-            <label style={{ fontSize: 12, color: "#374151" }}>
-              종목:&nbsp;
-              <select
-                value={selItemCd}
-                onChange={(e) => setSelItemCd(e.target.value)}
-                style={{ fontSize: 12, padding: "3px 6px", maxWidth: 320 }}
-              >
-                {priceItems.length === 0 && <option value="">가격 종목 없음</option>}
-                {currentItems.map((it) => (
-                  <option key={it.item_cd} value={it.item_cd}>
-                    [{it.bucket}] {it.item_nm} ({it.weight.toFixed(1)}%)
-                  </option>
-                ))}
-                {pastItems.length > 0 && (
-                  <optgroup label="── 과거 편입 (현재 미보유) ──">
-                    {pastItems.map((it) => (
-                      <option key={it.item_cd} value={it.item_cd}>
-                        [{it.bucket}] {it.item_nm} · 과거
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-              </select>
-            </label>
-          ) : (
-            <label style={{ fontSize: 12, color: "#374151" }}>
-              자산군:&nbsp;
-              <select
-                value={selAsset}
-                onChange={(e) => setSelAsset(e.target.value)}
-                style={{ fontSize: 12, padding: "3px 6px" }}
-              >
-                {assetKeys.length === 0 && <option value="">자산군 없음</option>}
-                {assetKeys.map((k) => (
-                  <option key={k} value={k}>{k}</option>
-                ))}
-              </select>
-            </label>
-          )}
-          <button
-            onClick={() => setRetMarkup((v) => !v)}
-            style={{
-              fontSize: 12, padding: "4px 10px", borderRadius: 4, cursor: "pointer",
-              border: `1px solid ${retMarkup ? "#2563eb" : "#d1d5db"}`,
-              background: retMarkup ? "#2563eb" : "#fff",
-              color: retMarkup ? "#fff" : "#374151",
-            }}
-            title="드래그로 두 시점 사이 지수 변화율(%)을 표시. OFF 시 드래그=줌(y 자동보정)"
-          >
-            변화율 측정 {retMarkup ? "ON" : "OFF"}
-          </button>
-        </div>
-
-        <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 6, lineHeight: 1.6 }}>
-          {level === "asset" ? null : (
-            <>
-              <div>source: SCIP FG Return(KRW 총수익 지수, 미커버 시 Total Return Index)</div>
-              <div>
-                수익률 지수: 조회 시작일=100 누적지수 (종목 자체 수익률,{" "}
-                <b>편입비중 미반영</b> — 매매 타이밍 비교용) · 보조축(우): 편입비중 %
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* marginTop:auto → 좌측 차트와 x축 baseline 정렬(헤더 높이 차이 흡수) */}
-        <div style={{ marginTop: "auto" }}>
-        {level === "security" ? (
-          !selItemCd ? (
-            <div style={{ padding: 12, color: "#6b7280" }}>
-              가격 커버리지가 있는 보유종목이 없습니다.
+      <div className="tx-chartrow">
+        {/* 일별 비중 영역차트 */}
+        <section className="tx-card tx-sec tx-chartcard">
+          <div className="tx-head">
+            <h3>일별 비중 추이</h3>
+            <div className="right">
+              {level === "security" && (
+                <label className="tx-sub">
+                  상위 N:&nbsp;
+                  <input type="number" min={1} placeholder="전체" value={topNInput}
+                    onChange={(e) => setTopNInput(e.target.value)} className="tx-numin" />
+                  <span className="muted" style={{ marginLeft: 4 }}>
+                    {topN > 0 ? `상위 ${topN} + 기타` : `전체 ${whQ.data?.keys.length ?? 0}`}
+                  </span>
+                </label>
+              )}
             </div>
-          ) : secRetQ.isLoading ? (
-            <div style={{ padding: 12, color: "#6b7280" }}>로딩 중…</div>
-          ) : (
-            <SecurityReturnChart
-              points={secRetQ.data?.points ?? []}
-              trades={secRetQ.data?.trades ?? []}
-              weights={secRetQ.data?.weights ?? []}
-              itemNm={selItem?.item_nm ?? ""}
-              instanceKey={`${fundCode}-${selItemCd}-${preset}`}
-              xRange={[chartStart, today]}
-              markupMode={retMarkup}
-            />
-          )
-        ) : !selAsset ? (
-          <div style={{ padding: 12, color: "#6b7280" }}>표시할 자산군이 없습니다.</div>
-        ) : assetRetQ.isLoading ? (
-          <div style={{ padding: 12, color: "#6b7280" }}>로딩 중…</div>
-        ) : (
-          <SecurityReturnChart
-            points={assetRetQ.data?.points ?? []}
-            trades={assetRetQ.data?.trades ?? []}
-            weights={assetRetQ.data?.weights ?? []}
-            weightComponents={assetRetQ.data?.weight_components ?? []}
-            tradeComponents={assetRetQ.data?.trade_components ?? []}
-            itemNm={selAsset}
-            instanceKey={`${fundCode}-asset-${selAsset}-${preset}`}
-            xRange={[chartStart, today]}
-            markupMode={retMarkup}
-          />
-        )}
-        </div>
-      </section>
+          </div>
+          {whQ.data?.lookthrough_applied && (
+            <div className="tx-fofnote" style={{ marginBottom: 4 }}>FoF look-through: 자펀드 종목 편입비율 가중평균</div>
+          )}
+          <div className="tx-chartbody">
+            {whQ.isLoading ? (
+              <div className="tx-loading">로딩 중…</div>
+            ) : (
+              <WeightAreaChart
+                points={whQ.data?.points ?? []}
+                keys={whQ.data?.keys ?? []}
+                level={level}
+                topN={topN}
+                markers={whQ.data?.markers ?? []}
+                instanceKey={`${fundCode}-${level}-${preset}`}
+                xRange={[chartStart, today]}
+              />
+            )}
+          </div>
+        </section>
+
+        {/* 자산군/종목 수익률 + 매매 시점 */}
+        <section className="tx-card tx-sec tx-chartcard">
+          <div className="tx-head">
+            <h3>{level === "asset" ? "자산군 수익률 · 매매 시점" : "종목 수익률 · 매매 시점"}</h3>
+            <div className="right">
+              {level === "security" ? (
+                <select className="tx-flt" value={selItemCd} onChange={(e) => setSelItemCd(e.target.value)}>
+                  {priceItems.length === 0 && <option value="">가격 종목 없음</option>}
+                  {currentItems.map((it) => (
+                    <option key={it.item_cd} value={it.item_cd}>
+                      [{it.bucket}] {it.item_nm} ({it.weight.toFixed(1)}%)
+                    </option>
+                  ))}
+                  {pastItems.length > 0 && (
+                    <optgroup label="── 과거 편입 (현재 미보유) ──">
+                      {pastItems.map((it) => (
+                        <option key={it.item_cd} value={it.item_cd}>
+                          [{it.bucket}] {it.item_nm} · 과거
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              ) : (
+                <select className="tx-flt" value={selAsset} onChange={(e) => setSelAsset(e.target.value)}>
+                  {assetKeys.length === 0 && <option value="">자산군 없음</option>}
+                  {assetKeys.map((k) => <option key={k} value={k}>{k}</option>)}
+                </select>
+              )}
+              <button
+                className={`tx-btn ${retMarkup ? "on" : ""}`}
+                onClick={() => setRetMarkup((v) => !v)}
+                title="드래그로 두 시점 사이 지수 변화율(%)을 표시. OFF 시 드래그=줌(y 자동보정)"
+              >
+                변화율 {retMarkup ? "ON" : "OFF"}
+              </button>
+            </div>
+          </div>
+
+          {level === "security" && (
+            <div className="tx-note">
+              source: SCIP FG Return(KRW 총수익 지수) · 조회 시작일=100 누적지수
+              (종목 자체 수익률, <b>편입비중 미반영</b>) · 보조축(우): 편입비중 %
+            </div>
+          )}
+
+          <div className="tx-chartbody">
+            {level === "security" ? (
+              !selItemCd ? (
+                <div className="tx-loading">가격 커버리지가 있는 보유종목이 없습니다.</div>
+              ) : secRetQ.isLoading ? (
+                <div className="tx-loading">로딩 중…</div>
+              ) : (
+                <SecurityReturnChart
+                  points={secRetQ.data?.points ?? []}
+                  trades={secRetQ.data?.trades ?? []}
+                  weights={secRetQ.data?.weights ?? []}
+                  itemNm={selItem?.item_nm ?? ""}
+                  instanceKey={`${fundCode}-${selItemCd}-${preset}`}
+                  xRange={[chartStart, today]}
+                  markupMode={retMarkup}
+                />
+              )
+            ) : !selAsset ? (
+              <div className="tx-loading">표시할 자산군이 없습니다.</div>
+            ) : assetRetQ.isLoading ? (
+              <div className="tx-loading">로딩 중…</div>
+            ) : (
+              <SecurityReturnChart
+                points={assetRetQ.data?.points ?? []}
+                trades={assetRetQ.data?.trades ?? []}
+                weights={assetRetQ.data?.weights ?? []}
+                weightComponents={assetRetQ.data?.weight_components ?? []}
+                tradeComponents={assetRetQ.data?.trade_components ?? []}
+                itemNm={selAsset}
+                instanceKey={`${fundCode}-asset-${selAsset}-${preset}`}
+                xRange={[chartStart, today]}
+                markupMode={retMarkup}
+              />
+            )}
+          </div>
+        </section>
       </div>
 
       {/* ====================== FX 포지션 (달러선물) ====================== */}
       {fxQ.data?.has_fx && (
-        <section>
-          <h2 style={{ fontSize: 15, margin: "0 0 4px" }}>FX 포지션 (달러선물)</h2>
-          <div style={{ display: "flex", gap: 16, alignItems: "stretch", flexWrap: "wrap" }}>
-            {/* 좌: FX 순비중(헤지) + 해외자산 비중 */}
-            <div style={{ flex: "1 1 420px", minWidth: 0 }}>
-              <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
-                환헤지 순비중(% NAV, 매도=양수) · 해외자산 비중(해외주식+해외채권+외화예금) ·
-                점선 = 월물 롤오버 구간
+        <section className="tx-card tx-sec">
+          <div className="tx-head"><h3>FX 포지션 (달러선물)</h3></div>
+          <div className="tx-chartrow">
+            <div>
+              <div className="tx-note">
+                환헤지 순비중(% NAV, 매도=양수) · 해외자산 비중(해외주식+해외채권+외화예금) · 점선 = 월물 롤오버
               </div>
               <FxPositionChart
                 points={fxQ.data.points}
@@ -637,9 +561,8 @@ export default function TransactionsTab({ fundCode }: Props) {
                 instanceKey={`${fundCode}-fx-${preset}`}
               />
             </div>
-            {/* 우: 헤지갭(해외−FX) 영역 + USD/KRW(우축) + 가이드상한 점선 */}
-            <div style={{ flex: "1 1 420px", minWidth: 0 }}>
-              <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
+            <div>
+              <div className="tx-note">
                 헤지갭(해외자산비중 − FX순비중) · 우축 USD/KRW · 빨간 점선 = 가이드상한
                 (FX매도 ≤ 해외자산비중+10%, 갭 −10%p 미만 시 위배)
               </div>
@@ -656,17 +579,3 @@ export default function TransactionsTab({ fundCode }: Props) {
     </div>
   );
 }
-
-const thStyle: React.CSSProperties = {
-  padding: "6px 10px",
-  textAlign: "center",
-  fontWeight: 600,
-  color: "#374151",
-  borderBottom: "1px solid #e5e7eb",
-  whiteSpace: "nowrap",
-};
-const tdStyle: React.CSSProperties = {
-  padding: "4px 10px",
-  textAlign: "center",
-  whiteSpace: "nowrap",
-};
