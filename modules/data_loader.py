@@ -2330,12 +2330,24 @@ def compute_brinson_attribution_v2(fund_code: str,
             ap_contrib_cum = ramp * ap_target
         else:
             ap_contrib_cum = ap_contrib_raw
-        # BM 기여(누적): bm_period_contrib 와 동일 공식의 누적
+        # BM 기여(누적): bm_period_contrib(table1 BM기여)에 끝점 정합 (AP 쪽과 동일 처리).
+        # 유동성및기타엔 composite cost/분해 잔차(_bm_resid)가 귀속돼 raw cumsum 끝점과
+        # 표값이 달라지므로, AP_contrib 처럼 표값으로 스케일/선형보간해 차트↔표 끝점 일치.
         w = bm_w_daily.get(ac, pd.Series(0.0, index=dates_idx))
         if bm_available and ac in bm_daily_df.columns:
-            bm_contrib_cum = (bm_daily_df[ac] * w * bm_cum_prev).cumsum() * 100
+            bm_contrib_raw = (bm_daily_df[ac] * w * bm_cum_prev).cumsum() * 100
         else:
-            bm_contrib_cum = pd.Series(0.0, index=dates_idx)
+            bm_contrib_raw = pd.Series(0.0, index=dates_idx)
+        bm_target = bm_period_contrib.get(ac, 0.0)
+        bm_last = float(bm_contrib_raw.iloc[-1]) if len(bm_contrib_raw) else 0.0
+        if abs(bm_last) > 1e-12:
+            bm_contrib_cum = bm_contrib_raw * (bm_target / bm_last)
+        elif abs(bm_target) > 1e-12 and len(dates_idx):
+            # 잔차성 자산군(raw≈0, 잔차만 있는 유동성및기타): 목표값으로 선형 보간(끝점 일치)
+            ramp = pd.Series(range(1, len(dates_idx) + 1), index=dates_idx) / len(dates_idx)
+            bm_contrib_cum = ramp * bm_target
+        else:
+            bm_contrib_cum = bm_contrib_raw
         ap_w_series = ap_wgt_daily[ac] * 100
         bm_w_pct = bm_w_daily.get(ac, pd.Series(0.0, index=dates_idx)) * 100  # 고정/일별 BM비중(%)
         # 자산군 실제(마켓) 누적수익률 % (0% 시작, 비중 미반영) — Allocation/Selection 진단용
