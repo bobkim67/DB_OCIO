@@ -208,7 +208,7 @@ export default function HoldingsTab({ fundCode }: Props) {
                   <EquityFocusChart focus={ef} instanceKey={`${fundCode}-eq`} />
                   <div className="hd-fmeta">
                     <div className="hd-tilt"><TiltBar label="지역" parts={[["국내", ef.region_tilt?.["국내"] ?? 0, "#E8473B"], ["해외", ef.region_tilt?.["해외"] ?? 0, "#557EAA"]]} /></div>
-                    <div className="hd-tilt"><TiltBar label="스타일" parts={[["성장", ef.style_tilt?.["성장"] ?? 0, "#7C6FE0"], ["가치", ef.style_tilt?.["가치"] ?? 0, "#557EAA"], ["기타", ef.style_tilt?.["기타"] ?? 0, "#AAB2BD"]]} /></div>
+                    <div className="hd-tilt"><TiltBar label="스타일" parts={[["성장", ef.style_tilt?.["성장"] ?? 0, "#7C6FE0"], ["가치", ef.style_tilt?.["가치"] ?? 0, "#557EAA"], ["혼합", ef.style_tilt?.["혼합"] ?? 0, "#AAB2BD"]]} /></div>
                   </div>
                 </div>
               )}

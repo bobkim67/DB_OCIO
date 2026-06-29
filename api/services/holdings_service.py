@@ -120,7 +120,7 @@ def _build_equity_focus(items: list[HoldingItemDTO]) -> EquityFocusDTO:
     holdings: list[EquityHoldingDTO] = []
     per_num = gr_num = per_cov = gr_cov = 0.0
     region = {"국내": 0.0, "해외": 0.0}
-    style = {"성장": 0.0, "가치": 0.0, "기타": 0.0}
+    style = {"성장": 0.0, "가치": 0.0, "혼합": 0.0}
     for it in eq_items:
         tk = _classify_equity_proxy(it.item_cd, it.item_nm, it.asset_class)
         v = vals.get(tk, {}) if tk else {}
@@ -134,9 +134,10 @@ def _build_equity_focus(items: list[HoldingItemDTO]) -> EquityFocusDTO:
         if gr is not None:
             gr_num += it.weight * gr; gr_cov += it.weight
         region["국내" if it.asset_class == "국내주식" else "해외"] += it.weight
-        nm = (it.item_nm or "").upper()
-        sk = "성장" if ("성장" in nm or "GROWTH" in nm) else (
-            "가치" if ("가치" in nm or "VALUE" in nm) else "기타")
+        # 스타일 = proxy 분류 기반(키워드 직접판정 대신) — ITEM_NM 잘림에도 일관.
+        # 나스닥100=대형 기술·성장 편중 → 성장. KOSPI200/S&P500=시장 전체 → 혼합(blend).
+        sk = ("성장" if tk in ("미국대형성장", "NASDAQ100")
+              else "가치" if tk == "미국대형가치" else "혼합")
         style[sk] += it.weight
     refs = [
         EquityProxyRefDTO(ticker=tk, per=v.get("per"), eps_growth=v.get("eps_growth"))

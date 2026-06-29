@@ -3658,8 +3658,8 @@ MACRO_DATASETS = {
 # 전부 Bloomberg 12M Fwd P/E(ds52)·12M Fwd EPS(ds45) 지수로 통일.
 EQUITY_PROXY_DATASETS = {
     'KOSPI200':  (225, 52, 45),   # 국내주식 (KOSPI 200 Index)
-    'CRSP성장':  (431, 52, 45),   # 미국 대형성장 (CRSP US Large Cap Growth Index)
-    'CRSP가치':  (433, 52, 45),   # 미국 대형가치 (CRSP US Large Cap Value Index)
+    '미국대형성장': (431, 52, 45),   # CRSP US Large Cap Growth Index
+    '미국대형가치': (433, 52, 45),   # CRSP US Large Cap Value Index
     'NASDAQ100': (272, 52, 45),   # 나스닥 (NASDAQ100 Total Return Index)
     'S&P500':    (271, 52, 45),   # 그외 해외 (S&P 500 Index)
     'MSCI신흥':  (340, 52, 45),   # 신흥 (MXEF INDEX = MSCI Emerging Markets)
@@ -3675,10 +3675,11 @@ def _classify_equity_proxy(item_cd: str, item_nm: str, asset_class: str):
     if asset_class == '해외주식':
         if '나스닥' in nm or 'NASDAQ' in nm or 'NDX' in nm:
             return 'NASDAQ100'
-        if '성장' in nm or 'GROWTH' in nm:
-            return 'CRSP성장'
-        if '가치' in nm or 'VALUE' in nm:
-            return 'CRSP가치'
+        # GROW/VALU 부분매칭 — DB ITEM_NM 잘림("...Grow"=Growth) 대응
+        if '성장' in nm or 'GROW' in nm:
+            return '미국대형성장'
+        if '가치' in nm or 'VALU' in nm:
+            return '미국대형가치'
         if '신흥' in nm or 'EMERGING' in nm or 'EM ' in nm:
             return 'MSCI신흥'
         if '선진' in nm or 'EAFE' in nm or 'DEVELOPED' in nm:
