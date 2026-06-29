@@ -113,6 +113,12 @@ def daily_update(
     result['steps']['collect'] = news_result
     print(f'  → {news_result.get("new_count", 0)}건 신규')
 
+    # ── Step 1.2: Naver Research 증분 크롤 (raw 갱신) ──
+    print(f'\n[Step 1.2] Naver Research 크롤...')
+    nr_crawl_result = _step_naver_research_crawl()
+    result['steps']['naver_research_crawl'] = nr_crawl_result
+    print(f'  → status={nr_crawl_result.get("status")}')
+
     # ── Step 1.3: Naver Research adapter (raw → article-like) ──
     print(f'\n[Step 1.3] Naver Research adapter...')
     nr_adapt_result = _step_naver_research_adapter(month_str)
@@ -324,6 +330,27 @@ def _step_classify(date_str: str) -> dict:
     except Exception as exc:
         print(f'  분류 실패: {exc}')
         return {'status': 'error', 'error': str(exc), 'total': 0, 'classified': 0}
+
+
+def _step_naver_research_crawl() -> dict:
+    """Step 1.2: Naver Research 증분 크롤 (raw 갱신).
+
+    state.json 기반 incremental 로 5개 카테고리(economy/market_info/invest/industry/
+    debenture) 새 리서치를 수집해 `data/naver_research/raw/{cat}/{month}.json` 갱신.
+    이후 Step 1.3 adapter 가 fresh raw 를 adapted 로 변환한다.
+
+    네트워크 차단(403)/오류는 크롤러가 카테고리 단위로 격리하며, 여기서도 전체
+    예외를 graceful 처리해 daily_update 흐름을 막지 않는다. (LLM 미사용 → dry_run 무관)
+    """
+    try:
+        from market_research.collect.naver_research import main as nr_crawl
+        rc = nr_crawl(['--incremental'])
+        return {'status': 'ok' if rc == 0 else 'error', 'rc': rc}
+    except Exception as exc:
+        print(f'  naver_research 크롤 실패 (graceful skip): {exc}')
+        import traceback
+        traceback.print_exc()
+        return {'status': 'error', 'error': str(exc)}
 
 
 def _step_naver_research_adapter(month_str: str) -> dict:
