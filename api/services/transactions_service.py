@@ -330,6 +330,8 @@ def build_asset_class_return(
     종목 수익률과 동일 DTO 재사용(item_cd=item_nm=자산군)."""
     if fund_code not in FUND_LIST:
         raise KeyError(fund_code)
+    if asset_class == "전체":
+        return _build_total_return(fund_code, start_date, end_date)
     from modules.data_loader import (
         load_asset_class_return_index,
         load_weight_trade_markers,
@@ -402,4 +404,61 @@ def build_asset_class_return(
         fund_code=fund_code, item_cd=asset_class, item_nm=asset_class,
         start_date=start_date, points=points, trades=trades, weights=weights,
         weight_components=weight_components, trade_components=trade_components,
+    )
+
+
+def _build_total_return(
+    fund_code: str, start_date: str, end_date: str,
+) -> SecurityReturnResponseDTO:
+    """자산군 차트 '전체' 옵션 — 펀드 기준가(NAV) 수익지수 + 설정/해지 현금흐름 마커
+    + 자산군별 비중 stacked(보조축). 종목/자산군 차트와 동일 DTO 재사용."""
+    from modules.data_loader import (
+        load_fund_total_return_index,
+        load_fund_cashflow_markers,
+        load_weight_history_lookthrough,
+    )
+
+    warnings: list[str] = []
+    points: list[SecurityReturnPointDTO] = []
+    trades: list[SecurityTradeMarkerDTO] = []
+    weights: list[SecurityWeightPointDTO] = []
+    weight_components: list[WeightComponentDTO] = []
+    try:
+        idx = load_fund_total_return_index(fund_code, start_date, end_date)
+        if idx is not None and not idx.empty:
+            points = [
+                SecurityReturnPointDTO(date=str(r["date"]), value=float(r["value"]))
+                for _, r in idx.iterrows()
+            ]
+        else:
+            warnings.append("기준가(NAV) 데이터 없음")
+        # 설정/해지 현금흐름 마커 (자금 유입=설정 ▲ / 유출=해지 ▼)
+        for cf in load_fund_cashflow_markers(fund_code, start_date, end_date):
+            trades.append(SecurityTradeMarkerDTO(
+                date=str(cf["date"]), side=str(cf["side"]), amount=float(cf["amount"])))
+        # 자산군별 비중 stacked area(보조축) + 일별 합계(툴팁 총비중)
+        wdf, _fof, _keys = load_weight_history_lookthrough(fund_code, start_date, "asset")
+        if wdf is not None and not wdf.empty:
+            weight_components = [
+                WeightComponentDTO(date=str(r["date"]), name=str(r["key"]),
+                                   weight=float(r["weight"]))
+                for _, r in wdf.iterrows()
+            ]
+            tot = wdf.groupby("date")["weight"].sum().reset_index()
+            weights = [
+                SecurityWeightPointDTO(date=str(r["date"]), weight=float(r["weight"]))
+                for _, r in tot.iterrows()
+            ]
+    except Exception as exc:
+        warnings.append(f"DB 접속 실패: {type(exc).__name__}")
+
+    return SecurityReturnResponseDTO(
+        meta=BaseMeta(
+            source="db" if points else "mock",
+            sources=[SourceBreakdown(component="asset_class_return", kind="db")] if points else [],
+            is_fallback=not points, warnings=warnings, generated_at=_now(),
+        ),
+        fund_code=fund_code, item_cd="전체", item_nm="전체",
+        start_date=start_date, points=points, trades=trades, weights=weights,
+        weight_components=weight_components, trade_components=[],
     )

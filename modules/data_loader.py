@@ -4568,6 +4568,61 @@ def load_asset_class_return_index(fund_code: str, asset_class: str,
     return out.reset_index(drop=True), None
 
 
+@_ttl_cache()
+def load_fund_total_return_index(fund_code: str, start_date: str,
+                                 end_date: str = None) -> pd.DataFrame:
+    """펀드 기준가(MOD_STPR) 수익지수 (시작=100) — 자산군 차트 '전체' 옵션용.
+
+    펀드 전체 포트폴리오의 실제 운용수익(현금·환손익·비용 모두 포함). FoF 도
+    부모펀드 기준가 하나로 표현되므로 자펀드 전개 불필요.
+
+    Returns: DataFrame[date(YYYY-MM-DD), value]
+    """
+    s8 = str(start_date).replace('-', '') if start_date else None
+    df = load_fund_nav_with_aum(fund_code, s8)
+    if df is None or df.empty:
+        return pd.DataFrame(columns=['date', 'value'])
+    d = df[['기준일자', 'MOD_STPR']].dropna().copy()
+    d['date'] = pd.to_datetime(d['기준일자']).dt.strftime('%Y-%m-%d')
+    if end_date:
+        d = d[d['date'] <= end_date]
+    d = d[pd.to_numeric(d['MOD_STPR'], errors='coerce') > 0].sort_values('date')
+    if d.empty:
+        return pd.DataFrame(columns=['date', 'value'])
+    base = float(d['MOD_STPR'].iloc[0])
+    if base == 0:
+        return pd.DataFrame(columns=['date', 'value'])
+    return pd.DataFrame({
+        'date': d['date'].values,
+        'value': (d['MOD_STPR'].astype(float) / base * 100.0).round(3),
+    }).reset_index(drop=True)
+
+
+def load_fund_cashflow_markers(fund_code: str, start_date: str,
+                               end_date: str) -> list:
+    """펀드 설정/해지(순설정금액 DWPM12880) 마커 — 자산군 '전체' 차트 현금 유출입.
+
+    설정(자금 유입, +)/해지(자금 유출, −). 0.005억 미만(반올림 0)은 노이즈로 제외.
+    Returns: list[{date, side('설정'|'해지'), amount(억, 양수)}]
+    """
+    s8 = str(start_date).replace('-', '')
+    e8 = str(end_date).replace('-', '')
+    df = _load_net_subscription(fund_code, s8, e8)
+    if df is None or df.empty:
+        return []
+    out = []
+    for _, r in df.iterrows():
+        amt = float(r['net_subscription'])
+        eok = round(abs(amt) / 1e8, 2)
+        if eok == 0:
+            continue
+        ds = str(r['tr_dt'])
+        date_iso = f"{ds[:4]}-{ds[4:6]}-{ds[6:8]}" if len(ds) == 8 else ds
+        out.append({'date': date_iso,
+                    'side': '설정' if amt > 0 else '해지', 'amount': eok})
+    return out
+
+
 def load_holdings_history_8class(fund_code: str, start_date: str = None) -> pd.DataFrame:
     """
     자산군별 비중 이력 (8분류).

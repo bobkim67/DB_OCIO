@@ -129,33 +129,36 @@ export default function TransactionsTab({ fundCode }: Props) {
 
   // ---- 종목별 수익률 ---- (start=chartStart → 편입이력(현재 미보유) 종목 하단 포함)
   const secQ = useSecurities(fundCode, chartStart);
-  const priceItems = useMemo(
-    () => (secQ.data?.items ?? []).filter((it) => it.has_price),
-    [secQ.data],
-  );
-  const currentItems = useMemo(
-    () => priceItems.filter((it) => it.currently_held !== false), [priceItems]);
-  const pastItems = useMemo(
-    () => priceItems.filter((it) => it.currently_held === false), [priceItems]);
+  const allItems = useMemo(() => secQ.data?.items ?? [], [secQ.data]);
+  const priceItems = useMemo(() => allItems.filter((it) => it.has_price), [allItems]);
+  // 드롭다운 4그룹: 보유(가격O) / 보유(가격X·비중만) / 과거(가격O) / 과거(가격X)
+  const held = (it: typeof allItems[number]) => it.currently_held !== false;
+  const curPriced = useMemo(() => allItems.filter((it) => held(it) && it.has_price), [allItems]);
+  const curNoPrice = useMemo(() => allItems.filter((it) => held(it) && !it.has_price), [allItems]);
+  const pastPriced = useMemo(() => allItems.filter((it) => !held(it) && it.has_price), [allItems]);
+  const pastNoPrice = useMemo(() => allItems.filter((it) => !held(it) && !it.has_price), [allItems]);
   // 수익률 차트 markup(구간 %변화율 측정) 모드 토글
   const [retMarkup, setRetMarkup] = useState(false);
   const [selItemCd, setSelItemCd] = useState<string>("");
-  // 펀드 변경/목록 로드 시 비중 최상위 종목 자동 선택
+  // 펀드 변경/목록 로드 시 기본 선택: 가격 있는 보유종목 중 비중 최상위(없으면 첫 종목).
+  // 사용자가 가격 없는 종목을 골라도 유지되도록 allItems 기준으로만 리셋.
   useEffect(() => {
-    if (priceItems.length && !priceItems.some((it) => it.item_cd === selItemCd)) {
-      const top = priceItems.reduce((a, b) => (b.weight > a.weight ? b : a));
+    if (allItems.length && !allItems.some((it) => it.item_cd === selItemCd)) {
+      const pool = priceItems.length ? priceItems : allItems;
+      const top = pool.reduce((a, b) => (b.weight > a.weight ? b : a));
       setSelItemCd(top.item_cd);
     }
-    if (!priceItems.length) setSelItemCd("");
-  }, [priceItems, selItemCd]);
-  const selItem = priceItems.find((it) => it.item_cd === selItemCd);
+    if (!allItems.length) setSelItemCd("");
+  }, [allItems, priceItems, selItemCd]);
+  const selItem = allItems.find((it) => it.item_cd === selItemCd);
   const secRetQ = useSecurityReturn(
     fundCode, selItemCd, selItem?.item_nm ?? "", chartStart, today,
   );
 
   // ---- 자산군 수익률 (자산군 모드): 일별 비중×종목가격 바스켓 지수 ----
+  // "전체"(펀드 NAV 수익지수+설정/해지 현금흐름) 최상단 + 유동성 포함(가격 없으면 비중만).
   const assetKeys = useMemo(
-    () => (level === "asset" ? (whQ.data?.keys ?? []) : []).filter((k) => k !== "유동성"),
+    () => (level === "asset" ? ["전체", ...(whQ.data?.keys ?? [])] : []),
     [level, whQ.data],
   );
   const [selAsset, setSelAsset] = useState<string>("");
@@ -468,15 +471,33 @@ export default function TransactionsTab({ fundCode }: Props) {
             <div className="right">
               {level === "security" ? (
                 <select className="tx-flt" value={selItemCd} onChange={(e) => setSelItemCd(e.target.value)}>
-                  {priceItems.length === 0 && <option value="">가격 종목 없음</option>}
-                  {currentItems.map((it) => (
+                  {allItems.length === 0 && <option value="">종목 없음</option>}
+                  {curPriced.map((it) => (
                     <option key={it.item_cd} value={it.item_cd}>
                       [{it.bucket}] {it.item_nm} ({it.weight.toFixed(1)}%)
                     </option>
                   ))}
-                  {pastItems.length > 0 && (
+                  {curNoPrice.length > 0 && (
+                    <optgroup label="── 가격 없음 (비중만) ──">
+                      {curNoPrice.map((it) => (
+                        <option key={it.item_cd} value={it.item_cd}>
+                          [{it.bucket}] {it.item_nm} ({it.weight.toFixed(1)}%)
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {pastPriced.length > 0 && (
                     <optgroup label="── 과거 편입 (현재 미보유) ──">
-                      {pastItems.map((it) => (
+                      {pastPriced.map((it) => (
+                        <option key={it.item_cd} value={it.item_cd}>
+                          [{it.bucket}] {it.item_nm} · 과거
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {pastNoPrice.length > 0 && (
+                    <optgroup label="── 과거 편입 · 가격 없음 (비중만) ──">
+                      {pastNoPrice.map((it) => (
                         <option key={it.item_cd} value={it.item_cd}>
                           [{it.bucket}] {it.item_nm} · 과거
                         </option>
@@ -502,15 +523,25 @@ export default function TransactionsTab({ fundCode }: Props) {
 
           {level === "security" && (
             <div className="tx-note">
-              source: SCIP FG Return(KRW 총수익 지수) · 조회 시작일=100 누적지수
-              (종목 자체 수익률, <b>편입비중 미반영</b>) · 보조축(우): 편입비중 %
+              {selItem && selItem.has_price === false ? (
+                <>가격 데이터 없음 — <b>편입비중(%)</b>만 표시 (영역) + 매수/매도 시점</>
+              ) : (
+                <>source: SCIP FG Return(KRW 총수익 지수) · 조회 시작일=100 누적지수
+                  (종목 자체 수익률, <b>편입비중 미반영</b>) · 보조축(우): 편입비중 %</>
+              )}
+            </div>
+          )}
+          {level === "asset" && selAsset === "전체" && (
+            <div className="tx-note">
+              펀드 기준가(NAV) 수익지수 · 시작일=100 · 보조축(우): 자산군별 편입비중 stacked ·
+              ▲설정/▼해지 = 펀드 자금 유입·유출(설정/해지)
             </div>
           )}
 
           <div className="tx-chartbody">
             {level === "security" ? (
               !selItemCd ? (
-                <div className="tx-loading">가격 커버리지가 있는 보유종목이 없습니다.</div>
+                <div className="tx-loading">표시할 보유종목이 없습니다.</div>
               ) : secRetQ.isLoading ? (
                 <div className="tx-loading">로딩 중…</div>
               ) : (
