@@ -6,6 +6,7 @@ import "./styles/tokens.css";
 import "./styles/overview.css";
 import "./styles/holdings.css";
 import "./styles/transactions.css";
+import "./styles/brinson.css";
 
 const queryClient = new QueryClient({
   defaultOptions: {

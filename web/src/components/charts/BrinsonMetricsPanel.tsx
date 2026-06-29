@@ -1,4 +1,3 @@
-import type { CSSProperties } from "react";
 import type { BrinsonDailyPointDTO } from "../../api/endpoints";
 
 /**
@@ -80,67 +79,61 @@ export default function BrinsonMetricsPanel({ daily, hasBm }: Props) {
   const ir = te > 1e-9 ? annExcess / te : NaN;
 
   return (
-    <div>
-      <h3 style={{ fontSize: 14, margin: "4px 0 8px", display: "flex", alignItems: "center", gap: 8 }}>
-        위험조정 성과지표
-        <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 400 }}>
-          일별 기준·연율화(252d)
-        </span>
-      </h3>
-      <table style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
-        <thead>
-          <tr style={{ background: "#f9fafb" }}>
-            <th style={th}>지표</th>
-            <th style={thr}>AP</th>
-            {hasBm && <th style={thr}>BM</th>}
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td style={td}>연율화 수익률</td>
-            <td style={{ ...tdr, color: apAnnRet < 0 ? "#b91c1c" : "#16a34a" }}>{fmtPct(apAnnRet)}</td>
-            {hasBm && <td style={{ ...tdr, color: bmAnnRet < 0 ? "#b91c1c" : "#16a34a" }}>{fmtPct(bmAnnRet)}</td>}
-          </tr>
-          <tr>
-            <td style={td}>연율화 변동성</td>
-            <td style={tdr}>{fmtPlain(apVol)}</td>
-            {hasBm && <td style={tdr}>{fmtPlain(bmVol)}</td>}
-          </tr>
-          <tr>
-            <td style={td}>최대낙폭 (MDD)</td>
-            <td style={{ ...tdr, color: "#b91c1c" }}>{fmtPct(apMdd)}</td>
-            {hasBm && <td style={{ ...tdr, color: "#b91c1c" }}>{fmtPct(bmMdd)}</td>}
-          </tr>
-          {hasBm && (
-            <>
-              <tr style={{ borderTop: "2px solid #e5e7eb", background: "#fcfcfd" }}>
-                <td style={td}>초과수익 (연율화)</td>
-                <td style={{ ...tdr, fontWeight: 600, color: annExcess < 0 ? "#b91c1c" : "#16a34a" }} colSpan={2}>
-                  {fmtPct(annExcess)}
-                </td>
-              </tr>
-              <tr>
-                <td style={td}>트래킹에러 (TE)</td>
-                <td style={tdr} colSpan={2}>{fmtPlain(te)}</td>
-              </tr>
-              <tr>
-                <td style={td}>정보비율 (IR)</td>
-                <td style={{ ...tdr, fontWeight: 600, color: ir < 0 ? "#b91c1c" : "#16a34a" }} colSpan={2}>
+    <div className="bn-sec">
+      <div className="bn-head2">
+        <h3>위험조정 성과지표</h3>
+        <span className="sub">일별 기준·연율화(252d)</span>
+      </div>
+      <div className="bn-mstrip">
+        <div className="bn-mitem">
+          <div className="k">연율화 수익률</div>
+          <div className="vrow">
+            <span className={"v num " + (apAnnRet < 0 ? "dn" : "up")}>{fmtPct(apAnnRet)}</span>
+            {hasBm && <span className="vb num">BM {fmtPct(bmAnnRet)}</span>}
+          </div>
+        </div>
+        <div className="bn-mitem">
+          <div className="k">연율화 변동성</div>
+          <div className="vrow">
+            <span className="v num">{fmtPlain(apVol)}</span>
+            {hasBm && <span className="vb num">BM {fmtPlain(bmVol)}</span>}
+          </div>
+        </div>
+        <div className="bn-mitem">
+          <div className="k">최대낙폭 (MDD)</div>
+          <div className="vrow">
+            <span className="v num dn">{fmtPct(apMdd)}</span>
+            {hasBm && <span className="vb num">BM {fmtPct(bmMdd)}</span>}
+          </div>
+        </div>
+        {hasBm && (
+          <>
+            <div className="bn-mitem">
+              <div className="k">초과수익 (연율)</div>
+              <div className="vrow">
+                <span className={"v num " + (annExcess < 0 ? "bad" : "ok")}>{fmtPct(annExcess)}</span>
+              </div>
+            </div>
+            <div className="bn-mitem">
+              <div className="k">정보비율 (IR)</div>
+              <div className="vrow">
+                <span className={"v num " + (ir < 0 ? "bad" : "ok")}>
                   {Number.isFinite(ir) ? ir.toFixed(2) : "—"}
-                </td>
-              </tr>
-            </>
-          )}
-        </tbody>
-      </table>
-      <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
+                </span>
+              </div>
+            </div>
+            <div className="bn-mitem">
+              <div className="k">트래킹에러 (TE)</div>
+              <div className="vrow">
+                <span className="v num">{fmtPlain(te)}</span>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+      <div className="bn-note">
         ※ IR = 연율화 초과수익 ÷ TE. 샤프비율은 무위험수익률 미연동으로 제외.
       </div>
     </div>
   );
 }
-
-const th: CSSProperties = { padding: "6px 8px", borderBottom: "1px solid #e5e7eb", textAlign: "left" };
-const thr: CSSProperties = { ...th, textAlign: "right" };
-const td: CSSProperties = { padding: "5px 8px", borderBottom: "1px solid #f3f4f6" };
-const tdr: CSSProperties = { ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" };
