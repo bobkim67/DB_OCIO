@@ -11,7 +11,7 @@ const COLORS = {
   excess: "#000080", // 초과(합) — 남색 굵게
   alloc: "#2563eb", // Allocation — 파랑
   select: "#16a34a", // Selection — 초록
-  cross: "#9ca3af", // Cross — 회색
+  cross: "#B07A2B", // Cross — CI brown(--ace-saa), 실선
 };
 const plotConfig = { displayModeBar: false, responsive: true } as const;
 
@@ -29,7 +29,6 @@ export default function BrinsonFactorTrendChart({ daily }: Props) {
     name: string,
     color: string,
     width: number,
-    dash?: "dash",
   ): Plotly.Data => ({
     x,
     y: daily.map((d) => d[key]),
@@ -37,7 +36,7 @@ export default function BrinsonFactorTrendChart({ daily }: Props) {
     type: "scatter",
     mode: "lines",
     name,
-    line: { width, color, ...(dash ? { dash } : {}) },
+    line: { width, color },
     hovertemplate: `${name} %{customdata}%p<extra></extra>`,
   });
 
@@ -45,7 +44,7 @@ export default function BrinsonFactorTrendChart({ daily }: Props) {
     line("excess_cum", "초과수익(합)", COLORS.excess, 2.4),
     line("alloc_cum", "Allocation", COLORS.alloc, 1.6),
     line("select_cum", "Selection", COLORS.select, 1.6),
-    line("cross_cum", "Cross", COLORS.cross, 1.4, "dash"),
+    line("cross_cum", "Cross", COLORS.cross, 1.6),
   ];
 
   const layout: Partial<Plotly.Layout> = {

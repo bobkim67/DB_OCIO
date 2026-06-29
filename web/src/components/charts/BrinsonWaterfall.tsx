@@ -5,9 +5,10 @@ interface Props {
   select: number;      // %
   cross: number;       // %
   excess: number;      // %
+  height?: number;     // 차트 높이(px). 기본 360.
 }
 
-export default function BrinsonWaterfall({ alloc, select, cross, excess }: Props) {
+export default function BrinsonWaterfall({ alloc, select, cross, excess, height = 360 }: Props) {
   const vals = [alloc, select, cross, excess];
   // y축 range = waterfall **누적 위치** 기반.
   // 각 relative 막대는 직전 누적값 ~ (직전 누적값 + value) 구간을 차지하므로,
@@ -46,9 +47,8 @@ export default function BrinsonWaterfall({ alloc, select, cross, excess }: Props
         } as Plotly.Data,
       ]}
       layout={{
-        title: { text: "초과성과 요인분해" },
-        height: 360,
-        margin: { t: 40, r: 20, b: 40, l: 50 },
+        height,
+        margin: { t: 16, r: 20, b: 40, l: 50 },
         yaxis: { title: { text: "기여도 (%)" }, range: [ymin, ymax] },
         autosize: true,
       }}

@@ -30,6 +30,11 @@
 .bn-tag.note { color: #92400e; background: #fef3c7; border: 1px solid #fde68a; }
 .bn-tag.recalc { color: var(--ace-brand); font-weight: 600; }
 
+/* 기간 preset 칩 (거래내역 탭 .tx-chip 톤) */
+.bn-presets { display: flex; gap: 8px; flex-wrap: wrap; padding: 11px 14px; }
+.bn-chip { font-size: 12px; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--ace-line-2); background: #fff; color: var(--ace-ink-2); cursor: pointer; font-family: inherit; }
+.bn-chip.on { background: #EAF1F8; border-color: var(--ace-brand); color: var(--ace-brand); font-weight: 700; }
+
 /* 컨트롤 카드 */
 .bn-ctrl { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; padding: 12px 14px; }
 .bn-field { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 700; color: var(--ace-ink-2); }
@@ -54,6 +59,8 @@
 .bn-mitem .vrow { display: flex; align-items: baseline; gap: 8px; margin-top: 5px; flex-wrap: wrap; }
 .bn-mitem .v { font-size: 19px; font-weight: 800; line-height: 1.1; }
 .bn-mitem .vb { font-size: 11.5px; font-weight: 700; color: var(--ace-ink-3); }
+/* (i) 정보 아이콘 — 라벨 옆, native title 툴팁 */
+.bn-info { display: inline-flex; align-items: center; justify-content: center; width: 13px; height: 13px; border: 1px solid var(--ace-ink-3); border-radius: 50%; font-size: 9px; font-weight: 700; font-style: normal; color: var(--ace-ink-3); cursor: help; vertical-align: 1px; line-height: 1; }
 
 /* 섹션/헤더 (카드 내부) */
 .bn-sec { padding: 13px 16px 16px; }
@@ -70,9 +77,15 @@
 .bn-seg button { border: 0; background: #fff; font-size: 11px; font-weight: 600; padding: 4px 11px; cursor: pointer; color: var(--ace-ink-2); font-family: inherit; }
 .bn-seg button.on { background: var(--ace-brand); color: #fff; font-weight: 700; }
 
-/* 2컬럼 본문 */
-.bn-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+/* 전폭 2단 (표0 | 표1) — 두 카드 동일 높이(바닥선 정렬) */
+.bn-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: stretch; }
 @media (max-width: 980px) { .bn-cols { grid-template-columns: 1fr; } }
+.bn-cols > .bn-card { height: 100%; }
+
+/* 본문 2×2 그리드 — auto-flow row: [좌상,우상]/[좌하,우하], 같은 행 동일 높이(top 정렬) */
+.bn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: stretch; }
+@media (max-width: 980px) { .bn-grid { grid-template-columns: 1fr; } }
+
 .bn-stack { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 
 /* 표 */

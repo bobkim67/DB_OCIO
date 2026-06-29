@@ -70,6 +70,41 @@ function yesterday(): string {
   d.setDate(d.getDate() - 1);
   return d.toISOString().slice(0, 10);
 }
+// 로컬 타임존 기준 YYYY-MM-DD (toISOString UTC 보정 회피)
+function fmtLocal(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+function monthsAgoStr(n: number): string {
+  const d = new Date();
+  d.setMonth(d.getMonth() - n);
+  return fmtLocal(d);
+}
+function startOfMonthStr(): string {
+  const d = new Date();
+  return fmtLocal(new Date(d.getFullYear(), d.getMonth(), 1));
+}
+// inception(YYYYMMDD 또는 YYYY-MM-DD) → YYYY-MM-DD. 없으면 이른 날짜.
+function inceptionStr(inception: string | null | undefined): string {
+  if (!inception) return "2000-01-01";
+  return inception.includes("-")
+    ? inception
+    : `${inception.slice(0, 4)}-${inception.slice(4, 6)}-${inception.slice(6, 8)}`;
+}
+
+// 기간 preset (거래내역 탭과 동일 칩 UI). 종료일은 성과분석 규칙대로 어제(custom 제외).
+type BnPreset = "MTD" | "1M" | "3M" | "6M" | "YTD" | "since" | "custom";
+const BN_PRESETS: { key: BnPreset; label: string }[] = [
+  { key: "MTD", label: "당월" },
+  { key: "1M", label: "1개월" },
+  { key: "3M", label: "3개월" },
+  { key: "6M", label: "6개월" },
+  { key: "YTD", label: "연초이후" },
+  { key: "since", label: "설정후" },
+  { key: "custom", label: "직접 지정" },
+];
 
 // 종목표 정렬 키
 type SecSortKey = keyof Pick<
@@ -133,6 +168,8 @@ export default function BrinsonTab({ fundCode }: Props) {
   const saaMode = (
     (saaSource === "proxy" ? "proxy" : "auto") + (weightMode === "drift" ? "_drift" : "")
   ) as "auto" | "auto_drift" | "proxy" | "proxy_drift";
+  // 기간 preset (칩). 기본=연초이후(YTD). custom 은 DateField 수동입력.
+  const [preset, setPreset] = useState<BnPreset>("YTD");
   // 펼치기(공통): 벤치마크 구성 표(표0)의 토글 하나로 표0·표1 둘 다 종목 펼침/접힘.
   const [tbl0Expanded, setTbl0Expanded] = useState(false);
   // 표1 지표: 기여(=배분비중×수익률, 합=포트수익률) / Normalized(=자산군 수익률, 배분비중 미반영)
@@ -161,6 +198,7 @@ export default function BrinsonTab({ fundCode }: Props) {
     setFxSplit(false);
     setSaaSource("auto");
     setWeightMode("fixed");
+    setPreset("YTD");
     setApplied({ startDate: s, endDate: e, method: m, fxSplit: false });
   }, [fundCode, inception]);
 
@@ -173,6 +211,29 @@ export default function BrinsonTab({ fundCode }: Props) {
 
   const onApply = () =>
     setApplied({ startDate, endDate, method, fxSplit });
+
+  // preset 칩 클릭 → 시작/종료 자동 설정 + 즉시 조회(applied 갱신). custom 은 DateField 수동.
+  const applyPreset = (p: BnPreset) => {
+    setPreset(p);
+    if (p === "custom") return; // 직접 지정: 현재 DateField 값 유지(조회 버튼으로 적용)
+    const e = yesterday();
+    let s: string;
+    switch (p) {
+      case "MTD": s = startOfMonthStr(); break;
+      case "1M": s = monthsAgoStr(1); break;
+      case "3M": s = monthsAgoStr(3); break;
+      case "6M": s = monthsAgoStr(6); break;
+      case "YTD": s = ytdStartFor(inception); break;
+      case "since": s = inceptionStr(inception); break;
+      default: s = startDate;
+    }
+    setStartDate(s);
+    setEndDate(e);
+    setApplied({ startDate: s, endDate: e, method, fxSplit });
+  };
+  // DateField 수동 편집 시 preset=직접 지정 으로 전환(칩 하이라이트 일관)
+  const onStartEdit = (v: string) => { setStartDate(v); setPreset("custom"); };
+  const onEndEdit = (v: string) => { setEndDate(v); setPreset("custom"); };
 
   const { data, isLoading, error, isFetching } = useBrinson({
     code: fundCode,
@@ -289,15 +350,29 @@ export default function BrinsonTab({ fundCode }: Props) {
         </div>
       )}
 
+      {/* 기간 preset 칩 (거래내역 탭 동일). 클릭 시 즉시 조회. */}
+      <div className="bn-card bn-presets">
+        {BN_PRESETS.map((p) => (
+          <button
+            key={p.key}
+            type="button"
+            className={`bn-chip ${preset === p.key ? "on" : ""}`}
+            onClick={() => applyPreset(p.key)}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+
       {/* 컨트롤 카드 */}
       <div className="bn-card bn-ctrl">
         <label className="bn-field">
           시작
-          <DateField value={startDate} onChange={setStartDate} />
+          <DateField value={startDate} onChange={onStartEdit} />
         </label>
         <label className="bn-field">
           종료
-          <DateField value={endDate} onChange={setEndDate} />
+          <DateField value={endDate} onChange={onEndEdit} />
         </label>
         <label className="bn-field">
           분류
@@ -655,9 +730,9 @@ export default function BrinsonTab({ fundCode }: Props) {
           </div>
       </div>
 
-      {/* 본문 2컬럼: 좌=분석표/워터폴/요인추이, 우=수익률분석(+기간표)/종목 */}
-      <div className="bn-cols">
-        {/* ── 좌 컬럼: Brinson 분석표 → 워터폴 → 요인추이 ── */}
+      {/* 본문 2×2 그리드: [좌상 분석표+워터폴 | 우상 수익률분석] / [좌하 요인추이 | 우하 종목표] */}
+      <div className="bn-grid">
+        {/* ── 좌상: Brinson 분석표 + 워터폴 ── */}
         <div className="bn-stack">
           {/* Brinson 분석 (자산군별 Alloc/Select/Cross) */}
           <div className="bn-card bn-sec">
@@ -698,27 +773,22 @@ export default function BrinsonTab({ fundCode }: Props) {
             </table>
           </div>
 
-          {/* 초과성과 요인분해 워터폴 */}
+          {/* 초과성과 요인분해 워터폴 (height 키워 우상 수익률분석과 바닥선 근사) */}
           <div className="bn-card bn-sec">
+            <div className="bn-head2">
+              <h3>초과성과 요인분해</h3>
+            </div>
             <BrinsonWaterfall
               alloc={data.total_alloc}
               select={data.total_select}
               cross={data.total_cross}
               excess={data.total_excess}
+              height={420}
             />
           </div>
-
-          {/* 요인별 초과수익 누적 추이 */}
-          {hasBm && (
-            <div className="bn-card bn-sec">
-              <BrinsonFactorTrendChart daily={data.daily_brinson} />
-            </div>
-          )}
         </div>
 
-        {/* ── 우 컬럼: 수익률분석(+기간표) → 종목별 기여 ── */}
-        <div className="bn-stack">
-          {/* 수익률 분석 + 기간별 수익률 표 */}
+        {/* ── 우상: 수익률 분석 + 기간별 수익률 표 ── */}
           <div className="bn-card bn-sec">
             <BrinsonTrendPanel
               daily={data.daily_brinson}
@@ -779,7 +849,16 @@ export default function BrinsonTab({ fundCode }: Props) {
             </div>
           </div>
 
-          {/* 종목별 기여수익률 (전체 종목 + 비중 + 정렬) */}
+        {/* ── 좌하: 요인별 초과수익 누적 추이 ── */}
+        <div className="bn-stack">
+          {hasBm && (
+            <div className="bn-card bn-sec">
+              <BrinsonFactorTrendChart daily={data.daily_brinson} />
+            </div>
+          )}
+        </div>
+
+        {/* ── 우하: 종목별 기여수익률 (전체 종목 + 비중 + 정렬) ── */}
           <div className="bn-card bn-sec">
             <div className="bn-head2">
               <h3>종목별 기여수익률</h3>
@@ -817,7 +896,6 @@ export default function BrinsonTab({ fundCode }: Props) {
               </tbody>
             </table>
           </div>
-        </div>
       </div>
     </section>
   );

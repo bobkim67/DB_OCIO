@@ -53,7 +53,7 @@ export default function BrinsonMetricsPanel({ daily, hasBm, rfAnnual }: Props) {
           </div>
         </div>
         <div className="bn-mitem">
-          <div className="k">샤프비율</div>
+          <div className="k">샤프비율 <span className="bn-info" title="(연율화수익 − 무위험연율) ÷ 연율화변동성. 무위험=KIS CD Index">i</span></div>
           <div className="vrow">
             <span className={"v num " + (m.apSharpe < 0 ? "bad" : "ok")}>{fmtNum(m.apSharpe)}</span>
             {hasBm && <span className="vb num">BM {fmtNum(m.bmSharpe)}</span>}
@@ -62,22 +62,19 @@ export default function BrinsonMetricsPanel({ daily, hasBm, rfAnnual }: Props) {
         {hasBm && (
           <>
             <div className="bn-mitem">
-              <div className="k">정보비율 (IR)</div>
+              <div className="k">정보비율 (IR) <span className="bn-info" title="연율화 초과수익 ÷ 트래킹에러(TE)">i</span></div>
               <div className="vrow">
                 <span className={"v num " + (m.ir < 0 ? "bad" : "ok")}>{fmtNum(m.ir)}</span>
               </div>
             </div>
             <div className="bn-mitem">
-              <div className="k">트래킹에러 (TE)</div>
+              <div className="k">트래킹에러 (TE) <span className="bn-info" title="AP−BM 일별 초과수익의 표준편차 × √252">i</span></div>
               <div className="vrow">
                 <span className="v num">{fmtPlain(m.te)}</span>
               </div>
             </div>
           </>
         )}
-      </div>
-      <div className="bn-note">
-        ※ 샤프비율 = (연율화수익 − 무위험연율) ÷ 연율화변동성. IR = 연율화 초과수익 ÷ TE.
       </div>
     </div>
   );
