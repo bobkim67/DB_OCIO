@@ -233,9 +233,14 @@ def _build_compliance(
         # 위험자산 ≤50% (= 안전자산 ≥50% 동치, 타 펀드와 표기 일관성)
         rows.append(_ci("risk_asset", "위험자산", risk, high=0.50))
         rows.append(_ci("cash", "유동성", liq, low=0.05))
-        hr = fx_hedge.hedge_ratio if fx_hedge else None
-        if hr is not None:
-            rows.append(_ci("hedge", "환헤지(USD매도/USD자산)", hr, high=1.10))
+        # 환헤지 한도(사용자 정의 2026-06-29): USD 매도포지션(절대 NAV비중) ≤ 해외자산비중 + 10%p.
+        # 예) 해외자산 50% → 매도 60%까지 허용. (구 ratio 1.10 고정 폐기)
+        if fx_hedge:
+            short_w = fx_hedge.usd_short_weight
+            limit = fx_hedge.usd_asset_weight + 0.10
+            r = _ci("hedge", "환헤지(USD매도포지션)", short_w, high=limit)
+            r.breakdown = "해외자산+10%p"
+            rows.append(r)
 
     elif fund_code == "07G04":
         for sub, nm, eq_lim, risk_lim in [

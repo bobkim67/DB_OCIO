@@ -49,8 +49,8 @@
 .hd-g2 .vn.bad { color: var(--ace-bad); }
 .hd-g2 .vn.ref { color: var(--ace-ink-3); }
 /* 가이드 기준선 위 라벨 (≤x% 등) — 마커 바로 위 */
-.hd-g2 .mkrow { position: relative; height: 13px; margin-top: 8px; }
-.hd-g2 .mklab { position: absolute; bottom: 0; transform: translateX(-50%); font-size: 10.5px; font-weight: 700; color: var(--ace-ink-2); white-space: nowrap; }
+.hd-g2 .mkrow { position: relative; height: 16px; margin-top: 8px; }
+.hd-g2 .mklab { position: absolute; bottom: 0; transform: translateX(-50%); font-size: 13px; font-weight: 800; color: var(--ace-ink); white-space: nowrap; }
 .hd-g2 .track2 { position: relative; height: 14px; border-radius: 5px; background: #EEF1F4; margin-top: 2px; overflow: hidden; }
 .hd-g2 .zone { position: absolute; top: 0; height: 100%; }
 .hd-g2 .zone.ok { background: rgba(46, 125, 82, 0.12); }
