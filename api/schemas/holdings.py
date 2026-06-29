@@ -103,6 +103,7 @@ class ComplianceItemDTO(BaseModel):
     band_low: float | None = None
     band_high: float | None = None
     status: str = "none"              # ok / warn / breach / none
+    breakdown: str | None = None      # 라벨 옆 구성 표기 예: "주식 + 금" / "주식 + 금 + 하이일드"
 
 
 class HoldingsResponseDTO(BaseModel):

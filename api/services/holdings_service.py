@@ -51,6 +51,7 @@ _USHY_ITEM_CDS = {
     "US46435U8532",   # iShares Broad USD High Yield (USHY 본 ETF)
     "KR7468380001",   # KODEX iShares 미국하이일드액티브
 }
+_EM_BOND_ITEM_CDS = {"US9219468850"}  # VWOB (Vanguard EM Government Bond, 신흥국채권)
 _CASH_USD_DEPOSIT_CDS = {"USMUSD022001"}
 _EQUITY_ACS = {"국내주식", "해외주식"}
 _BOND_ACS = {"국내채권", "해외채권"}
@@ -62,6 +63,14 @@ def _is_gold_item(it: HoldingItemDTO) -> bool:
 
 def _is_ushy_item(it: HoldingItemDTO) -> bool:
     return it.item_cd.upper() in _USHY_ITEM_CDS
+
+
+def _is_em_bond_item(it: HoldingItemDTO) -> bool:
+    """신흥국채권(VWOB 등). data_loader._is_risk_bond 와 동일 식별."""
+    if it.item_cd.upper() in _EM_BOND_ITEM_CDS:
+        return True
+    u = (it.item_nm or "").upper()
+    return "EMERGING" in u or "VWOB" in u
 
 
 def _is_cash_item(it: HoldingItemDTO) -> bool:
@@ -254,6 +263,25 @@ def _build_compliance(
         rows.append(ComplianceItemDTO(
             key="risk_asset", label="위험자산", value=risk,
             band_low=None, band_high=t_risk, status="none"))
+
+    # 라벨 구성 표기: 금이 편입돼 있을 때만 (사용자 지정 2026-06-29).
+    #  주식비중 = 주식 + 금 / 위험자산 = 주식 + 금 + 하이일드(없고 신흥국채권 있으면 신흥국채권)
+    has_gold = any(_is_gold_item(it) for it in items)
+    if has_gold:
+        has_ushy = any(_is_ushy_item(it) for it in items)
+        has_em = any(_is_em_bond_item(it) for it in items)
+        risk_parts = ["주식", "금"]
+        if has_em:
+            risk_parts.append("신흥국채권")
+        elif has_ushy:
+            risk_parts.append("하이일드")
+        eq_bd = "주식 + 금"
+        risk_bd = " + ".join(risk_parts)
+        for r in rows:
+            if r.key == "equity" or r.key.endswith("_eq"):
+                r.breakdown = eq_bd
+            elif r.key == "risk_asset" or r.key.endswith("_risk"):
+                r.breakdown = risk_bd
 
     return rows
 

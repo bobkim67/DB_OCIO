@@ -335,13 +335,21 @@ function Gauge({ c, setTip }: { c: ComplianceItemDTO; setTip: (t: Tip) => void }
   const over = kind === "max" && hi != null && V > hi ? V - hi : 0;
   const short = kind === "min" && lo != null && V < lo ? lo - V : 0;
 
-  // 기준선 마커 레전드 (가이드 임계값 포함)
+  // 기준선 마커 레전드 (툴팁용, 가이드 임계값 포함)
   const markerLeg =
     kind === "ref" ? `SAA 목표 ${pc0(hi!)}`
     : kind === "max" ? `가이드 기준선(≤${pc0(hi!)})`
     : kind === "min" ? `가이드 기준선(≥${pc0(lo!)})`
     : kind === "band" ? `가이드 기준선(${pc0(lo!)}~${pc0(hi!)})`
     : "가이드 미설정";
+  // 기준선 바로 위 라벨 (≤x% 등)
+  const mkLabel =
+    kind === "max" ? `≤${pc0(hi!)}`
+    : kind === "min" ? `≥${pc0(lo!)}`
+    : kind === "band" ? `${pc0(lo!)}~${pc0(hi!)}`
+    : kind === "ref" ? `SAA ${pc0(hi!)}`
+    : "";
+  const mkLeft = T != null ? Math.min(92, Math.max(8, P(T))) : 0;
 
   let note = "", noteCls = "ok";
   if (over > 0) { note = `초과 +${(over * 100).toFixed(1)}%p`; noteCls = "bad"; }
@@ -357,13 +365,16 @@ function Gauge({ c, setTip }: { c: ComplianceItemDTO; setTip: (t: Tip) => void }
       onMouseMove={(e) => setTip({ x: e.clientX, y: e.clientY, lines: tipLines })}
       onMouseLeave={() => setTip(null)}>
       <div className="t">
-        <span className="lbl">{c.label}</span>
+        <span className="lbl">{c.label}{c.breakdown ? <span className="bd">({c.breakdown})</span> : null}</span>
         <span className={`st ${c.status}`}>{isRef ? "비교" : STATUS_LABEL[c.status]}</span>
       </div>
       <div className="vrow">
         <span className="v num">{pct1(V)}</span>
         {note && <span className={`vn ${noteCls}`}>{note}</span>}
       </div>
+      {T != null && mkLabel && (
+        <div className="mkrow"><span className="mklab" style={{ left: `${mkLeft}%` }}>{mkLabel}</span></div>
+      )}
       <div className="track2">
         {kind === "max" && (<><div className="zone ok" style={{ left: 0, width: pp(hi!) }} /><div className="zone bad" style={{ left: pp(hi!), right: 0 }} /></>)}
         {kind === "min" && (<><div className="zone bad" style={{ left: 0, width: pp(lo!) }} /><div className="zone ok" style={{ left: pp(lo!), right: 0 }} /></>)}
@@ -376,15 +387,12 @@ function Gauge({ c, setTip }: { c: ComplianceItemDTO; setTip: (t: Tip) => void }
         {/* 가이드 기준선 */}
         {T != null && <div className="mk" style={{ left: pp(T) }} />}
       </div>
-      <div className="mleg">
-        {kind !== "ref" && kind !== "none" && (
-          <>
-            <span className="li"><span className="zsw zok" />허용 구간</span>
-            <span className="li"><span className="zsw zbad" />위반·초과 구간</span>
-          </>
-        )}
-        <span className="li"><span className="mk-sw" />{markerLeg}</span>
-      </div>
+      {kind !== "ref" && kind !== "none" && (
+        <div className="mleg">
+          <span className="li"><span className="zsw zok" />허용 구간</span>
+          <span className="li"><span className="zsw zbad" />위반·초과 구간</span>
+        </div>
+      )}
     </div>
   );
 }

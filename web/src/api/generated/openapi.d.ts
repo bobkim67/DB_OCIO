@@ -1159,6 +1159,8 @@ export interface components {
              * @default none
              */
             status: string;
+            /** Breakdown */
+            breakdown?: string | null;
         };
         /** EquityFocusDTO */
         EquityFocusDTO: {
