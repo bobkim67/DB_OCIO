@@ -1,11 +1,11 @@
 ---
 type: wiki_index
-updated_at: 2026-06-01T18:37:13
+updated_at: 2026-06-29T08:30:41
 ---
 
 # Wiki Index
 
-Latest period: **2026-05**
+Latest period: **2026-06**
 
 ## Tier map
 
@@ -20,7 +20,7 @@ Latest period: **2026-05**
 
 ## Latest batch counts (base pages)
 - Events: 8
-- Entities: 10
+- Entities: 3
 - Assets: 6
 - Funds: 2
 

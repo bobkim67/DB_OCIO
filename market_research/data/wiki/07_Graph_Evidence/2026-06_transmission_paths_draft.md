@@ -3,12 +3,12 @@ type: graph_evidence
 status: draft
 promoted_to_canonical: false
 period: 2026-06
-total_paths: 0
+total_paths: 2
 node_count: ?
 edge_count: ?
 source_of_truth: graph_rag.precompute_transmission_paths
 phase: P0
-updated_at: 2026-06-01T10:24:12
+updated_at: 2026-06-29T08:31:42
 ---
 
 # Transmission Paths (DRAFT) — 2026-06
@@ -18,13 +18,15 @@ updated_at: 2026-06-01T10:24:12
 
 ## Summary
 
-- Total paths: 0
+- Total paths: 2
 - Graph nodes: ? · edges: ?
 
 ## Paths
 
 | # | Trigger | Target | Confidence | Path |
 |---|---------|--------|------------|------|
+| 1 | `지정학` | `유가` | 0.936 | 지정학적_리스크_고조 → 산유국·공급로_불안정 → 원유_공급_차질_우려 |
+| 2 | `테크_AI_반도체` | `국내주식` | 0.960 | 반도체_업황_변화 → 코스피_지수_방향성_결정 |
 
 ## Usage guardrails
 
