@@ -100,6 +100,9 @@ export type BrinsonSecContribDTO = S["BrinsonSecContribDTO"];
 export type BrinsonDailyPointDTO = S["BrinsonDailyPointDTO"];
 export type BrinsonDailyClassDTO = S["BrinsonDailyClassDTO"];
 export type BrinsonResponseDTO = S["BrinsonResponseDTO"];
+export type BrinsonPeriodRowDTO = S["BrinsonPeriodRowDTO"];
+export type BrinsonPeriodDTO = S["BrinsonPeriodDTO"];
+export type BrinsonPeriodsResponseDTO = S["BrinsonPeriodsResponseDTO"];
 export type BrinsonMappingMethod = "방법1" | "방법2" | "방법3" | "방법4";
 export type BrinsonPaMethod = "8" | "5";
 
@@ -386,6 +389,32 @@ export const fetchBrinson = async (
   const r = await api.get<BrinsonResponseDTO>(
     `/funds/${code}/brinson`,
     { params, timeout: 120_000 },
+  );
+  return r.data;
+};
+
+export interface FetchBrinsonPeriodsOptions {
+  endDate?: string;
+  mappingMethod?: BrinsonMappingMethod;
+  paMethod?: BrinsonPaMethod;
+  fxSplit?: boolean;
+  saaMode?: "auto" | "auto_drift" | "proxy" | "proxy_drift";
+}
+
+export const fetchBrinsonPeriods = async (
+  code: string,
+  opts: FetchBrinsonPeriodsOptions = {},
+): Promise<BrinsonPeriodsResponseDTO> => {
+  const params: Record<string, string | boolean> = {};
+  if (opts.endDate) params.end_date = opts.endDate;
+  if (opts.mappingMethod) params.mapping_method = opts.mappingMethod;
+  if (opts.paMethod) params.pa_method = opts.paMethod;
+  if (opts.fxSplit !== undefined) params.fx_split = opts.fxSplit;
+  if (opts.saaMode) params.saa_mode = opts.saaMode;
+  // 기간 수만큼 brinson compute → 첫 호출 느림. 타임아웃 상향.
+  const r = await api.get<BrinsonPeriodsResponseDTO>(
+    `/funds/${code}/brinson-periods`,
+    { params, timeout: 180_000 },
   );
   return r.data;
 };

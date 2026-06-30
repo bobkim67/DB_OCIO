@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   fetchBrinson,
+  fetchBrinsonPeriods,
   type BrinsonMappingMethod,
   type BrinsonPaMethod,
   type FetchBrinsonOptions,
@@ -39,6 +40,29 @@ export const useBrinson = (args: UseBrinsonArgs) => {
     ],
     queryFn: () => fetchBrinson(code, opts),
     enabled: !!code,
+    staleTime: 5 * 60 * 1000,
+  });
+};
+
+export interface UseBrinsonPeriodsArgs {
+  code: string;
+  endDate?: string;
+  mappingMethod?: BrinsonMappingMethod;
+  paMethod?: BrinsonPaMethod;
+  fxSplit?: boolean;
+  saaMode?: "auto" | "auto_drift" | "proxy" | "proxy_drift";
+  enabled?: boolean;
+}
+
+export const useBrinsonPeriods = (args: UseBrinsonPeriodsArgs) => {
+  const { code, endDate, mappingMethod, paMethod, fxSplit, saaMode, enabled = true } = args;
+  return useQuery({
+    queryKey: [
+      "brinson-periods", code, endDate ?? null, mappingMethod ?? null,
+      paMethod ?? "8", fxSplit ?? false, saaMode ?? "auto",
+    ],
+    queryFn: () => fetchBrinsonPeriods(code, { endDate, mappingMethod, paMethod, fxSplit, saaMode }),
+    enabled: !!code && enabled,
     staleTime: 5 * 60 * 1000,
   });
 };

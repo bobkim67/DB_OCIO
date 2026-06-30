@@ -387,6 +387,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/funds/{code}/brinson-periods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Brinson Periods
+         * @description 기간별(1M/3M/6M/1Y/YTD/SI) Brinson 효과 — 성과분석 하단 토글 테이블.
+         */
+        get: operations["get_brinson_periods_api_funds__code__brinson_periods_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/funds/{code}/transactions": {
         parameters: {
             query?: never;
@@ -861,6 +881,57 @@ export interface components {
              * @default 0
              */
             bm_cum: number;
+        };
+        /** BrinsonPeriodDTO */
+        BrinsonPeriodDTO: {
+            /** Period */
+            period: string;
+            /** Start Date */
+            start_date: string;
+            /** Has Bm */
+            has_bm: boolean;
+            /** Total Alloc */
+            total_alloc: number;
+            /** Total Select */
+            total_select: number;
+            /** Total Cross */
+            total_cross: number;
+            /** Total Excess */
+            total_excess: number;
+            /** Rows */
+            rows: components["schemas"]["BrinsonPeriodRowDTO"][];
+        };
+        /**
+         * BrinsonPeriodRowDTO
+         * @description 기간×자산군 한 행 (Allocation/Selection 토글 분해 테이블용).
+         */
+        BrinsonPeriodRowDTO: {
+            /** Asset Class */
+            asset_class: string;
+            /** Ap Weight */
+            ap_weight: number;
+            /** Bm Weight */
+            bm_weight: number;
+            /** Ap Return */
+            ap_return: number;
+            /** Bm Return */
+            bm_return: number;
+            /** Alloc Effect */
+            alloc_effect: number;
+            /** Select Effect */
+            select_effect: number;
+            /** Cross Effect */
+            cross_effect: number;
+        };
+        /** BrinsonPeriodsResponseDTO */
+        BrinsonPeriodsResponseDTO: {
+            meta: components["schemas"]["BaseMeta"];
+            /** Fund Code */
+            fund_code: string;
+            /** End Date */
+            end_date: string;
+            /** Periods */
+            periods: components["schemas"]["BrinsonPeriodDTO"][];
         };
         /** BrinsonResponseDTO */
         BrinsonResponseDTO: {
@@ -3053,6 +3124,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BrinsonResponseDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_brinson_periods_api_funds__code__brinson_periods_get: {
+        parameters: {
+            query?: {
+                end_date?: string | null;
+                mapping_method?: string | null;
+                pa_method?: string;
+                fx_split?: boolean;
+                saa_mode?: string;
+            };
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrinsonPeriodsResponseDTO"];
                 };
             };
             /** @description Validation Error */

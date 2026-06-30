@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { useBrinson } from "../hooks/useBrinson";
+import { useBrinson, useBrinsonPeriods } from "../hooks/useBrinson";
 import { useFunds } from "../hooks/useFunds";
 import { useOverview } from "../hooks/useOverview";
 import { computeBrinsonMetrics } from "../lib/brinsonMetrics";
 import MetaBadge from "../components/common/MetaBadge";
 import BrinsonWaterfall from "../components/charts/BrinsonWaterfall";
-import BrinsonTrendPanel from "../components/charts/BrinsonTrendPanel";
+import BrinsonTrendPanel, { type Mode as TrendMode } from "../components/charts/BrinsonTrendPanel";
 import BrinsonMetricsPanel from "../components/charts/BrinsonMetricsPanel";
 import BrinsonFactorTrendChart from "../components/charts/BrinsonFactorTrendChart";
 import BrinsonProgressBar from "../components/common/BrinsonProgressBar";
 import type {
   BrinsonAssetRowDTO,
   BrinsonMappingMethod,
+  BrinsonPeriodDTO,
+  BrinsonPeriodRowDTO,
   BrinsonSecContribDTO,
 } from "../api/endpoints";
 
@@ -174,6 +176,11 @@ export default function BrinsonTab({ fundCode }: Props) {
   const [tbl0Expanded, setTbl0Expanded] = useState(false);
   // 표1 지표: 기여(=배분비중×수익률, 합=포트수익률) / Normalized(=자산군 수익률, 배분비중 미반영)
   const [tbl1Metric, setTbl1Metric] = useState<"contrib" | "norm">("contrib");
+  // 수익률 분석 패널 모드/선택 자산군 (controlled) — 하단 기간 효과표와 공유.
+  const [trendMode, setTrendMode] = useState<TrendMode>("all");
+  const [trendSel, setTrendSel] = useState<string>("");
+  // 전체 모드에서 기간별 수익률 ↔ 요인효과 테이블 토글.
+  const [factorToggle, setFactorToggle] = useState(false);
 
   // 적용(applied) 상태 — 실제 조회를 구동. "조회" 버튼을 눌러야 draft → applied 반영.
   const [applied, setApplied] = useState({
@@ -245,6 +252,18 @@ export default function BrinsonTab({ fundCode }: Props) {
     saaMode,
   });
 
+  // 기간별(1M/3M/6M/1Y/YTD/SI) Brinson 효과 — 하단 요인효과 토글 시에만 조회(콜드 6× 비용).
+  const needPeriods = trendMode !== "all" || factorToggle;
+  const periodsQ = useBrinsonPeriods({
+    code: fundCode,
+    endDate: applied.endDate,
+    mappingMethod: applied.method,
+    paMethod: "8",
+    fxSplit: applied.fxSplit,
+    saaMode,
+    enabled: needPeriods,
+  });
+
   if (isLoading) return <BrinsonProgressBar label="Brinson 계산 중" />;
   if (error || !data) {
     return <div style={{ color: "#dc2626" }}>failed to load brinson</div>;
@@ -268,6 +287,38 @@ export default function BrinsonTab({ fundCode }: Props) {
   const sumApContrib = enrichedRows.reduce((s, r) => s + r.contrib_return, 0);
   const sumBmContrib = enrichedRows.reduce((s, r) => s + r.bm_contrib, 0);
   const sumExcessContrib = enrichedRows.reduce((s, r) => s + r.excess_contrib, 0);
+
+  // 수익률 분석 모드/선택 자산군 (controlled). 기간 효과표가 같은 효과/자산군을 따른다.
+  const trendClasses = enrichedRows.map((r) => r.asset_class); // ROW_ORDER 정렬됨
+  const effSel = trendMode === "all"
+    ? ""
+    : (trendSel && trendClasses.includes(trendSel) ? trendSel : (trendClasses[0] ?? ""));
+  // 기간별 효과 조회 결과 (period → DTO). 선택 자산군 행 추출용.
+  const periodByKey = new Map((periodsQ.data?.periods ?? []).map((p) => [p.period, p]));
+  const periodLoading = needPeriods && periodsQ.isLoading;
+  const BM_LBL = data.bm_source === "SAA" ? "SAA" : "BM";
+
+  // 기간별 효과표 행 정의 (Allocation/Selection = 선택 자산군 분해, factor = 포트 합계).
+  type CRow = { label: string; get: (r: BrinsonPeriodRowDTO) => string; cls?: (r: BrinsonPeriodRowDTO) => string; bold?: boolean };
+  const allocRows: CRow[] = [
+    { label: "AP비중", get: (r) => fmtWeight(r.ap_weight) },
+    { label: `${BM_LBL}비중`, get: (r) => fmtWeight(r.bm_weight) },
+    { label: `자산군수익률(${BM_LBL})`, get: (r) => fmtPct(r.bm_return), cls: (r) => rc(r.bm_return) },
+    { label: "자산배분효과", get: (r) => fmtPct(r.alloc_effect, 3), cls: (r) => ec(r.alloc_effect), bold: true },
+  ];
+  const selectRows: CRow[] = [
+    { label: "AP비중", get: (r) => fmtWeight(r.ap_weight) },
+    { label: "AP수익률", get: (r) => fmtPct(r.ap_return), cls: (r) => rc(r.ap_return) },
+    { label: `${BM_LBL}수익률`, get: (r) => fmtPct(r.bm_return), cls: (r) => rc(r.bm_return) },
+    { label: "종목선택효과", get: (r) => fmtPct(r.select_effect, 3), cls: (r) => ec(r.select_effect), bold: true },
+  ];
+  type FRow = { label: string; get: (p: BrinsonPeriodDTO) => number; bold?: boolean };
+  const factorRows: FRow[] = [
+    { label: "자산배분효과", get: (p) => p.total_alloc },
+    { label: "종목선택효과", get: (p) => p.total_select },
+    { label: "교차효과", get: (p) => p.total_cross },
+    { label: "초과수익", get: (p) => p.total_excess, bold: true },
+  ];
 
   // 표1 펼치기 — 표0(BM/SAA 구성)과 동일 행구조(같은 AP종목·정렬·FX제외)로 BM티커/AP종목 별도 컬럼.
   const normCls1 = (c: string) => (c === "유동성" ? "유동성및기타" : c);
@@ -796,56 +847,87 @@ export default function BrinsonTab({ fundCode }: Props) {
               bmSource={data.bm_source}
               bmComponents={data.bm_components ?? []}
               height={460}
+              mode={trendMode}
+              onMode={setTrendMode}
+              sel={trendSel}
+              onSel={setTrendSel}
             />
             <div className="bn-ptbl">
-              <div className="t">기간별 수익률</div>
-              <table className="bn-tbl">
-                <thead>
-                  <tr>
-                    <th>구분</th>
-                    {PERIOD_COLS.map(([k, label]) => (
-                      <th key={k} className="r">{label}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>AP 수익률</td>
-                    {PERIOD_COLS.map(([k]) => {
-                      const v = pr[k];
-                      return (
-                        <td key={k} className={`r ${v != null ? rc(v) : ""}`}>
-                          {v != null ? fmtPct(v * 100) : "—"}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                  <tr>
-                    <td>BM 수익률</td>
-                    {PERIOD_COLS.map(([k]) => {
-                      const v = bmpr[k];
-                      return (
-                        <td key={k} className={`r ${v != null ? rc(v) : ""}`}>
-                          {v != null ? fmtPct(v * 100) : "—"}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                  <tr>
-                    <td>초과</td>
-                    {PERIOD_COLS.map(([k]) => {
-                      const a = pr[k];
-                      const b = bmpr[k];
-                      const ex = a != null && b != null ? (a - b) * 100 : null;
-                      return (
-                        <td key={k} className={`r b ${ex != null ? ec(ex) : ""}`}>
-                          {ex != null ? fmtPct(ex) : "—"}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                </tbody>
-              </table>
+              {trendMode === "all" ? (
+                <>
+                  <div className="t" style={{ display: "flex", alignItems: "center" }}>
+                    <span>{factorToggle ? "기간별 요인효과" : "기간별 수익률"}</span>
+                    <span style={{ marginLeft: "auto", display: "inline-flex", border: "1px solid #d1d5db", borderRadius: 4, overflow: "hidden" }}>
+                      {([["수익률", false], ["요인효과", true]] as const).map(([lbl, on]) => (
+                        <button key={lbl} onClick={() => setFactorToggle(on)}
+                          style={{ fontSize: 11, padding: "3px 10px", border: "none", cursor: "pointer",
+                            background: factorToggle === on ? "#2563eb" : "#fff", color: factorToggle === on ? "#fff" : "#374151" }}>
+                          {lbl}
+                        </button>
+                      ))}
+                    </span>
+                  </div>
+                  {!factorToggle ? (
+                    <table className="bn-tbl">
+                      <thead>
+                        <tr><th>구분</th>{PERIOD_COLS.map(([k, label]) => <th key={k} className="r">{label}</th>)}</tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td>AP 수익률</td>
+                          {PERIOD_COLS.map(([k]) => { const v = pr[k]; return <td key={k} className={`r ${v != null ? rc(v) : ""}`}>{v != null ? fmtPct(v * 100) : "—"}</td>; })}
+                        </tr>
+                        <tr>
+                          <td>BM 수익률</td>
+                          {PERIOD_COLS.map(([k]) => { const v = bmpr[k]; return <td key={k} className={`r ${v != null ? rc(v) : ""}`}>{v != null ? fmtPct(v * 100) : "—"}</td>; })}
+                        </tr>
+                        <tr>
+                          <td>초과</td>
+                          {PERIOD_COLS.map(([k]) => { const a = pr[k]; const b = bmpr[k]; const ex = a != null && b != null ? (a - b) * 100 : null; return <td key={k} className={`r b ${ex != null ? ec(ex) : ""}`}>{ex != null ? fmtPct(ex) : "—"}</td>; })}
+                        </tr>
+                      </tbody>
+                    </table>
+                  ) : (
+                    <table className="bn-tbl">
+                      <thead>
+                        <tr><th>요인</th>{PERIOD_COLS.map(([k, label]) => <th key={k} className="r">{label}</th>)}</tr>
+                      </thead>
+                      <tbody>
+                        {factorRows.map((fr) => (
+                          <tr key={fr.label}>
+                            <td>{fr.label}</td>
+                            {PERIOD_COLS.map(([k]) => {
+                              const p = periodByKey.get(k);
+                              const v = p ? fr.get(p) : null;
+                              return <td key={k} className={`r ${fr.bold ? "b" : ""} ${v != null ? (fr.bold ? ec(v) : rc(v)) : ""}`}>{v != null ? fmtPct(v, 3) : (periodLoading ? "…" : "—")}</td>;
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="t">기간별 {trendMode === "alloc" ? "자산배분효과" : "종목선택효과"}{effSel ? ` — ${effSel}` : ""}</div>
+                  <table className="bn-tbl">
+                    <thead>
+                      <tr><th>구분</th>{PERIOD_COLS.map(([k, label]) => <th key={k} className="r">{label}</th>)}</tr>
+                    </thead>
+                    <tbody>
+                      {(trendMode === "alloc" ? allocRows : selectRows).map((cr) => (
+                        <tr key={cr.label}>
+                          <td>{cr.label}</td>
+                          {PERIOD_COLS.map(([k]) => {
+                            const row = periodByKey.get(k)?.rows.find((x) => x.asset_class === effSel);
+                            return <td key={k} className={`r ${cr.bold ? "b" : ""} ${row && cr.cls ? cr.cls(row) : ""}`}>{row ? cr.get(row) : (periodLoading ? "…" : "—")}</td>;
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              )}
             </div>
           </div>
 

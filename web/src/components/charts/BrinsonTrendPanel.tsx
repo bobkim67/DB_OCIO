@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import Plot from "react-plotly.js";
 import type {
   BrinsonBmComponentDTO,
@@ -36,7 +36,7 @@ function alignZero(a: number[], b: number[]): [[number, number], [number, number
 // 노출되는 문제를 피하려 customdata 에 미리 포맷한 문자열을 넣고 `%{customdata}` 로 표기.
 const signed2 = (v: number) => (v >= 0 ? "+" : "") + v.toFixed(2);
 
-type Mode = "all" | "alloc" | "select";
+export type Mode = "all" | "alloc" | "select";
 
 interface Props {
   daily: BrinsonDailyPointDTO[];
@@ -44,12 +44,17 @@ interface Props {
   bmSource: string; // "BM" | "SAA" | "none"
   bmComponents: BrinsonBmComponentDTO[];
   height?: number; // 차트 높이(px). 기본 340 (전체/Selection), Allocation 이중축은 +60.
+  // 모드/선택 자산군은 상위(BrinsonTab)가 소유 — 하단 기간 효과표와 공유(controlled).
+  mode: Mode;
+  onMode: (m: Mode) => void;
+  sel: string;
+  onSel: (s: string) => void;
 }
 
 const plotConfig = { displayModeBar: false, responsive: true } as const;
 const legendCfg = { orientation: "h", x: 0, y: 1.08, xanchor: "left", yanchor: "bottom", font: { size: 11 } } as const;
 
-export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmComponents, height = 340 }: Props) {
+export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmComponents, height = 340, mode, onMode, sel, onSel }: Props) {
   const classes = useMemo(() => {
     const set = new Set(dailyClass.map((r) => r.asset_class));
     return [...set].sort((a, b) => (ORDER_MAP.get(a) ?? 99) - (ORDER_MAP.get(b) ?? 99));
@@ -69,9 +74,6 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
     const idx = bmIndexByClass.get(c);
     return idx ? `${c} (${idx})` : c;
   };
-
-  const [mode, setMode] = useState<Mode>("all");
-  const [sel, setSel] = useState<string>("");
 
   const dates = useMemo(() => daily.map((d) => String(d.date)), [daily]);
   const hasBm = bmSource !== "none";
@@ -217,7 +219,7 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
   const radio = (m: Mode, label: string) => (
     <button
       key={m}
-      onClick={() => setMode(m)}
+      onClick={() => onMode(m)}
       style={{
         fontSize: 12, padding: "4px 12px", border: "none", cursor: "pointer",
         background: mode === m ? "#2563eb" : "#fff",
@@ -236,7 +238,7 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
         {mode !== "all" && (
           <select
             value={effSel}
-            onChange={(e) => setSel(e.target.value)}
+            onChange={(e) => onSel(e.target.value)}
             style={{ fontSize: 12, padding: "3px 6px" }}
             title="자산군 필터"
           >

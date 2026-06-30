@@ -126,3 +126,34 @@ class BrinsonResponseDTO(BaseModel):
     daily_brinson: list[BrinsonDailyPointDTO]
     # 자산군별 일별 시계열 (B4: AP비중 추이 + 자산군 누적기여)
     daily_class: list[BrinsonDailyClassDTO] = []
+
+
+# === 기간별(1M/3M/6M/1Y/YTD/SI) Brinson 효과 — 성과분석 하단 기간 테이블 ===
+class BrinsonPeriodRowDTO(BaseModel):
+    """기간×자산군 한 행 (Allocation/Selection 토글 분해 테이블용)."""
+    asset_class: str
+    ap_weight: float
+    bm_weight: float
+    ap_return: float
+    bm_return: float
+    alloc_effect: float
+    select_effect: float
+    cross_effect: float
+
+
+class BrinsonPeriodDTO(BaseModel):
+    period: str                # "1M"|"3M"|"6M"|"1Y"|"YTD"|"SI"
+    start_date: str            # YYYY-MM-DD (inception clamp 반영)
+    has_bm: bool               # BM/SAA 있음 → 효과 분해 유효
+    total_alloc: float
+    total_select: float
+    total_cross: float
+    total_excess: float
+    rows: list[BrinsonPeriodRowDTO]
+
+
+class BrinsonPeriodsResponseDTO(BaseModel):
+    meta: BaseMeta
+    fund_code: str
+    end_date: str              # 기준 종료일 (모든 기간 공통)
+    periods: list[BrinsonPeriodDTO]

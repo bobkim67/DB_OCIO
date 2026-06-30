@@ -12,11 +12,12 @@ from datetime import date, datetime
 
 from fastapi import APIRouter, HTTPException, Query
 
-from ..schemas.brinson import BrinsonResponseDTO
+from ..schemas.brinson import BrinsonPeriodsResponseDTO, BrinsonResponseDTO
 from ..services.brinson_service import (
     ALLOWED_MAPPING_METHODS,
     ALLOWED_PA_METHODS,
     build_brinson,
+    build_brinson_periods,
 )
 
 router = APIRouter()
@@ -86,3 +87,45 @@ def get_brinson(
             status_code=400,
             detail={"code": "INVALID_PARAM", "message": str(exc)},
         )
+
+
+@router.get(
+    "/funds/{code}/brinson-periods",
+    response_model=BrinsonPeriodsResponseDTO,
+)
+def get_brinson_periods(
+    code: str,
+    end_date: str | None = Query(default=None),
+    mapping_method: str | None = Query(default=None),
+    pa_method: str = Query(default="8"),
+    fx_split: bool = Query(default=False),
+    saa_mode: str = Query(default="auto"),
+) -> BrinsonPeriodsResponseDTO:
+    """기간별(1M/3M/6M/1Y/YTD/SI) Brinson 효과 — 성과분석 하단 토글 테이블."""
+    ed = _parse_iso("end_date", end_date)
+    if mapping_method is not None and mapping_method not in ALLOWED_MAPPING_METHODS:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "INVALID_PARAM",
+                    "message": f"mapping_method must be one of {list(ALLOWED_MAPPING_METHODS)}"},
+        )
+    if pa_method not in ALLOWED_PA_METHODS:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "INVALID_PARAM",
+                    "message": f"pa_method must be one of {list(ALLOWED_PA_METHODS)}"},
+        )
+    if saa_mode not in ("auto", "auto_drift", "proxy", "proxy_drift"):
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "INVALID_PARAM", "message": "saa_mode must be auto|auto_drift|proxy|proxy_drift"},
+        )
+    try:
+        return build_brinson_periods(
+            code, end_date=ed, mapping_method=mapping_method,
+            pa_method=pa_method, fx_split=fx_split, saa_mode=saa_mode,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail={"code": "FUND_NOT_FOUND", "message": code})
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"code": "INVALID_PARAM", "message": str(exc)})

@@ -35,6 +35,9 @@ from ..schemas.brinson import (
     BrinsonBmComponentDTO,
     BrinsonDailyClassDTO,
     BrinsonDailyPointDTO,
+    BrinsonPeriodDTO,
+    BrinsonPeriodRowDTO,
+    BrinsonPeriodsResponseDTO,
     BrinsonResponseDTO,
     BrinsonSecContribDTO,
 )
@@ -613,3 +616,99 @@ def build_brinson(
 def invalidate_cache() -> None:
     """관리용. NAV/PA 일일 갱신 후 호출."""
     _compute_cached.cache_clear()
+
+
+# 성과분석 하단 기간 테이블 컬럼 (1M/3M/6M/1Y/YTD/SI)
+_PERIOD_KEYS = ["1M", "3M", "6M", "1Y", "YTD", "SI"]
+
+
+def _period_start(period: str, end: date, inception: date | None) -> date | None:
+    """기간 시작일 — end 기준 relativedelta / YTD=전년말 / SI=inception.
+    inception 보다 이르면 inception 으로 clamp. 시작≥종료면 None(스킵)."""
+    from dateutil.relativedelta import relativedelta
+    if period == "1M":
+        s = end - relativedelta(months=1)
+    elif period == "3M":
+        s = end - relativedelta(months=3)
+    elif period == "6M":
+        s = end - relativedelta(months=6)
+    elif period == "1Y":
+        s = end - relativedelta(years=1)
+    elif period == "YTD":
+        s = date(end.year - 1, 12, 31)
+    elif period == "SI":
+        s = inception
+    else:
+        return None
+    if s is None:
+        return None
+    if inception and s < inception:
+        s = inception
+    if s >= end:
+        return None
+    return s
+
+
+def build_brinson_periods(
+    fund_code: str,
+    *,
+    end_date: date | None = None,
+    mapping_method: str | None = None,
+    pa_method: str = "8",
+    fx_split: bool = False,
+    saa_mode: str = "auto",
+) -> BrinsonPeriodsResponseDTO:
+    """기간별(1M/3M/6M/1Y/YTD/SI) Brinson 효과 — 성과분석 하단 토글 테이블용.
+
+    각 기간 [start, end] 에 대해 build_brinson 을 호출(캐시 재사용)해 total 효과 +
+    자산군별 분해를 모은다. golden 로직 불변(동일 compute 재사용). 첫 호출은 기간 수만큼
+    compute 라 느릴 수 있으나 이후 캐시.
+    """
+    if fund_code not in FUND_LIST:
+        raise KeyError(fund_code)
+
+    end = end_date or (datetime.now().date() - timedelta(days=1))
+    inc_raw = str((FUND_META.get(fund_code, {}) or {}).get("inception") or "").strip()
+    inception: date | None = None
+    if len(inc_raw) == 8 and inc_raw.isdigit():
+        inception = date(int(inc_raw[:4]), int(inc_raw[4:6]), int(inc_raw[6:8]))
+
+    warnings: list[str] = []
+    periods: list[BrinsonPeriodDTO] = []
+    for pk in _PERIOD_KEYS:
+        s = _period_start(pk, end, inception)
+        if s is None:
+            continue
+        try:
+            r = build_brinson(
+                fund_code, start_date=s, end_date=end,
+                mapping_method=mapping_method, pa_method=pa_method,
+                fx_split=fx_split, saa_mode=saa_mode,
+            )
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"{pk} 계산 실패: {type(exc).__name__}")
+            continue
+        rows = [
+            BrinsonPeriodRowDTO(
+                asset_class=ar.asset_class, ap_weight=ar.ap_weight,
+                bm_weight=ar.bm_weight, ap_return=ar.ap_return,
+                bm_return=ar.bm_return, alloc_effect=ar.alloc_effect,
+                select_effect=ar.select_effect, cross_effect=ar.cross_effect,
+            )
+            for ar in r.asset_rows
+        ]
+        periods.append(BrinsonPeriodDTO(
+            period=pk, start_date=s.isoformat(),
+            has_bm=(r.bm_source != "none"),
+            total_alloc=r.total_alloc, total_select=r.total_select,
+            total_cross=r.total_cross, total_excess=r.total_excess,
+            rows=rows,
+        ))
+
+    return BrinsonPeriodsResponseDTO(
+        meta=BaseMeta(
+            source="db", sources=[SourceBreakdown(component="brinson_periods", kind="db")],
+            is_fallback=not periods, warnings=warnings, generated_at=datetime.now(timezone.utc),
+        ),
+        fund_code=fund_code, end_date=end.isoformat(), periods=periods,
+    )
