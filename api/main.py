@@ -55,6 +55,16 @@ def create_app() -> FastAPI:
     app.include_router(brinson.router, prefix="/api", tags=["brinson"])
     app.include_router(transactions.router, prefix="/api", tags=["transactions"])
     app.include_router(warmup.router, prefix="/api", tags=["warmup"])
+
+    # ── LAN 배포: 빌드된 React SPA(web/dist) 를 같은 서버/포트에서 서빙 ──
+    # web/dist 가 있을 때만 마운트(개발 환경엔 없음 → Vite dev server 사용).
+    # /api 라우터·/docs·/openapi.json 은 위에서 먼저 등록되어 우선 매칭됨.
+    from pathlib import Path
+    from fastapi.staticfiles import StaticFiles
+
+    _dist = Path(__file__).resolve().parent.parent / "web" / "dist"
+    if _dist.is_dir():
+        app.mount("/", StaticFiles(directory=str(_dist), html=True), name="spa")
     return app
 
 
