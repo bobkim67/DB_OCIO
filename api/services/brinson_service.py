@@ -688,15 +688,23 @@ def build_brinson_periods(
         except Exception as exc:  # noqa: BLE001
             warnings.append(f"{pk} 계산 실패: {type(exc).__name__}")
             continue
-        rows = [
-            BrinsonPeriodRowDTO(
-                asset_class=ar.asset_class, ap_weight=ar.ap_weight,
-                bm_weight=ar.bm_weight, ap_return=ar.ap_return,
+        # 자산군별 비중은 기간 평균(daily_class) 사용 — asset_rows 의 ap_weight 는 '종료일
+        # 스냅샷'이라 모든 기간이 같은 종료일 → 비중차가 전 기간 동일해지고 효과(경로적분)와
+        # 부호도 안 맞는 문제. 기간 평균으로 (a) 비중차가 기간마다 달라지고 a×b 가 효과에 근접.
+        wsum: dict[str, list[float]] = {}
+        for dc in r.daily_class:
+            e = wsum.setdefault(dc.asset_class, [0.0, 0.0, 0.0])
+            e[0] += float(dc.ap_weight); e[1] += float(dc.bm_weight); e[2] += 1.0
+        avg_w = {ac: (v[0] / v[2], v[1] / v[2]) for ac, v in wsum.items() if v[2] > 0}
+        rows = []
+        for ar in r.asset_rows:
+            aw, bw = avg_w.get(ar.asset_class, (ar.ap_weight, ar.bm_weight))
+            rows.append(BrinsonPeriodRowDTO(
+                asset_class=ar.asset_class, ap_weight=round(aw, 2),
+                bm_weight=round(bw, 2), ap_return=ar.ap_return,
                 bm_return=ar.bm_return, alloc_effect=ar.alloc_effect,
                 select_effect=ar.select_effect, cross_effect=ar.cross_effect,
-            )
-            for ar in r.asset_rows
-        ]
+            ))
         periods.append(BrinsonPeriodDTO(
             period=pk, start_date=s.isoformat(),
             has_bm=(r.bm_source != "none"),
