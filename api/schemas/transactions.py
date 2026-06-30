@@ -42,6 +42,11 @@ class WeightMarkerDTO(BaseModel):
     net_eok: float          # 순매수(억). >0 매수우위 ▲ / <0 매도우위 ▼
 
 
+class WeightNavPointDTO(BaseModel):
+    date: str               # YYYY-MM-DD
+    aum_eok: float          # 펀드 순자산(억) — 비중×AUM 으로 'NAV기준' 절대금액 환산용
+
+
 class WeightHistoryResponseDTO(BaseModel):
     meta: BaseMeta
     fund_code: str
@@ -51,6 +56,7 @@ class WeightHistoryResponseDTO(BaseModel):
     keys: list[str]                 # 정렬된 key (버킷 순서 → 평균비중 desc). security면 '유동성' 묶음 포함
     points: list[WeightHistoryPointDTO]
     markers: list[WeightMarkerDTO]  # 일자·key별 순매수 마커 (영역차트 ▲▼)
+    nav: list[WeightNavPointDTO] = []     # 일별 순자산(억) — 'NAV기준' 토글용 (부모펀드)
 
 
 # === FX 포지션 (달러선물 등) 별도 라인차트 ===

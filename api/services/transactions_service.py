@@ -9,6 +9,7 @@ from ..schemas.transactions import (
     FxPositionPointDTO,
     FxPositionResponseDTO,
     FxRatePointDTO,
+    WeightNavPointDTO,
     SecuritiesResponseDTO,
     SecurityItemDTO,
     SecurityReturnPointDTO,
@@ -126,6 +127,7 @@ def build_weight_history(
         raise ValueError("level must be 'security' or 'asset'")
 
     from modules.data_loader import (
+        load_fund_nav_with_aum,
         load_weight_history_lookthrough,
         load_weight_trade_markers,
     )
@@ -177,6 +179,18 @@ def build_weight_history(
     except Exception as exc:
         warnings.append(f"마커 생성 실패: {type(exc).__name__}")
 
+    # 일별 순자산(억) — 'NAV기준' 토글에서 비중×AUM 환산용 (부모펀드 기준). 실패해도 격리.
+    nav: list[WeightNavPointDTO] = []
+    try:
+        ndf = load_fund_nav_with_aum(fund_code, str(start_date).replace("-", ""))
+        if ndf is not None and not ndf.empty:
+            nav = [
+                WeightNavPointDTO(date=pd_ts.strftime("%Y-%m-%d"), aum_eok=float(aum))
+                for pd_ts, aum in zip(ndf["기준일자"], ndf["AUM_억"])
+            ]
+    except Exception as exc:
+        warnings.append(f"NAV 로드 실패: {type(exc).__name__}")
+
     return WeightHistoryResponseDTO(
         meta=BaseMeta(
             source="db",
@@ -188,6 +202,7 @@ def build_weight_history(
         fund_code=fund_code,
         level=level,
         lookthrough_applied=is_fof,
+        nav=nav,
         start_date=start_date,
         keys=keys,
         points=points,

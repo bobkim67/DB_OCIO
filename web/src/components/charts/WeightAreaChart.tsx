@@ -41,14 +41,30 @@ interface Props {
   markers?: WeightMarkerDTO[];  // 일자·key별 순매수 마커 (▲▼)
   instanceKey?: string;         // fund/level 변경 시 리마운트
   xRange?: [string, string];    // 공통 x 날짜 도메인 (종목수익률 차트와 정렬용)
+  valueMode?: "pct" | "nav";    // pct=비중 100% 정규화(기본) / nav=비중×AUM 절대금액(억)
+  nav?: { date: string; aum_eok: number }[];  // 일별 순자산(억) — nav 모드용
 }
 
 export default function WeightAreaChart({
   points, keys, level, topN, markers = [], instanceKey, xRange,
+  valueMode = "pct", nav = [],
 }: Props) {
   if (points.length === 0) {
     return <div style={{ padding: 16, color: "#6b7280" }}>데이터 없음</div>;
   }
+  const isNav = valueMode === "nav";
+  const unit = isNav ? "억" : "%";
+  // 일별 AUM(억) — nav 모드에서 비중(%)→절대금액 환산. 스냅샷 날짜에 없으면 직전(≤) 사용.
+  const aumByDate = new Map(nav.map((n) => [n.date, n.aum_eok]));
+  const navDates = nav.map((n) => n.date).sort();
+  const aumAt = (d: string): number => {
+    if (aumByDate.has(d)) return aumByDate.get(d) as number;
+    let best = 0;
+    for (const dd of navDates) { if (dd <= d) best = aumByDate.get(dd) as number; else break; }
+    return best;
+  };
+  // 비중(%) → 표시값. pct=그대로, nav=weight/100×AUM(억).
+  const conv = (d: string, w: number) => (isNav ? (w / 100) * aumAt(d) : w);
 
   const dates = Array.from(new Set(points.map((p) => p.date))).sort();
 
@@ -107,7 +123,7 @@ export default function WeightAreaChart({
   // 아래 invisible trace 가 담당(0%=y null → x-unified 행 미노출).
   const traces: Plotly.Data[] = displayKeys.map((k, i) => ({
     x: dates,
-    y: dates.map((d) => byDate.get(d)?.get(k) ?? 0),
+    y: dates.map((d) => conv(d, byDate.get(d)?.get(k) ?? 0)),
     type: "scatter",
     mode: "lines",
     name: label(k),
@@ -123,7 +139,7 @@ export default function WeightAreaChart({
       if (!m) return 0;
       let s = 0;
       for (const k of etcKeys) s += m.get(k) ?? 0;
-      return s;
+      return conv(d, s);
     });
     traces.push({
       x: dates,
@@ -164,7 +180,7 @@ export default function WeightAreaChart({
     if (!m) return null;
     let s = 0;
     for (let j = 0; j <= i; j++) s += m.get(displayKeys[j]) ?? 0;
-    return s;
+    return conv(date, s);
   };
 
   const shown = markers.filter((mm) => idxOf.has(mm.key));
@@ -209,14 +225,15 @@ export default function WeightAreaChart({
     }
     rows.sort((a, b) => b.w - a.w);
     const lines = rows.map(
-      (r) => `<span style="color:${r.color}">■</span> ${label(r.k)} ${r.w.toFixed(1)}%`);
+      (r) => `<span style="color:${r.color}">■</span> ${label(r.k)} ${conv(d, r.w).toFixed(1)}${unit}`);
+    if (isNav) lines.unshift(`순자산 ${aumAt(d).toFixed(1)}억`);
     const ts = daySummary.get(d);
     if (ts) lines.push(ts);
     return lines.join("<br>");
   });
   traces.push({
     x: dates,
-    y: dates.map(() => 100),
+    y: dates.map((d) => (isNav ? aumAt(d) : 100)),
     text: composed,
     type: "scatter",
     mode: "markers",
@@ -238,8 +255,10 @@ export default function WeightAreaChart({
         // 공통 x 날짜 도메인 고정 → 종목수익률 차트와 날짜 눈금 x위치 정렬
         xaxis: { title: { text: "" }, type: "date",
                  ...(xRange ? { range: xRange, autorange: false } : {}) },
-        // 상단 5% 패딩 — 100% 밴드 상단의 순매수/순매도 ▲▼ 마커가 잘리지 않게.
-        yaxis: { title: { text: "비중 (%)" }, range: [0, 105], ticksuffix: "%", dtick: 20 },
+        // pct: 0~105% 고정(상단 마커 여백). nav: 순자산(억) autorange.
+        yaxis: isNav
+          ? { title: { text: "순자산 (억)" }, rangemode: "tozero", ticksuffix: "억" }
+          : { title: { text: "비중 (%)" }, range: [0, 105], ticksuffix: "%", dtick: 20 },
         hovermode: "x unified",
         hoverlabel: { align: "left" },   // 값 우측정렬 들여쓰기 제거
         // legend 상단 가로 (종목수익률 차트와 동일 스타일). 종목 모드는 3단(열) 고정.

@@ -2209,6 +2209,11 @@ export interface components {
             points: components["schemas"]["WeightHistoryPointDTO"][];
             /** Markers */
             markers: components["schemas"]["WeightMarkerDTO"][];
+            /**
+             * Nav
+             * @default []
+             */
+            nav: components["schemas"]["WeightNavPointDTO"][];
         };
         /** WeightMarkerDTO */
         WeightMarkerDTO: {
@@ -2218,6 +2223,13 @@ export interface components {
             key: string;
             /** Net Eok */
             net_eok: number;
+        };
+        /** WeightNavPointDTO */
+        WeightNavPointDTO: {
+            /** Date */
+            date: string;
+            /** Aum Eok */
+            aum_eok: number;
         };
         /**
          * WeightedDurationDTO

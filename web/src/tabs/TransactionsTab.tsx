@@ -107,6 +107,7 @@ export default function TransactionsTab({ fundCode }: Props) {
 
   // ---- 영역차트: 기간은 마스터(거래내역 preset)와 공유 → chartStart = txnStart ----
   const [topNInput, setTopNInput] = useState<string>(""); // "" = 전체
+  const [weightMode, setWeightMode] = useState<"pct" | "nav">("pct"); // 100%기준 / NAV기준
   const chartStart = txnStart;
 
   const whQ = useWeightHistory(fundCode, chartStart, level);
@@ -473,6 +474,14 @@ export default function TransactionsTab({ fundCode }: Props) {
                   </span>
                 </label>
               )}
+              <div className="tx-seg" style={{ marginLeft: 8 }}>
+                {(["pct", "nav"] as const).map((m) => (
+                  <button key={m} className={weightMode === m ? "on" : ""}
+                    onClick={() => setWeightMode(m)}>
+                    {m === "pct" ? "100%기준" : "NAV기준"}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
           {whQ.data?.lookthrough_applied && (
@@ -488,8 +497,10 @@ export default function TransactionsTab({ fundCode }: Props) {
                 level={level}
                 topN={topN}
                 markers={whQ.data?.markers ?? []}
-                instanceKey={`${fundCode}-${level}-${preset}`}
+                instanceKey={`${fundCode}-${level}-${preset}-${weightMode}`}
                 xRange={[chartStart, today]}
+                valueMode={weightMode}
+                nav={whQ.data?.nav ?? []}
               />
             )}
           </div>
