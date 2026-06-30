@@ -78,7 +78,8 @@ start "" powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep 6; Star
 
 echo [3/3] Starting server (host 0.0.0.0:%PORT%) ...
 REM server warms its caches in the background on startup (OCIO_WARMUP_ON_STARTUP default on)
-api\.venv\Scripts\python.exe -m uvicorn api.main:app --host 0.0.0.0 --port %PORT%
+REM --log-config: prefix each log line with timestamp (YYYY-MM-DD HH:MM:SS)
+api\.venv\Scripts\python.exe -m uvicorn api.main:app --host 0.0.0.0 --port %PORT% --log-config scripts\uvicorn_logging.json
 
 echo.
 echo Server stopped. Press any key to close.

@@ -40,7 +40,7 @@ REM ===== open local browser after server warms up =====
 start "" powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep 6; Start-Process 'http://localhost:%PORT%/'"
 
 echo [2/2] Starting server (host 0.0.0.0:%PORT%) ...
-api\.venv\Scripts\python.exe -m uvicorn api.main:app --host 0.0.0.0 --port %PORT%
+api\.venv\Scripts\python.exe -m uvicorn api.main:app --host 0.0.0.0 --port %PORT% --log-config scripts\uvicorn_logging.json
 
 echo.
 echo Server stopped. Press any key to close.

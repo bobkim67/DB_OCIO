@@ -57,14 +57,30 @@ def create_app() -> FastAPI:
     app.include_router(warmup.router, prefix="/api", tags=["warmup"])
 
     # ── LAN 배포: 빌드된 React SPA(web/dist) 를 같은 서버/포트에서 서빙 ──
-    # web/dist 가 있을 때만 마운트(개발 환경엔 없음 → Vite dev server 사용).
+    # web/dist 가 있을 때만(개발 환경엔 없음 → Vite dev server 사용).
     # /api 라우터·/docs·/openapi.json 은 위에서 먼저 등록되어 우선 매칭됨.
     from pathlib import Path
+    from fastapi.responses import FileResponse
     from fastapi.staticfiles import StaticFiles
 
     _dist = Path(__file__).resolve().parent.parent / "web" / "dist"
     if _dist.is_dir():
-        app.mount("/", StaticFiles(directory=str(_dist), html=True), name="spa")
+        # 빌드 에셋(/assets/*)은 직접 서빙
+        app.mount("/assets", StaticFiles(directory=str(_dist / "assets")), name="assets")
+
+        # 그 외 모든 경로는 SPA fallback — 실제 파일(ki-logo.png 등)있으면 그 파일,
+        # 없으면 index.html 반환 → '/', '/dashboard' 등 어떤 경로로 들어와도 앱이 뜸.
+        # (/api 는 위 라우터가 먼저 매칭. 혹시 안 잡힌 /api 경로는 404 JSON 유지.)
+        from fastapi import HTTPException
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        async def _spa(full_path: str):
+            if full_path.startswith("api/") or full_path == "api":
+                raise HTTPException(status_code=404, detail="Not Found")
+            target = _dist / full_path
+            if full_path and target.is_file():
+                return FileResponse(str(target))
+            return FileResponse(str(_dist / "index.html"))
     return app
 
 
