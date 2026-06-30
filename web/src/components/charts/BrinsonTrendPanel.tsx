@@ -196,13 +196,13 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
     autosize: true, height, margin: { t: 28, r: 60, b: 36, l: 56 },
     xaxis: { title: { text: "" }, type: "date" },
     yaxis: {
-      title: { text: `AP−${BM} 비중차 (%p)` }, ticksuffix: "%",
+      title: { text: `AP−${BM} 비중차` }, ticksuffix: "%",
       hoverformat: ".2f",
       zeroline: true, zerolinecolor: "#9ca3af", zerolinewidth: 1,
       ...(diffRange ? { range: diffRange } : {}),
     },
     yaxis2: {
-      title: { text: `${BM} 누적수익률 (%)` }, ticksuffix: "%",
+      title: { text: `${BM} 누적수익률` }, ticksuffix: "%",
       hoverformat: ".2f",
       overlaying: "y", side: "right", showgrid: false, zeroline: false,
       ...(levelRange ? { range: levelRange } : {}),
@@ -259,14 +259,14 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
         // 전체: 포트 AP·BM 누적수익 + 초과(영역) 한 장
         <Plot
           data={allCum}
-          layout={baseLayout("누적 수익률 (%)")}
+          layout={baseLayout("누적 수익률")}
           config={plotConfig} useResizeHandler style={{ width: "100%", height: "100%" }}
         />
       ) : mode === "select" ? (
         // Selection: 자산군 누적기여 + 초과(영역) 한 장 (우측 비중 차트 제거)
         <Plot
           data={allCum}
-          layout={baseLayout("누적 기여수익률 (%)")}
+          layout={baseLayout("누적 기여수익률")}
           config={plotConfig} useResizeHandler style={{ width: "100%", height: "100%" }}
         />
       ) : (

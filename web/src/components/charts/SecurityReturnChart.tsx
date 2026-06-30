@@ -315,7 +315,7 @@ export default function SecurityReturnChart({
   // 축 구성: 가격+영역=이중축(비중 right base / 수익률 left overlay),
   // 가격만=수익률 단일축, 비중만=편입비중 단일축(left).
   const weightAxis = {
-    title: { text: "편입비중 %", standoff: 8 },
+    title: { text: "편입비중", standoff: 8 },
     rangemode: "tozero" as const, ticksuffix: "%", showgrid: false,
   };
   const retYAxis = {

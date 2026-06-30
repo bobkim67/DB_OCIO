@@ -91,7 +91,7 @@ export default function FxHedgeGapChart({
         margin: { t: 28, r: 60, b: 36, l: 52 },
         xaxis: { title: { text: "" }, type: "date" },
         yaxis: {
-          title: { text: "헤지갭 (%p)" },
+          title: { text: "헤지갭" },
           ticksuffix: "%",
           zeroline: true,
           zerolinecolor: "#9ca3af",

@@ -114,7 +114,7 @@ export default function FxPositionChart({
         margin: { t: 28, r: 60, b: 36, l: 52 },
         xaxis: { title: { text: "" }, type: "date" },
         yaxis: {
-          title: { text: "비중 (%)" },
+          title: { text: "비중" },
           ticksuffix: "%",
           rangemode: "tozero",
           zeroline: true,

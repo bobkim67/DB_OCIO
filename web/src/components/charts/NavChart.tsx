@@ -164,7 +164,7 @@ export default function NavChart({
           ...(xRange ? { range: xRange, autorange: false } : { autorange: true }),
         },
         yaxis: {
-          title: { text: "수익률 (%)" }, ticksuffix: "%", hoverformat: ".2f",
+          title: { text: "수익률" }, ticksuffix: "%", hoverformat: ".2f",
           zeroline: true, zerolinecolor: "#C9CED6", zerolinewidth: 1,
           gridcolor: "#ECEEF1",
           ...(yRange ? { range: yRange, autorange: false } : { autorange: true }),

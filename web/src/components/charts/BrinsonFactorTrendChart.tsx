@@ -53,7 +53,7 @@ export default function BrinsonFactorTrendChart({ daily }: Props) {
     margin: { t: 28, r: 16, b: 36, l: 52 },
     xaxis: { title: { text: "" }, type: "date" },
     yaxis: {
-      title: { text: "누적 기여 (%p)" },
+      title: { text: "누적 기여" },
       ticksuffix: "%",
       hoverformat: ".2f",
       zeroline: true,
