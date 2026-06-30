@@ -8,21 +8,23 @@ interface Props {
   height?: number;     // 차트 높이(px). 기본 360.
 }
 
-// 요인별 구분색 — CI 색 기반(스틸블루/브라운). '요인별 초과수익 누적 추이' 범례와 동일.
-// 초과수익(합계)은 코랄로 강조.
-const COLORS = {
-  alloc: "#557EAA",   // 자산배분효과 — 스틸블루(--ace-brand)
-  select: "#B07A2B",  // 종목선택효과 — 브라운(--ace-saa)
-  cross: "#98A0AD",   // 교차효과 — 슬레이트(--ace-ink-3)
-  excess: "#E8473B",  // 초과수익(합계) — 코랄(--ace-up) 강조
-};
+// 원래(툴팁 리디자인 전) 색 — 양수=파랑/음수=빨강/합계=초록.
+const POS = "#636EFA";   // 양수 막대
+const NEG = "#EF553B";   // 음수 막대
+const TOTAL = "#00CC96"; // 초과수익(합계)
 
 const BAR_W = 0.56;
 
 export default function BrinsonWaterfall({ alloc, select, cross, excess, height = 360 }: Props) {
   const names = ["자산배분효과", "종목선택효과", "교차효과", "초과수익"];
-  const colors = [COLORS.alloc, COLORS.select, COLORS.cross, COLORS.excess];
   const vals = [alloc, select, cross, excess];
+  // 요인 막대=부호색(양수 파랑/음수 빨강), 초과수익(합계)=초록.
+  const colors = [
+    alloc >= 0 ? POS : NEG,
+    select >= 0 ? POS : NEG,
+    cross >= 0 ? POS : NEG,
+    TOTAL,
+  ];
   const labels = vals.map((v) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`);
 
   // 누적 워터폴: 요인 막대=직전 누적~+값, 합계 막대=0~excess.
