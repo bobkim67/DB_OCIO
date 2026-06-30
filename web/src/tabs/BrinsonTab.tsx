@@ -302,15 +302,15 @@ export default function BrinsonTab({ fundCode }: Props) {
   type CRow = { label: string; get: (r: BrinsonPeriodRowDTO) => string; cls?: (r: BrinsonPeriodRowDTO) => string; bold?: boolean };
   // 자산배분효과 ≈ (a) AP−BM 비중차 × (b) BM 자산군수익률  (비중=기간평균, 경로적분이라 근사)
   const allocRows: CRow[] = [
-    { label: `AP−${BM_LBL} 비중차 (a)`, get: (r) => fmtPct(r.ap_weight - r.bm_weight), cls: (r) => rc(r.ap_weight - r.bm_weight) },
-    { label: `자산군수익률(${BM_LBL}) (b)`, get: (r) => fmtPct(r.bm_return), cls: (r) => rc(r.bm_return) },
-    { label: "자산배분효과 (a×b)", get: (r) => fmtPct(r.alloc_effect, 3), cls: (r) => ec(r.alloc_effect), bold: true },
+    { label: `(a) AP−${BM_LBL} 비중차`, get: (r) => fmtPct(r.ap_weight - r.bm_weight), cls: (r) => rc(r.ap_weight - r.bm_weight) },
+    { label: `(b) 자산군수익률(${BM_LBL})`, get: (r) => fmtPct(r.bm_return), cls: (r) => rc(r.bm_return) },
+    { label: "(c) 자산배분효과 (a×b)", get: (r) => fmtPct(r.alloc_effect, 3), cls: (r) => ec(r.alloc_effect), bold: true },
   ];
   // 종목선택효과 ≈ (a) BM비중 × (b) AP−BM 수익률차
   const selectRows: CRow[] = [
-    { label: `${BM_LBL}비중 (a)`, get: (r) => fmtWeight(r.bm_weight) },
-    { label: `AP−${BM_LBL} 수익률차 (b)`, get: (r) => fmtPct(r.ap_return - r.bm_return), cls: (r) => rc(r.ap_return - r.bm_return) },
-    { label: "종목선택효과 (a×b)", get: (r) => fmtPct(r.select_effect, 3), cls: (r) => ec(r.select_effect), bold: true },
+    { label: `(a) ${BM_LBL}비중`, get: (r) => fmtWeight(r.bm_weight) },
+    { label: `(b) AP−${BM_LBL} 수익률차`, get: (r) => fmtPct(r.ap_return - r.bm_return), cls: (r) => rc(r.ap_return - r.bm_return) },
+    { label: "(c) 종목선택효과 (a×b)", get: (r) => fmtPct(r.select_effect, 3), cls: (r) => ec(r.select_effect), bold: true },
   ];
   type FRow = { label: string; get: (p: BrinsonPeriodDTO) => number; bold?: boolean };
   const factorRows: FRow[] = [
