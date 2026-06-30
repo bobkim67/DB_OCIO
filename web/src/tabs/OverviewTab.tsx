@@ -9,10 +9,10 @@ interface Props {
 
 type RetMode = "SI" | "YTD";
 
-const STRIP_PERIODS = ["1W", "1M", "3M", "6M", "YTD", "SI"] as const;
-const PERIOD_LABEL: Record<string, string> = {
-  "1W": "1W", "1M": "1M", "3M": "3M", "6M": "6M", YTD: "YTD", SI: "설정후",
-};
+// 기간별 수익률 표 컬럼 (성과분석 탭과 동일 양식)
+const PERIOD_COLS: [string, string][] = [
+  ["1M", "1M"], ["3M", "3M"], ["6M", "6M"], ["1Y", "1Y"], ["YTD", "YTD"], ["SI", "설정후"],
+];
 
 // ---------- 포맷 ----------
 const pct = (v: number | null | undefined) =>
@@ -274,24 +274,6 @@ export default function OverviewTab({ fundCode }: Props) {
         </div>
       </div>
 
-      {/* 기간 스트립 */}
-      <div className="ov-strip">
-        {STRIP_PERIODS.map((k) => {
-          const p = pr[k] ?? null;
-          const b = baseForPeriod(k);
-          const d = p != null && b != null ? p - b : null;
-          return (
-            <div className="cell" key={k}>
-              <div className="cell-top">
-                <span className="p">{PERIOD_LABEL[k]}</span>
-                <span className={`r num ${sign(p)}`}>{pctSigned(p)}</span>
-              </div>
-              <div className="b num">{baseIsTarget || hasBench ? <>{baseLabel} {pctSigned(b)}{d != null && <> (<span className={sign(d)}>{pctpSigned(d)}</span>)</>}</> : " "}</div>
-            </div>
-          );
-        })}
-      </div>
-
       {/* 차트 카드 */}
       <div className="ov-card">
         <div className="ov-toolbar">
@@ -344,6 +326,43 @@ export default function OverviewTab({ fundCode }: Props) {
             inceptionDate={inception ?? undefined}
             instanceKey={`${fundCode}-${start}-${end}-${sliced.length}`}
           />
+        </div>
+
+        {/* 기간별 수익률 표 (성과분석 탭과 동일 양식) — 차트 하단 */}
+        <div className="ov-ptbl">
+          <div className="t">기간별 수익률</div>
+          <table className="ov-tbl">
+            <thead>
+              <tr>
+                <th>구분</th>
+                {PERIOD_COLS.map(([k, label]) => <th key={k} className="r">{label}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>AP 수익률</td>
+                {PERIOD_COLS.map(([k]) => {
+                  const v = pr[k];
+                  return <td key={k} className={`r num ${v != null ? sign(v) : ""}`}>{v != null ? pctSigned(v) : "—"}</td>;
+                })}
+              </tr>
+              <tr>
+                <td>{benchLabel} 수익률</td>
+                {PERIOD_COLS.map(([k]) => {
+                  const v = bmpr[k];
+                  return <td key={k} className={`r num ${v != null ? sign(v) : ""}`}>{v != null ? pctSigned(v) : "—"}</td>;
+                })}
+              </tr>
+              <tr>
+                <td>초과</td>
+                {PERIOD_COLS.map(([k]) => {
+                  const a = pr[k]; const b = bmpr[k];
+                  const ex = a != null && b != null ? a - b : null;
+                  return <td key={k} className={`r num b ${ex != null ? sign(ex) : ""}`}>{ex != null ? pctSigned(ex) : "—"}</td>;
+                })}
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </section>
