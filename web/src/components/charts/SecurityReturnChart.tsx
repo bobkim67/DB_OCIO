@@ -175,8 +175,8 @@ export default function SecurityReturnChart({
     marker: { color, size: 11, symbol, line: { width: 1, color: "#fff" } },
     hoverinfo: "skip",
   });
-  if (buys.length) traces.push(markerTrace(buys, "매수/유입", BUY_COLOR, "triangle-up"));
-  if (sells.length) traces.push(markerTrace(sells, "매도/유출", SELL_COLOR, "triangle-down"));
+  if (buys.length) traces.push(markerTrace(buys, "매수/설정", BUY_COLOR, "triangle-up"));
+  if (sells.length) traces.push(markerTrace(sells, "매도/환매", SELL_COLOR, "triangle-down"));
 
   // ── 통합 툴팁(x-unified): 지수 + 편입비중 + 매수/매도 한 박스(일별 비중추이 서식).
   const tradeLinesByDate = new Map<string, string[]>();

@@ -1,5 +1,6 @@
 import Plot from "react-plotly.js";
 import type { WeightHistoryPointDTO, WeightMarkerDTO } from "../../api/endpoints";
+import { secAlias } from "../../lib/securityAlias";
 
 // 6버킷 고정 색상 (국내주식/해외주식/국내채권/해외채권/금·대체/유동성)
 const BUCKET_COLORS: Record<string, string> = {
@@ -72,6 +73,8 @@ export default function WeightAreaChart({
     if (level === "asset") return BUCKET_COLORS[k] ?? PALETTE[i % PALETTE.length];
     return PALETTE[i % PALETTE.length];
   };
+  // legend/툴팁 표기명 — 종목 모드는 약어(securityAlias), 자산군 모드는 원본.
+  const label = (k: string) => (level === "security" ? secAlias(k) : k);
 
   // 일자별 거래 요약 — 표시되는 key(displayKeys)의 거래만. 건별 줄바꿈(<br>),
   // 정렬: 매수 먼저 → 금액 내림차순. (BA정산 제외된 markers 사용)
@@ -94,7 +97,7 @@ export default function WeightAreaChart({
     daySummary.set(
       d,
       arr
-        .map((t) => `${tri(t.buy)} ${t.buy ? "매수" : "매도"} ${t.key} ${t.amt.toFixed(1)}억`)
+        .map((t) => `${tri(t.buy)} ${t.buy ? "매수" : "매도"} ${label(t.key)} ${t.amt.toFixed(1)}억`)
         .join("<br>"),
     );
   }
@@ -107,7 +110,7 @@ export default function WeightAreaChart({
     y: dates.map((d) => byDate.get(d)?.get(k) ?? 0),
     type: "scatter",
     mode: "lines",
-    name: k,
+    name: label(k),
     stackgroup: "one",
     line: { width: 0.5, color: colorOf(k, i) },
     fillcolor: withAlpha(colorOf(k, i), FILL_ALPHA),
@@ -206,7 +209,7 @@ export default function WeightAreaChart({
     }
     rows.sort((a, b) => b.w - a.w);
     const lines = rows.map(
-      (r) => `<span style="color:${r.color}">■</span> ${r.k} ${r.w.toFixed(1)}%`);
+      (r) => `<span style="color:${r.color}">■</span> ${label(r.k)} ${r.w.toFixed(1)}%`);
     const ts = daySummary.get(d);
     if (ts) lines.push(ts);
     return lines.join("<br>");
@@ -239,8 +242,14 @@ export default function WeightAreaChart({
         yaxis: { title: { text: "비중 (%)" }, range: [0, 105], ticksuffix: "%", dtick: 20 },
         hovermode: "x unified",
         hoverlabel: { align: "left" },   // 값 우측정렬 들여쓰기 제거
-        // legend 상단 가로 (종목수익률 차트와 동일 스타일)
-        legend: { orientation: "h", x: 0, y: 1.04, xanchor: "left", yanchor: "bottom", font: { size: 11 } },
+        // legend 상단 가로 (종목수익률 차트와 동일 스타일). 종목 모드는 3단(열) 고정.
+        legend: {
+          orientation: "h", x: 0, y: 1.04, xanchor: "left", yanchor: "bottom",
+          font: { size: 11 },
+          ...(level === "security"
+            ? { entrywidthmode: "fraction" as const, entrywidth: 0.33 }
+            : {}),
+        },
         showlegend: true,
       }}
       config={{ displayModeBar: false, responsive: true }}

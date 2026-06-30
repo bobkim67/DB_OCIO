@@ -737,15 +737,15 @@ export default function BrinsonTab({ fundCode }: Props) {
           {/* Brinson 분석 (자산군별 Alloc/Select/Cross) */}
           <div className="bn-card bn-sec">
             <div className="bn-head2">
-              <h3>Brinson 분석 (Allocation / Selection / Cross)</h3>
+              <h3>Brinson 분석 (자산배분효과 / 종목선택효과 / 교차효과)</h3>
             </div>
             <table className="bn-tbl">
               <thead>
                 <tr>
                   <th>자산군</th>
-                  <th className="r">Allocation</th>
-                  <th className="r">Selection</th>
-                  <th className="r">Cross</th>
+                  <th className="r">자산배분효과</th>
+                  <th className="r">종목선택효과</th>
+                  <th className="r">교차효과</th>
                   <th className="r">자산군 별</th>
                 </tr>
               </thead>

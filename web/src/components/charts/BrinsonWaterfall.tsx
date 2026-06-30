@@ -35,7 +35,7 @@ export default function BrinsonWaterfall({ alloc, select, cross, excess, height 
         {
           type: "waterfall",
           orientation: "v",
-          x: ["Allocation", "Selection", "Cross", "Excess"],
+          x: ["자산배분효과", "종목선택효과", "교차효과", "초과수익"],
           y: vals,
           measure: ["relative", "relative", "relative", "total"],
           text: labels,

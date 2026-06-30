@@ -539,7 +539,7 @@ export default function TransactionsTab({ fundCode }: Props) {
               ) : (
                 <select className="tx-flt" value={selAsset} onChange={(e) => setSelAsset(e.target.value)}>
                   {assetKeys.length === 0 && <option value="">자산군 없음</option>}
-                  {assetKeys.map((k) => <option key={k} value={k}>{k}</option>)}
+                  {assetKeys.map((k) => <option key={k} value={k}>{k === "전체" ? "펀드" : k}</option>)}
                 </select>
               )}
               <button
@@ -552,16 +552,6 @@ export default function TransactionsTab({ fundCode }: Props) {
             </div>
           </div>
 
-          {level === "security" && (
-            <div className="tx-note">
-              {selItem && selItem.has_price === false ? (
-                <>가격 데이터 없음 — <b>편입비중(%)</b>만 표시 (영역) + 매수/매도 시점</>
-              ) : (
-                <>source: SCIP FG Return(KRW 총수익 지수) · 조회 시작일=100 누적지수
-                  (종목 자체 수익률, <b>편입비중 미반영</b>) · 보조축(우): 편입비중 %</>
-              )}
-            </div>
-          )}
           {level === "asset" && selAsset === "전체" && (
             <div className="tx-note">
               펀드 기준가(NAV) 수익지수 · 시작일=100 · 보조축(우): 자산군별 편입비중 stacked ·
@@ -597,7 +587,7 @@ export default function TransactionsTab({ fundCode }: Props) {
                 weights={assetRetQ.data?.weights ?? []}
                 weightComponents={assetRetQ.data?.weight_components ?? []}
                 tradeComponents={assetRetQ.data?.trade_components ?? []}
-                itemNm={selAsset}
+                itemNm={selAsset === "전체" ? "펀드" : selAsset}
                 instanceKey={`${fundCode}-asset-${selAsset}-${preset}`}
                 xRange={[chartStart, today]}
                 markupMode={retMarkup}

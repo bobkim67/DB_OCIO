@@ -6,23 +6,6 @@ import type {
   BrinsonDailyPointDTO,
 } from "../../api/endpoints";
 
-// 자산군 색상 (Brinson 분류). 미정의는 팔레트 fallback.
-const CLASS_COLORS: Record<string, string> = {
-  국내주식: "#EF553B",
-  해외주식: "#636EFA",
-  국내채권: "#00CC96",
-  해외채권: "#AB63FA",
-  대체: "#FFA15A",
-  대체투자: "#FFA15A",
-  FX: "#19D3F3",
-  유동성및기타: "#B6E880",
-  유동성: "#B6E880",
-  주식: "#EF553B",
-  채권: "#00CC96",
-};
-const PALETTE = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b"];
-const colorOf = (c: string, i: number) => CLASS_COLORS[c] ?? PALETTE[i % PALETTE.length];
-
 const ROW_ORDER = [
   "주식", "채권", "국내주식", "국내채권", "해외주식", "해외채권",
   "대체", "대체투자", "FX", "유동성및기타", "유동성",
@@ -164,34 +147,6 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
     return t;
   })();
 
-  // ── select 우측: 자산군 AP 비중 vs BM 비중 추이 (전체 모드에선 미사용) ──
-  const allWgt: Plotly.Data[] = (() => {
-    if (!effSel) {
-      return classes.filter((c) => c !== "FX").map((c, i) => {
-        const rows = byClass.get(c) ?? [];
-        return {
-          x: rows.map((r) => String(r.date)), y: rows.map((r) => r.ap_weight),
-          type: "scatter", mode: "lines", name: c, stackgroup: "w",
-          line: { width: 0.5, color: colorOf(c, i) }, fillcolor: colorOf(c, i),
-          hovertemplate: `${c} %{y:.1f}%<extra></extra>`,
-        } as Plotly.Data;
-      });
-    }
-    const rows = byClass.get(effSel) ?? [];
-    const t: Plotly.Data[] = [{
-      x: rows.map((r) => String(r.date)), y: rows.map((r) => r.ap_weight),
-      type: "scatter", mode: "lines", name: `${effSel} AP비중`,
-      fill: "tozeroy", line: { width: 0 }, fillcolor: WGT_FILL,
-      hovertemplate: "AP비중 %{y:.1f}%<extra></extra>",
-    }];
-    if (hasBm) t.push({
-      x: rows.map((r) => String(r.date)), y: rows.map((r) => r.bm_weight),
-      type: "scatter", mode: "lines", name: `${effSel} ${BM} 비중`,
-      line: { width: 1.8, color: BM_LINE, dash: "dash" }, hovertemplate: `${BM} 비중 %{y:.1f}%<extra></extra>`,
-    });
-    return t;
-  })();
-
   // ── Allocation 진단: 이중축. 좌축 영역=AP−BM 비중차 · 우축 라인=BM지수 누적수익률 ──
   const isAlloc = mode === "alloc";
   const diagCombined: Plotly.Data[] = isAlloc
@@ -254,9 +209,9 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
   };
 
   const hint = mode === "alloc"
-    ? `Allocation = Σ (AP−${BM} 비중차)ₜ × ${BM}일별수익ₜ (경로적분). 우축 라인=${BM}지수 누적수익률, 좌축 영역=AP−${BM} 비중차 (0점 동기화).`
+    ? `자산배분효과 = Σ (AP−${BM} 비중차)ₜ × ${BM}일별수익ₜ (경로적분). 우축 라인=${BM}지수 누적수익률, 좌축 영역=AP−${BM} 비중차 (0점 동기화).`
     : mode === "select"
-      ? `좌: ${effSel} AP·${BM} 누적기여 + 초과(영역) · 우: ${effSel} 비중 vs ${BM}`
+      ? `종목선택효과 = Σ ${BM}비중ₜ × (AP−${BM} 자산군수익)ₜ (경로적분). 좌: ${effSel} AP·${BM} 누적기여 + 초과(영역).`
       : `AP·${BM} 누적수익 + 초과(영역)`;
 
   const radio = (m: Mode, label: string) => (
@@ -292,8 +247,8 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
         )}
         <div style={{ display: "inline-flex", border: "1px solid #d1d5db", borderRadius: 4, overflow: "hidden" }}>
           {radio("all", "전체")}
-          {radio("alloc", "Allocation")}
-          {radio("select", "Selection")}
+          {radio("alloc", "자산배분효과")}
+          {radio("select", "종목선택효과")}
         </div>
       </div>
       <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 6 }}>{hint}</div>
@@ -306,23 +261,12 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
           config={plotConfig} useResizeHandler style={{ width: "100%", height: "100%" }}
         />
       ) : mode === "select" ? (
-        // Selection: 자산군 누적기여+초과(좌) · 비중 vs BM(우) 2장
-        <div style={{ display: "flex", gap: 16, alignItems: "stretch", flexWrap: "wrap" }}>
-          <div style={{ flex: "1 1 420px", minWidth: 0 }}>
-            <Plot
-              data={allCum}
-              layout={baseLayout("누적 기여수익률 (%)")}
-              config={plotConfig} useResizeHandler style={{ width: "100%", height: "100%" }}
-            />
-          </div>
-          <div style={{ flex: "1 1 420px", minWidth: 0 }}>
-            <Plot
-              data={allWgt}
-              layout={baseLayout("비중 (%)")}
-              config={plotConfig} useResizeHandler style={{ width: "100%", height: "100%" }}
-            />
-          </div>
-        </div>
+        // Selection: 자산군 누적기여 + 초과(영역) 한 장 (우측 비중 차트 제거)
+        <Plot
+          data={allCum}
+          layout={baseLayout("누적 기여수익률 (%)")}
+          config={plotConfig} useResizeHandler style={{ width: "100%", height: "100%" }}
+        />
       ) : (
         // Allocation: 비중차(좌축 영역) + BM지수 누적수익률(우축 라인)
         <Plot
