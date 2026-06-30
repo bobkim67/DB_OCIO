@@ -1,9 +1,13 @@
 @echo off
+title DB OCIO Dashboard (LAN :8020)
 setlocal EnableDelayedExpansion
-title DB OCIO Dashboard Launcher
+cd /d "%~dp0.."
+
+REM ===== fixed LAN port =====
+set "PORT=8020"
 
 echo ====================================
-echo  DB OCIO Dashboard Launcher
+echo  DB OCIO Dashboard Launcher (LAN :%PORT%)
 echo ====================================
 echo.
 
@@ -31,78 +35,52 @@ if "%RUN_DU%"=="1" (
     echo.
 )
 
-REM ----- pre-pick ports so child launchers and browser stay in sync -----
-pushd "%~dp0.."
-for /f "tokens=1,2" %%A in ('api\.venv\Scripts\python.exe scripts\pick_free_port.py --start 8000 --start 5173 --write .runtime_ports.json --keys api web') do (
-    set "OCIO_API_PORT=%%A"
-    set "OCIO_WEB_PORT=%%B"
-)
+REM ===== restart: stop ONLY the server holding %PORT% (other ports / apps untouched) =====
+echo Restarting LAN server on port %PORT% ^(other ports left running^) ...
+for /f "delims=" %%p in ('powershell -NoProfile -Command "(Get-NetTCPConnection -LocalPort %PORT% -State Listen -ErrorAction SilentlyContinue).OwningProcess | Select-Object -First 1"') do taskkill /F /PID %%p >nul 2>&1
+timeout /t 1 /nobreak >nul
+
+REM ===== [1/3] build React SPA (web\dist) so FastAPI serves it on the same port =====
+echo [1/3] Building frontend (web\dist) ...
+pushd web
+call npm run build
 popd
+if not exist "web\dist\index.html" (
+  echo [ERROR] build failed - web\dist\index.html not found.
+  pause
+  exit /b 1
+)
 
-if not defined OCIO_API_PORT set "OCIO_API_PORT=8000"
-if not defined OCIO_WEB_PORT set "OCIO_WEB_PORT=5173"
-
-echo  FastAPI port : !OCIO_API_PORT!  ^(default 8000^)
-echo  Vite port    : !OCIO_WEB_PORT!  ^(default 5173^)
-echo.
-
-REM warmup CLI pre-builds disk caches; disable server startup warmup to avoid duplication
-set "OCIO_WARMUP_ON_STARTUP=false"
-
-REM ----- launch servers: one Windows Terminal window with tabs if available, else separate windows -----
-set "HAVE_WT=0"
-where wt >nul 2>nul && set "HAVE_WT=1"
-
-if "!HAVE_WT!"=="1" (
-    echo [1-3/5] Starting FastAPI + Vite as Windows Terminal tabs ...
-    set WT_ARGS=new-tab --title "FastAPI :!OCIO_API_PORT!" cmd /k "%~dp0launch_fastapi.bat"
-    set WT_ARGS=!WT_ARGS! ; new-tab --title "Vite :!OCIO_WEB_PORT!" cmd /k "%~dp0launch_vite.bat"
-    if "%RUN_DU%"=="1" (
-        echo       + Daily Update tab
-        set WT_ARGS=!WT_ARGS! ; new-tab --title "Daily Update" cmd /k "%~dp0launch_daily_update.bat"
-    ) else (
-        echo       Daily Update SKIPPED ^(declined / timeout^)
-    )
-    start "" wt !WT_ARGS!
+REM ===== [2/3] daily_update (optional, separate window) =====
+if "%RUN_DU%"=="1" (
+    echo [2/3] Starting Daily Update in a separate window ...
+    start "Daily Update" "%~dp0launch_daily_update.bat"
 ) else (
-    echo [1/5] Starting FastAPI ...
-    start "FastAPI :!OCIO_API_PORT!" "%~dp0launch_fastapi.bat"
-    echo [2/5] Starting Vite ...
-    start "Vite :!OCIO_WEB_PORT!" "%~dp0launch_vite.bat"
-    if "%RUN_DU%"=="1" (
-        echo [3/5] Starting Daily Update ...
-        start "Daily Update" "%~dp0launch_daily_update.bat"
-    ) else (
-        echo [3/5] Daily Update SKIPPED ^(declined / timeout^)
-    )
+    echo [2/3] Daily Update SKIPPED ^(declined / timeout^)
 )
 
-echo [4/5] Warming up caches ^(holdings/transactions/Brinson, default params^) ...
-echo       progress below; browser opens when warmup completes.
-pushd "%~dp0.."
-api\.venv\Scripts\python.exe -m api.warmup_cli
-popd
+REM ===== current LAN IP (192.168 / 10 / 172) =====
+set "IP="
+for /f "delims=" %%i in ('powershell -NoProfile -Command "(@(Get-NetIPAddress -AddressFamily IPv4).IPAddress -match '^(192\.168|10|172)\.')[0]"') do set "IP=%%i"
+if not defined IP set "IP=localhost"
+
+echo ============================================================
+echo    DB OCIO Dashboard - serving (caches warm up in background)
+echo ------------------------------------------------------------
+echo    Local : http://localhost:%PORT%/
+echo    LAN   : http://%IP%:%PORT%/      (open this on in-house PCs)
+echo    Close this window to STOP the server.
+echo ============================================================
+echo.
+
+REM open local browser shortly after the server binds
+start "" powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep 6; Start-Process 'http://localhost:%PORT%/'"
+
+echo [3/3] Starting server (host 0.0.0.0:%PORT%) ...
+REM server warms its caches in the background on startup (OCIO_WARMUP_ON_STARTUP default on)
+api\.venv\Scripts\python.exe -m uvicorn api.main:app --host 0.0.0.0 --port %PORT%
 
 echo.
-echo [5/5] Opening browser ...
-REM child launchers may have shifted to a different free port if the pre-picked
-REM one was grabbed by a stale process. Re-read the actual port from runtime json.
-pushd "%~dp0.."
-for /f "tokens=1" %%P in ('api\.venv\Scripts\python.exe -c "import json; print(json.load(open('.runtime_ports.json'))['web'])" 2^>nul') do set "FINAL_WEB=%%P"
-for /f "tokens=1" %%P in ('api\.venv\Scripts\python.exe -c "import json; print(json.load(open('.runtime_ports.json'))['api'])" 2^>nul') do set "FINAL_API=%%P"
-popd
-if not defined FINAL_WEB set "FINAL_WEB=%OCIO_WEB_PORT%"
-if not defined FINAL_API set "FINAL_API=%OCIO_API_PORT%"
-start "" "http://127.0.0.1:!FINAL_WEB!"
-
-echo.
-echo Done.
-echo  - FastAPI window  ^(port !FINAL_API!^)
-echo  - Vite window     ^(port !FINAL_WEB!^)
-if "%RUN_DU%"=="1" echo  - Daily Update    (running in background)
-echo  - Browser opened  http://127.0.0.1:!FINAL_WEB!
-echo.
-echo This launcher window will close in 3 seconds.
-echo Stop servers with Ctrl+C in each window.
-timeout /t 3 /nobreak >nul
+echo Server stopped. Press any key to close.
+pause >nul
 endlocal

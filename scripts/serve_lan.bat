@@ -3,8 +3,8 @@ title DB OCIO Dashboard (LAN)
 setlocal EnableDelayedExpansion
 cd /d "%~dp0.."
 
-REM ===== port (override: set OCIO_LAN_PORT=8000) =====
-if defined OCIO_LAN_PORT ( set "PORT=%OCIO_LAN_PORT%" ) else ( set "PORT=8000" )
+REM ===== port (override: set OCIO_LAN_PORT=8020) =====
+if defined OCIO_LAN_PORT ( set "PORT=%OCIO_LAN_PORT%" ) else ( set "PORT=8020" )
 
 REM ===== stop any server already holding this port =====
 echo Stopping existing server on port %PORT% (if any)...
