@@ -257,8 +257,8 @@ export default function WeightAreaChart({
                  ...(xRange ? { range: xRange, autorange: false } : {}) },
         // pct: 0~105% 고정(상단 마커 여백). nav: 순자산(억) autorange.
         yaxis: isNav
-          ? { title: { text: "순자산 (억)" }, rangemode: "tozero", ticksuffix: "억" }
-          : { title: { text: "비중 (%)" }, range: [0, 105], ticksuffix: "%", dtick: 20 },
+          ? { title: { text: "순자산" }, rangemode: "tozero", ticksuffix: "억" }
+          : { title: { text: "비중" }, range: [0, 105], ticksuffix: "%", dtick: 20 },
         hovermode: "x unified",
         hoverlabel: { align: "left" },   // 값 우측정렬 들여쓰기 제거
         // legend 상단 가로 (종목수익률 차트와 동일 스타일). 종목 모드는 3단(열) 고정.

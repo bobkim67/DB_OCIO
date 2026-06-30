@@ -43,7 +43,7 @@ interface Props {
   dailyClass: BrinsonDailyClassDTO[];
   bmSource: string; // "BM" | "SAA" | "none"
   bmComponents: BrinsonBmComponentDTO[];
-  height?: number; // 차트 높이(px). 기본 340 (전체/Selection), Allocation 이중축은 +60.
+  height?: number; // 차트 높이(px). 전체/Selection/Allocation 동일 높이.
   // 모드/선택 자산군은 상위(BrinsonTab)가 소유 — 하단 기간 효과표와 공유(controlled).
   mode: Mode;
   onMode: (m: Mode) => void;
@@ -193,7 +193,7 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
     : [undefined, undefined];
 
   const dualLayout: Partial<Plotly.Layout> = {
-    autosize: true, height: height + 60, margin: { t: 28, r: 60, b: 36, l: 56 },
+    autosize: true, height, margin: { t: 28, r: 60, b: 36, l: 56 },
     xaxis: { title: { text: "" }, type: "date" },
     yaxis: {
       title: { text: `AP−${BM} 비중차 (%p)` }, ticksuffix: "%",
