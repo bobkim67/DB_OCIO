@@ -9,9 +9,9 @@ interface Props {
 
 type RetMode = "SI" | "YTD";
 
-// 기간별 수익률 표 컬럼 (성과분석 탭과 동일 양식)
+// 기간별 수익률 표 컬럼. MTD/YTD 시작일=전월말/전년말 영업일(전산 일치, 백엔드 _calc_ref_dates).
 const PERIOD_COLS: [string, string][] = [
-  ["1M", "1M"], ["3M", "3M"], ["6M", "6M"], ["1Y", "1Y"], ["YTD", "YTD"], ["SI", "설정후"],
+  ["MTD", "MTD"], ["1M", "1M"], ["3M", "3M"], ["6M", "6M"], ["1Y", "1Y"], ["YTD", "YTD"], ["SI", "설정후"],
 ];
 
 // ---------- 포맷 ----------

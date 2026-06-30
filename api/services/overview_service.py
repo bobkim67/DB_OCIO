@@ -70,6 +70,7 @@ def _load_bm_series(fund_code: str, start_date: str) -> pd.DataFrame | None:
 _PERIOD_ALIAS_TO_DTO = {
     "누적": "SI",
     "1W": "1W",
+    "MTD": "MTD",
     "1M": "1M",
     "3M": "3M",
     "6M": "6M",
@@ -77,8 +78,9 @@ _PERIOD_ALIAS_TO_DTO = {
     "YTD": "YTD",
 }
 
-# Redesign 기간 스트립: 1W·1M·3M·6M·YTD·SI. 1Y 도 함께 산출(하위호환).
-_STATS_PERIODS = ["누적", "1W", "1M", "3M", "6M", "1Y", "YTD"]
+# Redesign 기간 스트립: 1W·1M·3M·6M·YTD·SI. MTD·1Y 도 함께 산출.
+# MTD/YTD 시작일 = 전월말/전년말 영업일(직전 영업일값) — _calc_ref_dates 가 처리(전산 일치).
+_STATS_PERIODS = ["누적", "1W", "MTD", "1M", "3M", "6M", "1Y", "YTD"]
 
 
 def _try_compute_stats(fund_code: str, end_date: date) -> dict[str, Any] | None:
@@ -256,8 +258,12 @@ def _compute_bm_period_returns(bm_aligned: pd.Series) -> PeriodReturnsDTO:
     if pd.isna(b0) or pd.isna(end_v) or float(b0) == 0:
         return {}
     end_dt = pd.Timestamp(bm_aligned.index[-1])
+    # MTD: 전월말 영업일 시작(전산 일치) — target=월초-1일 → '<=' 조회가 전월말로 떨어짐.
+    # YTD: 연초(1/1) target + '<=' → 1/1 휴장이라 전년말로 떨어짐(포트 _calc_ref_dates 와 동일).
+    _month_start = pd.Timestamp(f"{end_dt.year}-{end_dt.month:02d}-01")
     targets = {
         "1W": end_dt - pd.Timedelta(days=7),
+        "MTD": _month_start - pd.Timedelta(days=1),
         "1M": end_dt - relativedelta(months=1),
         "3M": end_dt - relativedelta(months=3),
         "6M": end_dt - relativedelta(months=6),
