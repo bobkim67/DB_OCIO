@@ -22,6 +22,15 @@ choice /C YN /T 10 /D N /M "Run daily_update now? Default N in 10s"
 set "RUN_DU=%errorlevel%"
 echo.
 
+REM ----- PDF collection prompt (only when daily_update will run) -----
+set "OCIO_NAVER_PDF=Y"
+if "%RUN_DU%"=="1" (
+    choice /C YN /T 10 /D Y /M "  Collect naver_research PDFs too ^(slower ~5-6min^)? Default Y in 10s"
+    if !errorlevel! equ 2 set "OCIO_NAVER_PDF=N"
+    echo       naver PDF collection : !OCIO_NAVER_PDF!
+    echo.
+)
+
 REM ----- pre-pick ports so child launchers and browser stay in sync -----
 pushd "%~dp0.."
 for /f "tokens=1,2" %%A in ('api\.venv\Scripts\python.exe scripts\pick_free_port.py --start 8000 --start 5173 --write .runtime_ports.json --keys api web') do (

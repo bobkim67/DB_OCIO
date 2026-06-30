@@ -50,6 +50,7 @@ def daily_update(
     allow_out_of_band: bool = False,
     target_suffix: str | None = None,
     enable_group_monitoring: bool = False,
+    naver_no_pdf: bool = False,
 ) -> dict:
     """
     일일 증분 업데이트 메인 함수.
@@ -114,8 +115,8 @@ def daily_update(
     print(f'  → {news_result.get("new_count", 0)}건 신규')
 
     # ── Step 1.2: Naver Research 증분 크롤 (raw 갱신) ──
-    print(f'\n[Step 1.2] Naver Research 크롤...')
-    nr_crawl_result = _step_naver_research_crawl()
+    print(f'\n[Step 1.2] Naver Research 크롤... (PDF {"제외" if naver_no_pdf else "포함"})')
+    nr_crawl_result = _step_naver_research_crawl(no_pdf=naver_no_pdf)
     result['steps']['naver_research_crawl'] = nr_crawl_result
     print(f'  → status={nr_crawl_result.get("status")}')
 
@@ -332,20 +333,24 @@ def _step_classify(date_str: str) -> dict:
         return {'status': 'error', 'error': str(exc), 'total': 0, 'classified': 0}
 
 
-def _step_naver_research_crawl() -> dict:
+def _step_naver_research_crawl(no_pdf: bool = False) -> dict:
     """Step 1.2: Naver Research 증분 크롤 (raw 갱신).
 
     state.json 기반 incremental 로 5개 카테고리(economy/market_info/invest/industry/
     debenture) 새 리서치를 수집해 `data/naver_research/raw/{cat}/{month}.json` 갱신.
     이후 Step 1.3 adapter 가 fresh raw 를 adapted 로 변환한다.
 
+    no_pdf=True 면 PDF 다운로드 스킵(`--no-pdf`) — summary/metadata 만 수집. adapter 의
+    PDF 용량 기반 quality band tier-up 은 빠지지만 본문(description=summary_text)은 유지.
+
     네트워크 차단(403)/오류는 크롤러가 카테고리 단위로 격리하며, 여기서도 전체
     예외를 graceful 처리해 daily_update 흐름을 막지 않는다. (LLM 미사용 → dry_run 무관)
     """
     try:
         from market_research.collect.naver_research import main as nr_crawl
-        rc = nr_crawl(['--incremental'])
-        return {'status': 'ok' if rc == 0 else 'error', 'rc': rc}
+        argv = ['--incremental'] + (['--no-pdf'] if no_pdf else [])
+        rc = nr_crawl(argv)
+        return {'status': 'ok' if rc == 0 else 'error', 'rc': rc, 'no_pdf': no_pdf}
     except Exception as exc:
         print(f'  naver_research 크롤 실패 (graceful skip): {exc}')
         import traceback
@@ -1056,6 +1061,12 @@ if __name__ == '__main__':
               '집계 → debug/claims/out/ (gitignored) 에 JSON+MD 출력. '
               '운영 영역 변경 0 — ledger 미수정.'),
     )
+    # Step 1.2 naver_research 크롤 PDF 다운로드 스킵 (런처 PDF Y/N 연동)
+    parser.add_argument(
+        '--naver-no-pdf', action='store_true',
+        help=('Step 1.2 naver_research 증분 크롤 시 PDF 다운로드 스킵 '
+              '(summary/metadata 만). 미지정 시 PDF 포함.'),
+    )
     args = parser.parse_args()
     daily_update(
         args.date,
@@ -1065,4 +1076,5 @@ if __name__ == '__main__':
         allow_out_of_band=args.allow_out_of_band,
         target_suffix=args.target_suffix,
         enable_group_monitoring=args.enable_group_monitoring,
+        naver_no_pdf=args.naver_no_pdf,
     )
