@@ -8,13 +8,13 @@ interface Props {
   height?: number;     // 차트 높이(px). 기본 360.
 }
 
-// 요인별 구분색 — '요인별 초과수익 누적 추이'(BrinsonFactorTrendChart) 범례와 동일.
-// 초과수익(합계)은 남색으로 강조.
+// 요인별 구분색 — CI 색 기반(스틸블루/브라운). '요인별 초과수익 누적 추이' 범례와 동일.
+// 초과수익(합계)은 코랄로 강조.
 const COLORS = {
-  alloc: "#2563eb",   // 자산배분효과 — 파랑
-  select: "#16a34a",  // 종목선택효과 — 초록
-  cross: "#B07A2B",   // 교차효과 — 브라운
-  excess: "#000080",  // 초과수익(합계) — 남색 강조
+  alloc: "#557EAA",   // 자산배분효과 — 스틸블루(--ace-brand)
+  select: "#B07A2B",  // 종목선택효과 — 브라운(--ace-saa)
+  cross: "#98A0AD",   // 교차효과 — 슬레이트(--ace-ink-3)
+  excess: "#E8473B",  // 초과수익(합계) — 코랄(--ace-up) 강조
 };
 
 const BAR_W = 0.56;

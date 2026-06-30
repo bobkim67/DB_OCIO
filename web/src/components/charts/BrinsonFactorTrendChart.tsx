@@ -7,11 +7,12 @@ import type { BrinsonDailyPointDTO } from "../../api/endpoints";
  * 워터폴(기간 합)의 시계열 버전: "초과수익을 배분 스킬이 이끌었나 종목선택이 이끌었나"를
  * 한눈에. daily_brinson 의 alloc_cum/select_cum/cross_cum/excess_cum 그대로 사용.
  */
+// CI 색 기반(--ace 토큰) — 워터폴(BrinsonWaterfall)과 동일 배색.
 const COLORS = {
-  excess: "#000080", // 초과(합) — 남색 굵게
-  alloc: "#2563eb", // Allocation — 파랑
-  select: "#16a34a", // Selection — 초록
-  cross: "#B07A2B", // Cross — CI brown(--ace-saa), 실선
+  excess: "#E8473B", // 초과(합) — 코랄(--ace-up) 강조
+  alloc: "#557EAA",  // Allocation — 스틸블루(--ace-brand)
+  select: "#B07A2B", // Selection — 브라운(--ace-saa)
+  cross: "#98A0AD",  // Cross — 슬레이트(--ace-ink-3)
 };
 const plotConfig = { displayModeBar: false, responsive: true } as const;
 
