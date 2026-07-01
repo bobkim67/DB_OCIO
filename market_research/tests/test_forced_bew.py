@@ -2,9 +2,8 @@
 """Forced-BEW export/load + debate_engine filter acceptance tests.
 
 대상 기능:
-  1) tabs/benchmark_event_viewer._export_forced_windows (viewer → JSON)
-  2) market_research/report/cli._load_forced_bew_json (JSON → set + strict validation)
-  3) market_research/report/debate_engine._build_evidence_candidates
+  1) market_research/report/cli._load_forced_bew_json (JSON → set + strict validation)
+  2) market_research/report/debate_engine._build_evidence_candidates
      with force_window_ids (BEW lane filter)
 
 테스트 데이터: 2026-03 BEW contract (기존 benchmark_event_mapper 산출물).
@@ -98,54 +97,8 @@ class DebateEngineForcedFilter(unittest.TestCase):
 
 
 # =================================================================
-# B. Viewer export_forced_windows
+# B. (removed) Viewer export_forced_windows — tabs/ Streamlit 폐기로 삭제 (2026-07-02)
 # =================================================================
-
-class ViewerExportForcedWindows(unittest.TestCase):
-
-    @classmethod
-    def setUpClass(cls):
-        cls.contract = _load_contract_or_skip()
-        cls.all_wids = [w.get('window_id') for w in cls.contract.get('windows', [])
-                        if w.get('window_id')]
-        if len(cls.all_wids) < 1:
-            raise unittest.SkipTest('contract 에 window 없음')
-
-    def setUp(self):
-        # export 경로 충돌 방지 — 테스트 전용 임시 dir
-        import tempfile
-        self._tmp = tempfile.TemporaryDirectory()
-        from tabs import benchmark_event_viewer as viewer_mod
-        self._orig_export_dir = viewer_mod._EXPORT_DIR
-        viewer_mod._EXPORT_DIR = Path(self._tmp.name)
-        self.viewer_mod = viewer_mod
-
-    def tearDown(self):
-        self.viewer_mod._EXPORT_DIR = self._orig_export_dir
-        self._tmp.cleanup()
-
-    # B-1: 유효 wid 만 저장
-    def test_export_valid_only(self):
-        wids = [self.all_wids[0], 'invalid_xxx']
-        fp, diag = self.viewer_mod._export_forced_windows(
-            PERIOD, self.contract, wids, focus_wid=self.all_wids[0])
-        self.assertIsNotNone(fp)
-        self.assertTrue(fp.exists())
-        payload = json.loads(fp.read_text(encoding='utf-8'))
-        self.assertEqual(payload['schema_version'], 1)
-        self.assertEqual(payload['year'], YEAR)
-        self.assertEqual(payload['month'], MONTH)
-        self.assertEqual(payload['force_window_ids'], [self.all_wids[0]])
-        self.assertEqual(payload['source'], 'bew_viewer')
-        self.assertIn('invalid_xxx', diag['invalid'])
-
-    # B-2: 유효 wid 0건이면 파일 미작성
-    def test_no_valid_skips_write(self):
-        fp, diag = self.viewer_mod._export_forced_windows(
-            PERIOD, self.contract, ['bad_a', 'bad_b'], focus_wid=None)
-        self.assertIsNone(fp)
-        self.assertEqual(diag['valid'], 0)
-        self.assertEqual(diag['requested'], 2)
 
 
 # =================================================================

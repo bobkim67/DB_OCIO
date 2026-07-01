@@ -178,16 +178,6 @@ def load_fund_nav(fund_codes: list, start_date: str = None) -> pd.DataFrame:
         conn.close()
 
 
-def load_fund_nav_wide(fund_codes: list, start_date: str = None) -> pd.DataFrame:
-    """
-    펀드 기준가를 wide form으로 변환 (기준일자 x FUND_CD).
-    """
-    df = load_fund_nav(fund_codes, start_date)
-    pivot = df.pivot_table(index='기준일자', columns='FUND_CD', values='MOD_STPR')
-    pivot = pivot.sort_index()
-    return pivot
-
-
 # ============================================================
 # 펀드 보유종목
 # R benchmark: dt.DWPM10530
@@ -219,27 +209,6 @@ def load_fund_holdings(fund_code: str, date: str = None) -> pd.DataFrame:
             ORDER BY EVL_AMT DESC
         """
         df = pd.read_sql(sql, conn, params=[fund_code, date])
-        df['기준일자'] = pd.to_datetime(df['STD_DT'], format='%Y%m%d')
-        return df
-    finally:
-        conn.close()
-
-
-def load_fund_holdings_history(fund_code: str, start_date: str = None) -> pd.DataFrame:
-    """보유종목 비중 히스토리 (자산군별 집계)"""
-    conn = get_pandas_connection('dt')
-    try:
-        where_date = f"AND STD_DT >= '{start_date}'" if start_date else ""
-        sql = f"""
-            SELECT STD_DT, AST_CLSF_CD_NM,
-                   SUM(EVL_AMT) as total_evl,
-                   SUM(NAST_TAMT_AGNST_WGH) as total_weight
-            FROM DWPM10530
-            WHERE FUND_CD = %s {where_date}
-            GROUP BY STD_DT, AST_CLSF_CD_NM
-            ORDER BY STD_DT, AST_CLSF_CD_NM
-        """
-        df = pd.read_sql(sql, conn, params=[fund_code])
         df['기준일자'] = pd.to_datetime(df['STD_DT'], format='%Y%m%d')
         return df
     finally:
@@ -346,30 +315,6 @@ def _load_net_subscription(fund_code: str, start_date: str = None, end_date: str
 
 
 # ============================================================
-# 자산군 분류체계
-# R benchmark: solution.universe_non_derivative → classification
-# ============================================================
-
-def load_classification_mapping() -> pd.DataFrame:
-    """
-    자산 유니버스 분류 매핑 테이블.
-    R: universe_non_derivative_table
-    """
-    conn = get_pandas_connection('solution')
-    try:
-        sql = """
-            SELECT primary_source_id as dataset_id, ISIN,
-                   classification_method, classification,
-                   colname_backtest, primary_source
-            FROM universe_non_derivative
-            WHERE classification_method IS NOT NULL
-        """
-        return pd.read_sql(sql, conn)
-    finally:
-        conn.close()
-
-
-# ============================================================
 # SCIP 가격 데이터
 # R benchmark: SCIP.back_datapoint
 # ============================================================
@@ -406,100 +351,6 @@ def load_scip_prices(dataset_ids: list, dataseries_ids: list = None,
         return df
     finally:
         conn.close()
-
-
-# ============================================================
-# 환율 데이터
-# R benchmark: USDKRW (ECOS API), F_USDKRW_Index (SCIP)
-# ============================================================
-
-def load_usdkrw_from_ecos(api_key: str = '7FA9V1N76SFHX6GXHI58') -> pd.DataFrame:
-    """
-    원달러 환율 (ECOS API 731Y003).
-    R: USDKRW
-    """
-    import requests
-    url = f"https://ecos.bok.or.kr/api/StatisticSearch/{api_key}/json/kr/1/10000/731Y003/D/20000101/99991231/0000001"
-    try:
-        resp = requests.get(url, timeout=30, verify=False)
-        data = resp.json()
-        rows = data.get('StatisticSearch', {}).get('row', [])
-        if not rows:
-            return pd.DataFrame(columns=['기준일자', 'USD/KRW'])
-        df = pd.DataFrame(rows)
-        df['기준일자'] = pd.to_datetime(df['TIME'], format='%Y%m%d')
-        df['USD/KRW'] = pd.to_numeric(df['DATA_VALUE'], errors='coerce')
-        return df[['기준일자', 'USD/KRW']].dropna().sort_values('기준일자').reset_index(drop=True)
-    except Exception as e:
-        print(f"ECOS API error: {e}")
-        return pd.DataFrame(columns=['기준일자', 'USD/KRW'])
-
-
-# ============================================================
-# 펀드 요약 정보 (최근일 기준)
-# ============================================================
-
-def load_fund_summary(fund_codes: list) -> pd.DataFrame:
-    """전체 펀드 최근 요약 정보 (AUM, 기준가, 수익률)"""
-    conn = get_pandas_connection('dt')
-    try:
-        placeholders = ','.join(['%s'] * len(fund_codes))
-        sql = f"""
-            SELECT a.FUND_CD, a.STD_DT, a.MOD_STPR, a.NAST_AMT, a.DD1_ERN_RT,
-                   a.STK_EVL_AMT, a.BND_EVL_AMT, a.CASH_EVL_AMT,
-                   a.OVS_STK_EVL_AMT, a.OVS_BND_EVL_AMT,
-                   a.FUND_DUR, a.FUND_MOD_DUR
-            FROM DWPM10510 a
-            INNER JOIN (
-                SELECT FUND_CD, MAX(STD_DT) as max_dt
-                FROM DWPM10510
-                WHERE FUND_CD IN ({placeholders})
-                GROUP BY FUND_CD
-            ) b ON a.FUND_CD = b.FUND_CD AND a.STD_DT = b.max_dt
-            ORDER BY a.NAST_AMT DESC
-        """
-        df = pd.read_sql(sql, conn, params=fund_codes)
-        df['기준일자'] = pd.to_datetime(df['STD_DT'], format='%Y%m%d')
-        df['AUM_억'] = df['NAST_AMT'] / 1e8
-        return df
-    finally:
-        conn.close()
-
-
-def load_fund_period_return(fund_code: str, start_date: str, end_date: str) -> float:
-    """특정 기간 펀드 수익률 계산 (기준가 기반)"""
-    conn = get_pandas_connection('dt')
-    try:
-        sql = """
-            SELECT STD_DT, MOD_STPR
-            FROM DWPM10510
-            WHERE FUND_CD = %s AND STD_DT BETWEEN %s AND %s
-            ORDER BY STD_DT
-        """
-        df = pd.read_sql(sql, conn, params=[fund_code, start_date, end_date])
-        if len(df) < 2:
-            return np.nan
-        return df['MOD_STPR'].iloc[-1] / df['MOD_STPR'].iloc[0] - 1
-    finally:
-        conn.close()
-
-
-# ============================================================
-# 통합 로더 (캐시용)
-# ============================================================
-
-def load_all_fund_data(fund_codes: list, start_date: str = None) -> dict:
-    """
-    전체 펀드 데이터 한번에 로드. Streamlit @st.cache_data 용.
-    nav 데이터도 포함.
-    """
-    result = {
-        'summary': load_fund_summary(fund_codes),
-        'holiday': load_holiday_calendar(),
-        'nav': load_fund_nav(fund_codes, start_date),
-    }
-    result['latest_bday'] = get_latest_business_day(result['holiday'])
-    return result
 
 
 # ============================================================
@@ -624,38 +475,6 @@ def load_dt_bm_prices(fund_code: str, start_date: str = None) -> pd.DataFrame:
 # SCIP 환율 (USD/KRW)
 # Monitoring/report.py:112 get_fx_rate() 참조
 # ============================================================
-
-def load_usdkrw_from_scip(start_date: str = None) -> pd.DataFrame:
-    """
-    SCIP에서 USD/KRW 환율 로드.
-    dataset_id=31, dataseries_id=6, blob에서 "USD" 키.
-
-    Returns: DataFrame(기준일자, USD/KRW)
-    """
-    conn = get_pandas_connection('SCIP')
-    try:
-        params = [31, 6]
-        where_date = ""
-        if start_date:
-            where_date = " AND timestamp_observation >= %s"
-            params.append(start_date)
-        sql = f"""
-            SELECT timestamp_observation, data
-            FROM back_datapoint
-            WHERE dataset_id = %s AND dataseries_id = %s {where_date}
-            ORDER BY timestamp_observation
-        """
-        df = pd.read_sql(sql, conn, params=params)
-        if df.empty:
-            return pd.DataFrame(columns=['기준일자', 'USD/KRW'])
-        df['기준일자'] = pd.to_datetime(df['timestamp_observation']).dt.normalize()
-        df['USD/KRW'] = df['data'].apply(lambda b: parse_data_blob(b, 'USD'))
-        df = df[df['USD/KRW'].notna()]
-        df['USD/KRW'] = df['USD/KRW'].astype(float)
-        return df[['기준일자', 'USD/KRW']].reset_index(drop=True)
-    finally:
-        conn.close()
-
 
 # ============================================================
 # 거래내역 순매수/매도 (DWPM10520)
@@ -1427,177 +1246,6 @@ def load_mp_weights_8class(fund_desc: str, reference_date: str = None,
     # 반올림
     result = {k: round(v, 2) for k, v in result.items()}
     return result
-
-
-# ============================================================
-# VP (Virtual Portfolio) from DB
-# sol_DWPM10530 (보유종목), sol_DWPM10510 (기준가), sol_VP_rebalancing_inform (이벤트)
-# ============================================================
-
-# fund_desc → VP 펀드코드 매핑
-# sol_DWPM10510/10530의 VP 전용 펀드코드
-_FUND_DESC_TO_VP_CODE = {
-    'MS GROWTH': '3MP01',
-    'MS STABLE': '3MP02',
-    'TDF2050': '1MP50',
-    'TDF2045': '1MP45',
-    'TDF2040': '1MP40',
-    'TDF2035': '1MP35',
-    'TDF2030': '1MP30',
-    'TDF2055': '1MP55',
-    'TDF2060': '1MP60',
-    'TIF': '2MP24',
-    'Golden Growth': '6MP07',
-}
-
-
-def load_vp_rebal_date(fund_desc: str) -> str:
-    """
-    sol_VP_rebalancing_inform에서 최근 VP 리밸런싱 날짜 조회.
-    Returns: 날짜 문자열 또는 None
-    """
-    conn = get_pandas_connection('solution')
-    try:
-        sql = """
-            SELECT MAX(`리밸런싱날짜`) as rd
-            FROM sol_VP_rebalancing_inform
-            WHERE `펀드설명` = %s AND port = 'VP'
-        """
-        df = pd.read_sql(sql, conn, params=[fund_desc])
-        if not df.empty and pd.notna(df['rd'].iloc[0]):
-            return str(df['rd'].iloc[0])
-        return None
-    except Exception:
-        return None
-    finally:
-        conn.close()
-
-
-def load_vp_holdings_8class(vp_fund_code: str, date: str = None) -> dict:
-    """
-    VP 보유종목(sol_DWPM10530)에서 NAST_TAMT_AGNST_WGH 기반 8분류 비중 집계.
-
-    vp_fund_code: VP 전용 펀드코드 (예: '3MP01')
-    date: 기준일 YYYYMMDD (None → 최근일)
-
-    Returns: dict {'국내주식': 5.0, '해외주식': 30.0, ...} (% 단위) 또는 None
-    """
-    conn = get_pandas_connection('solution')
-    try:
-        # 최근일 결정
-        if date is None:
-            conn_dict = get_connection('solution')
-            try:
-                with conn_dict.cursor() as cur:
-                    cur.execute(
-                        "SELECT MAX(STD_DT) as max_dt FROM sol_DWPM10530 WHERE FUND_CD = %s",
-                        (vp_fund_code,)
-                    )
-                    row = cur.fetchone()
-                    if not row or row['max_dt'] is None:
-                        return None
-                    date = row['max_dt']
-            finally:
-                conn_dict.close()
-
-        sql = """
-            SELECT ITEM_CD, ITEM_NM, NAST_TAMT_AGNST_WGH
-            FROM sol_DWPM10530
-            WHERE FUND_CD = %s AND STD_DT = %s
-            ORDER BY NAST_TAMT_AGNST_WGH DESC
-        """
-        df = pd.read_sql(sql, conn, params=[vp_fund_code, date])
-        if df.empty:
-            return None
-
-        # ISIN → universe_non_derivative 방법3 매핑
-        isin_list = df['ITEM_CD'].tolist()
-        placeholders = ','.join(['%s'] * len(isin_list))
-        cls_sql = f"""
-            SELECT ISIN, classification
-            FROM universe_non_derivative
-            WHERE classification_method = '방법3'
-              AND ISIN IN ({placeholders})
-              AND classification IS NOT NULL
-        """
-        cls_df = pd.read_sql(cls_sql, conn, params=isin_list)
-
-        isin_to_class = {}
-        for _, row in cls_df.iterrows():
-            cls_val = str(row['classification']).strip()
-            mapped = _UNIV_TO_8CLASS.get(cls_val)
-            if mapped:
-                isin_to_class[row['ISIN']] = mapped
-
-        # 8분류별 비중 집계
-        asset_classes_8 = ['국내주식', '해외주식', '국내채권', '해외채권', '대체투자', 'FX', '모펀드', '유동성']
-        result = {ac: 0.0 for ac in asset_classes_8}
-
-        for _, r in df.iterrows():
-            isin = r['ITEM_CD']
-            wgt = float(r['NAST_TAMT_AGNST_WGH']) if pd.notna(r['NAST_TAMT_AGNST_WGH']) else 0.0
-            ac = isin_to_class.get(isin, '해외주식')  # fallback: 해외주식
-            if ac in result:
-                result[ac] += wgt
-
-        result = {k: round(v, 2) for k, v in result.items()}
-        return result
-    except Exception as e:
-        logger.error(f"VP holdings 8class 실패 ({vp_fund_code}): {e}")
-        return None
-    finally:
-        conn.close()
-
-
-def load_vp_weights_8class(fund_desc: str, reference_date: str = None,
-                           cycle_phase: int = 1) -> dict:
-    """
-    VP 비중을 8자산군으로 집계.
-    fund_desc → VP 펀드코드 → sol_DWPM10530 보유종목 → 8분류 집계.
-
-    fund_desc: 펀드설명 (예: 'MS GROWTH')
-    Returns: dict {'국내주식': 5.0, '해외주식': 30.0, ...} (% 단위) 또는 None
-    """
-    vp_code = _FUND_DESC_TO_VP_CODE.get(fund_desc)
-    if not vp_code:
-        return None
-    return load_vp_holdings_8class(vp_code)
-
-
-def load_vp_nav(fund_desc_or_code: str, start_date: str = None) -> pd.DataFrame:
-    """
-    VP 기준가 시계열 로드.
-    테이블: solution.sol_DWPM10510
-
-    fund_desc_or_code: fund_desc (예: 'MS GROWTH') 또는 VP 코드 (예: '3MP01')
-    Returns: DataFrame(기준일자, MOD_STPR) 또는 빈 DataFrame
-    """
-    # fund_desc → VP 코드 변환
-    vp_code = _FUND_DESC_TO_VP_CODE.get(fund_desc_or_code, fund_desc_or_code)
-
-    conn = get_pandas_connection('solution')
-    try:
-        params = [vp_code]
-        where_date = ""
-        if start_date:
-            where_date = " AND STD_DT >= %s"
-            params.append(start_date)
-        sql = f"""
-            SELECT STD_DT, MOD_STPR
-            FROM sol_DWPM10510
-            WHERE FUND_CD = %s {where_date}
-            ORDER BY STD_DT
-        """
-        df = pd.read_sql(sql, conn, params=params)
-        if df.empty:
-            return pd.DataFrame(columns=['기준일자', 'MOD_STPR'])
-        df['기준일자'] = pd.to_datetime(df['STD_DT'], format='%Y%m%d')
-        return df[['기준일자', 'MOD_STPR']].reset_index(drop=True)
-    except Exception as e:
-        logger.error(f"VP NAV 로드 실패 ({vp_code}): {e}")
-        return pd.DataFrame(columns=['기준일자', 'MOD_STPR'])
-    finally:
-        conn.close()
 
 
 # ============================================================
@@ -3795,67 +3443,6 @@ def load_macro_timeseries(indicator_keys: list = None,
     return result
 
 
-def load_macro_period_returns(macro_data: dict, reference_date: str = None) -> dict:
-    """
-    매크로 시계열 → 기간별 수익률(%) 계산.
-
-    Returns: dict[indicator] = {'1D':, '1W':, '1M':, '3M':, '6M':, '1Y':, 'YTD':, 'current':}
-    """
-    if reference_date:
-        ref = pd.Timestamp(reference_date)
-    else:
-        ref = pd.Timestamp.now().normalize()
-
-    period_bdays = {'1D': 1, '1W': 5, '1M': 22, '3M': 66, '6M': 132, '1Y': 252}
-
-    result = {}
-    for key, df in macro_data.items():
-        if df.empty:
-            continue
-        ts = df.set_index('기준일자')['value'].sort_index()
-        # 가장 가까운 기준일로 이동
-        if ref not in ts.index:
-            closest = ts.index[ts.index <= ref]
-            if closest.empty:
-                continue
-            ref_actual = closest[-1]
-        else:
-            ref_actual = ref
-
-        current_val = ts.loc[ref_actual]
-        info = MACRO_DATASETS.get(key, {})
-        is_level = info.get('type') in ('volatility', 'spread', 'rate')
-
-        periods = {}
-        for pname, bdays in period_bdays.items():
-            past_idx = ts.index[ts.index <= ref_actual - pd.Timedelta(days=bdays * 1.5)]
-            if past_idx.empty:
-                periods[pname] = np.nan
-                continue
-            past_val = ts.loc[past_idx[-1]]
-            if is_level:
-                periods[pname] = current_val - past_val  # 레벨 변화
-            else:
-                periods[pname] = ((current_val / past_val) - 1) * 100 if past_val != 0 else 0
-
-        # YTD
-        ytd_start = pd.Timestamp(f'{ref_actual.year}-01-01')
-        ytd_idx = ts.index[ts.index >= ytd_start]
-        if len(ytd_idx) > 0:
-            ytd_val = ts.loc[ytd_idx[0]]
-            if is_level:
-                periods['YTD'] = current_val - ytd_val
-            else:
-                periods['YTD'] = ((current_val / ytd_val) - 1) * 100 if ytd_val != 0 else 0
-        else:
-            periods['YTD'] = np.nan
-
-        periods['current'] = current_val
-        result[key] = periods
-
-    return result
-
-
 def _load_holdings_range(fund_code: str, start_yyyymmdd: str = None) -> pd.DataFrame:
     """DWPM10530에서 날짜 범위 보유종목 로드 + 6분류. 거래내역 탭 영역차트용.
 
@@ -4635,52 +4222,6 @@ def load_fund_cashflow_markers(fund_code: str, start_date: str,
         out.append({'date': date_iso, 'side': str(r['side']), 'amount': eok})
     out.sort(key=lambda x: (x['date'], 0 if x['side'] == '설정' else 1))
     return out
-
-
-def load_holdings_history_8class(fund_code: str, start_date: str = None) -> pd.DataFrame:
-    """
-    자산군별 비중 이력 (8분류).
-    sol_DWPM10530에서 월별 비중 추이 로드.
-
-    Returns: DataFrame(기준일자, 국내주식, 해외주식, ..., 유동성)
-    """
-    conn = get_pandas_connection('dt')
-    try:
-        params = [fund_code]
-        date_filter = ""
-        if start_date:
-            date_filter = " AND STD_DT >= %s"
-            params.append(start_date.replace('-', ''))
-
-        sql = f"""
-            SELECT STD_DT, ITEM_CD, ITEM_NM, AST_CLSF_CD_NM,
-                   SUM(NAST_TAMT_AGNST_WGH) as 비중
-            FROM DWPM10530
-            WHERE FUND_CD = %s AND IMC_CD = '003228'
-              AND EVL_AMT > 0
-              AND ITEM_NM NOT LIKE '%%미지급%%'
-              AND ITEM_NM NOT LIKE '%%미수%%'
-              {date_filter}
-            GROUP BY STD_DT, ITEM_CD, ITEM_NM, AST_CLSF_CD_NM
-            ORDER BY STD_DT
-        """
-        df = pd.read_sql(sql, conn, params=params)
-        if df.empty:
-            return pd.DataFrame()
-
-        # 자산군 분류 적용
-        asset_classes_8 = ['국내주식', '해외주식', '국내채권', '해외채권', '대체투자', 'FX', '모펀드', '유동성']
-        df['자산군'] = df.apply(_classify_6class, axis=1)
-        df['기준일자'] = pd.to_datetime(df['STD_DT'].astype(str), format='%Y%m%d')
-
-        pivot = df.groupby(['기준일자', '자산군'])['비중'].sum().unstack(fill_value=0)
-        pivot = pivot.reindex(columns=asset_classes_8, fill_value=0)
-        return pivot.reset_index()
-    except Exception as e:
-        logger.error(f"비중 이력 로드 실패 ({fund_code}): {e}")
-        return pd.DataFrame()
-    finally:
-        conn.close()
 
 
 # ============================================================
