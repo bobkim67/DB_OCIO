@@ -5,11 +5,13 @@
 - 워밍업은 transactions/holdings/brinson 서비스 빌더를 UI 디폴트와 동일한
   파라미터로 호출 → 동일한 캐시(`modules.data_loader._ttl_cache`,
   `brinson_service._compute_cached`)를 채운다.
-- 워밍업 대상은 holdings/거래내역/비중추이x2/FX/보유종목목록 (펀드당 6스텝, 빠름).
+- essential 단계: holdings/거래내역/비중추이x2/FX/보유종목목록 (펀드당 6스텝, 빠름).
   프론트 게이트가 완료(`essential_complete`)까지 진입을 막는다.
-- brinson(성과분석)은 계산이 본질적으로 느려(펀드당 ~15s, FoF 수 분) 워밍업에서 제외한다.
-  성과분석 탭 진입 시 on-demand 계산되며, reload 범위 한정 덕에 한 번 계산되면 6h 캐시가
-  유지되어 두 번째 진입부터 즉시 표시된다.
+- brinson 단계: essential 로 게이트를 연 뒤, 같은 데몬 스레드에서 백그라운드로 전 펀드
+  Brinson(기본기간·fx_split=False)을 선계산한다(비차단·게이트 무관). 계산이 느려
+  (펀드당 ~15s, FoF 수 분) 게이트는 막지 않되, 미리 데워 두면 성과분석 첫 진입이
+  콜드가 아니게 된다. 디스크 캐시(`_compute_cached`)가 있으면 즉시 스킵되므로 같은 날
+  재기동엔 부담이 없다. (캐시키의 end_date=어제가 매일 갱신돼 하루 첫 기동만 실계산.)
 - step 단위로 실패해도 계속 진행한다. 한 스텝이 오래 걸리면 step 타임아웃으로
   건너뛴다(블로킹 방지). 최종 상태는 error_count 에 따라 `done` / `done_with_errors`.
 - 데몬 스레드 1개에서 순차 실행한다. `asyncio.to_thread` 의 취소는 실행 중인
@@ -26,6 +28,8 @@ _KST = timezone(timedelta(hours=9))
 
 # step 타임아웃(초) — 한 스텝이 이 시간을 넘으면 error 로 집계하고 건너뛴다.
 _ESSENTIAL_STEP_TIMEOUT = 90
+# brinson 콜드는 FoF 등에서 수 분까지 걸려 넉넉히. 백그라운드라 요청을 막지 않는다.
+_BRINSON_STEP_TIMEOUT = 300
 
 
 @dataclass
@@ -123,6 +127,23 @@ def _build_steps() -> list[tuple[str, object]]:
     return _build_essential_steps()
 
 
+def _warm_brinson(fund: str):
+    from api.services.brinson_service import build_brinson
+    # 성과분석 프론트 디폴트와 동일: 기본기간(YTD/inception~어제), 펀드 기본 분류방법,
+    # fx_split=False('FX 포함') → 동일 디스크 캐시(_fxincl.pkl) 채움.
+    return build_brinson(fund, fx_split=False)
+
+
+def _build_brinson_steps() -> list[tuple[str, object]]:
+    """brinson 백그라운드 워밍업 스텝(펀드당 1). essential 게이트 해제 뒤 실행."""
+    from config.funds import FUND_LIST
+
+    return [
+        (f"{fund} · 성과분석(Brinson)", lambda f=fund: _warm_brinson(f))
+        for fund in FUND_LIST
+    ]
+
+
 def _record_error(label: str, msg: str) -> None:
     with _state_lock:
         _state.error_count += 1
@@ -168,10 +189,11 @@ def _run_step(label: str, fn, timeout: int) -> None:
 def _run() -> None:
     try:
         steps = _build_essential_steps()
+        brinson_steps = _build_brinson_steps()
         with _state_lock:
             _state.status = "running"
             _state.phase = "essential"
-            _state.total = len(steps)
+            _state.total = len(steps) + len(brinson_steps)
             _state.done = 0
             _state.essential_total = len(steps)
             _state.essential_done = 0
@@ -188,8 +210,20 @@ def _run() -> None:
                 _state.done += 1
                 _state.essential_done += 1
 
+        # essential 완료 → 게이트 해제. brinson 은 아래에서 백그라운드로 계속(비차단).
         with _state_lock:
-            _state.essential_complete = True  # 게이트 해제
+            _state.essential_complete = True
+            _state.phase = "brinson"
+            _state.current = ""
+
+        # brinson 단계: 전 펀드 성과분석 선계산(디스크 캐시 있으면 즉시 스킵).
+        # 게이트는 이미 열렸고, 느린 콜드도 여기서 미리 흡수해 첫 진입을 warm 화.
+        for label, fn in brinson_steps:
+            _run_step(label, fn, _BRINSON_STEP_TIMEOUT)
+            with _state_lock:
+                _state.done += 1
+
+        with _state_lock:
             _state.current = ""
             _state.phase = ""
             _state.finished_at = _now_iso()

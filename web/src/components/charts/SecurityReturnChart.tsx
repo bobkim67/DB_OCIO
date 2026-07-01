@@ -38,13 +38,15 @@ interface Props {
   // 자산군 차트 전용: 툴팁 종목별 분해 (편입비중 하단 / 순매수 하단)
   weightComponents?: { date: string; name: string; weight: number }[];
   tradeComponents?: { date: string; name: string; side: string; amount: number }[];
+  // true=펀드 NAV("전체" 선택) → 마커 legend=설정/해지, false=종목/자산군 → 매수/매도
+  navMode?: boolean;
 }
 
 // 수익지수(시작=100) 라인 + 매수(▲)/매도(▼) 마커 + 통합 툴팁(x-unified).
 // 가격(points)이 없으면 편입비중 영역만으로 폴백(유동성·가격미커버 종목/자산군).
 export default function SecurityReturnChart({
   points, trades, weights = [], itemNm, instanceKey, xRange, markupMode = false,
-  weightComponents = [], tradeComponents = [],
+  weightComponents = [], tradeComponents = [], navMode = false,
 }: Props) {
   // 줌(x/y) + 측정 상태. 종목/기간(instanceKey) 변경 시 초기화.
   const [xr, setXr] = useState<[string, string] | null>(null);
@@ -175,8 +177,10 @@ export default function SecurityReturnChart({
     marker: { color, size: 11, symbol, line: { width: 1, color: "#fff" } },
     hoverinfo: "skip",
   });
-  if (buys.length) traces.push(markerTrace(buys, "매수/설정", BUY_COLOR, "triangle-up"));
-  if (sells.length) traces.push(markerTrace(sells, "매도/환매", SELL_COLOR, "triangle-down"));
+  const buyLabel = navMode ? "설정" : "매수";
+  const sellLabel = navMode ? "해지" : "매도";
+  if (buys.length) traces.push(markerTrace(buys, buyLabel, BUY_COLOR, "triangle-up"));
+  if (sells.length) traces.push(markerTrace(sells, sellLabel, SELL_COLOR, "triangle-down"));
 
   // ── 통합 툴팁(x-unified): 지수 + 편입비중 + 매수/매도 한 박스(일별 비중추이 서식).
   const tradeLinesByDate = new Map<string, string[]>();

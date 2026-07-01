@@ -76,7 +76,7 @@ export default function TransactionsTab({ fundCode }: Props) {
   );
 
   // ---- 거래내역 기간 ----
-  const [preset, setPreset] = useState<TxnPreset>("MTD");
+  const [preset, setPreset] = useState<TxnPreset>("1M");
   const [customStart, setCustomStart] = useState<string>(fmtLocal(startOfMonth()));
   const [customEnd, setCustomEnd] = useState<string>(today);
 
@@ -563,13 +563,6 @@ export default function TransactionsTab({ fundCode }: Props) {
             </div>
           </div>
 
-          {level === "asset" && selAsset === "전체" && (
-            <div className="tx-note">
-              펀드 기준가(NAV) 수익지수 · 시작일=100 · 보조축(우): 자산군별 편입비중 stacked ·
-              ▲설정/▼해지 = 펀드 자금 유입·유출(설정/해지)
-            </div>
-          )}
-
           <div className="tx-chartbody">
             {level === "security" ? (
               !selItemCd ? (
@@ -602,6 +595,7 @@ export default function TransactionsTab({ fundCode }: Props) {
                 instanceKey={`${fundCode}-asset-${selAsset}-${preset}`}
                 xRange={[chartStart, today]}
                 markupMode={retMarkup}
+                navMode={selAsset === "전체"}
               />
             )}
           </div>

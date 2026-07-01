@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useFunds } from "../hooks/useFunds";
+import "../styles/shell.css";
 import LoadingBar from "../components/common/LoadingBar";
 import WarmupGate from "../components/common/WarmupGate";
 import OverviewTab from "../tabs/OverviewTab";
@@ -34,39 +35,22 @@ export default function DashboardPage() {
   const tabBtn = (key: TabKey, label: string) => (
     <button
       onClick={() => setTab(key)}
-      style={{
-        padding: "6px 14px",
-        border: "1px solid #e5e7eb",
-        borderBottom:
-          tab === key ? "2px solid #2563eb" : "1px solid #e5e7eb",
-        background: tab === key ? "#eff6ff" : "#fff",
-        fontSize: 13,
-        cursor: "pointer",
-      }}
+      className={`shell-tab ${tab === key ? "on" : ""}`}
     >
       {label}
     </button>
   );
 
   return (
-    <div style={{ padding: 16, fontFamily: "system-ui, sans-serif" }}>
-      <header
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          marginBottom: 12,
-          paddingBottom: 12,
-          borderBottom: "1px solid #e5e7eb",
-        }}
-      >
-        <h1 style={{ fontSize: 18, margin: 0 }}>DB OCIO Dashboard</h1>
-        <label style={{ fontSize: 13, color: "#374151" }}>
-          펀드:&nbsp;
+    <div className="app-shell">
+      <header className="shell-header">
+        <h1 className="shell-title">DB OCIO Dashboard</h1>
+        <label className="shell-fund">
+          펀드
           <select
+            className="shell-select"
             value={selected}
             onChange={(e) => setSelected(e.target.value)}
-            style={{ fontSize: 13, padding: "4px 8px" }}
           >
             {data.data
               .slice()
@@ -78,16 +62,12 @@ export default function DashboardPage() {
               ))}
           </select>
         </label>
-        <img
-          src="/ki-logo.png"
-          alt="한국투자신탁운용"
-          style={{ height: 42, width: "auto", marginLeft: "auto" }}
-        />
+        <img src="/ki-logo.png" alt="한국투자신탁운용" className="shell-logo" />
       </header>
 
       <WarmupGate />
 
-      <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
+      <div className="shell-tabs">
         {tabBtn("overview", "Overview")}
         {tabBtn("holdings", "편입종목")}
         {tabBtn("transactions", "거래내역")}

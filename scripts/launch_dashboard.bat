@@ -1,5 +1,5 @@
 @echo off
-title DB OCIO Dashboard (LAN :8020)
+title DB OCIO Monitor (8020)
 setlocal EnableDelayedExpansion
 cd /d "%~dp0.."
 
@@ -77,6 +77,7 @@ REM open local browser shortly after the server binds
 start "" powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep 6; Start-Process 'http://localhost:%PORT%/'"
 
 echo [3/3] Starting server (host 0.0.0.0:%PORT%) ...
+title DB OCIO Monitor (8020)
 REM server warms its caches in the background on startup (OCIO_WARMUP_ON_STARTUP default on)
 REM --log-config: prefix each log line with timestamp (YYYY-MM-DD HH:MM:SS)
 api\.venv\Scripts\python.exe -m uvicorn api.main:app --host 0.0.0.0 --port %PORT% --log-config scripts\uvicorn_logging.json

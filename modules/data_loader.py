@@ -877,7 +877,7 @@ def load_fund_holdings_weight(fund_code: str, date: int) -> pd.DataFrame:
             FROM DWPM10530
             WHERE fund_cd = %s AND std_dt = %s AND imc_cd = '003228' AND evl_amt > 0
             ORDER BY evl_amt DESC
-        """, conn, params=[fund_code, date])
+        """, conn, params=[fund_code, str(date)])  # std_dt=varchar(8): int이면 인덱스 미사용 full scan(~9.8s)
     finally:
         conn.close()
 
@@ -1940,6 +1940,7 @@ def load_saa_components(fund_code: str, as_of_date=None) -> dict:
     return {'components': comps} if comps else None
 
 
+@_ttl_cache()
 def _build_proxy_bm_info(fund_code: str, start_yyyymmdd: str) -> dict:
     """SAA proxy 벤치마크: 안전자산(국내채권+해외채권 ex-HY) → KIS 종합채권, 나머지 → MSCI ACWI.
 
@@ -1957,7 +1958,7 @@ def _build_proxy_bm_info(fund_code: str, start_yyyymmdd: str) -> dict:
     for off in offsets:
         d = (base + timedelta(days=off)).strftime('%Y%m%d')
         try:
-            cand = load_fund_holdings_weight(fund_code, int(d))
+            cand = load_fund_holdings_weight(fund_code, str(d))
         except Exception:
             cand = None
         if cand is None or cand.empty:

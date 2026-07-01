@@ -1,0 +1,105 @@
+/* ============================================================
+ * App shell (헤더 + 메인 탭) — .app-shell 스코프. ACE 토큰(tokens.css).
+ * 펀드 셀렉터 = .tx-flt 계열 드롭다운(커스텀 셰브런), 탭 = 언더라인(활성 코랄 하단바).
+ * 폰트 = Pretendard(index.html CDN 로드) 로 셸 전체 통일.
+ * 출처 지시: 자산군수익률 매매시점 드롭다운(.tx-flt) 과 톤 일치.
+ * ============================================================ */
+.app-shell {
+  padding: 16px;
+  color: var(--ace-ink);
+  font-family: Pretendard, system-ui, sans-serif;
+}
+.app-shell .num { font-variant-numeric: tabular-nums; }
+
+/* ---- 헤더 ---- */
+.shell-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--ace-line-2);
+}
+.shell-title {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  margin: 0;
+  color: var(--ace-ink);
+}
+.shell-fund {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ace-ink-2);
+}
+
+/* 펀드 셀렉터 — .tx-flt 계열이되 주 컨트롤이라 약간 크게 + 커스텀 셰브런 */
+.shell-select {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ace-ink);
+  padding: 7px 30px 7px 11px;
+  border: 1px solid var(--ace-line-2);
+  border-radius: var(--ace-radius-sm);
+  background-color: #fff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%235B6573' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 11px;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  cursor: pointer;
+  max-width: 600px;
+  text-overflow: ellipsis;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.shell-select:hover { border-color: var(--ace-brand); }
+.shell-select:focus {
+  outline: none;
+  border-color: var(--ace-brand);
+  box-shadow: 0 0 0 3px rgba(85, 126, 170, 0.14);
+}
+
+.shell-logo { height: 42px; width: auto; margin-left: auto; }
+
+/* ---- 메인 탭 — 언더라인(활성 코랄 하단바) ---- */
+.shell-tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--ace-line-2);
+}
+.shell-tab {
+  position: relative;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ace-ink-3);
+  padding: 9px 15px 11px;
+  cursor: pointer;
+  transition: color 0.12s ease;
+}
+.shell-tab:hover { color: var(--ace-ink-2); }
+.shell-tab.on { color: var(--ace-ink); font-weight: 700; }
+.shell-tab.on::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--ace-up);
+}
+.shell-tab:focus-visible {
+  outline: 2px solid var(--ace-brand);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
