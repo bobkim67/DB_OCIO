@@ -18,6 +18,11 @@ daily_update Step 1·2·2.5·2.6·2.7 news 산출물). 신규 작업에서 news 
 보존하며 현역이 아니다. 데이터 로더(`modules/data_loader.py`)는 폐기 대상이
 아니라 `api/` 가 재사용한다. (근거: 2026-05-13 사용자 명시)
 
+**2026-07-02 파일 삭제 완료**: `prototype.py`, `tabs/`, `modules/{auth,comment_ui,
+charts,item_abbrev,mock_db_pension_data,snapshot_fallback}.py`, `config/users.yaml`,
+`api/warmup_cli.py` + data_loader 내 tabs 전용/고아 14함수(VP 계열 등). 아래
+Streamlit 관련 서술은 삭제된 파일을 가리키는 **역사 기록**이다 — git 이력으로만 복구 가능.
+
 ## Project Purpose
 
 DB형 퇴직연금 OCIO(Outsourced CIO) 운용 현황 웹 대시보드.
