@@ -8,8 +8,9 @@ news claim 을 재생성/참조하지 말 것. 자산군·라벨·claim 재추�
 (naver_research) 경로 기준**으로만 한다.
 
 - 운영 미사용 대상: `data/news/*.json`, news claims(`data/claims/{period}.json` 의 news
-  레인), `daily_update` Step 1·2·2.5·2.6·2.7 의 news 산출물, `news_classifier` /
-  `news_vectordb` / `news_content_pool_builder` 출력.
+  레인), `daily_update` Step 1·2·2.5·2.6·2.7 의 news 산출물, `news_classifier` 출력.
+  (`news_vectordb`/`news_content_pool_builder`/`enriched_digest_builder`/`digest_builder`/
+  `report_cache_builder`/`report_service`/`collect_news.bat` 은 2026-07-02 삭제.)
 - fetch/수집 코드 자체는 **삭제하지 않고 보존**한다(추후 스터디 가능성). 단 운영 경로에
   연결하지 말 것.
 - 운영 claim 은 `research_claim_extractor`(`*.research.json`) + monygeek 만.
@@ -48,23 +49,17 @@ market_research/
 │
 ├── collect/                       ← 데이터 수집
 │   ├── naver_blog.py              ← monygeek 블로그 크롤러 (Selenium)
-│   ├── macro_data.py              ← SCIP/FRED/NY Fed 지표 + Finnhub/NewsAPI/네이버 뉴스
-│   └── collect_news.bat           ← 월별 배치 (8단계 파이프라인)
+│   └── macro_data.py              ← SCIP/FRED/NY Fed 지표 + Finnhub/NewsAPI/네이버 뉴스
 │
 ├── analyze/                       ← 분석 엔진
 │   ├── engine.py                  ← 주제 태깅 + 진단 룰 + 패턴 DB
 │   ├── news_classifier.py         ← TOPIC_TAXONOMY (14) + 자산영향도 벡터 (Haiku)
 │   ├── graph_rag.py               ← 인과 그래프 + transmission path P0/P1
 │   ├── graph_vocab.py             ← ★v12 DRIVER/ASSET taxonomy + alias dict
-│   ├── blog_analyst.py            ← monygeek 관점 분석 (eurodollar school)
-│   └── news_vectordb.py           ← ChromaDB + hybrid_score(cosine+salience) 검색
+│   └── blog_analyst.py            ← monygeek 관점 분석 (eurodollar school)
 │
 ├── pipeline/                      ← 배치 파이프라인
-│   ├── daily_update.py            ← Step 0~5 + Step 2.6 (base wiki) ★v10+
-│   ├── digest_builder.py          ← 블로그 월별 구조화 요약 (18주제, LLM-free)
-│   ├── enriched_digest_builder.py ← 블로그 digest ↔ 뉴스 벡터DB 교차검증
-│   ├── news_content_pool_builder.py ← 뉴스 클러스터링 + Haiku 요약
-│   └── report_cache_builder.py    ← Streamlit 캐시 빌드
+│   └── daily_update.py            ← Step 0~5 + Step 2.6 (base wiki) ★v10+
 │
 ├── report/                        ← 보고서 생성
 │   ├── comment_engine.py          ← BM/PA/프롬프트 빌드 + LLM 코멘트 (Opus/Sonnet)
@@ -72,8 +67,7 @@ market_research/
 │   ├── debate_engine.py           ← 4인 debate + regime READ-ONLY (★v10: write 제거)
 │   ├── debate_service.py          ← draft 저장 + 06_Debate_Memory/ 페이지 생성
 │   ├── fund_comment_service.py    ← 펀드 코멘트 생성 (시장 debate + PA + 보유/거래)
-│   ├── timeseries_narrator.py     ← 시계열 내러티브 (z-score 세그먼트 + 뉴스 매칭)
-│   ├── report_service.py          ← 팩터 추출 + UI 오케스트레이션
+│   ├── timeseries_narrator.py     ← 시계열 내러티브 (z-score 세그먼트 + BEW 매칭)
 │   ├── report_store.py            ← draft/final 저장·로딩·상태 관리 (IO contract 구현)
 │   ├── numeric_guard.py           ← 수치 대조 (키워드 1순위 + abs>50 fallback)
 │   └── evidence_trace.py          ← [ref:N] 파싱 + article_id 매핑
@@ -144,17 +138,11 @@ python -m market_research.report.timeseries_narrator debate -y 2026 -m 3
 # 월별 분류 단독
 python -m market_research.analyze.news_classifier 2026-04
 
-# vectorDB 리빌드
-python -m market_research.analyze.news_vectordb 2026-04
-
 # GraphRAG 리빌드
 python -m market_research.analyze.graph_rag 2026-04
 
 # ablation test
 python -m market_research.tests.ablation_test --month 2026-03 2026-04
-
-# 월별 배치
-market_research/collect/collect_news.bat
 
 # ★v11+ taxonomy contract 테스트
 python -m market_research.tests.test_taxonomy_contract
@@ -236,7 +224,6 @@ from market_research.analyze.graph_vocab import (
 [분석]  analyze/graph_rag.py → stratified sample → 엔티티/인과 → Self-Regulating TKG
                               → precompute_transmission_paths(phase='P1')
                                  = dynamic trigger/target + alias dict + embed fallback
-        analyze/news_vectordb.py → ChromaDB (hybrid_score)
         analyze/blog_analyst.py → 블로거 관점
 
 [graph evidence] wiki/graph_evidence.py → 07_Graph_Evidence/

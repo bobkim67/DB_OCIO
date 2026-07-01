@@ -13,14 +13,14 @@ debate_engine (월별)과 report_cli (가변 기간) 양쪽에서 사용.
 import json
 import math
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from market_research.core.db import get_conn as _get_conn, parse_blob as _parse_blob
-from market_research.core.benchmarks import BENCHMARK_MAP, BM_ASSET_CLASS_MAP, BM_SEARCH_QUERIES
+from market_research.core.benchmarks import BENCHMARK_MAP, BM_ASSET_CLASS_MAP
 
 BASE_DIR = Path(__file__).resolve().parent.parent  # market_research/
 
@@ -315,72 +315,12 @@ def _rank_benchmarks(all_segments, max_bm=8):
 # ═══════════════════════════════════════════════════════
 
 def _match_news(segment, bm_name, news_months):
-    """세그먼트 기간에 해당하는 뉴스를 벡터DB에서 검색.
+    """(비활성) 뉴스 벡터DB 세그먼트 매칭 — news 운영 폐기(2026-06-17)로 상시 빈 결과.
 
-    2단계: asset_class 태그 필터(1차) → 임베딩 유사도(2차) → 날짜 필터 T-3~T+0
+    news_vectordb 삭제(2026-07-02). BEW 세그먼트는 _bew_news_for_bm 경로가
+    naver_research 기반 evidence 를 공급하므로 legacy vectorDB fallback 만 제거됨.
     """
-    try:
-        from market_research.analyze.news_vectordb import search
-    except ImportError as e:
-        print(f"[timeseries_narrator] news_vectordb import 실패: {e}")
-        return []
-
-    asset_class = BM_ASSET_CLASS_MAP.get(bm_name)
-    query = BM_SEARCH_QUERIES.get(bm_name, bm_name)
-
-    # 방향에 따라 쿼리 보강
-    if segment['direction'] == 'down':
-        query += ' decline drop fall selloff 하락 급락'
-    else:
-        query += ' rally rebound surge gain 상승 반등'
-
-    all_results = []
-    for month in news_months:
-        try:
-            results = search(query, month, top_k=10, asset_class=asset_class)
-            all_results.extend(results)
-        except Exception:
-            # asset_class 필터 없이 재시도
-            try:
-                results = search(query, month, top_k=10)
-                all_results.extend(results)
-            except Exception:
-                continue
-
-    if not all_results:
-        return []
-
-    # 날짜 필터: 세그먼트 T-3 ~ T+0
-    seg_start = segment['start_date']
-    seg_end = segment['end_date']
-    window_start = seg_start - timedelta(days=5)  # 3영업일 ≈ 5캘린더일
-    window_end = seg_end + timedelta(days=1)
-
-    filtered = []
-    for r in all_results:
-        date_str = r.get('date', '')
-        if not date_str:
-            continue
-        try:
-            news_date = pd.Timestamp(date_str)
-            if window_start <= news_date <= window_end:
-                filtered.append(r)
-        except Exception:
-            continue
-
-    # 중복 제거 (제목 앞 40자 기준)
-    seen = set()
-    unique = []
-    for r in filtered:
-        title_key = r.get('title', '')[:40]
-        if title_key not in seen:
-            seen.add(title_key)
-            unique.append(r)
-
-    # distance 기준 정렬 (낮을수록 관련도 높음)
-    unique.sort(key=lambda r: r.get('distance', 1.0))
-
-    return unique[:MAX_NEWS_PER_SEGMENT]
+    return []
 
 
 # ═══════════════════════════════════════════════════════
