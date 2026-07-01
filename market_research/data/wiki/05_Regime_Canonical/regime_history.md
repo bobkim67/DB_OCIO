@@ -2,7 +2,7 @@
 type: regime_history
 tag_match_mode: exact_taxonomy
 source_of_truth: daily_update
-updated_at: 2026-06-29T08:31:42
+updated_at: 2026-07-01T15:09:25
 ---
 
 # Regime History

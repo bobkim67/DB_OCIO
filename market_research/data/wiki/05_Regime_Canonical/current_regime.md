@@ -7,9 +7,9 @@ topic_tags: ["지정학", "물가_인플레이션"]
 narrative_description: "지정학 완화 vs 구조적 인플레: 단기 랠리와 장기 리스크의 불일치"
 since: 2026-04-01
 direction: neutral
-weeks: 12
+weeks: 13
 source_of_truth: daily_update
-updated_at: 2026-06-29T08:31:42
+updated_at: 2026-07-01T15:09:25
 ---
 
 # Current Regime
@@ -21,7 +21,7 @@ updated_at: 2026-06-29T08:31:42
 - Dominant narrative (tag form): `지정학 + 물가_인플레이션`
 - Since: 2026-04-01
 - Direction: neutral
-- Weeks in regime: 12
+- Weeks in regime: 13
 
 ## Previous regime
 - Narrative (tags): `지정학`
