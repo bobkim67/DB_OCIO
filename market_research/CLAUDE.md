@@ -80,11 +80,9 @@ market_research/
 │   ├── graph_evidence.py          ← 07_Graph_Evidence/ draft + summary
 │   └── taxonomy.py                ← ★v11 exact taxonomy contract + PHRASE_ALIAS + trace
 │
-├── tools/                         ← 운영 도구
-│   └── migrate_regime_v11.py      ← regime_memory + wiki 페이지 taxonomy 재정규화
+├── tools/                         ← 운영 도구 (regime_monitor, preview_debate_prompt, quota_* 등)
 │
 ├── tests/                         ← 테스트
-│   ├── ablation_test.py
 │   ├── test_taxonomy_contract.py  ← ★v11 3 cases (exact / phrase reject / empty fallback)
 │   ├── test_regime_decision_v12.py ← ★v12 4 cases (false positive/negative 방어)
 │   └── test_graphrag_p0_vs_p1.py  ← ★v12 P0 vs P1 비교 리포트
@@ -141,9 +139,6 @@ python -m market_research.analyze.news_classifier 2026-04
 # GraphRAG 리빌드
 python -m market_research.analyze.graph_rag 2026-04
 
-# ablation test
-python -m market_research.tests.ablation_test --month 2026-03 2026-04
-
 # ★v11+ taxonomy contract 테스트
 python -m market_research.tests.test_taxonomy_contract
 
@@ -152,9 +147,6 @@ python -m market_research.tests.test_regime_decision_v12
 
 # ★v12 GraphRAG P0 vs P1 비교 리포트
 python -m market_research.tests.test_graphrag_p0_vs_p1 2026-04
-
-# ★v11 regime migration (taxonomy 재정규화 + trace 수집)
-python -m market_research.tools.migrate_regime_v11
 ```
 
 ## Core Imports
