@@ -245,6 +245,17 @@ def daily_update(
     result['steps']['graph'] = graph_result
     print(f'  → 노드 {graph_result.get("node_count", 0)}, 엣지 {graph_result.get("edge_count", 0)}')
 
+    # ── Step 3.5: BEW contract (debate evidence 의 benchmark-event lane 소스) ──
+    print(f'\n[Step 3.5] Benchmark Event Windows...')
+    bew = _step_benchmark_events(year, month)
+    result['steps']['benchmark_events'] = bew
+    if bew.get('status') == 'ok':
+        _mix = bew.get('source_mix') or {}
+        print(f'  → windows={bew.get("windows")} evidence={bew.get("evidence_total")} '
+              f'(nr={_mix.get("naver_research")})')
+    else:
+        print(f'  ⚠️ BEW: {bew.get("status")} {bew.get("error", "")}')
+
     # ── Step 4: MTD 델타 요약 ──
     print(f'\n[Step 4] MTD 델타 요약...')
     delta = _step_mtd_delta(year, month, date_str)
@@ -915,14 +926,56 @@ def _step_group_monitoring(month_str: str, claim_step: dict) -> dict:
 REQUIRED_09_ASSET_STEMS = ('국내주식', '해외주식', '국내채권', '해외채권', '대체', '환율FX')
 
 
+def _adapted_newer_than_claims(month_str: str, claims_path) -> bool:
+    """naver_research adapted/{month}.json 이 research claims 보다 최신이면 True.
+
+    late-month 증분 크롤 데이터가 들어왔는데 claims 가 월중 첫 빌드 스냅샷이면 재추출이
+    필요하다. (기존엔 claims 파일 존재 시 영구 skip → 월말 데이터 영구 누락 = 6/18 컷 원인.)
+    """
+    try:
+        from market_research.collect.naver_research_adapter import adapted_path
+        ap = adapted_path(month_str)
+        if not ap.exists() or not claims_path.exists():
+            return False
+        return ap.stat().st_mtime > claims_path.stat().st_mtime
+    except Exception:
+        return False
+
+
+def _step_benchmark_events(year: int, month: int) -> dict:
+    """Step 3.5 — BEW(Benchmark Event Window) contract 생성 (GraphRAG 이후).
+
+    → data/benchmark_events/{YYYY-MM}.json. debate evidence 의 BEW lane 소스.
+    없으면 debate 가 quota lane 으로 fallback(무해)이나 벤치마크 이상구간 앵커가 빠져
+    evidence 정밀도가 낮아진다. adapted(naver_research) + insight_graph 를 read-only 소비.
+    news 는 optional (2026-06-17 폐기 후 nr primary 만으로 동작).
+    """
+    try:
+        from market_research.report.benchmark_event_mapper import (
+            build_visualization_contract, save_contract)
+    except Exception as exc:
+        return {'status': 'error', 'error': f'import 실패: {exc}'}
+    try:
+        contract = build_visualization_contract(year, month)
+        fp = save_contract(year, month, contract)
+        d = contract.get('debug', {})
+        return {'status': 'ok', 'path': str(fp),
+                'windows': d.get('window_count'),
+                'evidence_total': d.get('evidence_total'),
+                'source_mix': d.get('source_mix')}
+    except Exception as exc:
+        return {'status': 'error', 'error': f'BEW 생성 실패: {exc}'}
+
+
 def _step_research_synthesis(month_str: str, *, dry_run: bool = False,
                             force: bool = False) -> dict:
     """Step 2.9 — 09_Research_Synthesis 생성 (03_Assets/08_Claims 이후).
 
     naver_research 기반 research-only synthesis 만 사용. monygeek 은 raw blog 가
     아니라 §2 dissent layer 요약으로만 반영 (research_consensus 가 보장).
-    P2(research claim 추출) → P4(consensus). idempotent:
-      - research.json 없으면/force → P2 추출(LLM), 있으면 재사용.
+    P2(research claim 추출) → P4(consensus). idempotent + 신선도 감지:
+      - research.json 없으면 / force / adapted 가 claims 보다 최신 → P2 추출(LLM).
+        (adapted 신선도 감지로 late-month 증분을 흡수 — 기존 "있으면 영구 skip" 수정.)
       - 09 가 research.json 보다 최신이면 P4 skip(reused), 아니면 재생성.
     dry_run → skip(LLM 미호출).
     """
@@ -938,9 +991,11 @@ def _step_research_synthesis(month_str: str, *, dry_run: bool = False,
 
     rp = research_claims_path(month_str)
     extracted = None
-    if force or not rp.exists():
+    # 신선도 자동감지: adapted/{month}.json 이 claims 보다 최신이면 재추출(late-month 흡수).
+    if force or not rp.exists() or _adapted_newer_than_claims(month_str, rp):
         try:
-            ext = run_research_extraction(month_str)  # P2 (LLM)
+            # force=전량 재추출 / 그 외(신선도 트리거)=증분(신규 기사만) → late-month 저비용 흡수.
+            ext = run_research_extraction(month_str, incremental=not force)  # P2 (LLM)
             extracted = ext.get('stats')
         except Exception as exc:
             return {'status': 'error', 'error': f'P2 추출 실패: {exc}'}

@@ -202,10 +202,14 @@ def compute_event_salience(article: dict, bm_anomaly_dates: set = None) -> float
             and (bm_overlap == 1.0 or source_count >= 3)):
         intensity_norm = max(intensity_norm, NEWS_UNCLASSIFIED_INTENSITY_FLOOR)
 
-    score = (0.30 * source_quality
-             + 0.25 * intensity_norm
-             + 0.25 * corroboration
-             + 0.20 * bm_overlap)
+    # bm_overlap(날짜 기반 0.20) 제거 — 월 최대변동일(anomaly top-7)이 몰린 시기에 따라
+    # late-month 기사를 구조적으로 페널티하는 시간편향 artifact (research evidence 선발에서
+    # 6/19~30 배제 원인). 남은 3요소(소스/강도/corroboration)를 1.0 로 재정규화 →
+    # 상대순위가 내용·출처 기반으로만 결정됨. bm_overlap 변수는 위 news-only intensity
+    # floor 게이팅에서 계속 사용하므로 정의는 유지. (2026-07-01)
+    score = (0.375 * source_quality
+             + 0.3125 * intensity_norm
+             + 0.3125 * corroboration)
 
     return round(score, 3)
 

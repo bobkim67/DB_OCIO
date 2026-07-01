@@ -295,15 +295,49 @@ def run_research_extraction(
     cost_cap_usd: float = 3.0,
     dry_run: bool = False,
     llm_call: Callable[[dict], str] | None = None,
+    incremental: bool = True,
 ) -> dict[str, Any]:
-    """월별 research 추출 (레인별 batch). dry_run=True 면 파일 미저장."""
-    all_claims: list[dict] = []
+    """월별 research 추출 (레인별 batch). dry_run=True 면 파일 미저장.
+
+    incremental=True (기본): 기존 {month}.research.json 의 processed_article_ids 에 없는
+      신규 기사만 추출 → 기존 claims 에 병합(claim_id dedup). late-month 증분을 싸게 흡수해
+      전월 전량 재추출(수십 분)을 회피한다. legacy 파일(processed_article_ids 부재)은
+      claims 의 source_evidence_ids 로 처리済 set 을 best-effort seed(무클레임 기사만 1회 재시도).
+    incremental=False: 전량 재추출(기존 동작) — force 전체 재빌드용.
+    """
+    # ── 기존 claims + 처리済 article_id (incremental) ──
+    existing_claims: list[dict] = []
+    processed: set[str] = set()
+    if incremental:
+        _rp = research_claims_path(month)
+        if _rp.exists():
+            try:
+                _prev = json.loads(_rp.read_text(encoding="utf-8"))
+                existing_claims = _prev.get("claims", []) or []
+                _pids = _prev.get("processed_article_ids")
+                if _pids is None:  # legacy: claims provenance 로 seed
+                    for c in existing_claims:
+                        for eid in (c.get("source_evidence_ids") or []):
+                            if eid:
+                                processed.add(str(eid))
+                else:
+                    processed = {str(x) for x in _pids if x}
+            except Exception:
+                existing_claims, processed = [], set()
+
+    new_claims: list[dict] = []
     all_invalid: list[dict] = []
     total_cost = 0.0
     batch_log: list[dict] = []
     nb = 0
+    new_ids: set[str] = set()
     for st in source_types:
         evid = prep_research_evidence(month, st)
+        if incremental:
+            evid = [a for a in evid if str(a.get("_article_id")) not in processed]
+        for a in evid:
+            if a.get("_article_id"):
+                new_ids.add(str(a["_article_id"]))
         for start in range(0, len(evid), MAX_INPUT_EVIDENCE):
             if max_batches is not None and nb >= max_batches:
                 break
@@ -311,13 +345,26 @@ def run_research_extraction(
             r = extract_research_claims(
                 month, batch, source_type=st, cost_cap_usd=cost_cap_usd,
                 llm_call=llm_call)
-            all_claims.extend(r.get("claims", []))
+            new_claims.extend(r.get("claims", []))
             all_invalid.extend(r.get("invalid_claims", []))
             total_cost += r.get("cost_usd", 0.0)
             batch_log.append({"source_type": st, "batch": nb, "n_in": len(batch),
                               "n_valid": len(r.get("claims", [])),
                               "abort": r.get("abort_reason")})
             nb += 1
+
+    # ── 병합 (incremental) — claim_id dedup ──
+    if incremental:
+        _seen = {c.get("claim_id") for c in existing_claims if c.get("claim_id")}
+        _added = [c for c in new_claims
+                  if not (c.get("claim_id") and c.get("claim_id") in _seen)]
+        final_claims = existing_claims + _added
+        processed_out = sorted(processed | new_ids)
+        n_new_claims = len(_added)
+    else:
+        final_claims = new_claims
+        processed_out = sorted(new_ids)
+        n_new_claims = len(new_claims)
 
     payload = {
         "schema_version": "1.0.0",
@@ -326,8 +373,11 @@ def run_research_extraction(
         "source": "research_claim_extractor",
         "extractor_version": EXTRACTOR_VERSION,
         "target_suffix": "research",
-        "claims": all_claims,
-        "stats": {"total": len(all_claims), "invalid": len(all_invalid),
+        "claims": final_claims,
+        "processed_article_ids": processed_out,
+        "stats": {"total": len(final_claims), "new_claims": n_new_claims,
+                  "new_articles": len(new_ids), "invalid": len(all_invalid),
+                  "incremental": incremental,
                   "cost_usd": round(total_cost, 4), "batches": batch_log},
     }
     if not dry_run:
@@ -347,12 +397,18 @@ def main() -> int:
     ap.add_argument("--max-batches", type=int, default=None)
     ap.add_argument("--cost-cap", type=float, default=3.0)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--full", action="store_true",
+                    help="전량 재추출(증분 아님). 기본은 증분(신규 기사만).")
     args = ap.parse_args()
     sts = tuple(args.source) if args.source else ("naver_research", "monygeek")
     res = run_research_extraction(
         args.month, source_types=sts, max_batches=args.max_batches,
-        cost_cap_usd=args.cost_cap, dry_run=args.dry_run)
+        cost_cap_usd=args.cost_cap, dry_run=args.dry_run,
+        incremental=not args.full)
     print(f"[research_extract] {args.month} claims={res['stats']['total']} "
+          f"(+{res['stats'].get('new_claims', 0)} new, "
+          f"new_articles={res['stats'].get('new_articles', 0)}, "
+          f"incremental={res['stats'].get('incremental')}) "
           f"invalid={res['stats']['invalid']} cost=${res['stats']['cost_usd']}")
     for b in res["stats"]["batches"]:
         print(f"  {b['source_type']} batch{b['batch']}: in={b['n_in']} "

@@ -256,11 +256,26 @@ def _load_bew_contract(year: int, month: int) -> dict | None:
     return c
 
 
+def _months_in_range(start_iso: str, end_iso: str) -> list[str]:
+    """'YYYY-MM-DD' 범위가 걸치는 'YYYY-MM' 목록 (오름차순). 윈도우드 debate 용."""
+    y, m = int(start_iso[:4]), int(start_iso[5:7])
+    ey, em = int(end_iso[:4]), int(end_iso[5:7])
+    out = []
+    while (y, m) <= (ey, em):
+        out.append(f'{y}-{m:02d}')
+        m += 1
+        if m > 12:
+            m = 1
+            y += 1
+    return out
+
+
 def _build_evidence_candidates(year: int, month: int, target_count: int,
                                start_idx: int,
                                *,
                                force_window_ids: set[str] | None = None,
                                policy: DebateContextPolicy = LEGACY_POLICY,
+                               window: tuple[str, str] | None = None,
                                ) -> tuple[list, list, list, dict]:
     """source-aware evidence 선발.
 
@@ -284,11 +299,24 @@ def _build_evidence_candidates(year: int, month: int, target_count: int,
     """
     from datetime import date as _date
 
+    # 윈도우드 debate: window=(start,end) 지정 시 evidence 를 그 날짜창으로 필터.
+    # 창이 월경계를 넘으면 걸치는 모든 월의 adapted 를 로드. 미지정 시 당월(MTD) 그대로.
+    _win_months = (_months_in_range(window[0], window[1]) if window
+                   else [f'{year}-{month:02d}'])
+
+    def _in_window(a: dict) -> bool:
+        if not window:
+            return True
+        d = a.get('date') or ''
+        return window[0] <= d <= window[1]
+
     # ── Lane A: research primary (is_primary + classified + TIER1/2) ──
     research_pool: list[dict] = []
     try:
         from market_research.collect.naver_research_adapter import load_adapted
-        adapted = load_adapted(f'{year}-{month:02d}')
+        adapted = []
+        for _m in _win_months:
+            adapted.extend(load_adapted(_m))
         for a in adapted:
             if not a.get('_classified_topics'):
                 continue
@@ -297,19 +325,29 @@ def _build_evidence_candidates(year: int, month: int, target_count: int,
             band = a.get('_research_quality_band', '')
             if band not in ('TIER1', 'TIER2'):
                 continue
+            if not _in_window(a):
+                continue
             research_pool.append(a)
     except Exception:
         research_pool = []
-    research_pool.sort(key=lambda x: -float(x.get('_event_salience', 0) or 0))
+    # salience 내림차순, 동점이면 최신 날짜 우선(tie-breaker). salience 가 상위에서
+    # 포화(동점 다수)되면 기존엔 파일순서(≈이른 날짜)가 tie 를 이겨 late-month 가 top-N
+    # 에서 배제됐다 — "같은 중요도면 더 최신 evidence 우선"으로 시간편향 해소. (2026-07-01)
+    research_pool.sort(key=lambda x: (float(x.get('_event_salience', 0) or 0),
+                                      x.get('date', '')), reverse=True)
 
     # ── Lane B: news corroboration (primary + intensity>=6 + filter) ──
     # policy.news_evidence_lane_enabled=False (research-only) 면 news lane 전면 차단
     # → research_pool 만으로 evidence 구성.
     news_pool: list[dict] = []
-    news_file = BASE_DIR / 'data' / 'news' / f'{year}-{month:02d}.json'
-    if policy.news_evidence_lane_enabled and news_file.exists():
-        data = json.loads(news_file.read_text(encoding='utf-8'))
-        for a in data.get('articles', []):
+    if policy.news_evidence_lane_enabled:
+        _news_articles = []
+        for _m in _win_months:
+            _nf = BASE_DIR / 'data' / 'news' / f'{_m}.json'
+            if _nf.exists():
+                _news_articles.extend(
+                    json.loads(_nf.read_text(encoding='utf-8')).get('articles', []))
+        for a in _news_articles:
             if not a.get('_classified_topics'):
                 continue
             if not a.get('is_primary', True):
@@ -317,6 +355,8 @@ def _build_evidence_candidates(year: int, month: int, target_count: int,
             if int(a.get('intensity', 0) or 0) < 6:
                 continue
             if not _news_passes_corroboration(a):
+                continue
+            if not _in_window(a):
                 continue
             news_pool.append(a)
     news_pool.sort(
@@ -456,9 +496,12 @@ def _build_evidence_candidates(year: int, month: int, target_count: int,
         _commit_bew_aware(a, 'news')
         news_taken += 1
 
-    # (b) research lane: BEW(nr) 우선 → 기존 research_pool 보충
+    # (b) research lane: research_pool(salience 공정순, 동점=최신우선) 우선 → BEW(nr) 보충.
+    # BEW 는 anomaly(이상변동일) 기반이라 salience 의 bm_overlap 과 동일한 시간편향 계열 —
+    # BEW 우선이면 anomaly 가 몰린 시기(예: 월전반)로 evidence 가 쏠려 late-month 배제.
+    # salience 공정화(bm_overlap 제거)와 일관되게 research_pool 을 우선으로. (2026-07-01)
     research_taken = 0
-    for a in bew_nr_ordered:
+    for a in research_pool:
         if len(high_impact) >= target_count or research_taken >= research_quota:
             break
         if a.get('_article_id', '') in picked_ids:
@@ -467,7 +510,7 @@ def _build_evidence_candidates(year: int, month: int, target_count: int,
             continue
         _commit_bew_aware(a, 'research')
         research_taken += 1
-    for a in research_pool:
+    for a in bew_nr_ordered:
         if len(high_impact) >= target_count or research_taken >= research_quota:
             break
         if a.get('_article_id', '') in picked_ids:
@@ -502,7 +545,7 @@ def _build_evidence_candidates(year: int, month: int, target_count: int,
 
     # (d) 총량 미달 시 상대 lane으로 흡수 (BEW 동일 lane 큐 우선 → 풀 보충)
     if len(high_impact) < target_count:
-        for a in bew_nr_ordered:
+        for a in research_pool:
             if len(high_impact) >= target_count:
                 break
             if a.get('_article_id', '') in picked_ids:
@@ -511,7 +554,7 @@ def _build_evidence_candidates(year: int, month: int, target_count: int,
                 continue
             _commit_bew_aware(a, 'research')
             research_taken += 1
-        for a in research_pool:
+        for a in bew_nr_ordered:
             if len(high_impact) >= target_count:
                 break
             if a.get('_article_id', '') in picked_ids:
@@ -745,7 +788,9 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
                           *,
                           force_window_ids: set[str] | None = None,
                           research_only: bool = False,
-                          policy: DebateContextPolicy | None = None) -> dict:
+                          policy: DebateContextPolicy | None = None,
+                          window: tuple[str, str] | None = None,
+                          evidence_window: tuple[str, str] | None = None) -> dict:
     """4인 에이전트 공유 컨텍스트 빌드.
 
     start_idx: evidence 번호 시작값 (분기 통번호용)
@@ -772,9 +817,13 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
     #   research-only 면 policy 가 news lane 만 차단 → research_pool 로 카드 구성.
     #   카드는 [ref:N] citation 근거라 prompt 에 노출돼야 한다 → evidence_cards_text.
     evidence_ids = []  # 프롬프트에 포함된 기사 ID 추적
+    # evidence 는 별도 창(evidence_window)으로 필터 가능 — 짧은 window(1W)에서 리서치가
+    # 얇으면 러너가 evidence_window 를 뒤로 넓혀 인용을 확보(시계열/테이블은 window 유지).
+    _ev = evidence_window or window
     high_impact, lane_evidence_ids, card_lines, _sel_debug = \
         _build_evidence_candidates(year, month, policy.evidence_target_count, start_idx,
-                                   force_window_ids=force_window_ids, policy=policy)
+                                   force_window_ids=force_window_ids, policy=policy,
+                                   window=_ev)
     evidence_ids.extend(lane_evidence_ids)
     if high_impact:
         context['_next_idx'] = start_idx + len(high_impact)
@@ -1027,10 +1076,17 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
                     lines.append(f'  {h}: {v}')
             context['indicators_text'] = '\n'.join(lines)
 
-    # 시계열 내러티브 (교차 분석 레이어)
+    # 시계열 내러티브 (교차 분석 레이어). window 지정 시 그 날짜창으로 직접 생성.
     try:
-        from market_research.report.timeseries_narrator import build_debate_narrative
-        context['timeseries_narrative_text'] = build_debate_narrative(year, month)
+        from market_research.report.timeseries_narrator import (
+            build_debate_narrative, build_narrative_blocks)
+        if window:
+            _si = int(window[0].replace('-', ''))
+            _ei = int(window[1].replace('-', ''))
+            context['timeseries_narrative_text'] = build_narrative_blocks(
+                _si, _ei, news_months=_months_in_range(window[0], window[1]))
+        else:
+            context['timeseries_narrative_text'] = build_debate_narrative(year, month)
     except Exception as e:
         context['timeseries_narrative_text'] = ''
         print(f"[timeseries_narrator] 오류: {e}")
@@ -2054,7 +2110,9 @@ def run_market_debate(year: int, month: int,
                       context_mode: str = "research_only",
                       use_wiki_context_pack: bool = True,
                       wiki_context_pack: dict | None = None,
-                      wiki_context_max_pages: int = 12) -> dict:
+                      wiki_context_max_pages: int = 12,
+                      window: tuple[str, str] | None = None,
+                      evidence_window: tuple[str, str] | None = None) -> dict:
     """
     시장 전체 debate (월 1회, 펀드 무관).
     4인 에이전트 병렬 실행 -> Opus 2단계 종합 -> 자산군별 분석 결과.
@@ -2080,6 +2138,9 @@ def run_market_debate(year: int, month: int,
     """
     policy = resolve_policy(context_mode, research_only=research_only)
     print(f'\n-- Market Debate: {year}-{month:02d} (context_mode={policy.name}) --')
+    if window:
+        print(f'  [window] evidence/timeseries {window[0]} ~ {window[1]} '
+              f'(구조 backbone={year}-{month:02d})')
     if force_window_ids:
         print(f'  [forced BEW] {len(force_window_ids)}개 window_id 만 evidence lane 에 허용')
 
@@ -2112,7 +2173,8 @@ def run_market_debate(year: int, month: int,
               f'{wcp_trace_fields.get("wiki_pages_selected", 0)}')
 
     context = _build_shared_context(year, month, force_window_ids=force_window_ids,
-                                    policy=policy)
+                                    policy=policy, window=window,
+                                    evidence_window=evidence_window)
     context['wiki_primary_context_text'] = wiki_primary_text
     context['_wiki_context_pack'] = wcp_used
     context['_prompt_context_mode'] = prompt_context_mode
