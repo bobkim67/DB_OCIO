@@ -66,6 +66,33 @@ export default function HoldingsTab({ fundCode }: Props) {
   const sortedAcw = [...acw].sort((a, b) => ord(a.asset_class) - ord(b.asset_class));
   const maxGroupW = Math.max(...sortedAcw.map((w) => w.weight), 0.0001);
 
+  // 07G04 예외(사용자 지정 2026-07-02): look-through 해제 시 상단 스택바의 모펀드
+  // 버킷을 수익추구/인컴추구 모펀드별 세그먼트로 분해해 혼합 비율을 표기.
+  const motherShort = (nm: string) =>
+    nm.includes("수익추구") ? "수익추구" : nm.includes("인컴추구") ? "인컴추구" : nm;
+  const MOTHER_SEG_COLORS: Record<string, string> = { 수익추구: "#FF6692", 인컴추구: "#C9578C" };
+  type StackSeg = { key: string; label: string; weight: number; evl_amt: number; color: string; note: string };
+  const stackSegs: StackSeg[] = sortedAcw.flatMap((w) => {
+    const base: StackSeg = {
+      key: w.asset_class, label: w.asset_class, weight: w.weight, evl_amt: w.evl_amt,
+      color: w.color ?? ASSET_COLOR[w.asset_class] ?? "#AAB2BD",
+      note: `${w.item_count}종목`,
+    };
+    if (fundCode !== "07G04" || w.asset_class !== "모펀드") return [base];
+    const mothers = items.filter((it) => it.asset_class === "모펀드");
+    if (mothers.length === 0) return [base];
+    return mothers
+      .slice()
+      .sort((a, b) => b.weight - a.weight)
+      .map((it) => {
+        const lb = motherShort(it.item_nm);
+        return {
+          key: `모펀드-${it.item_cd}`, label: lb, weight: it.weight, evl_amt: it.evl_amt,
+          color: MOTHER_SEG_COLORS[lb] ?? ASSET_COLOR.모펀드, note: "모펀드",
+        };
+      });
+  });
+
   return (
     <section className="hd-root">
       <div className="hd-head">
@@ -96,18 +123,18 @@ export default function HoldingsTab({ fundCode }: Props) {
           {/* 스택바 */}
           <div className="hd-card hd-hero hd-mb">
             <div className="hd-stack">
-              {sortedAcw.map((w) => (
-                <div key={w.asset_class}
-                  onMouseMove={(e) => setTip({ x: e.clientX, y: e.clientY, lines: [`${w.asset_class} ${(w.weight * 100).toFixed(1)}%`, `${eok(w.evl_amt)} · ${w.item_count}종목`] })}
+              {stackSegs.map((s) => (
+                <div key={s.key}
+                  onMouseMove={(e) => setTip({ x: e.clientX, y: e.clientY, lines: [`${s.label} ${(s.weight * 100).toFixed(1)}%`, `${eok(s.evl_amt)} · ${s.note}`] })}
                   onMouseLeave={() => setTip(null)}
-                  style={{ width: `${w.weight * 100}%`, background: w.color ?? ASSET_COLOR[w.asset_class] ?? "#AAB2BD" }}>
-                  {w.weight >= 0.08 ? `${w.asset_class} ${(w.weight * 100).toFixed(1)}%` : ""}
+                  style={{ width: `${s.weight * 100}%`, background: s.color }}>
+                  {s.weight >= 0.08 ? `${s.label} ${(s.weight * 100).toFixed(1)}%` : ""}
                 </div>
               ))}
             </div>
             <div className="hd-legend">
-              {sortedAcw.map((w) => (
-                <span key={w.asset_class}><i style={{ background: w.color ?? ASSET_COLOR[w.asset_class] ?? "#AAB2BD" }} />{w.asset_class} {(w.weight * 100).toFixed(1)}%</span>
+              {stackSegs.map((s) => (
+                <span key={s.key}><i style={{ background: s.color }} />{s.label} {(s.weight * 100).toFixed(1)}%</span>
               ))}
             </div>
           </div>
