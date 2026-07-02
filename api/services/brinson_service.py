@@ -214,12 +214,20 @@ def _to_sec_rows(sec_df: pd.DataFrame | None) -> list[BrinsonSecContribDTO]:
         return []
     out: list[BrinsonSecContribDTO] = []
     for _, r in sec_df.iterrows():
+        nm = str(r.get("종목명", ""))
+        w = float(r.get("비중(%)", r.get("순자산비중", 0.0)) or 0.0)
+        ret = float(r.get("수익률(%)", r.get("개별수익률", 0.0)) or 0.0)
+        contrib = float(r.get("기여수익률(%)", r.get("기여수익률", 0.0)) or 0.0)
+        # PA 소스(MA000410 sec_id) 더미 행 — 이름이 0으로만 구성되고 값도 전부 0이면 제외
+        # (예: 08N81 국내주식 '000000000000'). 값이 있으면 실포지션일 수 있어 유지.
+        if nm and nm.strip("0") == "" and abs(w) < 1e-9 and abs(contrib) < 1e-9:
+            continue
         out.append(BrinsonSecContribDTO(
             asset_class=str(r.get("자산군", "")),
-            item_nm=str(r.get("종목명", "")),
-            weight_pct=float(r.get("비중(%)", r.get("순자산비중", 0.0)) or 0.0),
-            return_pct=float(r.get("수익률(%)", r.get("개별수익률", 0.0)) or 0.0),
-            contrib_pct=float(r.get("기여수익률(%)", r.get("기여수익률", 0.0)) or 0.0),
+            item_nm=nm,
+            weight_pct=w,
+            return_pct=ret,
+            contrib_pct=contrib,
         ))
     return out
 
