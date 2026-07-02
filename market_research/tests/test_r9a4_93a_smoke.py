@@ -14,7 +14,6 @@ pre-abort + dry_run_debug_path 가 end-to-end 경로에서도 invariant 를 유�
 """
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 
@@ -409,75 +408,18 @@ def test_93a_92_fixture_plan_passthrough():
 
 
 # ──────────────────────────────────────────────────────────────────
-# Smoke 7 — Step 2.7 default OFF + 보호 영역 invariant 재확인
+# Smoke 7 — Step 2.7 default OFF
+#
+# (2026-07-02 제거) 시점 동결 invariant 5건 삭제 — ledger row=1 /
+# 08_Claims md=8 / 보호파일 md5 3종. R9-A.4 Commit 3→4 사이의 임시
+# 안전망이었고 트랙 COMPLETE(62d0605) 후 운영이 정상적으로 값을 갱신
+# (ledger 7행, claims 29개, final 재생성 등)하면서 존재 이유가 소멸.
+# 행동 invariant (LLM 0 / write 0 / default OFF / cap 상수)는 유지.
 # ──────────────────────────────────────────────────────────────────
-
-PROTECTED_FILES = {
-    "data/claims/2026-04.json": (
-        "da3fed58512829099a624ddb5fc1c85f",
-        "market_research/data/claims/2026-04.json",
-    ),
-    "_market.final.json": (
-        "81eb876ba8b82b23a2a3dcec3de2f5bc",
-        "market_research/data/report_output/2026-04/_market.final.json",
-    ),
-    "07G04.final.json": (
-        "f522cd673c8df342c21459990e86eff1",
-        "market_research/data/report_output/2026-04/07G04.final.json",
-    ),
-    "regime_memory.json": (
-        "1ee7151c8c381217c7b34393b0054daf",
-        "market_research/data/regime_memory.json",
-    ),
-}
-
 
 def test_93a_step_27_default_off():
     """Commit 3 가 끝나도 daily_update Step 2.7 default 는 OFF."""
     assert ces.ENABLE_CLAIM_EXTRACTION is False
-
-
-def test_93a_promotion_ledger_row_count_unchanged():
-    """`_promotion_quality.jsonl` 의 row 수가 1 (R9-A.1 manual pilot) 그대로."""
-    from market_research.analyze.claim_store import PROMOTION_LEDGER_PATH
-    if not PROMOTION_LEDGER_PATH.exists():
-        pytest.skip("promotion ledger 부재 (CI 환경 가능성)")
-    rows = sum(1 for _ in PROMOTION_LEDGER_PATH.open(encoding="utf-8"))
-    assert rows == 1, f"ledger row 수 invariant 위반: {rows} (예상 1)"
-
-
-def test_93a_wiki_08_claims_count_unchanged():
-    """운영 08_Claims md count 만 검증 — target_suffix 산출물 (`.{suffix}.md`)
-    은 명시적 replay artifact 이므로 제외 (C4.1 격리 정책).
-
-    Commit 5 갱신: 9.3 controlled write smoke 가 18 개 `.r9a4-replay.md` 를
-    생성해도 운영 count 는 8 그대로여야 한다.
-    """
-    from market_research.wiki.paths import CLAIMS_WIKI_DIR
-    if not CLAIMS_WIKI_DIR.exists():
-        pytest.skip("08_Claims 디렉토리 부재")
-    # 운영 파일 = `.<suffix>.md` 패턴이 아닌 base `.md` 만.
-    operational = [
-        f for f in CLAIMS_WIKI_DIR.glob("*.md")
-        if f.name.count(".") == 1   # `{period}_claim_{h}.md` 만 (suffix 1개)
-    ]
-    md_count = len(operational)
-    assert md_count == 8, (
-        f"운영 08_Claims md 수 invariant 위반: {md_count} (예상 8). "
-        f"replay artifact 는 별 카운트."
-    )
-
-
-@pytest.mark.parametrize("label", list(PROTECTED_FILES.keys()))
-def test_93a_protected_file_md5_unchanged(label):
-    expected, rel = PROTECTED_FILES[label]
-    p = REPO_ROOT / rel
-    if not p.exists():
-        pytest.skip(f"보호 파일 부재: {rel}")
-    actual = hashlib.md5(p.read_bytes()).hexdigest()
-    assert actual == expected, (
-        f"보호 파일 md5 변경: {label} 예상={expected} 실제={actual}"
-    )
 
 
 def test_93a_monthly_cap_constant_stable():

@@ -16,26 +16,18 @@ from datetime import date
 from pathlib import Path
 
 
-def _with_regime(regime_dict, delta_dict):
-    """임시로 regime_memory.json을 대체 후 _step_regime_check 호출. 원복."""
+def _judge(regime_dict, delta_dict):
+    """순수 판정 함수 직접 호출 — 파일 I/O 0 (2026-07-02 격리 fix).
+
+    기존엔 _step_regime_check 를 호출해 **라이브** _regime_quality.jsonl 오염
+    + 05_Regime_Canonical 페이지 재작성 부작용이 있었다. 판정 로직 검증에는
+    _judge_regime_state(quality_record 반환)로 충분하다.
+    """
     import market_research.pipeline.daily_update as du
-    from market_research.wiki.canonical import update_canonical_regime
-    regime_file = du.REGIME_FILE
-    backup = regime_file.read_bytes()
-    try:
-        regime_file.write_text(json.dumps(regime_dict, ensure_ascii=False), encoding='utf-8')
-        return du._step_regime_check(delta_dict)
-    finally:
-        regime_file.write_bytes(backup)
-        update_canonical_regime(regime_file)
-
-
-def _last_quality_record():
-    p = Path(__file__).resolve().parent.parent / 'data' / 'report_output' / '_regime_quality.jsonl'
-    if not p.exists():
-        return {}
-    lines = p.read_text(encoding='utf-8').strip().split('\n')
-    return json.loads(lines[-1]) if lines else {}
+    from market_research.wiki.taxonomy import TAXONOMY_SET
+    _, q = du._judge_regime_state(
+        regime_dict, delta_dict, asof_date=date.today(), taxonomy_set=TAXONOMY_SET)
+    return q
 
 
 def _pass(name, detail=''):
@@ -66,8 +58,7 @@ def test_case_a_intersection_one_of_five():
         'topic_counts': {'환율_FX': 10, '에너지_원자재': 8, '통화정책': 6, '지정학': 4, '경기_소비': 3},
         'sentiment': 'negative',   # current=bearish와 동일 → flip=False
     }
-    _with_regime(regime, delta)
-    q = _last_quality_record()
+    q = _judge(regime, delta)
 
     # 확인:
     # - coverage_current = 1/2 = 0.5 → low_current = False (< 0.5 이므로 경계)
@@ -100,8 +91,7 @@ def test_case_b_flip_triggers_candidate():
         'topic_counts': {'환율_FX': 10, '에너지_원자재': 8, '통화정책': 6, '크립토': 4, '부동산': 3},
         'sentiment': 'negative',   # ← flip
     }
-    _with_regime(regime, delta)
-    q = _last_quality_record()
+    q = _judge(regime, delta)
 
     # coverage_current = 0, coverage_today = 0, sentiment_flip = True
     # rules = all 3, score = 3 → candidate
@@ -132,8 +122,7 @@ def test_case_c_single_tag_needs_flip():
         'topic_counts': {'환율_FX': 10, '에너지_원자재': 8, '통화정책': 6, '물가_인플레이션': 4, '경기_소비': 3},
         'sentiment': 'mixed',   # neutral과 호환, flip=False
     }
-    _with_regime(regime1, delta_no_flip)
-    q1 = _last_quality_record()
+    q1 = _judge(regime1, delta_no_flip)
     if q1.get('shift_candidate'):
         _fail('case_c.1', f'단일 태그 + no flip인데 candidate: q={q1}')
 
@@ -151,8 +140,7 @@ def test_case_c_single_tag_needs_flip():
         'topic_counts': {'환율_FX': 10, '테크_AI_반도체': 8, '경기_소비': 6, '크립토': 4, '부동산': 3},
         'sentiment': 'positive',
     }
-    _with_regime(regime2, delta_flip)
-    q2 = _last_quality_record()
+    q2 = _judge(regime2, delta_flip)
     if not q2.get('shift_candidate'):
         _fail('case_c.2', f'단일 태그 + flip인데 candidate 아님: q={q2}')
 
@@ -178,8 +166,7 @@ def test_case_d_empty_tags_hold():
         'topic_counts': {'지정학': 5, '환율_FX': 3, '에너지_원자재': 2},
         'sentiment': 'negative',
     }
-    _with_regime(regime, delta)
-    q = _last_quality_record()
+    q = _judge(regime, delta)
 
     if q.get('shift_candidate'):
         _fail('case_d', f'empty tags인데 candidate: q={q}')

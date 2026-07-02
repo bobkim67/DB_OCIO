@@ -110,25 +110,18 @@ def test_case_3_empty_tags_fallback():
     if n['current']['topic_tags']:
         _fail('case3.tags_stay_empty', f'tags={n["current"]["topic_tags"]}')
 
-    # _step_regime_check 호출 — empty tags 경로 확인
-    from market_research.pipeline.daily_update import _step_regime_check
-    # regime_memory.json을 임시로 덮어써서 호출
+    # 순수 판정 함수로 empty tags 경로 확인 (2026-07-02 격리 fix —
+    # 기존 _step_regime_check 호출은 라이브 _regime_quality.jsonl 오염
+    # + 05_Regime_Canonical 재작성 부작용)
     import market_research.pipeline.daily_update as du
-    regime_file = du.REGIME_FILE
-    backup = regime_file.read_bytes()
-    try:
-        regime_file.write_text(json.dumps(n, ensure_ascii=False), encoding='utf-8')
-        delta = {'topic_counts': {'지정학': 5, '환율_FX': 3, '에너지_원자재': 2}, 'sentiment': 'negative'}
-        result = _step_regime_check(delta)
-        if result.get('shift_consecutive_days', 0) != 0:
-            _fail('case3.no_shift_candidate',
-                  f'빈 태그에서 shift 후보 생성됨: {result}')
-        _pass('case3: empty tags → shift 보류')
-    finally:
-        regime_file.write_bytes(backup)
-        # canonical page도 되돌리기
-        from market_research.wiki.canonical import update_canonical_regime
-        update_canonical_regime(regime_file)
+    from market_research.wiki.taxonomy import TAXONOMY_SET
+    delta = {'topic_counts': {'지정학': 5, '환율_FX': 3, '에너지_원자재': 2}, 'sentiment': 'negative'}
+    _, q = du._judge_regime_state(
+        n, delta, asof_date=date.today(), taxonomy_set=TAXONOMY_SET)
+    if q.get('consecutive_days', 0) != 0 or q.get('shift_candidate'):
+        _fail('case3.no_shift_candidate',
+              f'빈 태그에서 shift 후보 생성됨: {q}')
+    _pass('case3: empty tags → shift 보류')
 
 
 def main():

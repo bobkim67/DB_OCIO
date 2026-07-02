@@ -1,11 +1,14 @@
 # -*- coding: utf-8 -*-
-"""Plan B BM 보강 회귀: KAP_BOND_TR / HY_TR 컬럼이 indicators.csv 에 들어왔을 때
-asset_movement_anchor 가 국내채권 / 크레딧 자산군을 level_pct 가격 변동 기준
+"""Plan B BM 보강 회귀: KAP_BOND_TR 컬럼이 indicators.csv 에 들어왔을 때
+asset_movement_anchor 가 국내채권 자산군을 level_pct 가격 변동 기준
 movement_direction + return_pct 로 산출하는지 검증.
 
-지난 사이클까지 국내채권 = BOK_RATE bp_diff (정책금리), 크레딧 = US_HY_OAS bp_diff
-(스프레드) proxy 였음. Plan B 로 KAP종합채권 (dt.BMJISU) + Bloomberg US HY TR
-(SCIP id=401) 가격 anchor 로 교체.
+지난 사이클까지 국내채권 = BOK_RATE bp_diff (정책금리) proxy 였음. Plan B 로
+KAP종합채권 (dt.BMJISU) 가격 anchor 로 교체.
+
+(2026-07-02 갱신) eb8f85c 자산군 라벨 개편 반영 — 크레딧 폐지(HY_TR 앵커 제거),
+현금성→유동성, 원자재금→대체, 7자산군. HY_TR/IG_TR 는 collector 등록만 유지
+(섹션 6). 구 크레딧 앵커 테스트 2건 삭제.
 
 LLM 호출 0. tmp_path / monkeypatch 만 사용.
 """
@@ -53,14 +56,10 @@ def test_asset_to_indicator_mapping_uses_new_columns():
     assert kind == "level_pct", f"국내채권 kind must be level_pct, got {kind}"
     assert "KAP" in label
 
-    col, kind, label = _ASSET_TO_INDICATOR["크레딧"]
-    assert col == "HY_TR"
-    assert kind == "level_pct", f"크레딧 kind must be level_pct, got {kind}"
-    assert "HY" in label
-
-    # 현금성 / 해외채권 / FX / 원자재금 / 주식 매핑 변경 없음 확인
-    assert _ASSET_TO_INDICATOR["현금성"][0] == "FED_UPPER"
-    assert _ASSET_TO_INDICATOR["현금성"][1] == "bp_diff"
+    # 유동성 / 해외채권 / FX / 주식 매핑 변경 없음 확인 (크레딧은 eb8f85c 에서 폐지)
+    assert "크레딧" not in _ASSET_TO_INDICATOR
+    assert _ASSET_TO_INDICATOR["유동성"][0] == "FED_UPPER"
+    assert _ASSET_TO_INDICATOR["유동성"][1] == "bp_diff"
     assert _ASSET_TO_INDICATOR["해외채권"][0] == "UST_7_10Y_TR"
     assert _ASSET_TO_INDICATOR["국내주식"][0] == "MSCI_KOREA"
     assert _ASSET_TO_INDICATOR["해외주식"][0] == "SP500_TR"
@@ -94,31 +93,11 @@ def test_domestic_bond_uses_kap_bond_tr_level_pct(tmp_path):
 
 
 # ──────────────────────────────────────────────────────────────────
-# 3. HY_TR 가 indicators.csv 에 있을 때 크레딧 anchor return_pct 산출
+# 3. (삭제) 크레딧 anchor — eb8f85c 자산군 개편으로 폐지 (2026-07-02)
 # ──────────────────────────────────────────────────────────────────
 
-def test_credit_uses_hy_tr_level_pct(tmp_path):
-    from market_research.report.asset_movement_anchor import (
-        build_asset_movement_anchors,
-    )
-    ind = _make_indicators_csv(tmp_path,
-                               hy_start=2900.0, hy_end=2949.0)  # +1.690%
-    out = build_asset_movement_anchors(
-        period="2026-04", causal_paths=[], evidence_annotations=[],
-        indicators_csv_path=ind,
-    )
-    by_ac = {a["asset_class"]: a for a in out["asset_movements"]}
-    credit = by_ac["크레딧"]
-    assert credit["bm"]["kind"] == "level_pct"
-    assert credit["bm"]["return_pct"] is not None
-    # 2900 → 2949 = +1.6897% (rounded 4)
-    assert abs(credit["bm"]["return_pct"] - 1.6897) < 0.01
-    assert credit["movement_direction"] == "up"
-    assert "HY_TR" in credit["bm"]["source"]
-
-
 # ──────────────────────────────────────────────────────────────────
-# 4. 음의 return / flat 시나리오
+# 4. 음의 return 시나리오
 # ──────────────────────────────────────────────────────────────────
 
 def test_domestic_bond_negative_return(tmp_path):
@@ -137,29 +116,29 @@ def test_domestic_bond_negative_return(tmp_path):
     assert bond["movement_direction"] == "down"
 
 
-def test_credit_flat_when_unchanged(tmp_path):
+def test_domestic_bond_flat_when_unchanged(tmp_path):
     from market_research.report.asset_movement_anchor import (
         build_asset_movement_anchors,
     )
     ind = _make_indicators_csv(tmp_path,
-                               hy_start=2900.0, hy_end=2900.0)  # 0%
+                               kap_start=270.0, kap_end=270.0)  # 0%
     out = build_asset_movement_anchors(
         period="2026-04", causal_paths=[], evidence_annotations=[],
         indicators_csv_path=ind,
     )
     by_ac = {a["asset_class"]: a for a in out["asset_movements"]}
-    credit = by_ac["크레딧"]
-    assert credit["bm"]["return_pct"] is not None
-    assert abs(credit["bm"]["return_pct"]) < 0.001
-    assert credit["movement_direction"] == "flat"
+    bond = by_ac["국내채권"]
+    assert bond["bm"]["return_pct"] is not None
+    assert abs(bond["bm"]["return_pct"]) < 0.001
+    assert bond["movement_direction"] == "flat"
 
 
 # ──────────────────────────────────────────────────────────────────
-# 5. legacy 호환 — KAP_BOND_TR / HY_TR 컬럼 부재 시 missing fallback
+# 5. legacy 호환 — KAP_BOND_TR 컬럼 부재 시 missing fallback
 # ──────────────────────────────────────────────────────────────────
 
 def test_missing_new_columns_fallback_gracefully(tmp_path):
-    """과거 indicators.csv (KAP_BOND_TR / HY_TR 없음) → bm=None default,
+    """과거 indicators.csv (KAP_BOND_TR 없음) → bm=None default,
     asset_class 는 출력에 그대로 등장 (importance=0, direction=flat).
     """
     from market_research.report.asset_movement_anchor import (
@@ -178,20 +157,17 @@ def test_missing_new_columns_fallback_gracefully(tmp_path):
         indicators_csv_path=fp,
     )
     by_ac = {a["asset_class"]: a for a in out["asset_movements"]}
-    # 8자산군 모두 출력 schema 보존
+    # 7자산군 모두 출력 schema 보존
     assert sorted(by_ac.keys()) == sorted(ASSET_CLASSES_R8B)
-    # 국내채권 / 크레딧 — 컬럼 부재로 bm 기본값
+    # 국내채권 — 컬럼 부재로 bm 기본값
     assert by_ac["국내채권"]["bm"].get("return_pct") is None
     assert by_ac["국내채권"]["movement_direction"] == "flat"
-    assert by_ac["크레딧"]["bm"].get("return_pct") is None
-    assert by_ac["크레딧"]["movement_direction"] == "flat"
     # 다른 자산군은 정상 산출
     assert by_ac["해외주식"]["bm"]["return_pct"] is not None
     assert by_ac["환율(FX)"]["bm"]["return_pct"] is not None
     # warnings 에 missing 기록
     warns = " ".join(out.get("warnings", []) or [])
     assert "KAP_BOND_TR" in warns
-    assert "HY_TR" in warns
 
 
 # ──────────────────────────────────────────────────────────────────

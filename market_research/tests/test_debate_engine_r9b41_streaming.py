@@ -236,9 +236,9 @@ def test_synthesize_debate_uses_stream_for_opus(monkeypatch, reset_debug_log):
         "wiki_primary_context_text": "",
     }
     result = de._synthesize_debate(agent_responses, None, context)
-    # Opus Step 1 + Step 2 둘 다 streamed
+    # Opus Step 1 + Step 2 둘 다 streamed (모델 버전 무관 prefix 매칭 — 2026-07-02)
     opus_calls = [c for c in seen_calls
-                   if c["model"] == "claude-opus-4-6"]
+                   if c["model"].startswith("claude-opus")]
     assert len(opus_calls) == 2
     assert all(c["stream"] is True for c in opus_calls)
     # log_label 별로 둘 다 streamed
@@ -274,7 +274,7 @@ def test_synthesize_debate_quarterly_uses_stream(monkeypatch, reset_debug_log):
         "wiki_primary_context_text": "wiki primary 1300 chars 정도 stub",
     }
     de._synthesize_debate(agent_responses, None, context)
-    opus = [c for c in seen if c["model"] == "claude-opus-4-6"]
+    opus = [c for c in seen if c["model"].startswith("claude-opus")]  # 버전 무관 (2026-07-02)
     assert len(opus) == 2
     assert all(c["stream"] is True for c in opus)
     # 분기 Step1 max_tokens = 32000 (월별 16000) — comment_max_tokens 분기 분기

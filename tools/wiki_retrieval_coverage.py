@@ -76,9 +76,11 @@ from market_research.report.wiki_retriever import (
 NEWS_DIR = PROJECT_ROOT / "market_research" / "data" / "news"
 DEBATE_LOGS_DIR = PROJECT_ROOT / "market_research" / "data" / "debate_logs"
 
+# eb8f85c (2026-06-18) 자산군 개편 반영 (2026-07-02): 크레딧 폐지(→국내/해외채권),
+# 현금성→유동성. 유동성은 03_Assets 페이지가 생성되지 않는 클래스라 required 제외.
 REQUIRED_ASSET_CLASSES = (
     "국내주식", "해외주식", "국내채권", "해외채권",
-    "환율", "금/대체", "크레딧", "현금성",
+    "환율", "금/대체",
 )
 
 # 자산군 → 03_Assets 파일명 매핑 (현재 enrichment_builder 가 만드는 파일명)
@@ -89,8 +91,6 @@ ASSET_FILENAME_MAP = {
     "해외채권": ["해외채권"],
     "환율": ["환율"],
     "금/대체": ["금_대체", "금"],   # enrichment 는 "금_대체", base 는 "금"
-    "크레딧": ["크레딧"],
-    "현금성": ["현금성"],
 }
 
 URL_RE = re.compile(r"^\*\*URL\*\*:\s*(.+)$", re.MULTILINE)
@@ -951,10 +951,11 @@ def main():
 
     if args.fail_on_gate:
         print(f"     gate: FAIL={len(failures)} / WARNING={len(warnings_list)}")
+        # _emit entry 키는 gate_id/message (기존 gate/detail 참조는 KeyError — 2026-07-02 fix)
         for f in failures:
-            print(f"     ❌ {f['gate']} period={f['period']}: {f['detail']}")
+            print(f"     ❌ {f['gate_id']} period={f['period']}: {f['message']}")
         for w in warnings_list:
-            print(f"     ⚠️  {w['gate']} period={w['period']}: {w['detail']}")
+            print(f"     ⚠️  {w['gate_id']} period={w['period']}: {w['message']}")
         if failures:
             sys.exit(1)
 

@@ -31,40 +31,27 @@ Python 으로 재구현한 결과물이며, 초기 프로토타입은 Streamlit(
 2026-05-13 폐기됐다(위 STATUS 참조).
 9개 펀드의 성과 모니터링, 자산배분, Brinson PA, 매크로 지표 분석 제공 (2026-04-21: 12개 펀드 제거 — 06X08, 07J20/27/34/41, 07J48/49, 07P70, 07W15, 09L94, 1JM96/98).
 
-## Running the App
+## Running the App (2026-07-02 현행화 — LAN 배포)
 
 ```bash
-# 프로토타입 실행 (포트 지정)
-streamlit run prototype.py --server.port 8505
+# 운영 실행 (LAN 단일서버: web 빌드 + FastAPI 8020 이 SPA+API 서빙)
+scripts/launch_dashboard.bat        # daily-update 질문 → npm build → uvicorn 8020
 
-# 구문 검증만 (UI 실행 없이)
-python -c "import ast; ast.parse(open('prototype.py', encoding='utf-8').read())"
+# dev (백엔드 --reload)
+scripts/launch_fastapi.bat
 
 # 모듈 import 검증
-python -c "from modules.data_loader import parse_data_blob, load_fund_holdings_lookthrough, load_vp_weights_8class, load_vp_nav; print('OK')"
+python -c "from modules.data_loader import parse_data_blob, load_fund_holdings_lookthrough; print('OK')"
 
 # DB 접속 검증
 python -c "from modules.data_loader import get_connection; c=get_connection('dt'); print(c); c.close()"
 
-# 월별 report cache 재생성
-python -m market_research.report_cache_builder 2026 3
+# 일일 배치 (수집~regime)
+python -m market_research.pipeline.daily_update --naver-no-pdf
 ```
 
-## Streamlit 자동 리셋 규칙
-
-**아래 파일을 수정한 후에는 반드시 Streamlit 프로세스를 kill + 재시작하세요:**
-- `prototype.py`, `tabs/*.py`, `modules/*.py`, `config/*.py`
-
-```bash
-# 리셋 명령 (포트 8505 기준)
-netstat -ano | grep ":8505 .*LISTENING"  # PID 확인
-taskkill //F //PID <PID>
-sleep 3
-find . -name "__pycache__" -exec rm -rf {} +
-python -m streamlit run prototype.py --server.port 8505 &
-```
-
-Streamlit은 `session_state`에 이전 위젯 값을 유지하므로 **코드만 수정하고 브라우저 새로고침하면 반영 안 됨**. 반드시 프로세스 kill 후 새 브라우저 탭으로 접속.
+접속: `http://<LAN-IP>:8020/` (구 Streamlit 실행/리셋 규칙은 2026-07-02 파일 삭제와
+함께 제거 — 필요 시 git 이력 참조)
 
 ## Wiki commit 주기 체크 (세션 시작 시)
 
@@ -101,7 +88,7 @@ python tools/weekly_wiki_commit.py
 ## Dependencies
 
 ```
-streamlit, pandas, numpy, plotly, openpyxl, pymysql, python-dateutil
+pandas, numpy, plotly, openpyxl, pymysql, python-dateutil   # + api/requirements.txt (FastAPI)
 ```
 
 ## Coding Conventions

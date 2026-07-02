@@ -295,6 +295,22 @@ FIXTURE_92 = (Path(__file__).resolve().parents[2]
 FIXTURE_93B = (Path(__file__).resolve().parents[2]
                / "debug/claims/r9a4_93b_haiku_result.json")
 
+# eb8f85c (2026-06-18) 자산군 라벨 개편 반영 — fixture 는 구 라벨로 저장돼 있어
+# 그대로 넣으면 validate_claim 이 7건 reject (validation_failed 로 분포 왜곡).
+# 공식 안전망 매핑(_REMAP_TO_8CLASS 동일)으로 로드타임 변환해 fixture 의
+# chain/sup_ev 분포(calibration 대상)를 보존한다. (2026-07-02)
+_LABEL_REMAP = {"크레딧": "해외채권", "현금성": "유동성", "원자재금": "대체"}
+
+
+def _remap_fixture_labels(claims: list[dict]) -> list[dict]:
+    import copy
+    out = copy.deepcopy(claims)
+    for c in out:
+        for a in c.get("affected_assets") or []:
+            a["asset_class"] = _LABEL_REMAP.get(a.get("asset_class"),
+                                                a.get("asset_class"))
+    return out
+
 
 @pytest.mark.skipif(
     not FIXTURE_93B.exists(),
@@ -304,7 +320,7 @@ def test_c5_E_93b_fixture_in_band():
     """9.3b 실 Haiku 결과 (calibration 기준) → rate 66.67%, in-band."""
     data = json.loads(FIXTURE_93B.read_text(encoding="utf-8"))
     # 9.3b 는 step_result envelope 안에 extraction 보관
-    claims = data["step_result"]["extraction"]["claims"]
+    claims = _remap_fixture_labels(data["step_result"]["extraction"]["claims"])
     assert len(claims) == 18
     plan = build_promotion_plan(claims, rule="auto")
     assert plan["input_count"] == 18
@@ -341,7 +357,7 @@ def test_c5_E_92_fixture_variance():
     시사. 본 commit 범위에서는 임계 결정값 보존만.
     """
     data = json.loads(FIXTURE_92.read_text(encoding="utf-8"))
-    claims = data["extraction"]["claims"]
+    claims = _remap_fixture_labels(data["extraction"]["claims"])
     assert len(claims) == 18
     plan = build_promotion_plan(claims, rule="auto")
     # 9.2 분포: chain={2:14, 3:4}, sup={1:6, 2:9, 3:2, 4:1}
