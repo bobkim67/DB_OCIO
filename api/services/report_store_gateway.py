@@ -34,7 +34,7 @@ def _status_constants() -> tuple[str, str, str, str]:
     )
 
 
-_PERIOD_RE = re.compile(r"^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4])$")
+_PERIOD_RE = re.compile(r"^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4]|H[1-2])$")  # H=반기 (2026-07-03)
 
 
 def is_valid_period(period: str) -> bool:

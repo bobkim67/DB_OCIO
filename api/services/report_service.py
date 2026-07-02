@@ -339,6 +339,19 @@ def _period_to_range(period: str) -> tuple[date, date] | None:
         end_day = calendar.monthrange(year, end_month)[1]
         end = date(year, end_month, end_day)
         return start, end
+    if tail.startswith("H"):  # 반기 (2026-07-03): H1=1~6월, H2=7~12월
+        try:
+            h = int(tail[1:])
+        except ValueError:
+            return None
+        if h not in (1, 2):
+            return None
+        start_month = (h - 1) * 6 + 1
+        end_month = start_month + 5
+        start = date(year, start_month, 1)
+        end_day = calendar.monthrange(year, end_month)[1]
+        end = date(year, end_month, end_day)
+        return start, end
     # YYYY-MM
     try:
         m = int(tail)
@@ -1099,6 +1112,7 @@ _CLAIMS_DIR = Path(__file__).resolve().parents[2] / "market_research" / "data" /
 _CLAIM_MARK_RE = re.compile(r"\[claim:([0-9a-fA-F]+)\]")
 _REF_MARK_RE = re.compile(r"\s*\[ref:\d+\]")
 _QUARTER_PERIOD_RE = re.compile(r"^(\d{4})-Q([1-4])$")
+_HALF_PERIOD_RE = re.compile(r"^(\d{4})-H([1-2])$")  # 반기 (2026-07-03)
 
 
 def _period_months(period: str) -> list[str]:
@@ -1106,6 +1120,10 @@ def _period_months(period: str) -> list[str]:
     if m:
         y, q = int(m.group(1)), int(m.group(2))
         return [f"{y}-{(q - 1) * 3 + i:02d}" for i in range(1, 4)]
+    m = _HALF_PERIOD_RE.match(period)
+    if m:
+        y, h = int(m.group(1)), int(m.group(2))
+        return [f"{y}-{(h - 1) * 6 + i:02d}" for i in range(1, 7)]
     return [period]
 
 

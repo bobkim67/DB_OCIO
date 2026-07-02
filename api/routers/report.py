@@ -31,7 +31,7 @@ router = APIRouter()
     response_model=ReportFinalResponseDTO,
 )
 def get_market_report(
-    period: str = Query(..., pattern=r"^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4])$"),
+    period: str = Query(..., pattern=r"^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4]|H[1-2])$"),
 ) -> ReportFinalResponseDTO:
     return build_market_report(period=period)
 
@@ -52,7 +52,7 @@ def list_market_approved_periods() -> ReportApprovedPeriodsResponseDTO:
 )
 def get_fund_report(
     fund: str = Path(..., min_length=1, max_length=32),
-    period: str = Query(..., pattern=r"^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4])$"),
+    period: str = Query(..., pattern=r"^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4]|H[1-2])$"),
 ) -> ReportFinalResponseDTO:
     return build_fund_report(period=period, fund_code=fund)
 

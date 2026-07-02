@@ -468,11 +468,22 @@ def renumber_refs(comment: str, annotations: list) -> tuple[str, list, list]:
 # Debate 실행 + 저장 오케스트레이션
 # ══════════════════════════════════════════
 
+def _synthesis_model_name() -> str:
+    """draft metadata 용 실제 synthesis 모델명 (debate_engine env override 반영)."""
+    try:
+        from market_research.report.debate_engine import SYNTHESIS_MODEL
+        return SYNTHESIS_MODEL
+    except Exception:
+        return 'claude-opus-4-8'
+
+
 # R9-B.5.6 — mode 별 wiki_context_pack builder max_pages default.
 # monthly: 12 (claim 3~7 + wiki layer 5종 ≈ 12 cap 충분)
 # quarterly: 30 (3개월 union claim 4~16 + wiki layer 14, cap=12 시 wiki layer 밀림)
 DEFAULT_WIKI_CONTEXT_MAX_PAGES_MONTHLY = 12
 DEFAULT_WIKI_CONTEXT_MAX_PAGES_QUARTERLY = 30
+# 반기: 6개월 union claim + wiki layer — quarterly(30) 대비 상향 (2026-07-03)
+DEFAULT_WIKI_CONTEXT_MAX_PAGES_HALF = 45
 
 
 def run_debate_and_save(mode: str, year: int, period_num: int,
@@ -504,7 +515,8 @@ def run_debate_and_save(mode: str, year: int, period_num: int,
     target_suffix = sanitize_target_suffix(target_suffix)
     if wiki_context_max_pages is None:
         wiki_context_max_pages = (
-            DEFAULT_WIKI_CONTEXT_MAX_PAGES_QUARTERLY if mode == "분기"
+            DEFAULT_WIKI_CONTEXT_MAX_PAGES_HALF if mode == "반기"
+            else DEFAULT_WIKI_CONTEXT_MAX_PAGES_QUARTERLY if mode == "분기"
             else DEFAULT_WIKI_CONTEXT_MAX_PAGES_MONTHLY
         )
     if mode == "월별":
@@ -517,6 +529,16 @@ def run_debate_and_save(mode: str, year: int, period_num: int,
             wiki_context_max_pages=wiki_context_max_pages,
         )
         months = [period_num]
+    elif mode == "반기":
+        from market_research.report.debate_engine import run_half_debate
+        result = run_half_debate(
+            year, period_num,
+            context_mode=context_mode,
+            use_wiki_context_pack=use_wiki_context_pack,
+            wiki_context_pack=wiki_context_pack,
+            wiki_context_max_pages=wiki_context_max_pages,
+        )
+        months = result.get('months', [(period_num - 1) * 6 + i for i in range(1, 7)])
     else:
         from market_research.report.debate_engine import run_quarterly_debate
         result = run_quarterly_debate(
@@ -579,7 +601,7 @@ def run_debate_and_save(mode: str, year: int, period_num: int,
         'canonical_regime_snapshot': debate_interp.get('canonical_snapshot', {}),
         'diverges_from_canonical': debate_interp.get('diverges_from_canonical', False),
         'generated_at': result.get('debated_at', time.strftime('%Y-%m-%dT%H:%M:%S')),
-        'model': 'claude-opus-4-8',
+        'model': _synthesis_model_name(),
         'cost_usd': 0.34,
         'validation_summary': {
             'sanitize_warnings': sanitize_warnings,

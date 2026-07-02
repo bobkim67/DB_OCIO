@@ -41,6 +41,10 @@ REGIME_FILE = BASE_DIR / 'data' / 'regime_memory.json'
 DEBATE_LOG_DIR = BASE_DIR / 'data' / 'debate_logs'
 DEBATE_LOG_DIR.mkdir(parents=True, exist_ok=True)
 
+# 종합(synthesis) 단계 모델 — env 로 run 별 override 가능 (기본 = 기존 Opus 4.8).
+# 예: DEBATE_SYNTHESIS_MODEL=claude-fable-5 (2026-07-03 H1 시장코멘트 fable5 시도)
+SYNTHESIS_MODEL = os.environ.get('DEBATE_SYNTHESIS_MODEL', 'claude-opus-4-8')
+
 # ── 디버그 로그 수집 (실행 중 append, 실행 끝에 파일 저장) ──
 _debug_log: list[dict] = []
 
@@ -1793,9 +1797,27 @@ def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> 
     )
 
     # ── Step 1: 고객용 매크로 코멘트 (Opus) ──
-    # 분기 vs 월별 판단
+    # 반기 vs 분기 vs 월별 판단
     is_quarterly = bool(context.get('_quarterly'))
-    if is_quarterly:
+    half = context.get('_half')  # 1=상반기 / 2=하반기 (반기 모드에서만 설정)
+    if is_quarterly and half:
+        months_in_q = context.get('_quarterly_months', [])
+        target_period = f'{context["year"]}년 {"상" if half == 1 else "하"}반기'
+        period_instruction = (
+            f'이 문서는 "{target_period} 매크로 시장 브리핑"입니다.\n'
+            f'반드시 {months_in_q[0]}월부터 {months_in_q[-1]}월까지 시간 순서로 서술하세요.\n'
+            '특정 펀드의 운용보고가 아닌, 글로벌/국내 거시환경 분석문입니다.\n'
+        )
+        _m = months_in_q
+        structure_instruction = (
+            '## 문단 구조 (반드시 시간 순서로 작성)\n'
+            f'1문단: {_m[0]}~{_m[1]}월 — 반기 초 시장 환경, 핵심 이벤트와 자산 반응\n'
+            f'2문단: {_m[2]}~{_m[3]}월 — 전개 심화 또는 전환, 새로운 변수 등장\n'
+            f'3문단: {_m[4]}~{_m[5]}월 — 마감 국면, 반기 말 포지션과 현재 함의\n'
+            '4문단: 반기 종합 평가 — 반기 전체를 관통한 지배 내러티브와 국면 전환 정리\n'
+            '5문단: 향후 체크포인트 (투자 액션 금지)\n\n'
+        )
+    elif is_quarterly:
         months_in_q = context.get('_quarterly_months', [])
         target_period = f'{context["year"]}년 {context.get("_quarter", "")}분기'
         period_instruction = (
@@ -1924,7 +1946,7 @@ def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> 
         # context 조합에서 prompt 가 길어져 non-streaming 10분 한계를 초과한
         # 회귀 (R9-B.4 backtest 2026-Q1 fail) 해결.
         customer_comment = _call_llm(
-            model='claude-opus-4-8',
+            model=SYNTHESIS_MODEL,
             system=system_msg,
             prompt=comment_prompt,
             max_tokens=comment_max_tokens,
@@ -1963,7 +1985,7 @@ def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> 
     try:
         # R9-B.4.1 — Step 2 도 Opus. Step 1 과 동일 prompt 사이즈 누적 위험.
         text = _call_llm(
-            model='claude-opus-4-8',
+            model=SYNTHESIS_MODEL,
             system=system_msg,
             prompt=analysis_prompt,
             max_tokens=2500,
@@ -2407,7 +2429,10 @@ def run_quarterly_debate(year: int, quarter: int,
                          context_mode: str = "research_only",
                          use_wiki_context_pack: bool = True,
                          wiki_context_pack: dict | None = None,
-                         wiki_context_max_pages: int = 12) -> dict:
+                         wiki_context_max_pages: int = 12,
+                         months_override: list[int] | None = None,
+                         period_label: str | None = None,
+                         half: int | None = None) -> dict:
     """
     분기 통합 debate.
     해당 분기 3개월의 뉴스/지표를 종합하여 debate 실행.
@@ -2422,9 +2447,11 @@ def run_quarterly_debate(year: int, quarter: int,
     분기 window 기준으로 수행.
     """
     policy = resolve_policy(context_mode, research_only=research_only)
-    months = [(quarter - 1) * 3 + i for i in range(1, 4)]
-    print(f'\n-- Quarterly Debate: {year}Q{quarter} ({months[0]}~{months[2]}월) '
-          f'(context_mode={policy.name}) --')
+    # 반기(H1/H2) 등 다개월 확장 — months/label override (2026-07-03)
+    months = months_override or [(quarter - 1) * 3 + i for i in range(1, 4)]
+    label = period_label or f'{year}-Q{quarter}'
+    print(f'\n-- {"Half" if half else "Quarterly"} Debate: {label} '
+          f'({months[0]}~{months[-1]}월) (context_mode={policy.name}) --')
     if force_window_ids:
         print(f'  [forced BEW] {len(force_window_ids)}개 window_id 만 evidence lane 에 허용')
 
@@ -2437,7 +2464,7 @@ def run_quarterly_debate(year: int, quarter: int,
         # R9-B.5.6 — quarterly union pack.
         # period_key: YYYY-QX label (display + pack identifier)
         # period_keys: 분기 3개월 — builder 가 monthly claim_store 를 union.
-        quarter_label = f'{year}-Q{quarter}'
+        quarter_label = label
         quarter_period_keys = [f'{year}-{m:02d}' for m in months]
         if wiki_context_pack is not None:
             _validate_wiki_context_pack(
@@ -2517,6 +2544,8 @@ def run_quarterly_debate(year: int, quarter: int,
     merged_context['_quarterly'] = True
     merged_context['_quarter'] = quarter
     merged_context['_quarterly_months'] = months
+    if half:
+        merged_context['_half'] = half
 
     # Q-FIX-1 (2026-05-06): monthly run_market_debate 와 동일하게 wiki/graph/asset
     # trace + prompt text 를 merged_context 로 복사. wiki retrieval 은 _build_shared_context
@@ -2537,7 +2566,7 @@ def run_quarterly_debate(year: int, quarter: int,
     merged_context['_prompt_context_mode'] = prompt_context_mode
     _record_context_source_trace(merged_context, policy)
 
-    print(f'  컨텍스트 빌드 완료 (3개월 병합, sections: '
+    print(f'  컨텍스트 빌드 완료 ({len(months)}개월 병합, sections: '
           f'{", ".join(active_sections(merged_context))})')
 
     # 4인 에이전트
@@ -2586,8 +2615,8 @@ def run_quarterly_debate(year: int, quarter: int,
 
     debug_trace = {
         # quarterly 전용 metadata
-        'debate_mode': 'quarterly',
-        'period': f'{year}-Q{quarter}',
+        'debate_mode': 'half' if half else 'quarterly',
+        'period': label,
         'months': months,
         'evidence_ids_count': len(all_evidence_ids),
         'evidence_month_distribution': ev_month_dist,
@@ -2647,6 +2676,7 @@ def run_quarterly_debate(year: int, quarter: int,
     result = {
         'year': year,
         'quarter': quarter,
+        'half': half,
         'months': months,
         'debate_run_id': uuid.uuid4().hex,  # P1-① lineage ID (run당 1회 발급)
         'debated_at': time.strftime('%Y-%m-%dT%H:%M:%S'),
@@ -2660,7 +2690,7 @@ def run_quarterly_debate(year: int, quarter: int,
 
     # R9-B.4.1 — monthly log schema 와 일치시켜 llm_calls 포함. 분기 비용
     # 추적이 가능하도록. monthly run_market_debate 와 동일 패턴.
-    log_file = DEBATE_LOG_DIR / f'{year}-Q{quarter}.json'
+    log_file = DEBATE_LOG_DIR / f'{label}.json'
     log_payload = {
         'debated_at': result['debated_at'],
         'result': result,
@@ -2677,6 +2707,23 @@ def run_quarterly_debate(year: int, quarter: int,
     _debug_log.clear()
 
     return result
+
+
+def run_half_debate(year: int, half: int, **kwargs) -> dict:
+    """반기 통합 debate — 6개월 union (2026-07-03).
+
+    run_quarterly_debate 의 다개월 확장 경로를 재사용:
+    months=[1..6]/[7..12], period_key='YYYY-HX'. wiki context pack 은
+    period_type='quarterly' 그대로 (builder 는 period_keys 명시 시 개수 무관 union).
+    """
+    months = [(half - 1) * 6 + i for i in range(1, 7)]
+    return run_quarterly_debate(
+        year, half,
+        months_override=months,
+        period_label=f'{year}-H{half}',
+        half=half,
+        **kwargs,
+    )
 
 
 # ===================================================================

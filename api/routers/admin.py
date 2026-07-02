@@ -37,7 +37,7 @@ def get_evidence_quality(
     response_model=AdminDebateStatusResponseDTO,
 )
 def get_debate_status(
-    period: str = Query(..., pattern=r"^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4])$"),
+    period: str = Query(..., pattern=r"^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4]|H[1-2])$"),
     fund: str = Query(..., min_length=1, max_length=32),
 ) -> AdminDebateStatusResponseDTO:
     return build_debate_status(period=period, fund_code=fund)
@@ -67,7 +67,7 @@ def get_debate_periods() -> AdminDebatePeriodsResponseDTO:
     ),
 )
 def get_report_enrichment_diagnosis(
-    period: str = Query(..., pattern=r"^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4])$"),
+    period: str = Query(..., pattern=r"^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4]|H[1-2])$"),
     fund: str = Query(..., min_length=1, max_length=32),
     limit: int | None = Query(default=None, ge=1, le=500),
 ) -> AdminReportEnrichmentResponseDTO:
@@ -158,7 +158,7 @@ from ..services import comment_trace_gateway as _ctg
 )
 def list_comment_traces(
     period: str | None = Query(default=None,
-                                pattern=r"^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4])$"),
+                                pattern=r"^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4]|H[1-2])$"),
     fund: str | None = Query(default=None, min_length=1, max_length=32,
                               pattern=r"^[A-Za-z0-9_]+$"),
 ) -> CommentTraceListResponseDTO:
@@ -189,7 +189,7 @@ def list_comment_traces(
 )
 def get_latest_comment_trace(
     period: str | None = Query(default=None,
-                                pattern=r"^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4])$"),
+                                pattern=r"^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4]|H[1-2])$"),
     fund: str | None = Query(default=None, min_length=1, max_length=32,
                               pattern=r"^[A-Za-z0-9_]+$"),
 ) -> CommentTraceFullResponseDTO:
@@ -214,7 +214,7 @@ def get_latest_comment_trace(
 )
 def get_comment_trace_by_id(
     trace_id: str = FastAPIPath(...,
-                                  pattern=r"^[A-Za-z0-9_]+@\d{4}-(?:0[1-9]|1[0-2]|Q[1-4])$",
+                                  pattern=r"^[A-Za-z0-9_]+@\d{4}-(?:0[1-9]|1[0-2]|Q[1-4]|H[1-2])$",
                                   min_length=1, max_length=64),
 ) -> CommentTraceFullResponseDTO:
     try:
@@ -313,7 +313,7 @@ def list_wiki_context_pack_periods() -> WikiContextPackPeriodsResponseDTO:
 )
 def get_wiki_context_pack(
     period_key: str = Query(
-        ..., pattern=r"^\d{4}-(?:(?:0[1-9]|1[0-2])|Q[1-4])$",
+        ..., pattern=r"^\d{4}-(?:(?:0[1-9]|1[0-2])|Q[1-4]|H[1-2])$",
     ),
     stage: WikiPackStage = Query("market_debate"),
     period_type: str = Query("monthly",

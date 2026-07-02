@@ -5,7 +5,7 @@ path traversal 방어. read-only.
 
 운영 가정:
   - JSON 위치: PROJECT_ROOT/debug/comment_trace/{period}/{fund}.json
-  - period regex: ^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4])$
+  - period regex: ^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4]|H[1-2])$
   - fund regex:   ^[A-Za-z0-9_]+$
   - trace_id     = "{fund}@{period}"  (URL safe ASCII)
 """
@@ -18,9 +18,9 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 TRACE_DIR = PROJECT_ROOT / "debug" / "comment_trace"
 
-PERIOD_RE = re.compile(r"^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4])$")
+PERIOD_RE = re.compile(r"^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4]|H[1-2])$")
 FUND_RE = re.compile(r"^[A-Za-z0-9_]+$")
-TRACE_ID_RE = re.compile(r"^([A-Za-z0-9_]+)@(\d{4}-(?:0[1-9]|1[0-2]|Q[1-4]))$")
+TRACE_ID_RE = re.compile(r"^([A-Za-z0-9_]+)@(\d{4}-(?:0[1-9]|1[0-2]|Q[1-4]|H[1-2]))$")
 
 
 def _validate_period(period: str) -> str:

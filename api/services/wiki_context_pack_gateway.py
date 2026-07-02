@@ -30,7 +30,7 @@ CLAIMS_DIR = PROJECT_ROOT / "market_research" / "data" / "claims"
 PERIOD_MONTHLY_RE = re.compile(r"^\d{4}-(?:0[1-9]|1[0-2])$")
 PERIOD_QUARTER_RE = re.compile(r"^\d{4}-Q[1-4]$")
 # 통합 — admin 라우터의 query regex 도 동일 패턴 사용.
-PERIOD_RE = re.compile(r"^\d{4}-(?:(?:0[1-9]|1[0-2])|Q[1-4])$")
+PERIOD_RE = re.compile(r"^\d{4}-(?:(?:0[1-9]|1[0-2])|Q[1-4]|H[1-2])$")
 
 
 VALID_STAGES: frozenset[str] = frozenset({
