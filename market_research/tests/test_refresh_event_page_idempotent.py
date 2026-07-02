@@ -46,13 +46,13 @@ def _make_synthetic_articles() -> list[dict]:
 
 
 def _setup_temp_wiki(tmp_path: Path, month_str: str, articles: list[dict]) -> Path:
-    """임시 wiki dir + news/{month}.json 셋업.
+    """임시 wiki dir + naver_research/adapted/{month}.json 셋업 (P0-B research 전환).
 
-    Returns: tmp_root (NEWS_DIR / WIKI dir 의 부모)
+    Returns: tmp_root (ARTICLES_DIR / WIKI dir 의 부모)
     """
-    news_dir = tmp_path / 'data' / 'news'
-    news_dir.mkdir(parents=True, exist_ok=True)
-    (news_dir / f'{month_str}.json').write_text(
+    articles_dir = tmp_path / 'data' / 'naver_research' / 'adapted'
+    articles_dir.mkdir(parents=True, exist_ok=True)
+    (articles_dir / f'{month_str}.json').write_text(
         json.dumps({'articles': articles}, ensure_ascii=False), encoding='utf-8'
     )
     wiki_root = tmp_path / 'data' / 'wiki'
@@ -74,10 +74,11 @@ def test_refresh_idempotent_event_pages(tmp_path, monkeypatch):
 
     tmp_root = _setup_temp_wiki(tmp_path, month_str, articles)
     monkeypatch.setattr(draft_pages, 'BASE_DIR', tmp_root)
-    # NEWS_DIR / EVENTS_DIR 등 모든 디렉토리 상수를 임시로 가리킴 — 운영 articles
-    # 데이터를 건드리지 않도록 격리 (NEWS_DIR 누락 시 _load_month_articles 가
+    # ARTICLES_DIR / EVENTS_DIR 등 모든 디렉토리 상수를 임시로 가리킴 — 운영
+    # articles 데이터를 건드리지 않도록 격리 (누락 시 _load_month_articles 가
     # 운영 dir 의 stale articles 를 로드해 검증이 무의미해짐).
-    monkeypatch.setattr(draft_pages, 'NEWS_DIR', tmp_root / 'data' / 'news')
+    monkeypatch.setattr(draft_pages, 'ARTICLES_DIR',
+                        tmp_root / 'data' / 'naver_research' / 'adapted')
     monkeypatch.setattr(draft_pages, 'EVENTS_DIR', tmp_root / 'data' / 'wiki' / '01_Events')
     monkeypatch.setattr(draft_pages, 'INDEX_DIR', tmp_root / 'data' / 'wiki' / '00_Index')
     monkeypatch.setattr(draft_pages, 'ENTITIES_DIR', tmp_root / 'data' / 'wiki' / '02_Entities')
@@ -145,7 +146,8 @@ def test_refresh_does_not_touch_other_dirs(tmp_path, monkeypatch):
         fp.write_text(content, encoding='utf-8')
 
     monkeypatch.setattr(draft_pages, 'BASE_DIR', tmp_root)
-    monkeypatch.setattr(draft_pages, 'NEWS_DIR', tmp_root / 'data' / 'news')
+    monkeypatch.setattr(draft_pages, 'ARTICLES_DIR',
+                        tmp_root / 'data' / 'naver_research' / 'adapted')
     monkeypatch.setattr(draft_pages, 'EVENTS_DIR', wiki_root / '01_Events')
     monkeypatch.setattr(draft_pages, 'INDEX_DIR', wiki_root / '00_Index')
     monkeypatch.setattr(draft_pages, 'ENTITIES_DIR', wiki_root / '02_Entities')
@@ -205,7 +207,8 @@ def test_enrichment_pages_preserved(tmp_path, monkeypatch):
     enriched_kr_size = enriched_kr_eq.stat().st_size
 
     monkeypatch.setattr(draft_pages, 'BASE_DIR', tmp_root)
-    monkeypatch.setattr(draft_pages, 'NEWS_DIR', tmp_root / 'data' / 'news')
+    monkeypatch.setattr(draft_pages, 'ARTICLES_DIR',
+                        tmp_root / 'data' / 'naver_research' / 'adapted')
     monkeypatch.setattr(draft_pages, 'EVENTS_DIR', wiki_root / '01_Events')
     monkeypatch.setattr(draft_pages, 'INDEX_DIR', wiki_root / '00_Index')
     monkeypatch.setattr(draft_pages, 'ENTITIES_DIR', wiki_root / '02_Entities')

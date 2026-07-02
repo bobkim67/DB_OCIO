@@ -254,17 +254,20 @@ Step 2.5: 정제 — _step_refine(month_str)
   └ compute_salience_batch(articles, bm_anomaly) → 3단계 source + bm_overlap
   └ fallback_classify_uncategorized(articles, bm_anomaly) → 키워드 필수
   └ safe_write_news_json() → 월별 JSON 덮어쓰기
-Step 2.6: Base wiki pages (★v10+)
-  └ refresh_base_pages_after_refine(month_str)
+Step 2.6: Base wiki pages (★v10+, ★P0-B 2026-07-02 소스=naver_research adapted)
+  └ refresh_base_pages_after_refine(month_str) — ARTICLES_DIR(= adapted) 로드
   └ 01_Events (top salience events) + 02_Entities (media + graph 상위 노드)
      + 03_Assets + 04_Funds + 00_Index
   └ regime/debate narrative / transmission path 포함 금지
-Step 3: GraphRAG 증분 + transmission path P1 (★v12)
-  └ add_incremental_edges → TKG decay/merge/recompute/prune
+Step 3: GraphRAG 증분 + transmission path P1 (★v12, ★P0-C 2026-07-02 feed=adapted)
+  └ add_incremental_edges(당일 naver_research 기사) → TKG decay/merge/recompute/prune
   └ precompute_transmission_paths(phase='P1')
      = _select_dynamic_triggers + _select_dynamic_targets + alias 루프 + embed fallback
   └ write_transmission_paths_draft + write_transmission_paths_summary
 Step 4: MTD 델타 요약 (LLM 불필요, 토픽 카운트 집계)
+  └ ★P0-A(옵션 C, 2026-07-02): research(adapted) delta 병행 산출 → delta['research'].
+     Step 5 에서 news/research 판정 비교를 _regime_parallel_counts.jsonl 에 축적.
+     regime 실제 적용은 여전히 news 기반 — 일치율 확인 후 전환 결정.
 Step 5: regime canonical writer (★v10+ 단일 writer)
   └ normalize_regime_memory → taxonomy contract 강제
   └ multi-rule 판정식 (coverage_current / coverage_today(core_top3) / sentiment_flip)

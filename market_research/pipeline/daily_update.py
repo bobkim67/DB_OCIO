@@ -25,6 +25,7 @@ Phase 1.5: 월초 Full Build 기저 대비 일일 변화 추적.
 """
 from __future__ import annotations
 
+import copy
 import json
 import sys
 import time
@@ -37,6 +38,7 @@ if sys.stdout.encoding != 'utf-8':
 BASE_DIR = Path(__file__).resolve().parent.parent  # market_research/
 DATA_DIR = BASE_DIR / 'data'
 NEWS_DIR = DATA_DIR / 'news'
+ADAPTED_DIR = DATA_DIR / 'naver_research' / 'adapted'  # research 기사 (P0-A 병행 카운트)
 CACHE_DIR = DATA_DIR / 'report_cache'
 REGIME_FILE = DATA_DIR / 'regime_memory.json'
 
@@ -482,17 +484,23 @@ def _step_refine(month_str: str) -> dict:
 
 
 def _step_graph_incremental(year: int, month: int, date_str: str) -> dict:
-    """Step 3: GraphRAG 증분 엣지 추가"""
+    """Step 3: GraphRAG 증분 엣지 추가.
+
+    P0-C (2026-07-02): 일일 feed 를 news → naver_research(adapted) 로 전환.
+    (2026-06-17 news 운영 미사용 정책 — 기존엔 news 기사만 투입돼 일일 그래프
+    성장이 news-only 였음. add_incremental_edges 는 source_type provenance 를
+    이미 처리하므로 호출부만 교체.)
+    """
     try:
         from market_research.analyze.graph_rag import add_incremental_edges
 
-        # 당일 분류 완료된 기사 로드
+        # 당일 분류 완료된 research 기사 로드
         month_str = f'{year}-{month:02d}'
-        news_file = NEWS_DIR / f'{month_str}.json'
-        if not news_file.exists():
-            return {'status': 'skip', 'reason': 'no news file'}
+        nr_file = ADAPTED_DIR / f'{month_str}.json'
+        if not nr_file.exists():
+            return {'status': 'skip', 'reason': 'no naver_research adapted file'}
 
-        data = json.loads(news_file.read_text(encoding='utf-8'))
+        data = json.loads(nr_file.read_text(encoding='utf-8'))
         daily_articles = [
             a for a in data.get('articles', [])
             if a.get('date', '') == date_str and '_classified_topics' in a
@@ -566,6 +574,20 @@ def _compute_delta_from_articles(articles: list[dict],
     }
 
 
+def _load_classified_mtd_articles(file_path: Path, date_str: str) -> list[dict]:
+    """월별 JSON에서 MTD(≤date_str) + 분류완료 기사만 로드. 없으면 []."""
+    if not file_path.exists():
+        return []
+    try:
+        data = json.loads(file_path.read_text(encoding='utf-8'))
+    except Exception:
+        return []
+    return [
+        a for a in data.get('articles', [])
+        if a.get('date', '') <= date_str and '_classified_topics' in a
+    ]
+
+
 def _step_mtd_delta(year: int, month: int, date_str: str) -> dict:
     """
     Step 4: MTD 델타 — 월초 Full Build 기저 대비 변화.
@@ -573,25 +595,37 @@ def _step_mtd_delta(year: int, month: int, date_str: str) -> dict:
 
     (v15 refactor) 집계 로직은 `_compute_delta_from_articles`로 이동.
     기능 불변 — 월초~date_str의 분류된 기사 집합을 그대로 넘긴다.
+
+    P0-A (2026-07-02, 옵션 C): naver_research 기사 기반 delta 를 **병행 산출**해
+    `research` 키에 부착. regime 판정 입력(top-level)은 기존 news 그대로 —
+    병행 비교 로그가 쌓인 뒤 전환 여부를 결정한다.
     """
     month_str = f'{year}-{month:02d}'
-    news_file = NEWS_DIR / f'{month_str}.json'
-    if not news_file.exists():
-        return {'status': 'skip', 'topic_counts': {}, 'sentiment': 'N/A'}
+    mtd_articles = _load_classified_mtd_articles(
+        NEWS_DIR / f'{month_str}.json', date_str)
 
-    data = json.loads(news_file.read_text(encoding='utf-8'))
-    articles = data.get('articles', [])
+    # ── research(naver_research adapted) 병행 카운트 (P0-A) ──
+    research_articles = _load_classified_mtd_articles(
+        ADAPTED_DIR / f'{month_str}.json', date_str)
+    if research_articles:
+        research = {
+            'status': 'ok',
+            'mtd_articles': len(research_articles),
+            **_compute_delta_from_articles(research_articles),
+        }
+    else:
+        research = {'status': 'skip', 'topic_counts': {}, 'sentiment': 'N/A'}
 
-    mtd_articles = [
-        a for a in articles
-        if a.get('date', '') <= date_str and '_classified_topics' in a
-    ]
+    if not mtd_articles:
+        return {'status': 'skip', 'topic_counts': {}, 'sentiment': 'N/A',
+                'research': research}
 
     delta = _compute_delta_from_articles(mtd_articles)
     return {
         'status': 'ok',
         'mtd_articles': len(mtd_articles),
         **delta,
+        'research': research,
     }
 
 
@@ -680,9 +714,18 @@ def _judge_regime_state(regime: dict,
         days_in_regime = 0
     cooldown_active = days_in_regime < MIN_REGIME_DURATION_DAYS
 
-    # shift 연속일 카운트
+    # shift 연속일 카운트 — **달력일 단위** (2026-07-02 fix)
+    # 기존엔 실행 단위 증가라 같은 날 daily_update 재실행 시 카운터가 부풀어
+    # "3일 연속" 이 하루 만에 충족되는 조기 확정이 발생 (2026-07-02 실증).
+    # 같은 날 후보 재점화는 무증가 유지, 비후보로 끝나면 0 리셋 (규칙 불변).
     consecutive = regime.get('_shift_consecutive_days', 0)
-    consecutive = consecutive + 1 if shift_detected else 0
+    last_candidate_date = regime.get('_shift_last_candidate_date')
+    if shift_detected:
+        if last_candidate_date != asof_date.isoformat():
+            consecutive += 1
+        regime['_shift_last_candidate_date'] = asof_date.isoformat()
+    else:
+        consecutive = 0
     regime['_shift_consecutive_days'] = consecutive
 
     regime['shift_detected'] = False
@@ -755,6 +798,50 @@ def _judge_regime_state(regime: dict,
     return regime, quality_record
 
 
+def _log_regime_parallel(delta: dict, news_q: dict,
+                         research_delta: dict, research_q: dict) -> None:
+    """P0-A (옵션 C, 2026-07-02) — news vs research 병행 판정 비교 로그.
+
+    regime 판정은 여전히 news 기반. 이 로그가 충분히 쌓인 뒤(shift_candidate
+    일치율/토픽 overlap 관찰) 카운트 소스 전환 여부를 결정한다.
+    주의: research 쪽 consecutive/shift_confirmed 는 news 기반 카운터 상태를
+    공유한 판정이라 참고용 — 비교의 1차 신호는 shift_candidate·rules·sentiment.
+    """
+    news_top = list((delta.get('topic_counts') or {}).keys())
+    res_top = list((research_delta.get('topic_counts') or {}).keys())
+    rec = {
+        'date': news_q.get('date'),
+        'news': {
+            'mtd_articles': delta.get('mtd_articles', 0),
+            'top_topics': news_top,
+            'sentiment': news_q.get('sentiment_today'),
+            'rules': news_q.get('candidate_rules_triggered'),
+            'shift_candidate': news_q.get('shift_candidate'),
+        },
+        'research': {
+            'mtd_articles': research_delta.get('mtd_articles', 0),
+            'top_topics': res_top,
+            'sentiment': research_q.get('sentiment_today'),
+            'rules': research_q.get('candidate_rules_triggered'),
+            'shift_candidate': research_q.get('shift_candidate'),
+        },
+        'agree_shift_candidate':
+            news_q.get('shift_candidate') == research_q.get('shift_candidate'),
+        'agree_sentiment':
+            news_q.get('sentiment_today') == research_q.get('sentiment_today'),
+        'top_topic_overlap': len(set(news_top) & set(res_top)),
+    }
+    log_fp = DATA_DIR / 'report_output' / '_regime_parallel_counts.jsonl'
+    log_fp.parent.mkdir(parents=True, exist_ok=True)
+    with open(log_fp, 'a', encoding='utf-8') as fh:
+        fh.write(json.dumps(rec, ensure_ascii=False) + '\n')
+    print(f'  [병행] research: 기사 {rec["research"]["mtd_articles"]}건, '
+          f'shift_cand={rec["research"]["shift_candidate"]} '
+          f'(news={rec["news"]["shift_candidate"]}, '
+          f'일치={rec["agree_shift_candidate"]}, '
+          f'토픽overlap={rec["top_topic_overlap"]}/5)')
+
+
 def _step_regime_check(delta: dict) -> dict:
     """
     Step 5: regime_memory 갱신 + regime shift 자동 감지 (canonical writer).
@@ -773,10 +860,23 @@ def _step_regime_check(delta: dict) -> dict:
 
     regime = json.loads(REGIME_FILE.read_text(encoding='utf-8'))
     regime = normalize_regime_memory(regime)
+    regime_pre = copy.deepcopy(regime)  # P0-A: 병행 판정용 pre-update 스냅샷
 
     regime, quality_record = _judge_regime_state(
         regime, delta, asof_date=date.today(), taxonomy_set=TAXONOMY_SET,
     )
+
+    # ── P0-A (옵션 C): research delta 병행 판정 — 기록만, regime 미적용 ──
+    research_delta = delta.get('research') or {}
+    if research_delta.get('status') == 'ok':
+        try:
+            _, rq = _judge_regime_state(
+                copy.deepcopy(regime_pre), research_delta,
+                asof_date=date.today(), taxonomy_set=TAXONOMY_SET,
+            )
+            _log_regime_parallel(delta, quality_record, research_delta, rq)
+        except Exception as exc:
+            print(f'  [병행판정 warn] research judge 실패: {exc}')
 
     shift_detected_today = quality_record['shift_candidate']
     shift_confirmed = quality_record['shift_confirmed']

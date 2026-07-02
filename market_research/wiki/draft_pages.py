@@ -21,7 +21,10 @@ from market_research.wiki.paths import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-NEWS_DIR = BASE_DIR / 'data' / 'news'
+# P0-B (2026-07-02): base wiki 소스를 news → naver_research(adapted) 로 전환.
+# Step 2.5 가 adapted 파일에도 동일하게 salience/_event_group_id 를 부여하므로
+# 하위 페이지 빌더는 무수정. (2026-06-17 news 운영 미사용 정책)
+ARTICLES_DIR = BASE_DIR / 'data' / 'naver_research' / 'adapted'
 
 # 간단 자산/펀드 맵 — constants에서 불러올 수도 있지만 draft는 샘플 수준
 _ASSET_TOPIC_MAP = {
@@ -42,7 +45,7 @@ def _safe_filename(name: str, maxlen: int = 80) -> str:
 
 
 def _load_month_articles(month_str: str) -> list[dict]:
-    f = NEWS_DIR / f'{month_str}.json'
+    f = ARTICLES_DIR / f'{month_str}.json'
     if not f.exists():
         return []
     try:
