@@ -53,6 +53,12 @@ function fmtWeight(v: number | null | undefined, digits = 1): string {
 // 수익률 색 (양수=코랄 up / 음수=스틸블루 dn), 초과 색 (달성=초록 ok / 미달=빨강 bad).
 const rc = (v: number) => (v < 0 ? "dn" : "up");
 const ec = (v: number) => (v < 0 ? "bad" : "ok");
+
+// 유동성및기타 개별노출 대상 (편입종목 탭 collapseLiquidity 동일 규칙) —
+// 예금·USD Deposit·현금/미수금·환매미지급금만 개별, 나머지(콜론·MMF 등)는 "기타" 합산.
+const isLiqKeep = (nm: string) =>
+  nm.includes("예금") || nm.toUpperCase().includes("DEPOSIT")
+  || nm.includes("미수금") || nm.includes("미지급금");
 // 기간별 수익률 표 컬럼 (period_returns 키 → 라벨). 값은 분수(소수)라 *100.
 const PERIOD_COLS: [string, string][] = [
   ["1M", "1M"], ["3M", "3M"], ["6M", "6M"], ["1Y", "1Y"], ["YTD", "YTD"], ["SI", "설정후"],
@@ -336,6 +342,20 @@ export default function BrinsonTab({ fundCode }: Props) {
     apSecByClass1.set(g, arr);
   }
   for (const arr of apSecByClass1.values()) arr.sort((a, b) => b.weight - a.weight);
+  // 유동성및기타 collapse — 편입종목 탭 collapseLiquidity 와 동일 규칙(2026-06 합의):
+  // 예금·USD Deposit·현금/미수금·환매미지급금만 개별 노출, 나머지(콜론·MMF 등)는 "기타" 합산.
+  // 기여=합산, Normalized 수익률=비중가중평균.
+  const liq1 = apSecByClass1.get("유동성및기타");
+  if (liq1) {
+    const keep: typeof liq1 = [];
+    let etcW = 0, etcC = 0, etcRW = 0, hasEtc = false;
+    for (const x of liq1) {
+      if (isLiqKeep(x.item_nm)) keep.push(x);
+      else { etcW += x.weight; etcC += x.contrib; etcRW += x.ret * x.weight; hasEtc = true; }
+    }
+    if (hasEtc) keep.push({ item_nm: "기타", weight: etcW, contrib: etcC, ret: etcW !== 0 ? etcRW / etcW : 0 });
+    apSecByClass1.set("유동성및기타", keep);
+  }
   // 자산군별 BM 지수명(조인) — name===자산군명(MP 목표비중뿐)은 제외, FX 제외
   const bmLabelByClass = new Map<string, string>();
   for (const c of data.bm_components) {
@@ -568,6 +588,19 @@ export default function BrinsonTab({ fundCode }: Props) {
               }
               for (const arr of apByClass.values()) arr.sort((a, b) => b.weight - a.weight);
             }
+            // 유동성및기타 collapse — 편입종목 탭 collapseLiquidity 와 동일 규칙(2026-06 합의):
+            // 예금·USD Deposit·현금/미수금·환매미지급금만 개별 노출, 나머지(콜론·MMF 등)는 "기타" 합산.
+            const liq0 = apByClass.get("유동성및기타");
+            if (liq0) {
+              const keep: { label: string; weight: number }[] = [];
+              let etcW = 0, hasEtc = false;
+              for (const x of liq0) {
+                if (isLiqKeep(x.label)) keep.push(x);
+                else { etcW += x.weight; hasEtc = true; }
+              }
+              if (hasEtc) keep.push({ label: "기타", weight: etcW });
+              apByClass.set("유동성및기타", keep);
+            }
             // 소계: 스냅샷이면 ap_composition, 아니면 asset_rows(period). BM 소계는 항상 asset_rows.
             const subByClass = new Map(enrichedRows.map((r) => [r.asset_class, r]));
             // 자산군 합집합(FX 제외) → ROW_ORDER 순
@@ -586,63 +619,75 @@ export default function BrinsonTab({ fundCode }: Props) {
                     </button>
                   </div>
                 </div>
-                <table className="bn-tbl">
-                  <thead>
-                    <tr>
-                      <th>자산군</th>
-                      <th>{isBM ? "BM 지수" : "SAA 지수"}</th>
-                      <th className="r">{isBM ? "BM비중" : "SAA비중"}</th>
-                      <th className="gap" />
-                      <th>AP</th>
-                      <th className="r">AP비중</th>
-                      <th className="r">차이</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {classes.flatMap((g) => {
-                      const saa = saaByClass.get(g) ?? [];
-                      const ap = apByClass.get(g) ?? [];
-                      const sub = subByClass.get(g);
-                      const apSub = useSnapshot ? (apSnapSub.get(g) ?? 0) : (sub?.ap_weight ?? ap.reduce((s, x) => s + x.weight, 0));
-                      const bmSub = sub?.bm_weight ?? saa.reduce((s, x) => s + x.weight, 0);
-                      const diff = apSub - bmSub;
-                      // BM은 자산군당 한 줄 — 지수명 합치고 비중은 소계 표시
-                      const bmLabel = saa.map((s) => s.label).filter((l) => l && l !== "—").join(", ");
-                      const rows: ReactNode[] = [];
-                      // 자산군 행 (항상 표시): BM 지수/비중 + AP 자산군 비중(±%p vs BM)
-                      rows.push(
-                        <tr key={`${g}-cls`} className="clsrow">
-                          <td>{g}</td>
-                          <td className="muted">{bmLabel}</td>
-                          <td className="r">{fmtWeight(bmSub, 1)}</td>
-                          <td className="gap" />
-                          <td>{g}</td>
-                          <td className="r">{fmtWeight(apSub, 1)}</td>
-                          <td className={`r ${diff >= 0 ? "ok" : "bad"}`}>
-                            {diff >= 0 ? "+" : ""}{diff.toFixed(1)}%p
-                          </td>
-                        </tr>,
-                      );
-                      // 펼침 시 AP 종목 행 (BM 컬럼 빈칸)
-                      if (tbl0Expanded) {
-                        for (let i = 0; i < ap.length; i++) {
-                          rows.push(
-                            <tr key={`${g}-ap-${i}`}>
-                              <td />
-                              <td />
-                              <td />
-                              <td className="gap" />
-                              <td className="ind">{ap[i].label}</td>
-                              <td className="r">{fmtWeight(ap[i].weight, 1)}</td>
-                              <td className="r" />
-                            </tr>,
-                          );
+                {/* 좌=BM / 우=AP 분리 테이블 (사용자 지정 2026-07-02) */}
+                <div className="bn-split">
+                  <table className="bn-tbl">
+                    <thead>
+                      <tr>
+                        <th>자산군</th>
+                        <th>{isBM ? "BM 지수" : "SAA 지수"}</th>
+                        <th className="r">{isBM ? "BM비중" : "SAA비중"}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {classes.map((g) => {
+                        const saa = saaByClass.get(g) ?? [];
+                        const sub = subByClass.get(g);
+                        const bmSub = sub?.bm_weight ?? saa.reduce((s, x) => s + x.weight, 0);
+                        // BM은 자산군당 한 줄 — 지수명 합치고 비중은 소계 표시
+                        const bmLabel = saa.map((s) => s.label).filter((l) => l && l !== "—").join(", ");
+                        return (
+                          <tr key={`${g}-bm`} className="clsrow">
+                            <td>{g}</td>
+                            <td className="muted">{bmLabel}</td>
+                            <td className="r">{fmtWeight(bmSub, 1)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  <table className="bn-tbl">
+                    <thead>
+                      <tr>
+                        <th>AP</th>
+                        <th className="r">AP비중</th>
+                        <th className="r" title="AP비중 − BM비중 (%p)">차이</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {classes.flatMap((g) => {
+                        const saa = saaByClass.get(g) ?? [];
+                        const ap = apByClass.get(g) ?? [];
+                        const sub = subByClass.get(g);
+                        const apSub = useSnapshot ? (apSnapSub.get(g) ?? 0) : (sub?.ap_weight ?? ap.reduce((s, x) => s + x.weight, 0));
+                        const bmSub = sub?.bm_weight ?? saa.reduce((s, x) => s + x.weight, 0);
+                        const diff = apSub - bmSub;
+                        const rows: ReactNode[] = [
+                          <tr key={`${g}-cls`} className="clsrow">
+                            <td>{g}</td>
+                            <td className="r">{fmtWeight(apSub, 1)}</td>
+                            <td className={`r ${diff >= 0 ? "ok" : "bad"}`}>
+                              {diff >= 0 ? "+" : ""}{diff.toFixed(1)}%p
+                            </td>
+                          </tr>,
+                        ];
+                        // 펼침 시 AP 종목 행
+                        if (tbl0Expanded) {
+                          for (let i = 0; i < ap.length; i++) {
+                            rows.push(
+                              <tr key={`${g}-ap-${i}`}>
+                                <td className="ind">{ap[i].label}</td>
+                                <td className="r">{fmtWeight(ap[i].weight, 1)}</td>
+                                <td className="r" />
+                              </tr>,
+                            );
+                          }
                         }
-                      }
-                      return rows;
-                    })}
-                  </tbody>
-                </table>
+                        return rows;
+                      })}
+                    </tbody>
+                  </table>
+                </div>
                 {!isBM && (
                   data.bm_components.some((c) => c.name && c.name !== c.asset_class) ? (
                     <div className="bn-note">※ SAA 벤치마크(등록 인덱스) 기준 — 수익률·기여 분해 제공.</div>
@@ -688,96 +733,106 @@ export default function BrinsonTab({ fundCode }: Props) {
                 </span>
               </div>
             </div>
-            <table className="bn-tbl">
-              <thead>
-                <tr>
-                  <th>자산군</th>
-                  <th>BM티커</th>
-                  <th className="r">BM 수익률({tbl1Metric === "norm" ? "Normalized" : "기여"})</th>
-                  <th className="gap" />
-                  <th>AP</th>
-                  <th
-                    className="r"
-                    title="금액가중(money-weighted) 수익률로, 기간 중 매매·포지션 사이징이 반영됩니다."
-                  >
-                    AP 수익률({tbl1Metric === "norm" ? "Normalized" : "기여"})
-                    <span className="muted" style={{ fontWeight: 400, marginLeft: 3 }}>ⓘ</span>
-                  </th>
-                  {tbl1Metric !== "norm" && <th className="r">초과기여</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {enrichedRows.flatMap((r) => {
-                  const bmLabel = bmLabelByClass.get(r.asset_class) ?? "";
-                  const isNorm = tbl1Metric === "norm";
-                  const bmVal = isNorm ? r.bm_return : r.bm_contrib;
-                  const apVal = isNorm ? r.ap_return : r.contrib_return;
-                  const rows: ReactNode[] = [
-                    <tr key={r.asset_class} className="clsrow">
-                      <td>{r.asset_class}</td>
-                      <td className="muted">{bmLabel}</td>
-                      <td className="r">{fmtPct(bmVal)}</td>
-                      <td className="gap" />
-                      <td>{r.asset_class}</td>
-                      <td className={`r b ${rc(apVal)}`}>{fmtPct(apVal)}</td>
-                      {!isNorm && (
-                        <td className={`r b ${ec(r.excess_contrib)}`}>{fmtPct(r.excess_contrib)}</td>
-                      )}
-                    </tr>,
-                  ];
-                  // 펼침 시 AP 종목 행 (BM 컬럼 빈칸) — 표0 과 동일 행수, 표0 토글과 연동
-                  if (tbl0Expanded) {
-                    const secs = apSecByClass1.get(r.asset_class) ?? [];
-                    for (let i = 0; i < secs.length; i++) {
-                      const secVal = isNorm ? secs[i].ret : secs[i].contrib;
-                      rows.push(
-                        <tr key={`${r.asset_class}-sec-${i}`}>
-                          <td />
-                          <td />
-                          <td />
-                          <td className="gap" />
-                          <td className="ind">{secs[i].item_nm}</td>
-                          <td className={`r ${rc(secVal)}`}>{fmtPct(secVal)}</td>
-                          {!isNorm && <td className="r" />}
-                        </tr>,
-                      );
-                    }
-                    // 잔차 행 — 기여 모드만. (Normalized 는 수익률이라 종목 합산 불가 → 잔차 개념 없음)
-                    // 기여 모드: 종목합 ≠ 자산군 소계. FX 포함 모드에서 통화 cross-term 등 종목에
-                    // 귀속 안 되는 분이 소계에 들어가는데, 차이를 명시해 종목합+잔차=소계로 맞춤.
-                    if (!isNorm) {
-                      const secSum = secs.reduce((s, x) => s + x.contrib, 0);
-                      const resid = r.contrib_return - secSum;
-                      if (Math.abs(resid) >= 0.005) {
+            {/* 좌=BM / 우=AP 분리 테이블 (사용자 지정 2026-07-02) */}
+            <div className="bn-split">
+              <table className="bn-tbl">
+                <thead>
+                  <tr>
+                    <th>자산군</th>
+                    <th>BM 지수</th>
+                    <th className="r">BM 수익률({tbl1Metric === "norm" ? "Normalized" : "기여"})</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {enrichedRows.map((r) => {
+                    const bmLabel = bmLabelByClass.get(r.asset_class) ?? "";
+                    const bmVal = tbl1Metric === "norm" ? r.bm_return : r.bm_contrib;
+                    return (
+                      <tr key={r.asset_class} className="clsrow">
+                        <td>{r.asset_class}</td>
+                        <td className="muted">{bmLabel}</td>
+                        <td className="r">{fmtPct(bmVal)}</td>
+                      </tr>
+                    );
+                  })}
+                  {tbl1Metric !== "norm" && (
+                    <tr className="tot">
+                      <td>합계</td>
+                      <td />
+                      <td className="r">{fmtPct(sumBmContrib)}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+              <table className="bn-tbl">
+                <thead>
+                  <tr>
+                    <th>AP</th>
+                    <th
+                      className="r"
+                      title="금액가중(money-weighted) 수익률로, 기간 중 매매·포지션 사이징이 반영됩니다."
+                    >
+                      AP 수익률({tbl1Metric === "norm" ? "Normalized" : "기여"})
+                      <span className="muted" style={{ fontWeight: 400, marginLeft: 3 }}>ⓘ</span>
+                    </th>
+                    {tbl1Metric !== "norm" && <th className="r">초과기여</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {enrichedRows.flatMap((r) => {
+                    const isNorm = tbl1Metric === "norm";
+                    const apVal = isNorm ? r.ap_return : r.contrib_return;
+                    const rows: ReactNode[] = [
+                      <tr key={r.asset_class} className="clsrow">
+                        <td>{r.asset_class}</td>
+                        <td className={`r b ${rc(apVal)}`}>{fmtPct(apVal)}</td>
+                        {!isNorm && (
+                          <td className={`r b ${ec(r.excess_contrib)}`}>{fmtPct(r.excess_contrib)}</td>
+                        )}
+                      </tr>,
+                    ];
+                    // 펼침 시 AP 종목 행 — 표0 과 동일 행수, 표0 토글과 연동
+                    if (tbl0Expanded) {
+                      const secs = apSecByClass1.get(r.asset_class) ?? [];
+                      for (let i = 0; i < secs.length; i++) {
+                        const secVal = isNorm ? secs[i].ret : secs[i].contrib;
                         rows.push(
-                          <tr key={`${r.asset_class}-resid`}>
-                            <td />
-                            <td />
-                            <td />
-                            <td className="gap" />
-                            <td className="resid">기타(잔차)</td>
-                            <td className={`r ${rc(resid)}`}>{fmtPct(resid)}</td>
-                            <td className="r" />
+                          <tr key={`${r.asset_class}-sec-${i}`}>
+                            <td className="ind">{secs[i].item_nm}</td>
+                            <td className={`r ${rc(secVal)}`}>{fmtPct(secVal)}</td>
+                            {!isNorm && <td className="r" />}
                           </tr>,
                         );
                       }
+                      // 잔차 행 — 기여 모드만. (Normalized 는 수익률이라 종목 합산 불가 → 잔차 개념 없음)
+                      // 기여 모드: 종목합 ≠ 자산군 소계. FX 포함 모드에서 통화 cross-term 등 종목에
+                      // 귀속 안 되는 분이 소계에 들어가는데, 차이를 명시해 종목합+잔차=소계로 맞춤.
+                      if (!isNorm) {
+                        const secSum = secs.reduce((s, x) => s + x.contrib, 0);
+                        const resid = r.contrib_return - secSum;
+                        if (Math.abs(resid) >= 0.005) {
+                          rows.push(
+                            <tr key={`${r.asset_class}-resid`}>
+                              <td className="resid">기타(잔차)</td>
+                              <td className={`r ${rc(resid)}`}>{fmtPct(resid)}</td>
+                              <td className="r" />
+                            </tr>,
+                          );
+                        }
+                      }
                     }
-                  }
-                  return rows;
-                })}
-                {tbl1Metric !== "norm" && (
-                  <tr className="tot">
-                    <td>합계</td>
-                    <td />
-                    <td className="r">{fmtPct(sumBmContrib)}</td>
-                    <td className="gap" />
-                    <td />
-                    <td className="r">{fmtPct(sumApContrib)}</td>
-                    <td className="r">{fmtPct(sumExcessContrib)}</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                    return rows;
+                  })}
+                  {tbl1Metric !== "norm" && (
+                    <tr className="tot">
+                      <td>합계</td>
+                      <td className="r">{fmtPct(sumApContrib)}</td>
+                      <td className="r">{fmtPct(sumExcessContrib)}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
       </div>
 

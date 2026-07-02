@@ -102,6 +102,14 @@
 .bn-tbl tr.clsrow td { border-top: 2px solid var(--ace-line-2); background: #FCFCFD; }
 .bn-tbl tr.tot td { background: var(--ace-surface-2); font-weight: 800; }
 
+/* 표0·표1: 좌=BM / 우=AP 분리 테이블.
+   좌(BM)를 살짝 좁혀 우(AP) 종목명(TMF만기형/VANGUARD EM/HY 등) 잘림 방지. */
+.bn-split { display: flex; gap: 14px; align-items: flex-start; }
+.bn-split > table { min-width: 0; }
+.bn-split > table:first-child { flex: 0 0 42%; }
+.bn-split > table:last-child { flex: 1; }
+.bn-split > table:last-child td.ind { white-space: nowrap; }
+
 /* 기간별 수익률 미니표 (수익률분석 카드 하단) */
 .bn-ptbl { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--ace-line); }
 .bn-ptbl .t { font-size: 12.5px; font-weight: 700; color: var(--ace-ink-2); margin-bottom: 6px; }
