@@ -1297,6 +1297,9 @@ def _map_bm_component_to_asset_class(comp_name: str, method: str = '방법3') ->
         base = '유동성'
     elif 'KIS' in nm or 'KAP' in nm:
         base = '국내채권'
+    elif 'KOREA' in nm and 'BOND' not in nm:
+        # MSCI Korea 계열(KODEX MSCI Korea TR 등) — 'MSCI' 패턴보다 먼저 국내주식 판정
+        base = '국내주식'
     elif 'BLOOMBERG' in nm or 'AGG' in nm:
         base = '해외채권'
     elif 'GOLD' in nm:
