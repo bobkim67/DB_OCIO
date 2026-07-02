@@ -8,22 +8,34 @@ interface Props {
   height?: number;     // 차트 높이(px). 기본 360.
 }
 
-// 원래(툴팁 리디자인 전) 색 — 양수=파랑/음수=빨강/합계=초록.
-const POS = "#636EFA";   // 양수 막대
-const NEG = "#EF553B";   // 음수 막대
-const TOTAL = "#00CC96"; // 초과수익(합계)
+// 막대=파스텔톤, 라벨=동일 계열 원톤(ACE up/down + 초록) — 2026-07-03 사용자 지정.
+// 양수=코랄 / 음수=스틸블루, 초과수익(합계)=초록.
+const POS = "#F2A099";          // 양수 막대 (코랄 파스텔)
+const NEG = "#A8C0DA";          // 음수 막대 (스틸블루 파스텔)
+const TOTAL_POS = "#9FD3BE";    // 초과수익 + (초록 파스텔)
+const TOTAL_NEG = "#D8BC94";    // 초과수익 − (브라운 파스텔, ACE saa 계열)
+const POS_TXT = "#E8473B";      // 라벨 (원톤, tokens.css --ace-up)
+const NEG_TXT = "#557EAA";      // 라벨 (원톤, --ace-down)
+const TOTAL_POS_TXT = "#2E9E7B";  // 라벨 (원톤 초록)
+const TOTAL_NEG_TXT = "#B07A2B";  // 라벨 (원톤 브라운, --ace-saa)
 
 const BAR_W = 0.56;
 
 export default function BrinsonWaterfall({ alloc, select, cross, excess, height = 360 }: Props) {
   const names = ["자산배분효과", "종목선택효과", "교차효과", "초과수익"];
   const vals = [alloc, select, cross, excess];
-  // 요인 막대=부호색(양수 파랑/음수 빨강), 초과수익(합계)=초록.
+  // 요인 막대=부호 파스텔색(코랄/스틸블루), 초과수익(합계)=+초록/−브라운 파스텔
   const colors = [
     alloc >= 0 ? POS : NEG,
     select >= 0 ? POS : NEG,
     cross >= 0 ? POS : NEG,
-    TOTAL,
+    excess >= 0 ? TOTAL_POS : TOTAL_NEG,
+  ];
+  const labelColors = [
+    alloc >= 0 ? POS_TXT : NEG_TXT,
+    select >= 0 ? POS_TXT : NEG_TXT,
+    cross >= 0 ? POS_TXT : NEG_TXT,
+    excess >= 0 ? TOTAL_POS_TXT : TOTAL_NEG_TXT,
   ];
   const labels = vals.map((v) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`);
 
@@ -60,7 +72,7 @@ export default function BrinsonWaterfall({ alloc, select, cross, excess, height 
           marker: { color: colors },
           text: labels,
           textposition: "outside",
-          textfont: { size: 12, color: "#2A2E34" },
+          textfont: { size: 12, color: labelColors },
           customdata: labels,
           hovertemplate: "%{x}  <b>%{customdata}</b><extra></extra>",
           width: BAR_W,

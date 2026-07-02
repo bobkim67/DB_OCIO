@@ -53,12 +53,22 @@ function fmtWeight(v: number | null | undefined, digits = 1): string {
 // 수익률 색 (양수=코랄 up / 음수=스틸블루 dn), 초과 색 (달성=초록 ok / 미달=빨강 bad).
 const rc = (v: number) => (v < 0 ? "dn" : "up");
 const ec = (v: number) => (v < 0 ? "bad" : "ok");
+// 초과기여 색 — 양수=초록 파스텔 / 음수=브라운 파스텔 (2026-07-03 사용자 지정)
+const xc = (v: number) => (v < 0 ? "exbr" : "exgr");
 
 // 유동성및기타 개별노출 대상 (편입종목 탭 collapseLiquidity 동일 규칙) —
 // 예금·USD Deposit·현금/미수금·환매미지급금만 개별, 나머지(콜론·MMF 등)는 "기타" 합산.
 const isLiqKeep = (nm: string) =>
   nm.includes("예금") || nm.toUpperCase().includes("DEPOSIT")
   || nm.includes("미수금") || nm.includes("미지급금");
+
+// 좌(BM)/우(AP) 분리 테이블 행 정렬용 빈 패딩 행 — 자산군별 상세 행수를 좌우 동일하게 맞춤
+const padRows = (keyPrefix: string, n: number, cols: number): ReactNode[] =>
+  Array.from({ length: n }, (_, i) => (
+    <tr key={`${keyPrefix}-pad-${i}`}>
+      {Array.from({ length: cols }, (_, j) => <td key={j}>{" "}</td>)}
+    </tr>
+  ));
 // 기간별 수익률 표 컬럼 (period_returns 키 → 라벨). 값은 분수(소수)라 *100.
 const PERIOD_COLS: [string, string][] = [
   ["1M", "1M"], ["3M", "3M"], ["6M", "6M"], ["1Y", "1Y"], ["YTD", "YTD"], ["SI", "설정후"],
@@ -200,20 +210,53 @@ export default function BrinsonTab({ fundCode }: Props) {
   const [secSortKey, setSecSortKey] = useState<SecSortKey>("contrib_pct");
   const [secSortDir, setSecSortDir] = useState<"asc" | "desc">("desc");
 
-  // 펀드(또는 설정일) 변경 시에는 draft·applied 모두 기본값으로 리셋 → 자동 조회.
+  // 펀드 변경 시: 사용자가 지정한 기간(시작/종료일)은 유지한다 (사용자 지정 2026-07-03).
+  // 단 새 펀드 데이터 범위(설정일~어제)를 벗어나면 가장 가까운 가능일로 보정 + 안내 팝업.
+  // 펀드 종속 설정(분류방법·FX·SAA 토글)만 기본값으로 리셋. 최초 마운트/메타 로딩 시엔
+  // 기존처럼 기본값(연초이후) 세팅.
+  const prevFundRef = useRef<string | null>(null);
+  const [adjustNote, setAdjustNote] = useState<string | null>(null);
   useEffect(() => {
-    const s = ytdStartFor(inception);
-    const e = yesterday();
+    const fundChanged = prevFundRef.current !== null && prevFundRef.current !== fundCode;
+    prevFundRef.current = fundCode;
     const m = FUND_DEFAULT_MAPPING_METHOD[fundCode] ?? "방법3";
-    setStartDate(s);
-    setEndDate(e);
     setMethod(m);
     setFxSplit(false);
     setSaaSource("auto");
     setWeightMode("fixed");
-    setPreset("YTD");
+    if (!fundChanged) {
+      const s = ytdStartFor(inception);
+      const e = yesterday();
+      setStartDate(s);
+      setEndDate(e);
+      setPreset("YTD");
+      setApplied({ startDate: s, endDate: e, method: m, fxSplit: false });
+      return;
+    }
+    const inc = inceptionStr(inception);
+    const ymax = yesterday();
+    let s = startDate;
+    let e = endDate;
+    const notes: string[] = [];
+    if (s < inc) { notes.push(`시작일 ${s} → ${inc}(설정일)`); s = inc; }
+    if (e > ymax) { notes.push(`종료일 ${e} → ${ymax}`); e = ymax; }
+    if (e <= s) { notes.push(`종료일 ${e} → ${ymax}(시작일 이후로 조정)`); e = ymax; }
+    setStartDate(s);
+    setEndDate(e);
+    if (notes.length) {
+      setPreset("custom");
+      setAdjustNote(`지정 기간이 ${fundCode} 데이터 범위를 벗어나 조정했습니다 — ${notes.join(", ")}`);
+    }
     setApplied({ startDate: s, endDate: e, method: m, fxSplit: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fundCode, inception]);
+
+  // 기간 보정 안내 팝업 자동 소멸 (8초)
+  useEffect(() => {
+    if (!adjustNote) return;
+    const t = setTimeout(() => setAdjustNote(null), 8000);
+    return () => clearTimeout(t);
+  }, [adjustNote]);
 
   // draft 가 applied 와 다르면 "조회" 대기 상태.
   const isDirty =
@@ -356,14 +399,103 @@ export default function BrinsonTab({ fundCode }: Props) {
     if (hasEtc) keep.push({ item_nm: "기타", weight: etcW, contrib: etcC, ret: etcW !== 0 ? etcRW / etcW : 0 });
     apSecByClass1.set("유동성및기타", keep);
   }
-  // 자산군별 BM 지수명(조인) — name===자산군명(MP 목표비중뿐)은 제외, FX 제외
-  const bmLabelByClass = new Map<string, string>();
+  // 자산군별 BM 지수명 배열 — name===자산군명(MP 목표비중뿐)은 제외, FX 제외.
+  // 펼침 시 지수당 개별 상세 행(자산군 컬럼 하위 들여쓰기)으로 표기.
+  const bmNamesByClass1 = new Map<string, string[]>();
   for (const c of data.bm_components) {
     if (c.asset_class === "FX") continue;
     if (!c.name || c.name === c.asset_class) continue;
     const g = normCls1(c.asset_class);
-    const prev = bmLabelByClass.get(g);
-    bmLabelByClass.set(g, prev ? `${prev}, ${c.name}` : c.name);
+    const arr = bmNamesByClass1.get(g) ?? [];
+    arr.push(c.name);
+    bmNamesByClass1.set(g, arr);
+  }
+  // ── 표0(BM/SAA 구성) 데이터 준비 — 컴포넌트 레벨로 호이스팅해 표1과 상세 행수 공유 ──
+  const isBM0 = data.bm_source === "BM";
+  const saaByClass0 = new Map<string, { label: string; weight: number }[]>();
+  for (const c of data.bm_components) {
+    if (c.asset_class === "FX") continue;
+    const g = normCls1(c.asset_class);
+    const arr = saaByClass0.get(g) ?? [];
+    // BM=지수명. SAA=등록/proxy 인덱스명(name). MP 목표비중 SAA는 name===자산군명이라 "—".
+    const idxName = c.name && c.name !== c.asset_class ? c.name : "—";
+    arr.push({ label: idxName, weight: c.weight });
+    saaByClass0.set(g, arr);
+  }
+  // 자산군별 AP — 기말 보유 스냅샷(ap_composition, 현금·미수금 포함) 우선, 없으면 period sec_contrib.
+  const apComp0 = data.ap_composition ?? [];
+  const useSnapshot0 = apComp0.length > 0;
+  const apByClass0 = new Map<string, { label: string; weight: number }[]>();
+  const apSnapSub0 = new Map<string, number>();
+  if (useSnapshot0) {
+    for (const c of apComp0) {
+      const g = normCls1(c.asset_class);
+      apByClass0.set(g, c.items.map((it) => ({ label: it.item_nm, weight: it.weight_pct })));
+      apSnapSub0.set(g, (apSnapSub0.get(g) ?? 0) + c.weight_pct);
+    }
+  } else {
+    for (const s of data.sec_contrib) {
+      if (s.asset_class === "FX") continue;
+      const g = normCls1(s.asset_class);
+      const arr = apByClass0.get(g) ?? [];
+      arr.push({ label: s.item_nm, weight: s.weight_pct });
+      apByClass0.set(g, arr);
+    }
+    for (const arr of apByClass0.values()) arr.sort((a, b) => b.weight - a.weight);
+  }
+  // 기간 중 보유이력이 있으나 기말 미보유인 종목(예: 08K88 ACE 200TR)도 AP에 포함, 비중 0% 표기
+  // — 표1(기간 기여수익률)과 종목 구성 일치 (사용자 지정 2026-07-03, 의도=패널 좌우 밸런스).
+  if (useSnapshot0) {
+    for (const s of data.sec_contrib) {
+      if (s.asset_class === "FX") continue;
+      if (s.item_nm === s.asset_class) continue; // 잔차/집계 행 제외
+      const g = normCls1(s.asset_class);
+      const arr = apByClass0.get(g) ?? [];
+      if (!arr.some((x) => x.label === s.item_nm)) arr.push({ label: s.item_nm, weight: 0 });
+      apByClass0.set(g, arr);
+    }
+  }
+  // 유동성및기타 collapse — 편입종목 탭 collapseLiquidity 와 동일 규칙(2026-06 합의)
+  const liq0 = apByClass0.get("유동성및기타");
+  if (liq0) {
+    const keep: { label: string; weight: number }[] = [];
+    let etcW0 = 0, hasEtc0 = false;
+    for (const x of liq0) {
+      if (isLiqKeep(x.label)) keep.push(x);
+      else { etcW0 += x.weight; hasEtc0 = true; }
+    }
+    if (hasEtc0) keep.push({ label: "기타", weight: etcW0 });
+    apByClass0.set("유동성및기타", keep);
+  }
+  // 소계: 스냅샷이면 ap_composition, 아니면 asset_rows(period). BM 소계는 항상 asset_rows.
+  const subByClass0 = new Map(enrichedRows.map((r) => [r.asset_class, r]));
+  // 자산군 합집합(FX 제외) → ROW_ORDER 순
+  const classes0 = [...new Set([...saaByClass0.keys(), ...apByClass0.keys()])]
+    .filter((g) => g !== "FX")
+    .sort((a, b) => (ROW_ORDER_MAP.get(a) ?? 99) - (ROW_ORDER_MAP.get(b) ?? 99));
+  const bmComps0 = new Map(classes0.map((g) => [g,
+    (saaByClass0.get(g) ?? [])
+      .filter((s) => s.label && s.label !== "—")
+      .sort((a, b) => b.weight - a.weight)]));
+
+  // ── 상세 행수 공유(패널 간 표0↔표1 + 패널 내 좌↔우 라인 정렬) ──
+  // 펼침 시 자산군별 행수 = max(표0 BM 지수, 표0 AP 종목, 표1 AP 종목+잔차, 표1 BM 지수) —
+  // 네 테이블 전부 이 수만큼 채워(빈 행 패딩) 자산군 라인이 화면 전체에서 일치.
+  const detailShared = new Map<string, number>();
+  if (tbl0Expanded) {
+    const allCls = new Set<string>([...classes0, ...enrichedRows.map((r) => r.asset_class)]);
+    for (const g of allCls) {
+      const n0 = Math.max((bmComps0.get(g) ?? []).length, (apByClass0.get(g) ?? []).length);
+      const secs = apSecByClass1.get(g) ?? [];
+      let n1 = secs.length;
+      const r = enrichedRows.find((x) => x.asset_class === g);
+      if (tbl1Metric !== "norm" && r) {
+        const secSum = secs.reduce((s, x) => s + x.contrib, 0);
+        if (Math.abs(r.contrib_return - secSum) >= 0.005) n1 += 1; // 기타(잔차) 행
+      }
+      n1 = Math.max(n1, (bmNamesByClass1.get(g) ?? []).length);
+      detailShared.set(g, Math.max(n0, n1));
+    }
   }
 
   // 종목표 정렬
@@ -397,6 +529,13 @@ export default function BrinsonTab({ fundCode }: Props) {
 
   return (
     <section className="bn-root">
+      {/* 펀드 변경 시 기간 보정 안내 팝업 (8초 자동 소멸) */}
+      {adjustNote && (
+        <div className="bn-adjust-pop" role="status">
+          <span>ⓘ {adjustNote}</span>
+          <button type="button" onClick={() => setAdjustNote(null)} aria-label="닫기">×</button>
+        </div>
+      )}
       {/* 헤더 */}
       <div className="bn-head">
         <h2>
@@ -553,60 +692,15 @@ export default function BrinsonTab({ fundCode }: Props) {
       <div className="bn-cols">
           {/* 표 0: BM/SAA 구성 vs AP 실제 */}
           {data.bm_source !== "none" && (() => {
-            const isBM = data.bm_source === "BM";
-            // BM '유동성'(KAP MMI Call 등)을 AP와 동일하게 '유동성및기타'로 정규화 → 같은 블록으로 묶음
-            const normCls = (c: string) => (c === "유동성" ? "유동성및기타" : c);
-            // 자산군별 BM 지수(BM=지수명, SAA="—") + 비중
-            const saaByClass = new Map<string, { label: string; weight: number }[]>();
-            for (const c of data.bm_components) {
-              if (c.asset_class === "FX") continue;
-              const g = normCls(c.asset_class);
-              const arr = saaByClass.get(g) ?? [];
-              // BM=지수명. SAA=등록/proxy 인덱스명(name). MP 목표비중 SAA는 name===자산군명이라 "—".
-              const idxName = c.name && c.name !== c.asset_class ? c.name : "—";
-              arr.push({ label: idxName, weight: c.weight });
-              saaByClass.set(g, arr);
-            }
-            // 자산군별 AP — 기말 보유 스냅샷(ap_composition, 현금·미수금 포함) 우선, 없으면 period sec_contrib.
-            const apComp = data.ap_composition ?? [];
-            const useSnapshot = apComp.length > 0;
-            const apByClass = new Map<string, { label: string; weight: number }[]>();
-            const apSnapSub = new Map<string, number>();
-            if (useSnapshot) {
-              for (const c of apComp) {
-                const g = normCls(c.asset_class);
-                apByClass.set(g, c.items.map((it) => ({ label: it.item_nm, weight: it.weight_pct })));
-                apSnapSub.set(g, (apSnapSub.get(g) ?? 0) + c.weight_pct);
-              }
-            } else {
-              for (const s of data.sec_contrib) {
-                if (s.asset_class === "FX") continue;
-                const g = normCls(s.asset_class);
-                const arr = apByClass.get(g) ?? [];
-                arr.push({ label: s.item_nm, weight: s.weight_pct });
-                apByClass.set(g, arr);
-              }
-              for (const arr of apByClass.values()) arr.sort((a, b) => b.weight - a.weight);
-            }
-            // 유동성및기타 collapse — 편입종목 탭 collapseLiquidity 와 동일 규칙(2026-06 합의):
-            // 예금·USD Deposit·현금/미수금·환매미지급금만 개별 노출, 나머지(콜론·MMF 등)는 "기타" 합산.
-            const liq0 = apByClass.get("유동성및기타");
-            if (liq0) {
-              const keep: { label: string; weight: number }[] = [];
-              let etcW = 0, hasEtc = false;
-              for (const x of liq0) {
-                if (isLiqKeep(x.label)) keep.push(x);
-                else { etcW += x.weight; hasEtc = true; }
-              }
-              if (hasEtc) keep.push({ label: "기타", weight: etcW });
-              apByClass.set("유동성및기타", keep);
-            }
-            // 소계: 스냅샷이면 ap_composition, 아니면 asset_rows(period). BM 소계는 항상 asset_rows.
-            const subByClass = new Map(enrichedRows.map((r) => [r.asset_class, r]));
-            // 자산군 합집합(FX 제외) → ROW_ORDER 순
-            const classes = [...new Set([...saaByClass.keys(), ...apByClass.keys()])]
-              .filter((g) => g !== "FX")
-              .sort((a, b) => (ROW_ORDER_MAP.get(a) ?? 99) - (ROW_ORDER_MAP.get(b) ?? 99));
+            // 데이터 준비는 컴포넌트 레벨(saaByClass0 등)로 호이스팅 — 표1과 상세 행수(detailShared) 공유
+            const isBM = isBM0;
+            const saaByClass = saaByClass0;
+            const apByClass = apByClass0;
+            const apSnapSub = apSnapSub0;
+            const useSnapshot = useSnapshot0;
+            const subByClass = subByClass0;
+            const classes = classes0;
+            const detail0 = detailShared;
 
             return (
               <div className="bn-card bn-sec">
@@ -622,6 +716,10 @@ export default function BrinsonTab({ fundCode }: Props) {
                 {/* 좌=BM / 우=AP 분리 테이블 (사용자 지정 2026-07-02) */}
                 <div className="bn-split">
                   <table className="bn-tbl">
+                    <colgroup>
+                      <col />
+                      <col style={{ width: 68 }} />
+                    </colgroup>
                     <thead>
                       <tr>
                         <th>자산군</th>
@@ -641,9 +739,7 @@ export default function BrinsonTab({ fundCode }: Props) {
                           </tr>,
                         ];
                         if (tbl0Expanded) {
-                          const comps = saa
-                            .filter((s) => s.label && s.label !== "—")
-                            .sort((a, b) => b.weight - a.weight);
+                          const comps = bmComps0.get(g) ?? [];
                           for (let i = 0; i < comps.length; i++) {
                             rows.push(
                               <tr key={`${g}-bmi-${i}`}>
@@ -652,12 +748,18 @@ export default function BrinsonTab({ fundCode }: Props) {
                               </tr>,
                             );
                           }
+                          rows.push(...padRows(`${g}-bml`, (detail0.get(g) ?? 0) - comps.length, 2));
                         }
                         return rows;
                       })}
                     </tbody>
                   </table>
                   <table className="bn-tbl">
+                    <colgroup>
+                      <col />
+                      <col style={{ width: 68 }} />
+                      <col style={{ width: 64 }} />
+                    </colgroup>
                     <thead>
                       <tr>
                         <th>AP</th>
@@ -677,12 +779,12 @@ export default function BrinsonTab({ fundCode }: Props) {
                           <tr key={`${g}-cls`} className="clsrow">
                             <td>{g}</td>
                             <td className="r">{fmtWeight(apSub, 1)}</td>
-                            <td className={`r ${diff >= 0 ? "ok" : "bad"}`}>
+                            <td className={`r b ${diff >= 0 ? "ok" : "brw"}`}>
                               {diff >= 0 ? "+" : ""}{diff.toFixed(1)}%p
                             </td>
                           </tr>,
                         ];
-                        // 펼침 시 AP 종목 행
+                        // 펼침 시 AP 종목 행 + 좌측(BM)과 행수 맞춤 패딩
                         if (tbl0Expanded) {
                           for (let i = 0; i < ap.length; i++) {
                             rows.push(
@@ -693,6 +795,7 @@ export default function BrinsonTab({ fundCode }: Props) {
                               </tr>,
                             );
                           }
+                          rows.push(...padRows(`${g}-apl`, (detail0.get(g) ?? 0) - ap.length, 3));
                         }
                         return rows;
                       })}
@@ -747,35 +850,55 @@ export default function BrinsonTab({ fundCode }: Props) {
             {/* 좌=BM / 우=AP 분리 테이블 (사용자 지정 2026-07-02) */}
             <div className="bn-split">
               <table className="bn-tbl">
+                <colgroup>
+                  <col />
+                  <col style={{ width: tbl1Metric === "norm" ? 134 : 96 }} />
+                </colgroup>
                 <thead>
                   <tr>
                     <th>자산군</th>
-                    <th>{BM_LBL} 지수</th>
-                    <th className="r">{BM_LBL} 수익률({tbl1Metric === "norm" ? "Normalized" : "기여"})</th>
+                    <th className="r">{tbl1Metric === "norm" ? `${BM_LBL}수익률(Norm.)` : `${BM_LBL}수익률`}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {enrichedRows.map((r) => {
-                    const bmLabel = bmLabelByClass.get(r.asset_class) ?? "";
+                  {enrichedRows.flatMap((r) => {
+                    const names = bmNamesByClass1.get(r.asset_class) ?? [];
                     const bmVal = tbl1Metric === "norm" ? r.bm_return : r.bm_contrib;
-                    return (
+                    // 지수 컬럼 없음 — 펼침 시 지수를 자산군 컬럼 하위(들여쓰기) 행으로 표기 (사용자 지정 2026-07-03)
+                    const rows: ReactNode[] = [
                       <tr key={r.asset_class} className="clsrow">
                         <td>{r.asset_class}</td>
-                        <td className="muted">{bmLabel}</td>
-                        <td className="r">{fmtPct(bmVal)}</td>
-                      </tr>
-                    );
+                        <td className={`r ${rc(bmVal)}`}>{fmtPct(bmVal)}</td>
+                      </tr>,
+                    ];
+                    if (tbl0Expanded) {
+                      for (let i = 0; i < names.length; i++) {
+                        rows.push(
+                          <tr key={`${r.asset_class}-bmn-${i}`}>
+                            <td className="muted ind" title={names[i]}>{names[i]}</td>
+                            <td className="r" />
+                          </tr>,
+                        );
+                      }
+                      rows.push(...padRows(`${r.asset_class}-bm1`,
+                        (detailShared.get(r.asset_class) ?? 0) - names.length, 2));
+                    }
+                    return rows;
                   })}
                   {tbl1Metric !== "norm" && (
                     <tr className="tot">
                       <td>합계</td>
-                      <td />
-                      <td className="r">{fmtPct(sumBmContrib)}</td>
+                      <td className={`r ${rc(sumBmContrib)}`}>{fmtPct(sumBmContrib)}</td>
                     </tr>
                   )}
                 </tbody>
               </table>
               <table className="bn-tbl">
+                <colgroup>
+                  <col />
+                  <col style={{ width: tbl1Metric === "norm" ? 134 : 112 }} />
+                  {tbl1Metric !== "norm" && <col style={{ width: 84 }} />}
+                </colgroup>
                 <thead>
                   <tr>
                     <th>AP</th>
@@ -783,7 +906,7 @@ export default function BrinsonTab({ fundCode }: Props) {
                       className="r"
                       title="금액가중(money-weighted) 수익률로, 기간 중 매매·포지션 사이징이 반영됩니다."
                     >
-                      AP 수익률({tbl1Metric === "norm" ? "Normalized" : "기여"})
+                      {tbl1Metric === "norm" ? "AP수익률(Norm.)" : "AP수익률"}
                       <span className="muted" style={{ fontWeight: 400, marginLeft: 3 }}>ⓘ</span>
                     </th>
                     {tbl1Metric !== "norm" && <th className="r">초과기여</th>}
@@ -798,7 +921,7 @@ export default function BrinsonTab({ fundCode }: Props) {
                         <td>{r.asset_class}</td>
                         <td className={`r b ${rc(apVal)}`}>{fmtPct(apVal)}</td>
                         {!isNorm && (
-                          <td className={`r b ${ec(r.excess_contrib)}`}>{fmtPct(r.excess_contrib)}</td>
+                          <td className={`r b ${xc(r.excess_contrib)}`}>{fmtPct(r.excess_contrib)}</td>
                         )}
                       </tr>,
                     ];
@@ -831,14 +954,17 @@ export default function BrinsonTab({ fundCode }: Props) {
                           );
                         }
                       }
+                      // 좌측(BM 지수 행)이 더 많으면 빈 행 패딩 → 자산군 라인 좌우 일치
+                      rows.push(...padRows(`${r.asset_class}-ap1`,
+                        (detailShared.get(r.asset_class) ?? 0) - (rows.length - 1), isNorm ? 2 : 3));
                     }
                     return rows;
                   })}
                   {tbl1Metric !== "norm" && (
                     <tr className="tot">
                       <td>합계</td>
-                      <td className="r">{fmtPct(sumApContrib)}</td>
-                      <td className="r">{fmtPct(sumExcessContrib)}</td>
+                      <td className={`r ${rc(sumApContrib)}`}>{fmtPct(sumApContrib)}</td>
+                      <td className={`r ${xc(sumExcessContrib)}`}>{fmtPct(sumExcessContrib)}</td>
                     </tr>
                   )}
                 </tbody>
@@ -872,19 +998,19 @@ export default function BrinsonTab({ fundCode }: Props) {
                   return (
                     <tr key={r.asset_class}>
                       <td>{r.asset_class}</td>
-                      <td className="r">{fmtPct(r.alloc_effect, 3)}</td>
-                      <td className="r">{fmtPct(r.select_effect, 3)}</td>
-                      <td className="r">{fmtPct(r.cross_effect, 3)}</td>
-                      <td className={`r b ${ec(rowSum)}`}>{fmtPct(rowSum, 3)}</td>
+                      <td className={`r ${rc(r.alloc_effect)}`}>{fmtPct(r.alloc_effect, 3)}</td>
+                      <td className={`r ${rc(r.select_effect)}`}>{fmtPct(r.select_effect, 3)}</td>
+                      <td className={`r ${rc(r.cross_effect)}`}>{fmtPct(r.cross_effect, 3)}</td>
+                      <td className={`r b ${rc(rowSum)}`}>{fmtPct(rowSum, 3)}</td>
                     </tr>
                   );
                 })}
                 <tr className="tot">
                   <td>요인 합계</td>
-                  <td className="r">{fmtPct(data.total_alloc, 3)}</td>
-                  <td className="r">{fmtPct(data.total_select, 3)}</td>
-                  <td className="r">{fmtPct(data.total_cross, 3)}</td>
-                  <td className="r">{fmtPct(data.total_excess)}</td>
+                  <td className={`r ${rc(data.total_alloc)}`}>{fmtPct(data.total_alloc, 3)}</td>
+                  <td className={`r ${rc(data.total_select)}`}>{fmtPct(data.total_select, 3)}</td>
+                  <td className={`r ${rc(data.total_cross)}`}>{fmtPct(data.total_cross, 3)}</td>
+                  <td className={`r ${rc(data.total_excess)}`}>{fmtPct(data.total_excess)}</td>
                 </tr>
               </tbody>
             </table>
@@ -949,7 +1075,7 @@ export default function BrinsonTab({ fundCode }: Props) {
                         </tr>
                         <tr>
                           <td>초과</td>
-                          {PERIOD_COLS.map(([k]) => { const a = pr[k]; const b = bmpr[k]; const ex = a != null && b != null ? (a - b) * 100 : null; return <td key={k} className={`r b ${ex != null ? ec(ex) : ""}`}>{ex != null ? fmtPct(ex) : "—"}</td>; })}
+                          {PERIOD_COLS.map(([k]) => { const a = pr[k]; const b = bmpr[k]; const ex = a != null && b != null ? (a - b) * 100 : null; return <td key={k} className={`r b ${ex != null ? (ex < 0 ? "brw" : "ok") : ""}`}>{ex != null ? fmtPct(ex) : "—"}</td>; })}
                         </tr>
                       </tbody>
                     </table>
