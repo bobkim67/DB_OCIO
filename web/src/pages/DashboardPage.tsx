@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useFunds } from "../hooks/useFunds";
 import "../styles/shell.css";
 import LoadingBar from "../components/common/LoadingBar";
@@ -22,6 +22,20 @@ export default function DashboardPage() {
   const { data, isLoading, error } = useFunds();
   const [selected, setSelected] = useState<string>("08K88");
   const [tab, setTab] = useState<TabKey>("overview");
+  // keep-alive: 방문한 탭은 언마운트하지 않고 display:none 으로 숨겨 로컬 상태
+  // (기간 preset, 토글 등)를 보존한다. 미방문 탭은 마운트하지 않음(불필요 조회 방지).
+  const [visited, setVisited] = useState<TabKey[]>(["overview"]);
+
+  const selectTab = (key: TabKey) => {
+    setTab(key);
+    setVisited((v) => (v.includes(key) ? v : [...v, key]));
+  };
+
+  // 숨김(display:none) 상태에서 창 크기가 바뀌면 Plotly 가 width 를 0/구값으로
+  // 계산할 수 있어, 탭이 다시 보일 때 resize 이벤트로 재계산을 유도한다.
+  useEffect(() => {
+    window.dispatchEvent(new Event("resize"));
+  }, [tab]);
 
   if (isLoading) return <LoadingBar label="loading funds..." />;
   if (error || !data) {
@@ -34,12 +48,27 @@ export default function DashboardPage() {
 
   const tabBtn = (key: TabKey, label: string) => (
     <button
-      onClick={() => setTab(key)}
+      onClick={() => selectTab(key)}
       className={`shell-tab ${tab === key ? "on" : ""}`}
     >
       {label}
     </button>
   );
+
+  const tabBody = (key: TabKey) =>
+    key === "overview" ? (
+      <OverviewTab fundCode={selected} />
+    ) : key === "holdings" ? (
+      <HoldingsTab fundCode={selected} />
+    ) : key === "transactions" ? (
+      <TransactionsTab fundCode={selected} />
+    ) : key === "brinson" ? (
+      <BrinsonTab fundCode={selected} />
+    ) : key === "report" ? (
+      <ReportTab fundCode={selected} />
+    ) : (
+      <AdminTab />
+    );
 
   return (
     <div className="app-shell">
@@ -76,19 +105,11 @@ export default function DashboardPage() {
         {tabBtn("admin", "Admin")}
       </div>
 
-      {tab === "overview" ? (
-        <OverviewTab fundCode={selected} />
-      ) : tab === "holdings" ? (
-        <HoldingsTab fundCode={selected} />
-      ) : tab === "transactions" ? (
-        <TransactionsTab fundCode={selected} />
-      ) : tab === "brinson" ? (
-        <BrinsonTab fundCode={selected} />
-      ) : tab === "report" ? (
-        <ReportTab fundCode={selected} />
-      ) : (
-        <AdminTab />
-      )}
+      {visited.map((key) => (
+        <div key={key} style={{ display: tab === key ? undefined : "none" }}>
+          {tabBody(key)}
+        </div>
+      ))}
     </div>
   );
 }
