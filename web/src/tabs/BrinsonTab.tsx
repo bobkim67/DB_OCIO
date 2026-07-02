@@ -625,24 +625,35 @@ export default function BrinsonTab({ fundCode }: Props) {
                     <thead>
                       <tr>
                         <th>자산군</th>
-                        <th>{isBM ? "BM 지수" : "SAA 지수"}</th>
                         <th className="r">{isBM ? "BM비중" : "SAA비중"}</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {classes.map((g) => {
+                      {classes.flatMap((g) => {
                         const saa = saaByClass.get(g) ?? [];
                         const sub = subByClass.get(g);
                         const bmSub = sub?.bm_weight ?? saa.reduce((s, x) => s + x.weight, 0);
-                        // BM은 자산군당 한 줄 — 지수명 합치고 비중은 소계 표시
-                        const bmLabel = saa.map((s) => s.label).filter((l) => l && l !== "—").join(", ");
-                        return (
+                        // 접힘: 자산군 소계만. 펼침: 지수(티커)별 개별 행 + 각 비중 (AP 측과 동일 패턴)
+                        const rows: ReactNode[] = [
                           <tr key={`${g}-bm`} className="clsrow">
                             <td>{g}</td>
-                            <td className="muted">{bmLabel}</td>
                             <td className="r">{fmtWeight(bmSub, 1)}</td>
-                          </tr>
-                        );
+                          </tr>,
+                        ];
+                        if (tbl0Expanded) {
+                          const comps = saa
+                            .filter((s) => s.label && s.label !== "—")
+                            .sort((a, b) => b.weight - a.weight);
+                          for (let i = 0; i < comps.length; i++) {
+                            rows.push(
+                              <tr key={`${g}-bmi-${i}`}>
+                                <td className="ind">{comps[i].label}</td>
+                                <td className="r">{fmtWeight(comps[i].weight, 1)}</td>
+                              </tr>,
+                            );
+                          }
+                        }
+                        return rows;
                       })}
                     </tbody>
                   </table>
@@ -739,8 +750,8 @@ export default function BrinsonTab({ fundCode }: Props) {
                 <thead>
                   <tr>
                     <th>자산군</th>
-                    <th>BM 지수</th>
-                    <th className="r">BM 수익률({tbl1Metric === "norm" ? "Normalized" : "기여"})</th>
+                    <th>{BM_LBL} 지수</th>
+                    <th className="r">{BM_LBL} 수익률({tbl1Metric === "norm" ? "Normalized" : "기여"})</th>
                   </tr>
                 </thead>
                 <tbody>
