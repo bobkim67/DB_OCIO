@@ -1,0 +1,41 @@
+{
+  "month": "2026-07",
+  "generated_at": "2026-07-02T12:55:39",
+  "windows": [],
+  "timeline": [],
+  "graph": {
+    "nodes": [],
+    "edges": []
+  },
+  "evidence_cards": [],
+  "debug": {
+    "window_count": 0,
+    "unmapped_windows": 0,
+    "evidence_total": 0,
+    "source_mix": {
+      "naver_research": 0,
+      "news": 0
+    },
+    "graph_size": {
+      "nodes": 0,
+      "edges": 0
+    },
+    "parameters": {
+      "core_bms": [
+        "S&P500",
+        "KOSPI",
+        "Gold",
+        "DXY",
+        "USDKRW",
+        "미국종합채권"
+      ],
+      "z_anomaly": 1.5,
+      "z_trend_break": 1.0,
+      "drawdown_pct": 0.03,
+      "rebound_pct": 0.03,
+      "window_gap_days": 2,
+      "evidence_date_tolerance": 2,
+      "max_evidence_per_window": 8
+    }
+  }
+}
