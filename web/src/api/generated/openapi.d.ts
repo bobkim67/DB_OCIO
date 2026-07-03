@@ -55,6 +55,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/funds/{code}/period-returns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Period Returns
+         * @description 조회 종료일(end_date, YYYY-MM-DD) 앵커 기간별 수익률 — Overview/성과분석 표용.
+         */
+        get: operations["get_period_returns_api_funds__code__period_returns_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/funds/{code}/holdings": {
         parameters: {
             query?: never;
@@ -1882,6 +1902,34 @@ export interface components {
             bm_equity_weight?: number | null;
         };
         /**
+         * PeriodReturnsResponseDTO
+         * @description 기간별 수익률 표 전용 — 조회 종료일(end_date) 앵커 트레일링 기간수익률.
+         *
+         *     end_date 미지정 시 최신 영업일 앵커(= OverviewResponseDTO.period_returns 와 동일).
+         */
+        PeriodReturnsResponseDTO: {
+            /** Fund Code */
+            fund_code: string;
+            /** End Date */
+            end_date?: string | null;
+            /**
+             * Benchmark Kind
+             * @default none
+             * @enum {string}
+             */
+            benchmark_kind: "BM" | "SAA" | "none";
+            /** Benchmark Label */
+            benchmark_label?: string | null;
+            /** Period Returns */
+            period_returns?: {
+                [key: string]: number;
+            };
+            /** Bm Period Returns */
+            bm_period_returns?: {
+                [key: string]: number;
+            };
+        };
+        /**
          * PortfolioMixSummaryDTO
          * @description 편입종목 상단 카드용 비중 요약.
          *
@@ -2564,6 +2612,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OverviewResponseDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_period_returns_api_funds__code__period_returns_get: {
+        parameters: {
+            query?: {
+                end_date?: string | null;
+            };
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeriodReturnsResponseDTO"];
                 };
             };
             /** @description Validation Error */

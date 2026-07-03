@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useOverview } from "../hooks/useOverview";
+import { usePeriodReturns } from "../hooks/usePeriodReturns";
 import NavChart from "../components/charts/NavChart";
 import LoadingBar from "../components/common/LoadingBar";
 
@@ -32,8 +33,9 @@ export default function OverviewTab({ fundCode }: Props) {
   const { data, isLoading, error } = useOverview(fundCode);
 
   const [retMode, setRetMode] = useState<RetMode>("SI");
-  // 비교 기준선: 목표(target) vs 벤치(SAA/BM) — 차트 pcard 에서 둘 중 하나만 ON.
-  const [baseMode, setBaseMode] = useState<"target" | "bench">("bench");
+  // 비교선 토글: 목표/벤치(SAA/BM) 독립 ON/OFF — 둘 다 켜거나 둘 다 끌 수 있음 (2026-07-03 사용자 지정).
+  const [benchOn, setBenchOn] = useState(true);
+  const [targetOn, setTargetOn] = useState(false);
 
   // 조회기간(날짜 윈도우) — 기본 전체 구간(설정후). 펀드 변경 시 리셋.
   const series = data?.nav_series ?? [];
@@ -45,9 +47,10 @@ export default function OverviewTab({ fundCode }: Props) {
     setStart(fullStart);
     setEnd(fullEnd);
     setRetMode("SI");
-    // 목표 있는 BM-less 펀드는 목표 기준 디폴트, 아니면 벤치(SAA/BM) 기준
+    // 디폴트: 목표 있는 BM-less 펀드는 목표만 ON, 아니면 벤치(SAA/BM)만 ON
     const ht = data?.benchmark_kind === "SAA" && data?.fund_meta?.target_return_annual != null;
-    setBaseMode(ht ? "target" : "bench");
+    setTargetOn(!!ht);
+    setBenchOn(!ht);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fundCode, fullStart, fullEnd]);
 
@@ -55,6 +58,10 @@ export default function OverviewTab({ fundCode }: Props) {
     () => series.filter((p) => p.date >= start && p.date <= end),
     [series, start, end],
   );
+
+  // 기간별 수익률 표 — 조회 종료일 앵커 트레일링 수익률 (2026-07-03 사용자 지정).
+  // 종료일=전체 끝(기본)이면 최신 영업일 앵커(백엔드 기본)와 동일해 파라미터 생략.
+  const prq = usePeriodReturns(fundCode, end && end !== fullEnd ? end : undefined);
 
   if (isLoading) return <LoadingBar label="loading overview..." />;
   if (error || !data) return <div style={{ color: "#dc2626" }}>failed to load overview</div>;
@@ -66,30 +73,37 @@ export default function OverviewTab({ fundCode }: Props) {
   const target = fm?.target_return_annual ?? null;
   // 07G04 등 BM 펀드는 목표를 메타바에만 표기 → 차트/카드 목표선은 SAA 펀드 전용.
   const hasTarget = benchKind === "SAA" && target != null;
-  const baseIsTarget = baseMode === "target" && hasTarget;
-  const baseLabel = baseIsTarget ? "목표" : benchLabel;
+  const benchActive = benchOn && hasBench;
+  const targetActive = targetOn && hasTarget;
 
   const pr = data.period_returns ?? {};
   const bmpr = data.bm_period_returns ?? {};
   const asof = data.meta.as_of_date ?? null;
   const inception = fm?.inception ?? null;
 
-  // 목표 누적수익률 (기간별 일수 환산)
-  const TARGET_DAYS: Record<string, number> = { "1W": 7, "1M": 30.44, "3M": 91.31, "6M": 182.62 };
-  const targetForPeriod = (k: string): number | null => {
-    if (target == null || !asof) return null;
+  // 기간별 수익률 표 데이터 — 조회 종료일 앵커 (지표카드는 최신 as_of 기준 유지)
+  const tpr = prq.data?.period_returns ?? pr;
+  const tbmpr = prq.data?.bm_period_returns ?? bmpr;
+  const tEnd = prq.data?.end_date ?? asof;
+
+  // 목표 누적수익률 (기간별 일수 환산). anchor 미지정 시 최신 as_of, 표는 조회 종료일 앵커.
+  const TARGET_DAYS: Record<string, number> = { "1W": 7, "1M": 30.44, "3M": 91.31, "6M": 182.62, "1Y": 365.25 };
+  const targetForPeriod = (k: string, anchor: string | null = asof): number | null => {
+    if (target == null || !anchor) return null;
     let days: number;
-    if (k === "SI") days = inception ? daysBetween(inception, asof) : NaN;
+    if (k === "SI") days = inception ? daysBetween(inception, anchor) : NaN;
     else if (k === "YTD") {
-      const jan1 = `${asof.slice(0, 4)}-01-01`;
-      days = daysBetween(inception && inception > jan1 ? inception : jan1, asof);
-    } else days = TARGET_DAYS[k];
+      const jan1 = `${anchor.slice(0, 4)}-01-01`;
+      days = daysBetween(inception && inception > jan1 ? inception : jan1, anchor);
+    } else if (k === "MTD") days = Number(anchor.slice(8, 10)); // 전월말 대비 경과일 근사
+    else days = TARGET_DAYS[k];
     if (!Number.isFinite(days)) return null;
     return Math.pow(1 + target, Math.max(days, 0) / 365) - 1;
   };
-  // 활성 기준선(목표 or 벤치)의 기간별 값
+  // 수익률 카드 비교값 — 벤치 ON 우선, 아니면 목표 ON, 둘 다 OFF면 비교 생략
   const baseForPeriod = (k: string): number | null =>
-    baseIsTarget ? targetForPeriod(k) : bmpr[k] ?? null;
+    benchActive ? bmpr[k] ?? null : targetActive ? targetForPeriod(k) : null;
+  const baseLabel = benchActive ? benchLabel : "목표";
 
   // 지표카드 데이터
   const navPrice = fm?.nav ?? series[series.length - 1]?.nav ?? null;
@@ -226,7 +240,7 @@ export default function OverviewTab({ fundCode }: Props) {
             <span className={`val num ${sign(portRet)}`}>{pctSigned(portRet)}</span>
           </div>
           <div className="cmp">
-            {baseIsTarget || hasBench ? (
+            {benchActive || targetActive ? (
               <>
                 {baseLabel} <span className="num">{pct(baseRet)}</span>{" "}
                 {baseDelta != null && <span className={`delta ${sign(baseDelta)} num`}>({pctpSigned(baseDelta)})</span>}
@@ -246,7 +260,7 @@ export default function OverviewTab({ fundCode }: Props) {
             <span className="val num">{pct(portVol)}</span>
           </div>
           <div className="cmp">
-            {!baseIsTarget && hasBench && benchVol != null ? (
+            {benchActive && benchVol != null ? (
               <>
                 {benchLabel} <span className="num">{pct(benchVol)}</span> ·{" "}
                 <span className={`delta ${sign(portVol != null ? portVol - benchVol : null)} num`}>
@@ -264,7 +278,7 @@ export default function OverviewTab({ fundCode }: Props) {
             <span className="val num">{pct(eqW)}</span>
           </div>
           <div className="cmp">
-            {!baseIsTarget && hasBench && bmEqW != null ? (
+            {benchActive && bmEqW != null ? (
               <>
                 {benchLabel} <span className="num">{pct(bmEqW)}</span>{" "}
                 <span className={`delta ${sign(eqDiff)} num`}>{pctpSigned(eqDiff)}</span>
@@ -301,14 +315,14 @@ export default function OverviewTab({ fundCode }: Props) {
               <div className={`v num ${sign(winPort)}`}>{pctSigned(winPort)}</div>
             </div>
             {hasTarget && (
-              <div className={`ov-pcard goal ${baseMode === "target" ? "sel" : "off"}`} onClick={() => setBaseMode("target")}>
-                <div className="k">목표<span className="tag">{baseMode === "target" ? "ON" : "OFF"}</span></div>
+              <div className={`ov-pcard goal ${targetOn ? "sel" : "off"}`} onClick={() => setTargetOn((v) => !v)}>
+                <div className="k">목표<span className="tag">{targetOn ? "ON" : "OFF"}</span></div>
                 <div className="v num">{pctSigned(winTarget)}</div>
               </div>
             )}
             {hasBench && (
-              <div className={`ov-pcard saa ${baseMode === "bench" ? "sel" : "off"}`} onClick={() => setBaseMode("bench")}>
-                <div className="k">{benchLabel}<span className="tag">{baseMode === "bench" ? "ON" : "OFF"}</span></div>
+              <div className={`ov-pcard saa ${benchOn ? "sel" : "off"}`} onClick={() => setBenchOn((v) => !v)}>
+                <div className="k">{benchLabel}<span className="tag">{benchOn ? "ON" : "OFF"}</span></div>
                 <div className="v num">{pctSigned(winBench)}</div>
               </div>
             )}
@@ -320,17 +334,20 @@ export default function OverviewTab({ fundCode }: Props) {
             points={sliced}
             benchmarkKind={benchKind}
             benchmarkLabel={benchLabel}
-            showBm={baseMode === "bench" && hasBench}
-            showTarget={baseIsTarget}
+            showBm={benchActive}
+            showTarget={targetActive}
             targetAnnual={target}
             inceptionDate={inception ?? undefined}
             instanceKey={`${fundCode}-${start}-${end}-${sliced.length}`}
           />
         </div>
 
-        {/* 기간별 수익률 표 (성과분석 탭과 동일 양식) — 차트 하단 */}
+        {/* 기간별 수익률 표 (성과분석 탭과 동일 양식) — 조회 종료일 앵커, 차트 하단 */}
         <div className="ov-ptbl">
-          <div className="t">기간별 수익률</div>
+          <div className="t">
+            기간별 수익률{tEnd ? <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 6 }}>(기준 {tEnd})</span> : null}
+            {prq.isFetching && <span className="bn-tag recalc" style={{ marginLeft: 8 }}>● 계산 중…</span>}
+          </div>
           <table className="ov-tbl">
             <thead>
               <tr>
@@ -342,25 +359,49 @@ export default function OverviewTab({ fundCode }: Props) {
               <tr>
                 <td>AP 수익률</td>
                 {PERIOD_COLS.map(([k]) => {
-                  const v = pr[k];
+                  const v = tpr[k];
                   return <td key={k} className={`r num ${v != null ? sign(v) : ""}`}>{v != null ? pctSigned(v) : "—"}</td>;
                 })}
               </tr>
-              <tr>
-                <td>{benchLabel} 수익률</td>
-                {PERIOD_COLS.map(([k]) => {
-                  const v = bmpr[k];
-                  return <td key={k} className={`r num ${v != null ? sign(v) : ""}`}>{v != null ? pctSigned(v) : "—"}</td>;
-                })}
-              </tr>
-              <tr>
-                <td>초과</td>
-                {PERIOD_COLS.map(([k]) => {
-                  const a = pr[k]; const b = bmpr[k];
-                  const ex = a != null && b != null ? a - b : null;
-                  return <td key={k} className={`r num b ${ex != null ? sign(ex) : ""}`}>{ex != null ? pctSigned(ex) : "—"}</td>;
-                })}
-              </tr>
+              {/* 켜진 비교선(벤치/목표)만 표에 반영 — 둘 다 OFF면 AP 행만 (2026-07-03 사용자 지정) */}
+              {benchActive && (
+                <tr>
+                  <td>{benchLabel} 수익률</td>
+                  {PERIOD_COLS.map(([k]) => {
+                    const v = tbmpr[k];
+                    return <td key={k} className={`r num ${v != null ? sign(v) : ""}`}>{v != null ? pctSigned(v) : "—"}</td>;
+                  })}
+                </tr>
+              )}
+              {benchActive && (
+                <tr>
+                  <td>초과</td>
+                  {PERIOD_COLS.map(([k]) => {
+                    const a = tpr[k]; const b = tbmpr[k];
+                    const ex = a != null && b != null ? a - b : null;
+                    return <td key={k} className={`r num b ${ex != null ? sign(ex) : ""}`}>{ex != null ? pctSigned(ex) : "—"}</td>;
+                  })}
+                </tr>
+              )}
+              {targetActive && (
+                <tr>
+                  <td>목표 수익률</td>
+                  {PERIOD_COLS.map(([k]) => {
+                    const v = targetForPeriod(k, tEnd);
+                    return <td key={k} className={`r num ${v != null ? sign(v) : ""}`}>{v != null ? pctSigned(v) : "—"}</td>;
+                  })}
+                </tr>
+              )}
+              {targetActive && (
+                <tr>
+                  <td>목표대비</td>
+                  {PERIOD_COLS.map(([k]) => {
+                    const a = tpr[k]; const t = targetForPeriod(k, tEnd);
+                    const ex = a != null && t != null ? a - t : null;
+                    return <td key={k} className={`r num b ${ex != null ? sign(ex) : ""}`}>{ex != null ? pctSigned(ex) : "—"}</td>;
+                  })}
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

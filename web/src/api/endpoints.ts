@@ -23,6 +23,7 @@ export type NavPointDTO = S["NavPointDTO"];
 export type MetricCardDTO = S["MetricCardDTO"];
 export type FundInfoDTO = S["FundInfoDTO"];
 export type OverviewResponseDTO = S["OverviewResponseDTO"];
+export type PeriodReturnsResponseDTO = S["PeriodReturnsResponseDTO"];
 
 // === Holdings ===
 export type HoldingAssetClassDTO = S["HoldingAssetClassDTO"];
@@ -140,6 +141,19 @@ export const fetchOverview = async (
   const r = await api.get<OverviewResponseDTO>(`/funds/${code}/overview`, {
     params: startDate ? { start_date: startDate } : undefined,
   });
+  return r.data;
+};
+
+// 기간별 수익률 표 전용 — 조회 종료일(endDate) 앵커 트레일링 수익률 (Overview/성과분석 공용).
+// 새 종료일 첫 계산은 콜드(성과통계+벤치 합성)라 기본 30s 를 넘길 수 있어 120s.
+export const fetchPeriodReturns = async (
+  code: string,
+  endDate?: string,
+): Promise<PeriodReturnsResponseDTO> => {
+  const r = await api.get<PeriodReturnsResponseDTO>(
+    `/funds/${code}/period-returns`,
+    { params: endDate ? { end_date: endDate } : undefined, timeout: 120_000 },
+  );
   return r.data;
 };
 

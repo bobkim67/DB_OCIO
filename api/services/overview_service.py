@@ -1,4 +1,5 @@
 from datetime import date, datetime, timedelta, timezone
+from functools import lru_cache
 from typing import Any
 
 import numpy as np
@@ -14,6 +15,7 @@ from ..schemas.overview import (
     NavPointDTO,
     OverviewResponseDTO,
     PeriodReturnsDTO,
+    PeriodReturnsResponseDTO,
 )
 
 
@@ -571,3 +573,87 @@ def build_overview(
         equity_weight=equity_weight,
         bm_equity_weight=bm_equity_weight,
     )
+
+
+# -------------------- period returns (end-date anchored) --------------------
+
+@lru_cache(maxsize=256)
+def _period_returns_cached(
+    fund_code: str, end_yyyymmdd: str | None,
+) -> PeriodReturnsResponseDTO:
+    """조회 종료일 앵커 기간별 수익률 — build_overview 의 period/bm_period 로직만 경량 재사용.
+
+    end_yyyymmdd 이하 마지막 영업일을 앵커로 compute_full_performance_stats(포트) +
+    _compute_bm_period_returns(벤치)를 계산. end=None 이면 최신 영업일(기존 표와 동일).
+    캐시 키 (fund, end) — end=최신일은 날짜가 바뀌면 새 키라 자연 갱신.
+    """
+    meta_f = FUND_META.get(fund_code, {})
+    inc_str = meta_f.get("inception", "20220101")
+
+    empty = PeriodReturnsResponseDTO(fund_code=fund_code)
+    try:
+        from modules.data_loader import load_fund_nav_with_aum
+        nav_df = load_fund_nav_with_aum(fund_code, inc_str)
+    except Exception:
+        return empty
+    if nav_df is None or len(nav_df) == 0:
+        return empty
+    nav_df = nav_df.sort_values("기준일자").reset_index(drop=True)
+    nav_dates_all = pd.to_datetime(nav_df["기준일자"])
+    if end_yyyymmdd:
+        try:
+            end_ts = pd.Timestamp(datetime.strptime(end_yyyymmdd, "%Y%m%d"))
+        except ValueError:
+            return empty
+        nav_df = nav_df[nav_dates_all <= end_ts].reset_index(drop=True)
+        if len(nav_df) == 0:
+            return empty
+
+    as_of_raw = nav_df["기준일자"].iloc[-1]
+    as_of = as_of_raw.date() if hasattr(as_of_raw, "date") else as_of_raw
+
+    # 포트 기간수익률 (앵커=as_of, R 파이프라인 재사용 — Overview 표와 동일 규약)
+    stats = _try_compute_stats(fund_code, as_of)
+    period_returns = _period_returns_from_stats(stats)
+
+    # 벤치(BM/SAA) 기간수익률 — build_overview 와 동일 로드 경로, NAV(≤end) 날짜에 정렬
+    benchmark_kind: str = "none"
+    benchmark_label: str | None = None
+    bm_period_returns: PeriodReturnsDTO = {}
+    if fund_code in FUND_BM:
+        benchmark_kind, benchmark_label = "BM", "BM"
+        bm_df = _load_bm_series(fund_code, inc_str)
+    else:
+        bm_df = _load_saa_series(fund_code, inc_str, as_of)
+        if bm_df is not None and len(bm_df) > 0:
+            benchmark_kind, benchmark_label = "SAA", "SAA"
+    if bm_df is not None and len(bm_df) > 0 and "value" in bm_df.columns:
+        bm_df = bm_df.sort_values("기준일자").reset_index(drop=True)
+        bm_series = pd.Series(
+            bm_df["value"].astype(float).values,
+            index=pd.to_datetime(bm_df["기준일자"]),
+        )
+        nav_dates = pd.to_datetime(nav_df["기준일자"])
+        bm_aligned = bm_series.reindex(nav_dates, method="ffill")
+        _b0 = bm_aligned.iloc[0]
+        if not (pd.isna(_b0) or _b0 == 0):
+            bm_period_returns = _compute_bm_period_returns(bm_aligned)
+
+    return PeriodReturnsResponseDTO(
+        fund_code=fund_code,
+        end_date=as_of,
+        benchmark_kind=benchmark_kind,   # type: ignore[arg-type]
+        benchmark_label=benchmark_label,
+        period_returns=period_returns,
+        bm_period_returns=bm_period_returns,
+    )
+
+
+def build_period_returns(
+    fund_code: str, end_date: str | None = None,
+) -> PeriodReturnsResponseDTO:
+    """GET /funds/{code}/period-returns — end_date(YYYY-MM-DD) 앵커 기간별 수익률."""
+    if fund_code not in FUND_LIST:
+        raise KeyError(fund_code)
+    end_key = _iso_to_yyyymmdd(end_date) if end_date else None
+    return _period_returns_cached(fund_code, end_key)

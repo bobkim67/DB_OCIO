@@ -64,8 +64,9 @@ export default function NavChart({
       v != null && benchRet[i] != null ? v - (benchRet[i] as number) : null,
     );
     // 목표 곡선: (1+annual)^(age/365) 레벨을 rebase 기준점 대비 수익률(%)로.
+    // points 빈 배열(날짜 위젯 편집 중간값 등)이면 points[0].date 접근이 크래시 → 스킵.
     let targetRet: (number | null)[] = [];
-    if (wantTarget) {
+    if (wantTarget && points.length > 0) {
       const lvl = (iso: string) => {
         const age = (Date.parse(iso) - (ageDays0 as number)) / 86400000;
         return Math.pow(1 + (targetAnnual as number), Math.max(age, 0) / 365);

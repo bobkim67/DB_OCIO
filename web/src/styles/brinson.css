@@ -32,7 +32,8 @@
 .bn-tag.ok { color: var(--ace-ok); }
 .bn-tag.pending { color: #9a3412; background: #fee2e2; border: 1px solid #fecaca; }
 .bn-tag.note { color: #92400e; background: #fef3c7; border: 1px solid #fde68a; }
-.bn-tag.recalc { color: var(--ace-brand); font-weight: 600; }
+.bn-tag.recalc { color: var(--ace-brand); font-weight: 600; animation: bn-pulse 1.2s ease-in-out infinite; }
+@keyframes bn-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
 /* 기간 preset 칩 (거래내역 탭 .tx-chip 톤) */
 .bn-presets { display: flex; gap: 8px; flex-wrap: wrap; padding: 11px 14px; }

@@ -43,6 +43,19 @@ class FundInfoDTO(BaseModel):
     target_return_annual: float | None = None  # 목표수익률 (연, fraction)
 
 
+class PeriodReturnsResponseDTO(BaseModel):
+    """기간별 수익률 표 전용 — 조회 종료일(end_date) 앵커 트레일링 기간수익률.
+
+    end_date 미지정 시 최신 영업일 앵커(= OverviewResponseDTO.period_returns 와 동일).
+    """
+    fund_code: str
+    end_date: date | None = None      # 실제 앵커일 (요청 end 이하 마지막 영업일)
+    benchmark_kind: Literal["BM", "SAA", "none"] = "none"
+    benchmark_label: str | None = None
+    period_returns: PeriodReturnsDTO = Field(default_factory=dict)
+    bm_period_returns: PeriodReturnsDTO = Field(default_factory=dict)
+
+
 class OverviewResponseDTO(BaseModel):
     meta: BaseMeta
     fund_code: str

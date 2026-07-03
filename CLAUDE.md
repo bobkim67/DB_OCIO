@@ -791,9 +791,12 @@ DashboardPage 신규 탭 "거래내역" — 거래내역 조회 + 일별 비중 
   소스: 등록 SAA(auto) / proxy. 비중: **fixed=constant-mix(매일 목표비중 리밸)** /
   **drift=buy-and-hold(리밸 target 에서 인덱스 수익률대로 비중 표류)**. 소스 토글은 SAA 펀드만,
   비중 토글은 BM 펀드 포함 전체.
-- **proxy**: 안전자산(AP 국내채권+해외채권 ex-HY·EM) → KAP All(257/9), 나머지 → MSCI ACWI
-  (35/15 ex_KR T-1×USDKRW). `_build_proxy_bm_info`. 안전자산 비중은 **투자개시일**(현금-only/정산
-  과도기 스냅샷 스킵: 비유동성≥50%·유동성≤30%) 기준 → 08P22 설정초 현금100% 0% 문제 fix(→75.1%).
+- **proxy**: 안전자산(채권 ex-HY·EM) → KAP All(257/9), 나머지 → MSCI ACWI
+  (35/15 ex_KR T-1×USDKRW). `_build_proxy_bm_info`. **2026-07-03 사용자 지시**: 비중 = **등록
+  SAA(saa_bm_components) 리밸 비중의 주식/채권 매핑 고정값** (08P22=75.8/24.2, R 프로덕션
+  08P22_BM 일치. HY·EM 채권은 위험자산 측). 채권 인덱스도 KIS 종합채권(188/33, 6/23 지시)에서
+  KAP All 로 재변경. 등록 SAA 없는 펀드만 기존 **투자개시일 AP 보유** 동적 계산 fallback
+  (현금-only/정산 과도기 스냅샷 스킵: 비유동성≥50%·유동성≤30%).
 - **drift(buy-and-hold)**: compute 의 BM 비중을 `bm_w_daily`(일별 dict)로 전환. fixed=상수
   broadcast(=기존 스칼라와 수치 동일 → **골든 18/18 불변**). drift=리밸 target × 인덱스 누적_{t-1}
   / Σ 정규화. FX 오버레이는 해외주식(unhedged) 표류 추종. `saa_mode` 캐시키(‘auto’는 기존 파일명 유지).

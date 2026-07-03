@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { api } from "../api/client";
 import { useBrinson, useBrinsonPeriods } from "../hooks/useBrinson";
 import { useFunds } from "../hooks/useFunds";
-import { useOverview } from "../hooks/useOverview";
+import { usePeriodReturns } from "../hooks/usePeriodReturns";
 import { computeBrinsonMetrics } from "../lib/brinsonMetrics";
 import MetaBadge from "../components/common/MetaBadge";
 import BrinsonWaterfall from "../components/charts/BrinsonWaterfall";
@@ -167,9 +168,6 @@ export default function BrinsonTab({ fundCode }: Props) {
   const fundMeta = fundsData?.data.find((f) => f.code === fundCode);
   const inception = fundMeta?.inception ?? null;
 
-  // 기간별 수익률 표(수익률분석 카드 하단) — overview 의 고정기간 수익률(브린슨 날짜와 독립).
-  const { data: ovData } = useOverview(fundCode);
-
   const defaultStart = useMemo(() => ytdStartFor(inception), [inception]);
   const defaultEnd = useMemo(() => yesterday(), []);
   const defaultMethod = FUND_DEFAULT_MAPPING_METHOD[fundCode] ?? "방법3";
@@ -205,6 +203,36 @@ export default function BrinsonTab({ fundCode }: Props) {
     method: defaultMethod,
     fxSplit: false,
   });
+
+  // 기간별 수익률 표(수익률분석 카드 하단) — 조회 종료일(applied.endDate) 앵커 트레일링
+  // 수익률 (2026-07-03 사용자 지정: 1M 이 브린슨 조회기간 KPI 와 같은 윈도우로 떨어짐).
+  const prq = usePeriodReturns(fundCode, applied.endDate);
+
+  // 엑셀 스냅샷 내려받기 — 화면 조회조건 그대로 서버에서 xlsx 생성 (방법1 콜드 계산 포함 수십 초).
+  const [exporting, setExporting] = useState(false);
+  const onExport = async () => {
+    setExporting(true);
+    try {
+      const r = await api.get<Blob>(`/funds/${fundCode}/brinson/export`, {
+        params: {
+          start_date: applied.startDate, end_date: applied.endDate,
+          mapping_method: applied.method, pa_method: "8",
+          fx_split: applied.fxSplit, saa_mode: saaMode,
+        },
+        responseType: "blob", timeout: 300_000,
+      });
+      const url = URL.createObjectURL(r.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `성과분석_${fundCode}_${applied.startDate}_${applied.endDate}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      window.alert("엑셀 생성에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // 종목표 정렬 상태
   const [secSortKey, setSecSortKey] = useState<SecSortKey>("contrib_pct");
@@ -345,6 +373,9 @@ export default function BrinsonTab({ fundCode }: Props) {
   // 기간별 효과 조회 결과 (period → DTO). 선택 자산군 행 추출용.
   const periodByKey = new Map((periodsQ.data?.periods ?? []).map((p) => [p.period, p]));
   const periodLoading = needPeriods && periodsQ.isLoading;
+  // 기간별 효과표 계산중 플래시 — 최초(isLoading)뿐 아니라 조건 변경 refetch(isFetching)도 표시.
+  // (백엔드가 6개 기간을 순차 full compute 하므로 콜드 시 수 분 걸릴 수 있음)
+  const periodFetching = needPeriods && periodsQ.isFetching;
   const BM_LBL = data.bm_source === "SAA" ? "SAA" : "BM";
 
   // 기간별 효과표 행 정의 (Allocation/Selection = 선택 자산군 분해, factor = 포트 합계).
@@ -519,9 +550,9 @@ export default function BrinsonTab({ fundCode }: Props) {
   const sortGlyph = (k: SecSortKey) =>
     secSortKey === k ? (secSortDir === "asc" ? " ▲" : " ▼") : "";
 
-  // 기간별 수익률 표 데이터 (overview). 값은 분수 → *100.
-  const pr = ovData?.period_returns ?? {};
-  const bmpr = ovData?.bm_period_returns ?? {};
+  // 기간별 수익률 표 데이터 — 조회 종료일 앵커(/period-returns). 값은 분수 → *100.
+  const pr = prq.data?.period_returns ?? {};
+  const bmpr = prq.data?.bm_period_returns ?? {};
 
   // 위험조정 지표(연환산·샤프 등) — KPI 연환산 인라인과 위험지표 스트립이 동일 소스 사용.
   const hasBm = data.bm_source !== "none";
@@ -644,6 +675,15 @@ export default function BrinsonTab({ fundCode }: Props) {
         </label>
         <button type="button" className="bn-apply" onClick={onApply} disabled={!isDirty || isFetching}>
           {isFetching ? "조회 중…" : "조회"}
+        </button>
+        <button
+          type="button"
+          className="bn-apply"
+          onClick={onExport}
+          disabled={exporting || isFetching || isDirty}
+          title={isDirty ? "변경된 조건을 먼저 조회한 뒤 내려받을 수 있습니다" : "현재 조회조건 스냅샷을 엑셀로 내려받기 (최초 생성은 수십 초 소요)"}
+        >
+          {exporting ? "엑셀 생성 중…" : "내려받기"}
         </button>
         {isDirty && !isFetching && (
           <span className="bn-dirty">변경됨 — 조회를 눌러 갱신</span>
@@ -1047,8 +1087,17 @@ export default function BrinsonTab({ fundCode }: Props) {
             <div className="bn-ptbl">
               {trendMode === "all" ? (
                 <>
-                  <div className="t" style={{ display: "flex", alignItems: "center" }}>
-                    <span>{factorToggle ? "기간별 요인효과" : "기간별 수익률"}</span>
+                  <div className="t" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span>
+                      {factorToggle ? "기간별 요인효과" : "기간별 수익률"}
+                      <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 6 }}>(기준 {applied.endDate})</span>
+                    </span>
+                    {factorToggle && periodFetching && (
+                      <span className="bn-tag recalc">● 기간별 효과 계산 중… (기간 6개 순차 계산, 최초 수 분 소요)</span>
+                    )}
+                    {!factorToggle && prq.isFetching && (
+                      <span className="bn-tag recalc">● 계산 중…</span>
+                    )}
                     <span style={{ marginLeft: "auto", display: "inline-flex", border: "1px solid #d1d5db", borderRadius: 4, overflow: "hidden" }}>
                       {([["수익률", false], ["요인효과", true]] as const).map(([lbl, on]) => (
                         <button key={lbl} onClick={() => setFactorToggle(on)}
@@ -1067,15 +1116,15 @@ export default function BrinsonTab({ fundCode }: Props) {
                       <tbody>
                         <tr>
                           <td>AP 수익률</td>
-                          {PERIOD_COLS.map(([k]) => { const v = pr[k]; return <td key={k} className={`r ${v != null ? rc(v) : ""}`}>{v != null ? fmtPct(v * 100) : "—"}</td>; })}
+                          {PERIOD_COLS.map(([k]) => { const v = pr[k]; return <td key={k} className={`r ${v != null ? rc(v) : ""}`}>{v != null ? fmtPct(v * 100) : (prq.isFetching ? "…" : "—")}</td>; })}
                         </tr>
                         <tr>
-                          <td>BM 수익률</td>
-                          {PERIOD_COLS.map(([k]) => { const v = bmpr[k]; return <td key={k} className={`r ${v != null ? rc(v) : ""}`}>{v != null ? fmtPct(v * 100) : "—"}</td>; })}
+                          <td>{BM_LBL} 수익률</td>
+                          {PERIOD_COLS.map(([k]) => { const v = bmpr[k]; return <td key={k} className={`r ${v != null ? rc(v) : ""}`}>{v != null ? fmtPct(v * 100) : (prq.isFetching ? "…" : "—")}</td>; })}
                         </tr>
                         <tr>
                           <td>초과</td>
-                          {PERIOD_COLS.map(([k]) => { const a = pr[k]; const b = bmpr[k]; const ex = a != null && b != null ? (a - b) * 100 : null; return <td key={k} className={`r b ${ex != null ? (ex < 0 ? "brw" : "ok") : ""}`}>{ex != null ? fmtPct(ex) : "—"}</td>; })}
+                          {PERIOD_COLS.map(([k]) => { const a = pr[k]; const b = bmpr[k]; const ex = a != null && b != null ? (a - b) * 100 : null; return <td key={k} className={`r b ${ex != null ? (ex < 0 ? "brw" : "ok") : ""}`}>{ex != null ? fmtPct(ex) : (prq.isFetching ? "…" : "—")}</td>; })}
                         </tr>
                       </tbody>
                     </table>
@@ -1101,7 +1150,12 @@ export default function BrinsonTab({ fundCode }: Props) {
                 </>
               ) : (
                 <>
-                  <div className="t">기간별 {trendMode === "alloc" ? "자산배분효과" : "종목선택효과"}{effSel ? ` — ${effSel}` : ""}</div>
+                  <div className="t" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span>기간별 {trendMode === "alloc" ? "자산배분효과" : "종목선택효과"}{effSel ? ` — ${effSel}` : ""}</span>
+                    {periodFetching && (
+                      <span className="bn-tag recalc">● 계산 중… (기간 6개 순차 계산, 최초 수 분 소요)</span>
+                    )}
+                  </div>
                   <table className="bn-tbl">
                     <thead>
                       <tr><th>구분</th>{PERIOD_COLS.map(([k, label]) => <th key={k} className="r">{label}</th>)}</tr>

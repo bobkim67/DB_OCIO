@@ -1067,12 +1067,26 @@ def load_composite_bm_prices(components: list, start_date: str = None) -> pd.Dat
     if not components:
         return pd.DataFrame(columns=['기준일자', 'value'])
 
+    # ex_KR 컴포넌트 환산용 USDKRW (SCIP 31/6, 관측일=한국 영업일).
+    # Brinson BM 경로(_load_bm_daily_returns_by_class)와 동일 관례 — unhedged 는
+    # 외화가격(T-1) × USDKRW(T), hedged 는 T-1 shift 만. 미반영 시 unhedged 외화 비중만큼
+    # SAA/BM 수익률이 과소 계상 (2026-07-03 08N33: SAA YTD +1.29% vs Brinson +4.07% 확인).
+    _fx = None
+    if any(c.get('region') == 'ex_KR' for c in components):
+        _fx_df = load_scip_bm_prices(31, 6, start_date, 'USD')
+        if not _fx_df.empty and len(_fx_df) >= 2:
+            _fx_s = _fx_df.set_index('기준일자').sort_index()
+            _fx = _fx_s[~_fx_s.index.duplicated(keep='last')]['value']
+
     # 각 component 시계열 로드
     comp_series = {}
     for comp in components:
+        _is_ex_kr = comp.get('region') == 'ex_KR' and _fx is not None
+        _hedged = bool(comp.get('hedged', False))
+        _cur = 'USD' if (_is_ex_kr and not _hedged) else comp.get('currency')
         df = load_scip_bm_prices(
             comp['dataset_id'], comp['dataseries_id'],
-            start_date, comp.get('currency')
+            start_date, _cur
         )
         if df.empty or len(df) < 2:
             logger.warning(f"복합BM component 데이터 부족: {comp.get('name', comp['dataset_id'])}")
@@ -1080,7 +1094,18 @@ def load_composite_bm_prices(components: list, start_date: str = None) -> pd.Dat
         df = df.set_index('기준일자').sort_index()
         # 동일 날짜 중복 제거 (마지막 값 유지)
         df = df[~df.index.duplicated(keep='last')]
-        comp_series[comp['name']] = {'returns': df['value'].pct_change(), 'weight': comp['weight']}
+        ser = df['value']
+        if _is_ex_kr:
+            # 한국 영업일(USDKRW 관측일) 캘린더 정렬 + T-1 shift(해외 종가 시차),
+            # unhedged 는 당일 환율 곱해 KRW 환산
+            ser = ser.reindex(_fx.index).ffill().shift(1)
+            if not _hedged:
+                ser = ser * _fx
+            ser = ser.dropna()
+            if len(ser) < 2:
+                logger.warning(f"복합BM component 환산 후 데이터 부족: {comp.get('name', comp['dataset_id'])}")
+                continue
+        comp_series[comp['name']] = {'returns': ser.pct_change(), 'weight': comp['weight']}
 
     if not comp_series:
         return pd.DataFrame(columns=['기준일자', 'value'])
@@ -1591,55 +1616,77 @@ def load_saa_components(fund_code: str, as_of_date=None) -> dict:
     return {'components': comps} if comps else None
 
 
+def _is_risk_bond_name(nm) -> bool:
+    """안전자산 제외 대상 채권: HY(하이일드) + EM 국공채(VWOB 등)."""
+    u = str(nm).upper()
+    return ('HIGH YIELD' in u or 'HIGH-YIELD' in u or ' HY ' in f' {u} ' or '하이일드' in str(nm)
+            or 'EMERGING' in u or 'VWOB' in u)
+
+
 @_ttl_cache()
 def _build_proxy_bm_info(fund_code: str, start_yyyymmdd: str) -> dict:
-    """SAA proxy 벤치마크: 안전자산(국내채권+해외채권 ex-HY) → KIS 종합채권, 나머지 → MSCI ACWI.
+    """SAA proxy 벤치마크: 안전자산(채권 ex-HY·EM) → KAP All, 나머지 → MSCI ACWI.
 
-    안전자산 비중은 기간 시작일 AP 보유 기준(고정). HY 는 종목명('HIGH YIELD'/'하이일드') 제외.
+    비중(2026-07-03 사용자 지시): **등록 SAA(saa_bm_components) 리밸 비중을 주식/채권으로
+    매핑한 고정 비중** 사용 (예: 08P22 = 채권 75.8 / 주식 24.2). HY·EM 채권 컴포넌트는
+    위험자산(ACWI 측)으로 분류. 등록 SAA 없는 펀드만 기존 '기간 시작일 AP 보유 기준'
+    동적 계산 fallback 유지.
+    안전자산 인덱스 = KAP All (dataset 257/ds 9) — 2026-07-03 사용자 지시로 KIS 종합채권
+    (188/33, 2026-06-23 지시)에서 재변경 (R 프로덕션 08P22_BM 기준 일치).
     MSCI ACWI 는 ex_KR(T-1×USDKRW, biz_day_adj=-1) — BM 경로가 자동 처리.
-    안전자산 인덱스 = KIS 종합채권시장 총수익지수(AA-이상) (dataset 188/ds 33) —
-    등록 SAA 3펀드가 쓰는 국내채권 인덱스와 동일(2026-06-23 사용자 지시, KAP All 에서 변경).
     """
-    base = datetime.strptime(str(start_yyyymmdd), '%Y%m%d')
-    df = None
-    # 시작일(휴일이면 직전 영업일), 없으면 앞쪽(설정일까지 ~45일) 탐색.
-    # 설정 직후 현금 100%·정산 과도기 스냅샷은 건너뛰고 '투자 개시'(비유동성 비중
-    # 충분 + 유동성 과도분 적음) 첫 날을 사용 → 안전자산 비중이 0 으로 잡히는 문제 방지.
-    offsets = [0] + [-i for i in range(1, 8)] + list(range(1, 46))
-    for off in offsets:
-        d = (base + timedelta(days=off)).strftime('%Y%m%d')
-        try:
-            cand = load_fund_holdings_weight(fund_code, str(d))
-        except Exception:
-            cand = None
-        if cand is None or cand.empty:
-            continue
-        invested = cand[~cand['자산군'].isin(['유동성', 'FX'])]['비중(%)'].sum()
-        liq = cand[cand['자산군'] == '유동성']['비중(%)'].sum()
-        if invested >= 50 and liq <= 30:  # 투자 개시 + 정산 과도기 아님
-            df = cand
-            break
-    if df is None or df.empty:
-        return None
+    sw = None
+    # 1순위: 등록 SAA 리밸 비중 → 주식/채권 고정 비중
+    try:
+        saa = load_saa_components(fund_code, start_yyyymmdd)
+    except Exception:
+        saa = None
+    if saa and saa.get('components'):
+        tot = sum(float(c.get('weight', 0.0)) for c in saa['components'])
+        safe = 0.0
+        for c in saa['components']:
+            ac = _map_bm_component_to_asset_class(str(c.get('name', '')), '방법3')
+            if ac in ('국내채권', '해외채권') and not _is_risk_bond_name(c.get('name', '')):
+                safe += float(c.get('weight', 0.0))
+        if tot > 0:
+            sw = max(0.0, min(1.0, safe / tot))
 
-    def _is_risk_bond(nm):
-        # 안전자산 제외 대상: HY(하이일드) + EM 국공채(VWOB 등)
-        u = str(nm).upper()
-        return ('HIGH YIELD' in u or 'HIGH-YIELD' in u or '하이일드' in str(nm)
-                or 'EMERGING' in u or 'VWOB' in u)
+    # fallback: 기간 시작일 AP 보유 기준 (등록 SAA 없는 펀드)
+    if sw is None:
+        base = datetime.strptime(str(start_yyyymmdd), '%Y%m%d')
+        df = None
+        # 시작일(휴일이면 직전 영업일), 없으면 앞쪽(설정일까지 ~45일) 탐색.
+        # 설정 직후 현금 100%·정산 과도기 스냅샷은 건너뛰고 '투자 개시'(비유동성 비중
+        # 충분 + 유동성 과도분 적음) 첫 날을 사용 → 안전자산 비중이 0 으로 잡히는 문제 방지.
+        offsets = [0] + [-i for i in range(1, 8)] + list(range(1, 46))
+        for off in offsets:
+            d = (base + timedelta(days=off)).strftime('%Y%m%d')
+            try:
+                cand = load_fund_holdings_weight(fund_code, str(d))
+            except Exception:
+                cand = None
+            if cand is None or cand.empty:
+                continue
+            invested = cand[~cand['자산군'].isin(['유동성', 'FX'])]['비중(%)'].sum()
+            liq = cand[cand['자산군'] == '유동성']['비중(%)'].sum()
+            if invested >= 50 and liq <= 30:  # 투자 개시 + 정산 과도기 아님
+                df = cand
+                break
+        if df is None or df.empty:
+            return None
+        safe = 0.0
+        for _, r in df.iterrows():
+            ac = r['자산군']
+            w = float(r['비중(%)'])
+            if ac == '국내채권':
+                safe += w
+            elif ac == '해외채권' and not _is_risk_bond_name(r['종목명']):
+                safe += w
+        sw = max(0.0, min(100.0, safe)) / 100.0
 
-    safe = 0.0
-    for _, r in df.iterrows():
-        ac = r['자산군']
-        w = float(r['비중(%)'])
-        if ac == '국내채권':
-            safe += w
-        elif ac == '해외채권' and not _is_risk_bond(r['종목명']):
-            safe += w
-    sw = max(0.0, min(100.0, safe)) / 100.0
     return {'components': [
-        {'dataset_id': 188, 'dataseries_id': 33, 'weight': sw,
-         'name': 'KIS 종합채권시장 총수익지수(AA-이상)',
+        {'dataset_id': 257, 'dataseries_id': 9, 'weight': sw,
+         'name': 'KAP Korea Bond Pricing All Bonds Index',
          'region': 'KR', 'hedged': False, 'currency': 'KRW'},
         {'dataset_id': 35, 'dataseries_id': 15, 'weight': 1.0 - sw,
          'name': 'MSCI ACWI Index', 'region': 'ex_KR', 'hedged': False, 'currency': 'USD'},
