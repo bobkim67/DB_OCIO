@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 
 from ..schemas.brinson import BrinsonPeriodsResponseDTO, BrinsonResponseDTO
 from ..services.brinson_service import (
@@ -129,3 +129,51 @@ def get_brinson_periods(
         raise HTTPException(status_code=404, detail={"code": "FUND_NOT_FOUND", "message": code})
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={"code": "INVALID_PARAM", "message": str(exc)})
+
+
+@router.get("/funds/{code}/brinson/export")
+def get_brinson_export(
+    code: str,
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    mapping_method: str | None = Query(default=None),
+    pa_method: str = Query(default="8"),
+    fx_split: bool = Query(default=False),
+    saa_mode: str = Query(default="auto"),
+) -> Response:
+    """성과분석 엑셀 스냅샷 내려받기 — 화면 조회조건 그대로 xlsx 생성."""
+    sd = _parse_iso("start_date", start_date)
+    ed = _parse_iso("end_date", end_date)
+    if mapping_method is not None and mapping_method not in ALLOWED_MAPPING_METHODS:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "INVALID_PARAM",
+                    "message": f"mapping_method must be one of {list(ALLOWED_MAPPING_METHODS)}"},
+        )
+    if pa_method not in ALLOWED_PA_METHODS:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "INVALID_PARAM",
+                    "message": f"pa_method must be one of {list(ALLOWED_PA_METHODS)}"},
+        )
+    if saa_mode not in ("auto", "auto_drift", "proxy", "proxy_drift"):
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "INVALID_PARAM", "message": "saa_mode must be auto|auto_drift|proxy|proxy_drift"},
+        )
+    from ..services.brinson_export_service import build_brinson_export_xlsx
+    try:
+        content, fname = build_brinson_export_xlsx(
+            code, start_date=sd, end_date=ed,
+            mapping_method=mapping_method, pa_method=pa_method,
+            fx_split=fx_split, saa_mode=saa_mode,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail={"code": "FUND_NOT_FOUND", "message": code})
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"code": "INVALID_PARAM", "message": str(exc)})
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
