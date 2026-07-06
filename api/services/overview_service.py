@@ -29,39 +29,50 @@ def _iso_to_yyyymmdd(s: str) -> str:
     return s.replace("-", "")
 
 
-def _inception_base(fund_code: str, first_nav: float) -> float:
-    """4JM12 등 _FUND_INCEPTION_BASE 보정 (Week 1에서 이식, 절대 유지)."""
+def _inception_base(fund_code: str) -> float:
+    """설정후 분모 = 기준가 base 1000 (4JM12 등 승계펀드는 _FUND_INCEPTION_BASE, 절대 유지).
+
+    설정일 첫 기준가 행에는 이미 1일차 손익이 반영돼 있어(≠1000, DD1_ERN_RT>0)
+    첫 관측값을 분모로 쓰면 1일차 수익률이 누락된다 — DT 전산·stats '누적'(ref=1000)과
+    일치하려면 base 1000 (2026-07-06 9펀드 전수 점검).
+    """
     try:
         from modules.data_loader import _FUND_INCEPTION_BASE
     except ImportError:
         _FUND_INCEPTION_BASE = {}
-    return _FUND_INCEPTION_BASE.get(fund_code, first_nav)
+    return _FUND_INCEPTION_BASE.get(fund_code, 1000.0)
 
 
 # -------------------- BM load --------------------
 
-def _load_bm_series(fund_code: str, start_date: str) -> pd.DataFrame | None:
-    """DT BM 우선 → SCIP composite fallback. 둘 다 실패 시 None."""
+def _load_bm_series(
+    fund_code: str, start_date: str,
+) -> tuple[pd.DataFrame | None, str | None]:
+    """DT BM 우선 → SCIP composite fallback. (df, 'dt'|'scip') — 둘 다 실패 시 (None, None).
+
+    소스 구분이 필요한 이유: DT BM 은 base 1000 절대지수라 설정후 분모=1000,
+    SCIP composite 는 임의 리베이스라 첫 관측값 분모 유지.
+    """
     # 1) DT BM
     try:
         from modules.data_loader import load_dt_bm_prices
         dt = load_dt_bm_prices(fund_code, start_date)
         if dt is not None and len(dt) > 0:
-            return dt
+            return dt, "dt"
     except Exception:
         pass
     # 2) SCIP composite fallback
     bm_cfg = FUND_BM.get(fund_code)
     if not bm_cfg:
-        return None
+        return None, None
     try:
         from modules.data_loader import load_composite_bm_prices
         comp = load_composite_bm_prices(bm_cfg["components"], start_date)
         if comp is not None and len(comp) > 0:
-            return comp
+            return comp, "scip"
     except Exception:
         pass
-    return None
+    return None, None
 
 
 # -------------------- performance stats --------------------
@@ -246,12 +257,16 @@ def _stats_value(
     return float(v)
 
 
-def _compute_bm_period_returns(bm_aligned: pd.Series) -> PeriodReturnsDTO:
+def _compute_bm_period_returns(
+    bm_aligned: pd.Series, si_base: float | None = None,
+) -> PeriodReturnsDTO:
     """Streamlit tabs/overview.py:165-195 BM 기간수익률 로직 미러.
 
     bm_aligned: NAV dates에 ffill로 정렬된 BM 시계열 (DatetimeIndex).
     기간 = {1M, 3M, 6M, 1Y}는 relativedelta, YTD는 당해년 1/1, SI는 첫 값 기준.
     각 기간은 target 이전(<=) 마지막 영업일 값을 ref로 사용.
+    si_base: SI(설정후) 분모 override — DT BM(base 1000 절대지수)은 1000을 넘겨
+    설정일 당일 BM 등락 누락을 방지. None이면 기존대로 첫 값.
     """
     if bm_aligned is None or len(bm_aligned) == 0:
         return {}
@@ -284,7 +299,7 @@ def _compute_bm_period_returns(bm_aligned: pd.Series) -> PeriodReturnsDTO:
         if np.isnan(ref_v) or ref_v == 0:
             continue
         out[key] = float(end_v) / float(ref_v) - 1.0
-    out["SI"] = float(end_v) / float(b0) - 1.0
+    out["SI"] = float(end_v) / (float(si_base) if si_base else float(b0)) - 1.0
     return out
 
 
@@ -355,8 +370,7 @@ def build_overview(
 
     sources.append(SourceBreakdown(component="nav", kind="db"))
     nav_df = nav_df.sort_values("기준일자").reset_index(drop=True)
-    first_nav = float(nav_df["MOD_STPR"].iloc[0])
-    base = _inception_base(fund_code, first_nav)
+    base = _inception_base(fund_code)
     last_nav = float(nav_df["MOD_STPR"].iloc[-1])
     as_of_raw = nav_df["기준일자"].iloc[-1]
     as_of = as_of_raw.date() if hasattr(as_of_raw, "date") else as_of_raw
@@ -367,9 +381,10 @@ def build_overview(
     benchmark_kind: str = "none"
     benchmark_label: str | None = None
     bm_df: pd.DataFrame | None = None
+    bm_src: str | None = None
     if bm_configured:
         benchmark_kind, benchmark_label = "BM", "BM"
-        bm_df = _load_bm_series(fund_code, _start)
+        bm_df, bm_src = _load_bm_series(fund_code, _start)
         if bm_df is None or len(bm_df) == 0:
             warnings.append("BM 로딩 실패")
             sources.append(SourceBreakdown(
@@ -408,10 +423,23 @@ def build_overview(
                     component="bm", kind="mock", note="head missing",
                 ))
             else:
-                bm_first_val = float(_b0)
+                # DT BM은 base 1000 절대지수 — 설정일 행에 이미 1일차 등락이 반영돼
+                # 있어(08K88 -0.70%) 첫 관측값 분모는 설정후를 +1.16%p 왜곡한다.
+                bm_first_val = 1000.0 if bm_src == "dt" else float(_b0)
                 sources.append(SourceBreakdown(component="bm", kind="db"))
 
     # --- 3) nav_series 조립 (bm/excess 채움) ---
+    # T-1 합성 base 행 (R '기준가 T-1에 1000 추가' 동일 컨벤션): 설정일 행에는 이미
+    # 1일차 손익이 반영돼 있어 첫 관측값 앵커는 1일차 수익률을 누락한다. 시리즈가
+    # 설정일부터 시작할 때만 붙이며, 차트·윈도우 카드·엑셀 시계열이 이 행을 앵커로 사용.
+    if _start == inc_str:
+        _d0_raw = nav_df["기준일자"].iloc[0]
+        _d0 = (_d0_raw.date() if hasattr(_d0_raw, "date") else _d0_raw) - timedelta(days=1)
+        _bm0 = float(base) if (bm_aligned is not None and bm_first_val) else None
+        nav_series_dto.append(NavPointDTO(
+            date=_d0, nav=float(base), bm=_bm0,
+            excess=0.0 if _bm0 is not None else None, aum=None,
+        ))
     nav_arr = nav_df["MOD_STPR"].astype(float).to_numpy()
     aum_col = nav_df["NAST_AMT"] if "NAST_AMT" in nav_df.columns else None
     for i in range(len(nav_df)):
@@ -423,8 +451,8 @@ def build_overview(
         if bm_aligned is not None and bm_first_val:
             bm_raw = bm_aligned.iloc[i]
             if not pd.isna(bm_raw):
-                bm_v = float(bm_raw) / bm_first_val * first_nav
-                excess_v = (nav_v / first_nav) - (float(bm_raw) / bm_first_val)
+                bm_v = float(bm_raw) / bm_first_val * base
+                excess_v = (nav_v / base) - (float(bm_raw) / bm_first_val)
         aum_val = None
         if aum_col is not None:
             _a = aum_col.iloc[i]
@@ -435,7 +463,7 @@ def build_overview(
         ))
 
     # --- 4) cards ---
-    # 4-1) since_inception: Week 1 로직(base 보정) 유지
+    # 4-1) since_inception: 분모=base(1000/승계 override) — stats '누적'(ref=1000)·DT 전산 정합
     cards.append(MetricCardDTO(
         key="since_inception", label="설정후",
         value=last_nav / base - 1.0, unit="pct",
@@ -467,7 +495,9 @@ def build_overview(
 
     # --- 5-bis) bm_period_returns (BM 설정 + 정렬 성공 시) ---
     if bm_aligned is not None and bm_first_val is not None:
-        bm_period_returns = _compute_bm_period_returns(bm_aligned)
+        bm_period_returns = _compute_bm_period_returns(
+            bm_aligned, si_base=bm_first_val,
+        )
 
     # --- 5-ter) 펀드 기본정보 (메타바) + 운용수익 ---
     from config.funds import FUND_BENEFICIARY, FUND_TARGET_RETURN
@@ -620,9 +650,10 @@ def _period_returns_cached(
     benchmark_kind: str = "none"
     benchmark_label: str | None = None
     bm_period_returns: PeriodReturnsDTO = {}
+    bm_src: str | None = None
     if fund_code in FUND_BM:
         benchmark_kind, benchmark_label = "BM", "BM"
-        bm_df = _load_bm_series(fund_code, inc_str)
+        bm_df, bm_src = _load_bm_series(fund_code, inc_str)
     else:
         bm_df = _load_saa_series(fund_code, inc_str, as_of)
         if bm_df is not None and len(bm_df) > 0:
@@ -637,7 +668,9 @@ def _period_returns_cached(
         bm_aligned = bm_series.reindex(nav_dates, method="ffill")
         _b0 = bm_aligned.iloc[0]
         if not (pd.isna(_b0) or _b0 == 0):
-            bm_period_returns = _compute_bm_period_returns(bm_aligned)
+            bm_period_returns = _compute_bm_period_returns(
+                bm_aligned, si_base=1000.0 if bm_src == "dt" else None,
+            )
 
     return PeriodReturnsResponseDTO(
         fund_code=fund_code,

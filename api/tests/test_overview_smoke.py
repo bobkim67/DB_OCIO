@@ -131,10 +131,10 @@ def test_overview_4jm12_base_preserved(client):
 
 
 def test_overview_period_returns_keys(client):
-    """period_returns 키는 {1M, 3M, 6M, YTD, 1Y, SI} 의 부분집합"""
+    """period_returns 키는 {1W, MTD, 1M, 3M, 6M, YTD, 1Y, SI} 의 부분집합"""
     r = client.get("/api/funds/08K88/overview")
     body = r.json()
-    allowed = {"1W", "1M", "3M", "6M", "YTD", "1Y", "SI"}
+    allowed = {"1W", "MTD", "1M", "3M", "6M", "YTD", "1Y", "SI"}
     assert set(body["period_returns"].keys()) <= allowed
 
 
@@ -147,7 +147,7 @@ def test_overview_bm_period_returns_keys_when_bm_ok(client):
         return
     if "BM 로딩 실패" in body["meta"]["warnings"]:
         return
-    allowed = {"1W", "1M", "3M", "6M", "YTD", "1Y", "SI"}
+    allowed = {"1W", "MTD", "1M", "3M", "6M", "YTD", "1Y", "SI"}
     bmpr = body["bm_period_returns"]
     assert set(bmpr.keys()) <= allowed
     # bm_aligned 첫 값이 검증되었으므로 SI는 항상 채워져야 함
@@ -171,7 +171,7 @@ def test_overview_bm_period_returns_empty_when_saa_unavailable(client, monkeypat
 def test_overview_bm_period_returns_empty_when_bm_failed(client, monkeypatch):
     """BM 로더 실패 주입 → bm_period_returns = {}"""
     import api.services.overview_service as svc
-    monkeypatch.setattr(svc, "_load_bm_series", lambda code, start: None)
+    monkeypatch.setattr(svc, "_load_bm_series", lambda code, start: (None, None))
     r = client.get("/api/funds/08K88/overview")
     body = r.json()
     assert body["bm_period_returns"] == {}
@@ -185,11 +185,11 @@ def test_overview_bm_period_returns_si_matches_chart(client):
         return
     if "BM 로딩 실패" in body["meta"]["warnings"]:
         return
-    # nav_series.bm은 first_nav 기준으로 rebase됨 → raw ratio는 (last/first) - 1
+    # nav_series.bm은 base 스케일(bm/si분모×base)로 rebase, 첫 행=T-1 합성 base 행
+    # → (last/first) - 1 = SI (DT base=1000 / SCIP fallback 첫관측 분모 공통 불변식)
     bm_pts = [p["bm"] for p in body["nav_series"] if p.get("bm") is not None]
     if len(bm_pts) < 2:
         return
-    # rebase된 시계열에서도 (last/first) - 1은 raw ratio와 같음
     expected_si = bm_pts[-1] / bm_pts[0] - 1.0
     actual_si = body["bm_period_returns"].get("SI")
     assert actual_si is not None
@@ -199,7 +199,7 @@ def test_overview_bm_period_returns_si_matches_chart(client):
 def test_overview_bm_failure_mixed_source(client, monkeypatch):
     """BM 로더 실패 주입 → source='mixed', warnings 기록, nav_series.bm 전부 null"""
     import api.services.overview_service as svc
-    monkeypatch.setattr(svc, "_load_bm_series", lambda code, start: None)
+    monkeypatch.setattr(svc, "_load_bm_series", lambda code, start: (None, None))
     r = client.get("/api/funds/08K88/overview")
     assert r.status_code == 200
     body = r.json()
