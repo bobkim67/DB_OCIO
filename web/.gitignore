@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-snapshot/
 .env
 .env.local
 *.log
