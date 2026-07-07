@@ -113,3 +113,6 @@ market_research/data/claims/*.research.json
 market_research/debug/research_audit/
 # P5/P5.1 03_Assets staging (운영 미반영, 재생성 가능)
 market_research/debug/wiki/
+
+# 정적 스냅샷 (gh-pages 배포 산출물 — tools/dump_static_snapshot.py)
+web/public/snapshot/
