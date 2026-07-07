@@ -195,6 +195,18 @@ export default function TransactionsTab({ fundCode }: Props) {
   }, [txnRows]);
   const net = buySum - sellSum;
 
+  // 설정/해지 (DWPM12880 cashflows — 부모펀드 기준, 기간 합계)
+  const cashflows = txnQ.data?.cashflows ?? [];
+  const { setupSum, redeemSum } = useMemo(() => {
+    let su = 0, rd = 0;
+    for (const c of cashflows) {
+      if (c.side === "설정") su += c.amount_eok;
+      else if (c.side === "해지") rd += c.amount_eok;
+    }
+    return { setupSum: su, redeemSum: rd };
+  }, [cashflows]);
+  const netSetup = setupSum - redeemSum;
+
   // 종목별/자산군별 매수·매도·순매수 (기간 합계) — 마스터 토글 기준.
   const txnSummary = useMemo(() => {
     const map = new Map<string, { asset: string; buy: number; sell: number }>();
@@ -342,9 +354,20 @@ export default function TransactionsTab({ fundCode }: Props) {
             {net >= 0 ? "+" : "−"}{Math.abs(net).toFixed(1)}<small>억</small>
           </div>
         </div>
+        {/* 설정/해지 (DWPM12880) — 거래 건수 카드 대체 (2026-07-07 사용자 지정) */}
         <div className="tx-kpi">
-          <div className="k">거래 건수</div>
-          <div className="v num">{txnRows.length}<small>건</small></div>
+          <div className="k">설정액</div>
+          <div className="v num up">{setupSum.toFixed(1)}<small>억</small></div>
+        </div>
+        <div className="tx-kpi">
+          <div className="k">해지액</div>
+          <div className="v num dn">{redeemSum.toFixed(1)}<small>억</small></div>
+        </div>
+        <div className="tx-kpi">
+          <div className="k">순설정액</div>
+          <div className={`v num ${netSetup >= 0 ? "up" : "dn"}`}>
+            {netSetup >= 0 ? "+" : "−"}{Math.abs(netSetup).toFixed(1)}<small>억</small>
+          </div>
         </div>
       </div>
 

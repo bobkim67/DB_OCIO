@@ -110,12 +110,16 @@ export default function OverviewTab({ fundCode }: Props) {
   // 연환산 — R v3 동일 공식 (1+기간수익률)^(365.25/일수) - 1
   const annualizeBy = (r: number | null, days: number | null): number | null =>
     r == null || days == null || days <= 0 || r <= -1 ? null : Math.pow(1 + r, 365.25 / days) - 1;
-  const periodDaysOf = (k: string): number | null => {
-    if (!asof) return null;
-    if (k === "SI") return inception ? Math.max(daysBetween(inception, asof), 1) : null;
-    if (k === "YTD") return Math.max(daysBetween(`${asof.slice(0, 4)}-01-01`, asof), 1);
+  const periodDaysOf = (k: string, anchor: string | null = asof): number | null => {
+    if (!anchor) return null;
+    if (k === "SI") return inception ? Math.max(daysBetween(inception, anchor), 1) : null;
+    if (k === "YTD") return Math.max(daysBetween(`${anchor.slice(0, 4)}-01-01`, anchor), 1);
+    if (k === "MTD") return Math.max(Number(anchor.slice(8, 10)), 1);
     return TARGET_DAYS[k] ?? null;
   };
+  // 기간별 표 셀 값 — 연환산 ON 시 tEnd 앵커 일수로 연환산
+  const tv = (r: number | null | undefined, k: string): number | null =>
+    annualize ? annualizeBy(r ?? null, periodDaysOf(k, tEnd)) : r ?? null;
 
   // 지표카드 데이터
   const navPrice = fm?.nav ?? series[series.length - 1]?.nav ?? null;
@@ -334,12 +338,8 @@ export default function OverviewTab({ fundCode }: Props) {
           <div className="ov-pcards">
             <div className="ov-pcard">
               <div className="k">포트</div>
-              <div className={`v num ${sign(winPort)}`}>
-                {pctSigned(annualize ? annWin(winPort) : winPort)}
-                <span className="sub num">
-                  {annualize ? ` (기간 ${pctSigned(winPort)})` : ` (연 ${pctSigned(annWin(winPort))})`}
-                </span>
-              </div>
+              {/* 괄호 병기 제거 — 연환산 토글로 전환 (2026-07-07 사용자 지정) */}
+              <div className={`v num ${sign(winPort)}`}>{pctSigned(annualize ? annWin(winPort) : winPort)}</div>
             </div>
             {hasBench && (
               <div className={`ov-pcard saa ${benchOn ? "sel" : "off"}`} onClick={() => setBenchOn((v) => !v)}>
@@ -347,9 +347,15 @@ export default function OverviewTab({ fundCode }: Props) {
                 <div className="v num">{pctSigned(annualize ? annWin(winBench) : winBench)}</div>
               </div>
             )}
-            {hasTarget && (
-              <div className={`ov-pcard goal ${targetOn ? "sel" : "off"}`} onClick={() => setTargetOn((v) => !v)}>
-                <div className="k">목표수익률<span className="tag">{targetOn ? "ON" : "OFF"}</span></div>
+            {/* 목표수익률 — 목표 있는 펀드 전부 표시 (07G04 등 BM 펀드 포함, 구 헤더 카드 대체).
+                차트 목표선 토글은 기존 규약대로 SAA 펀드(hasTarget)만. */}
+            {target != null && (
+              <div
+                className={`ov-pcard goal ${hasTarget ? (targetOn ? "sel" : "off") : ""}`}
+                onClick={hasTarget ? () => setTargetOn((v) => !v) : undefined}
+                style={hasTarget ? undefined : { cursor: "default" }}
+              >
+                <div className="k">목표수익률{hasTarget ? <span className="tag">{targetOn ? "ON" : "OFF"}</span> : null}</div>
                 <div className="v num">
                   {annualize ? `연 ${pct(target)}` : pctSigned(winTarget)}
                   <span className="sub num">
@@ -377,7 +383,7 @@ export default function OverviewTab({ fundCode }: Props) {
         {/* 기간별 수익률 표 (성과분석 탭과 동일 양식) — 조회 종료일 앵커, 차트 하단 */}
         <div className="ov-ptbl">
           <div className="t">
-            기간별 수익률{tEnd ? <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 6 }}>(기준 {tEnd})</span> : null}
+            기간별 수익률{annualize ? " (연환산)" : ""}{tEnd ? <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 6 }}>(기준 {tEnd})</span> : null}
             {prq.isFetching && <span className="bn-tag recalc" style={{ marginLeft: 8 }}>● 계산 중…</span>}
           </div>
           <table className="ov-tbl">
@@ -391,7 +397,7 @@ export default function OverviewTab({ fundCode }: Props) {
               <tr>
                 <td>AP 수익률</td>
                 {PERIOD_COLS.map(([k]) => {
-                  const v = tpr[k];
+                  const v = tv(tpr[k], k);
                   return <td key={k} className={`r num ${v != null ? sign(v) : ""}`}>{v != null ? pctSigned(v) : "—"}</td>;
                 })}
               </tr>
@@ -400,7 +406,7 @@ export default function OverviewTab({ fundCode }: Props) {
                 <tr>
                   <td>{benchLabel} 수익률</td>
                   {PERIOD_COLS.map(([k]) => {
-                    const v = tbmpr[k];
+                    const v = tv(tbmpr[k], k);
                     return <td key={k} className={`r num ${v != null ? sign(v) : ""}`}>{v != null ? pctSigned(v) : "—"}</td>;
                   })}
                 </tr>
@@ -409,7 +415,7 @@ export default function OverviewTab({ fundCode }: Props) {
                 <tr>
                   <td>초과</td>
                   {PERIOD_COLS.map(([k]) => {
-                    const a = tpr[k]; const b = tbmpr[k];
+                    const a = tv(tpr[k], k); const b = tv(tbmpr[k], k);
                     const ex = a != null && b != null ? a - b : null;
                     return <td key={k} className={`r num b ${ex != null ? sign(ex) : ""}`}>{ex != null ? pctSigned(ex) : "—"}</td>;
                   })}
@@ -419,7 +425,7 @@ export default function OverviewTab({ fundCode }: Props) {
                 <tr>
                   <td>목표 수익률</td>
                   {PERIOD_COLS.map(([k]) => {
-                    const v = targetForPeriod(k, tEnd);
+                    const v = annualize ? target : targetForPeriod(k, tEnd);
                     return <td key={k} className={`r num ${v != null ? sign(v) : ""}`}>{v != null ? pctSigned(v) : "—"}</td>;
                   })}
                 </tr>
@@ -428,7 +434,8 @@ export default function OverviewTab({ fundCode }: Props) {
                 <tr>
                   <td>목표대비</td>
                   {PERIOD_COLS.map(([k]) => {
-                    const a = tpr[k]; const t = targetForPeriod(k, tEnd);
+                    const a = tv(tpr[k], k);
+                    const t = annualize ? target : targetForPeriod(k, tEnd);
                     const ex = a != null && t != null ? a - t : null;
                     return <td key={k} className={`r num b ${ex != null ? sign(ex) : ""}`}>{ex != null ? pctSigned(ex) : "—"}</td>;
                   })}

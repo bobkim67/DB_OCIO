@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import { api } from "../api/client";
 import { useBrinson, useBrinsonPeriods } from "../hooks/useBrinson";
 import { useFunds } from "../hooks/useFunds";
+import { useOverview } from "../hooks/useOverview";
 import { usePeriodReturns } from "../hooks/usePeriodReturns";
+import { useTransactions } from "../hooks/useTransactions";
 import { computeBrinsonMetrics } from "../lib/brinsonMetrics";
 import MetaBadge from "../components/common/MetaBadge";
 import BrinsonWaterfall from "../components/charts/BrinsonWaterfall";
@@ -207,6 +209,40 @@ export default function BrinsonTab({ fundCode }: Props) {
   // 기간별 수익률 표(수익률분석 카드 하단) — 조회 종료일(applied.endDate) 앵커 트레일링
   // 수익률 (2026-07-03 사용자 지정: 1M 이 브린슨 조회기간 KPI 와 같은 윈도우로 떨어짐).
   const prq = usePeriodReturns(fundCode, applied.endDate);
+
+  // KPI 우측 스냅샷 카드 (설정액/NAV/기준가, 종료일 기준 + 시작일 대비 변동, 2026-07-07)
+  // — Overview nav_series(기준가·순자산) + 거래 cashflows(기간 순설정) 재사용.
+  const ovq = useOverview(fundCode);
+  const cfq = useTransactions(fundCode, applied.startDate, applied.endDate);
+  const kpiSnap = useMemo(() => {
+    const series = ovq.data?.nav_series ?? [];
+    const at = (d: string) => {
+      let last: (typeof series)[number] | null = null;
+      for (const p of series) { if (p.date <= d) last = p; else break; }
+      return last;
+    };
+    const s0 = at(applied.startDate);
+    const s1 = at(applied.endDate);
+    const price0 = s0?.nav ?? null, price1 = s1?.nav ?? null;
+    const nast0 = s0?.aum ?? null, nast1 = s1?.aum ?? null;
+    let setupNetEok = 0;
+    for (const c of cfq.data?.cashflows ?? []) {
+      setupNetEok += c.side === "설정" ? c.amount_eok : c.side === "해지" ? -c.amount_eok : 0;
+    }
+    // 설정액(누적 순설정) 스냅샷 — fund_meta.setup_amount 는 최신 누적(기본 종료일=어제와 일치).
+    const setupEnd = ovq.data?.fund_meta?.setup_amount ?? null;
+    const setupStart = setupEnd != null ? setupEnd - setupNetEok * 1e8 : null;
+    return {
+      price0, price1,
+      priceD: price0 != null && price1 != null ? price1 - price0 : null,
+      pricePct: price0 ? (price1! - price0) / price0 : null,
+      nast0, nast1,
+      nastD: nast0 != null && nast1 != null ? nast1 - nast0 : null,
+      nastPct: nast0 ? (nast1! - nast0) / nast0 : null,
+      setupEnd, setupNetEok,
+      setupPct: setupStart ? (setupNetEok * 1e8) / setupStart : null,
+    };
+  }, [ovq.data, cfq.data, applied.startDate, applied.endDate]);
 
   // 엑셀 스냅샷 내려받기 — 화면 조회조건 그대로 서버에서 xlsx 생성 (방법1 콜드 계산 포함 수십 초).
   const [exporting, setExporting] = useState(false);
@@ -711,6 +747,41 @@ export default function BrinsonTab({ fundCode }: Props) {
           <div className="vrow">
             <span className={`v num ${ec(data.total_excess)}`}>{fmtPct(data.total_excess)}</span>
             {metrics.valid && hasBm && <span className="ann num">연환산 {fmtPct(metrics.annExcess)}</span>}
+          </div>
+        </div>
+        {/* 스냅샷 3카드 — 종료일 기준값 + 시작일 대비 변동 (2026-07-07 사용자 지정) */}
+        <div className="bn-kpi">
+          <div className="k">설정액</div>
+          <div className="vrow">
+            <span className="v num">{kpiSnap.setupEnd != null ? `${(kpiSnap.setupEnd / 1e8).toFixed(1)}억` : "—"}</span>
+            <span className={`ann num ${kpiSnap.setupNetEok >= 0 ? "up" : "dn"}`}>
+              {kpiSnap.setupNetEok >= 0 ? "+" : "−"}{Math.abs(kpiSnap.setupNetEok).toFixed(1)}억
+              {kpiSnap.setupPct != null ? ` (${kpiSnap.setupPct >= 0 ? "+" : ""}${(kpiSnap.setupPct * 100).toFixed(1)}%)` : ""}
+            </span>
+          </div>
+        </div>
+        <div className="bn-kpi">
+          <div className="k">순자산 (NAV)</div>
+          <div className="vrow">
+            <span className="v num">{kpiSnap.nast1 != null ? `${(kpiSnap.nast1 / 1e8).toFixed(1)}억` : "—"}</span>
+            {kpiSnap.nastD != null && (
+              <span className={`ann num ${kpiSnap.nastD >= 0 ? "up" : "dn"}`}>
+                {kpiSnap.nastD >= 0 ? "+" : "−"}{Math.abs(kpiSnap.nastD / 1e8).toFixed(1)}억
+                {kpiSnap.nastPct != null ? ` (${kpiSnap.nastPct >= 0 ? "+" : ""}${(kpiSnap.nastPct * 100).toFixed(1)}%)` : ""}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="bn-kpi">
+          <div className="k">기준가</div>
+          <div className="vrow">
+            <span className="v num">{kpiSnap.price1 != null ? kpiSnap.price1.toFixed(2) : "—"}</span>
+            {kpiSnap.priceD != null && (
+              <span className={`ann num ${kpiSnap.priceD >= 0 ? "up" : "dn"}`}>
+                {kpiSnap.priceD >= 0 ? "+" : "−"}{Math.abs(kpiSnap.priceD).toFixed(2)}
+                {kpiSnap.pricePct != null ? ` (${kpiSnap.pricePct >= 0 ? "+" : ""}${(kpiSnap.pricePct * 100).toFixed(2)}%)` : ""}
+              </span>
+            )}
           </div>
         </div>
       </div>

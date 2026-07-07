@@ -26,9 +26,10 @@
 .tx-date input { font-size: 12px; padding: 4px 7px; border: 1px solid var(--ace-line-2); border-radius: 6px; font-family: inherit; color: var(--ace-ink); }
 
 /* KPI */
-.tx-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-@media (max-width: 760px) { .tx-kpis { grid-template-columns: repeat(2, 1fr); } }
-/* KPI 카드 — 필드명(좌)+값(우) 한 줄 (Overview 지표카드 양식, 2026-07-07) */
+.tx-kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+@media (max-width: 760px) { .tx-kpis { grid-template-columns: repeat(3, 1fr); } }
+/* KPI 카드 — 필드명(좌)+값(우) 한 줄 (Overview 지표카드 양식, 2026-07-07)
+ * 6칸: 매수/매도/순매수 | 설정액/해지액/순설정액 */
 .tx-kpi { background: var(--ace-surface); border: 1px solid var(--ace-line); border-radius: var(--ace-radius); box-shadow: var(--ace-shadow); padding: 13px 16px; display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 8px; }
 .tx-kpi .k { font-size: 14px; color: var(--ace-ink-2); font-weight: 700; }
 .tx-kpi .v { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; text-align: right; }

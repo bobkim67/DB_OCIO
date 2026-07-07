@@ -276,6 +276,10 @@ def _compute_bm_period_returns(
     if bm_aligned is None or len(bm_aligned) == 0:
         return {}
     b0 = bm_aligned.iloc[0]
+    if pd.isna(b0):
+        # head 결측(벤치 늦은 시작) — 첫 유효값을 SI 분모로 사용
+        _valid = bm_aligned.dropna()
+        b0 = _valid.iloc[0] if len(_valid) else float("nan")
     end_v = bm_aligned.iloc[-1]
     if pd.isna(b0) or pd.isna(end_v) or float(b0) == 0:
         return {}
@@ -419,8 +423,13 @@ def build_overview(
             )
             nav_dates = pd.to_datetime(nav_df["기준일자"])
             bm_aligned = bm_series.reindex(nav_dates, method="ffill")
-            # 첫 값 결측 체크
+            # 첫 값 결측 체크 — head 결측(벤치 시계열이 NAV 보다 늦게 시작, 예: 2JM23
+            # SAA 리밸 등록 시점)은 전체 생략하지 않고 첫 유효일부터 표시 (2026-07-07).
             _b0 = bm_aligned.iloc[0]
+            _valid = bm_aligned.dropna()
+            if pd.isna(_b0) and not _valid.empty and float(_valid.iloc[0]) != 0:
+                _b0 = float(_valid.iloc[0])
+                warnings.append("벤치마크 시계열이 늦게 시작 — 합류 시점부터 표시")
             if pd.isna(_b0) or _b0 == 0:
                 warnings.append("벤치마크 첫 값 결측 — 표시 생략")
                 bm_aligned = None
@@ -442,7 +451,11 @@ def build_overview(
     if _start == inc_str:
         _d0_raw = nav_df["기준일자"].iloc[0]
         _d0 = (_d0_raw.date() if hasattr(_d0_raw, "date") else _d0_raw) - timedelta(days=1)
-        _bm0 = float(base) if (bm_aligned is not None and bm_first_val) else None
+        # 벤치 head 결측(늦은 시작)이면 T-1 행에 bm 을 심지 않음 — 합류 전 가짜 평탄 구간 방지
+        _bm0 = (float(base)
+                if (bm_aligned is not None and bm_first_val
+                    and not pd.isna(bm_aligned.iloc[0]))
+                else None)
         nav_series_dto.append(NavPointDTO(
             date=_d0, nav=float(base), bm=_bm0,
             excess=0.0 if _bm0 is not None else None, aum=None,
@@ -682,8 +695,8 @@ def _period_returns_cached(
         )
         nav_dates = pd.to_datetime(nav_df["기준일자"])
         bm_aligned = bm_series.reindex(nav_dates, method="ffill")
-        _b0 = bm_aligned.iloc[0]
-        if not (pd.isna(_b0) or _b0 == 0):
+        _valid = bm_aligned.dropna()
+        if not _valid.empty and float(_valid.iloc[0]) != 0:
             _si_base = _FUND_BM_INCEPTION_BASE.get(fund_code) or (
                 1000.0 if bm_src == "dt" else None)
             bm_period_returns = _compute_bm_period_returns(
