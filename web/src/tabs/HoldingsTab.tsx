@@ -24,6 +24,11 @@ const STATUS_LABEL: Record<string, string> = { ok: "적합", warn: "주의", bre
 const pct1 = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? "—" : `${(v * 100).toFixed(1)}%`);
 const eok =(v: number | null | undefined) => (v == null || !Number.isFinite(v) ? "—" : `${(v / 1e8).toLocaleString("ko-KR", { maximumFractionDigits: 1 })}억`);
 const num = (v: number | null | undefined, d = 1, s = "") => (v == null || !Number.isFinite(v) ? "—" : v.toFixed(d) + s);
+// 로컬 타임존 기준 오늘 YYYY-MM-DD (기준일 date input max용)
+const todayStr = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 
 export default function HoldingsTab({ fundCode }: Props) {
   const [lookthrough, setLookthrough] = useState(true);
@@ -31,7 +36,9 @@ export default function HoldingsTab({ fundCode }: Props) {
   const [expandTable, setExpandTable] = useState(false);
   const [sel, setSel] = useState<HoldSel | null>(null);
   const [tip, setTip] = useState<Tip>(null);
-  const { data, isLoading, error } = useHoldings(fundCode, lookthrough);
+  // 기준일자 스냅샷 — "" = 최신. 지정 시 해당일(이전 최근 영업일) 보유 스냅샷 조회.
+  const [asOf, setAsOf] = useState<string>("");
+  const { data, isLoading, error } = useHoldings(fundCode, lookthrough, asOf || undefined);
 
   // 종목/자산군 차트(비중·수익률·거래) — 선택 1년 구간. hooks 규칙상 early return 전 호출.
   const _asof = data?.as_of_date ?? "";
@@ -110,6 +117,17 @@ export default function HoldingsTab({ fundCode }: Props) {
             <span style={{ marginLeft: 8, fontSize: 11, color: "#16a34a", fontWeight: 600 }}>✔ 확정</span>
           )}
         </div>
+        <label className="hd-lt" title="기준일자 지정 — 주말·공휴일 선택 시 직전 영업일 스냅샷. 비우면 최신일.">
+          기준일
+          <input type="date" value={asOf} max={todayStr()}
+            onChange={(e) => setAsOf(e.target.value)}
+            style={{ marginLeft: 4, fontSize: 12, fontFamily: "inherit" }} />
+          {asOf && (
+            <button type="button" className="hd-expand" style={{ marginLeft: 4 }} onClick={() => setAsOf("")}>
+              최신
+            </button>
+          )}
+        </label>
         <label className="hd-lt">
           <input type="checkbox" checked={lookthrough} onChange={(e) => setLookthrough(e.target.checked)} />
           look-through{data.lookthrough_applied ? " (적용)" : ""}

@@ -116,10 +116,18 @@ def build_transactions(
     )
 
 
+def _clip_by_date(df, end_date: str | None, col: str = "date"):
+    """date 컬럼(YYYY-MM-DD str) 기준 end_date 이하로 절단. end_date 없으면 그대로."""
+    if end_date is None or df is None or df.empty:
+        return df
+    return df[df[col].astype(str) <= end_date]
+
+
 def build_weight_history(
     fund_code: str,
     start_date: str,
     level: str,
+    end_date: str | None = None,
 ) -> WeightHistoryResponseDTO:
     if fund_code not in FUND_LIST:
         raise KeyError(fund_code)
@@ -136,6 +144,7 @@ def build_weight_history(
 
     try:
         df, is_fof, keys = load_weight_history_lookthrough(fund_code, start_date, level)
+        df = _clip_by_date(df, end_date)
     except Exception as exc:
         warnings.append(f"DB 접속 실패: {type(exc).__name__}")
         return WeightHistoryResponseDTO(
@@ -169,7 +178,7 @@ def build_weight_history(
     # 매매 마커 — 실패해도 차트 본체에 영향 없도록 격리
     markers: list[WeightMarkerDTO] = []
     try:
-        mdf = load_weight_trade_markers(fund_code, start_date, level)
+        mdf = load_weight_trade_markers(fund_code, start_date, level, end_date=end_date)
         if mdf is not None and not mdf.empty:
             markers = [
                 WeightMarkerDTO(date=str(r["date"]), key=str(r["key"]),
@@ -187,6 +196,7 @@ def build_weight_history(
             nav = [
                 WeightNavPointDTO(date=pd_ts.strftime("%Y-%m-%d"), aum_eok=float(aum))
                 for pd_ts, aum in zip(ndf["기준일자"], ndf["AUM_억"])
+                if end_date is None or pd_ts.strftime("%Y-%m-%d") <= end_date
             ]
     except Exception as exc:
         warnings.append(f"NAV 로드 실패: {type(exc).__name__}")
@@ -210,7 +220,9 @@ def build_weight_history(
     )
 
 
-def build_fx_position(fund_code: str, start_date: str) -> FxPositionResponseDTO:
+def build_fx_position(
+    fund_code: str, start_date: str, end_date: str | None = None,
+) -> FxPositionResponseDTO:
     if fund_code not in FUND_LIST:
         raise KeyError(fund_code)
     from modules.data_loader import (
@@ -222,6 +234,7 @@ def build_fx_position(fund_code: str, start_date: str) -> FxPositionResponseDTO:
     warnings: list[str] = []
     try:
         df, has_fx = load_fx_position_history(fund_code, start_date)
+        df = _clip_by_date(df, end_date)
     except Exception as exc:
         warnings.append(f"DB 접속 실패: {type(exc).__name__}")
         return FxPositionResponseDTO(
@@ -243,13 +256,13 @@ def build_fx_position(fund_code: str, start_date: str) -> FxPositionResponseDTO:
         ]
         # 보조 레이어 — 실패해도 FX 포지션 자체는 반환(경고만)
         try:
-            rate_df = load_usdkrw_series(start_date)
+            rate_df = _clip_by_date(load_usdkrw_series(start_date), end_date)
             usdkrw = [FxRatePointDTO(date=str(r["date"]), rate=float(r["rate"]))
                       for _, r in rate_df.iterrows()]
         except Exception as exc:
             warnings.append(f"USD/KRW 로드 실패: {type(exc).__name__}")
         try:
-            fw_df = load_foreign_asset_weight_history(fund_code, start_date)
+            fw_df = _clip_by_date(load_foreign_asset_weight_history(fund_code, start_date), end_date)
             foreign_weight = [
                 FxForeignWeightPointDTO(date=str(r["date"]), weight=float(r["weight"]))
                 for _, r in fw_df.iterrows()

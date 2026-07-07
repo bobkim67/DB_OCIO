@@ -20,17 +20,18 @@ export const useWeightHistory = (
   code: string,
   start: string,
   level: WeightHistoryLevel,
+  end?: string,
 ) =>
   useQuery({
-    queryKey: ["weight-history", code, start, level],
-    queryFn: () => fetchWeightHistory(code, start, level),
+    queryKey: ["weight-history", code, start, level, end ?? ""],
+    queryFn: () => fetchWeightHistory(code, start, level, end),
     enabled: !!code && !!start,
   });
 
-export const useFxPosition = (code: string, start: string) =>
+export const useFxPosition = (code: string, start: string, end?: string) =>
   useQuery({
-    queryKey: ["fx-position", code, start],
-    queryFn: () => fetchFxPosition(code, start),
+    queryKey: ["fx-position", code, start, end ?? ""],
+    queryFn: () => fetchFxPosition(code, start, end),
     enabled: !!code && !!start,
   });
 

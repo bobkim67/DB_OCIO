@@ -105,12 +105,13 @@ export default function TransactionsTab({ fundCode }: Props) {
   // ---- 마스터 토글 (자산군↔종목) + 마스터 기간: 거래내역·비중추이·수익률 차트 공통 ----
   const [level, setLevel] = useState<WeightHistoryLevel>("asset");
 
-  // ---- 영역차트: 기간은 마스터(거래내역 preset)와 공유 → chartStart = txnStart ----
+  // ---- 영역차트: 기간은 마스터(거래내역 preset)와 공유 → chartStart/chartEnd = txnStart/txnEnd ----
   const [topNInput, setTopNInput] = useState<string>(""); // "" = 전체
   const [weightMode, setWeightMode] = useState<"pct" | "nav">("pct"); // 100%기준 / NAV기준
   const chartStart = txnStart;
+  const chartEnd = txnEnd;
 
-  const whQ = useWeightHistory(fundCode, chartStart, level);
+  const whQ = useWeightHistory(fundCode, chartStart, level, chartEnd);
 
   // ---- 세부내역 표 높이: 기본=요약 표 높이, 펼치기=전체 높이 ----
   const summaryBoxRef = useRef<HTMLDivElement>(null);
@@ -126,7 +127,7 @@ export default function TransactionsTab({ fundCode }: Props) {
   }, [topNInput]);
 
   // ---- FX 포지션 (달러선물) ----
-  const fxQ = useFxPosition(fundCode, chartStart);
+  const fxQ = useFxPosition(fundCode, chartStart, chartEnd);
 
   // ---- 종목별 수익률 ---- (start=chartStart → 편입이력(현재 미보유) 종목 하단 포함)
   const secQ = useSecurities(fundCode, chartStart);
@@ -153,7 +154,7 @@ export default function TransactionsTab({ fundCode }: Props) {
   }, [allItems, priceItems, selItemCd]);
   const selItem = allItems.find((it) => it.item_cd === selItemCd);
   const secRetQ = useSecurityReturn(
-    fundCode, selItemCd, selItem?.item_nm ?? "", chartStart, today,
+    fundCode, selItemCd, selItem?.item_nm ?? "", chartStart, chartEnd,
   );
 
   // ---- 자산군 수익률 (자산군 모드): 일별 비중×종목가격 바스켓 지수 ----
@@ -168,7 +169,7 @@ export default function TransactionsTab({ fundCode }: Props) {
     if (!assetKeys.length && level === "asset") setSelAsset("");
   }, [assetKeys, selAsset, level]);
   const assetRetQ = useAssetClassReturn(
-    fundCode, level === "asset" ? selAsset : "", chartStart, today,
+    fundCode, level === "asset" ? selAsset : "", chartStart, chartEnd,
   );
 
   // ---- 거래내역 집계/정렬 ----
@@ -498,7 +499,7 @@ export default function TransactionsTab({ fundCode }: Props) {
                 topN={topN}
                 markers={whQ.data?.markers ?? []}
                 instanceKey={`${fundCode}-${level}-${preset}-${weightMode}`}
-                xRange={[chartStart, today]}
+                xRange={[chartStart, chartEnd]}
                 valueMode={weightMode}
                 nav={whQ.data?.nav ?? []}
               />
@@ -576,7 +577,7 @@ export default function TransactionsTab({ fundCode }: Props) {
                   weights={secRetQ.data?.weights ?? []}
                   itemNm={selItem?.item_nm ?? ""}
                   instanceKey={`${fundCode}-${selItemCd}-${preset}`}
-                  xRange={[chartStart, today]}
+                  xRange={[chartStart, chartEnd]}
                   markupMode={retMarkup}
                 />
               )
@@ -593,7 +594,7 @@ export default function TransactionsTab({ fundCode }: Props) {
                 tradeComponents={assetRetQ.data?.trade_components ?? []}
                 itemNm={selAsset === "전체" ? "펀드" : selAsset}
                 instanceKey={`${fundCode}-asset-${selAsset}-${preset}`}
-                xRange={[chartStart, today]}
+                xRange={[chartStart, chartEnd]}
                 markupMode={retMarkup}
                 navMode={selAsset === "전체"}
               />

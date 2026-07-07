@@ -452,10 +452,13 @@ export const fetchWeightHistory = async (
   code: string,
   start: string,
   level: WeightHistoryLevel,
+  end?: string,
 ): Promise<WeightHistoryResponseDTO> => {
+  const params: Record<string, string> = { start, level };
+  if (end) params.end = end;
   const r = await api.get<WeightHistoryResponseDTO>(
     `/funds/${code}/weight-history`,
-    { params: { start, level } },
+    { params },
   );
   return r.data;
 };
@@ -463,10 +466,13 @@ export const fetchWeightHistory = async (
 export const fetchFxPosition = async (
   code: string,
   start: string,
+  end?: string,
 ): Promise<FxPositionResponseDTO> => {
+  const params: Record<string, string> = { start };
+  if (end) params.end = end;
   const r = await api.get<FxPositionResponseDTO>(
     `/funds/${code}/fx-position`,
-    { params: { start } },
+    { params },
   );
   return r.data;
 };

@@ -59,15 +59,18 @@ def get_weight_history(
     code: str,
     start: str = Query(..., description="조회 시작일 YYYY-MM-DD"),
     level: str = Query("security", description="security | asset"),
+    end: str | None = Query(None, description="조회 종료일 YYYY-MM-DD (미지정 시 최근일)"),
 ) -> WeightHistoryResponseDTO:
     _validate_date("start", start)
+    if end:
+        _validate_date("end", end)
     if level not in ("security", "asset"):
         raise HTTPException(
             status_code=400,
             detail={"code": "INVALID_PARAM", "message": "level must be security|asset"},
         )
     try:
-        return build_weight_history(fund_code=code, start_date=start, level=level)
+        return build_weight_history(fund_code=code, start_date=start, level=level, end_date=end)
     except KeyError:
         raise HTTPException(
             status_code=404,
@@ -82,10 +85,13 @@ def get_weight_history(
 def get_fx_position(
     code: str,
     start: str = Query(..., description="조회 시작일 YYYY-MM-DD"),
+    end: str | None = Query(None, description="조회 종료일 YYYY-MM-DD (미지정 시 최근일)"),
 ) -> FxPositionResponseDTO:
     _validate_date("start", start)
+    if end:
+        _validate_date("end", end)
     try:
-        return build_fx_position(fund_code=code, start_date=start)
+        return build_fx_position(fund_code=code, start_date=start, end_date=end)
     except KeyError:
         raise HTTPException(status_code=404, detail={"code": "FUND_NOT_FOUND", "message": code})
 

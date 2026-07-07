@@ -98,7 +98,7 @@ export default function DashboardPage() {
 
       <div className="shell-tabs">
         {tabBtn("overview", "Overview")}
-        {tabBtn("holdings", "편입종목")}
+        {tabBtn("holdings", "편입종목(PDF)")}
         {tabBtn("transactions", "거래내역")}
         {tabBtn("brinson", "성과분석")}
         {tabBtn("report", "운용보고")}
