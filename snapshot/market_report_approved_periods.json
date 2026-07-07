@@ -1,0 +1,1 @@
+{"meta": {"as_of_date": null, "source": "db", "sources": [{"component": "report_store", "kind": "db", "note": null}], "is_fallback": false, "warnings": [], "generated_at": "2026-07-07T04:09:47.880742Z"}, "fund_code": "_market", "periods": ["2026-Q2", "2026-Q1", "2026-H1", "2026-06", "2026-05", "2026-04", "2026-03", "2026-02", "2026-01"]}
