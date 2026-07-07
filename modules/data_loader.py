@@ -186,16 +186,20 @@ def load_fund_nav(fund_codes: list, start_date: str = None) -> pd.DataFrame:
 def load_fund_holdings(fund_code: str, date: str = None) -> pd.DataFrame:
     """
     펀드 보유종목 상세. R: DWPM10530
-    date 미지정 시 최근일 조회.
+    date 미지정 시 최근일, 지정 시 해당일 이하 최근 영업일(주말/공휴일 보정) 조회.
     """
-    if date is None:
-        conn_dict = get_connection('dt')
-        try:
-            with conn_dict.cursor() as cur:
+    conn_dict = get_connection('dt')
+    try:
+        with conn_dict.cursor() as cur:
+            if date is None:
                 cur.execute("SELECT MAX(STD_DT) as max_dt FROM DWPM10530 WHERE FUND_CD = %s", (fund_code,))
-                date = cur.fetchone()['max_dt']
-        finally:
-            conn_dict.close()
+            else:
+                # STD_DT는 varchar(8) — str 바인딩 필수 (int면 인덱스 미사용 full scan)
+                cur.execute("SELECT MAX(STD_DT) as max_dt FROM DWPM10530 WHERE FUND_CD = %s AND STD_DT <= %s",
+                            (fund_code, str(date)))
+            date = cur.fetchone()['max_dt']
+    finally:
+        conn_dict.close()
 
     conn = get_pandas_connection('dt')
     try:
@@ -412,12 +416,24 @@ def load_scip_bm_prices(dataset_id: int, dataseries_id: int,
 _DT_BM_CONFIG = {
     # DWPM10041 서브BM
     '07G04': ('10041', 'BM1'),   # 서브BM1
+    '07G07': ('10041', 'BM1'),   # 서브BM1 (07G04 C-F 클래스, BM 공유)
     '07G02': ('10041', 'BM1'),   # 서브BM1만 존재
     '07G03': ('10041', 'BM1'),   # 서브BM1만 존재
     '08K88': ('10041', 'BM2'),
     # DWPM10040 기본BM
     '4JM12': ('10040', 'B'),
 }
+
+# 종류형 클래스펀드 → 포트폴리오 마스터 alias (2026-07-06 07G07 추가).
+# 07G07(C-F, KB투자풀)은 07G04(종류형 모)를 100% 보유하는 래퍼 클래스 —
+# 보유/거래/비중/종목 뷰는 마스터 포트 기준으로 조회한다.
+# NAV·DT BM·설정해지는 자체 코드 사용, PA는 compute_single_port_pa 의
+# _get_class_mother_fund(DWPI10011) 가 별도로 해석.
+_PORTFOLIO_ALIAS = {'07G07': '07G04'}
+
+
+def _portfolio_fund(fund_code: str) -> str:
+    return _PORTFOLIO_ALIAS.get(str(fund_code).strip(), fund_code)
 
 
 def load_dt_bm_prices(fund_code: str, start_date: str = None) -> pd.DataFrame:
@@ -879,6 +895,7 @@ def load_fund_holdings_classified(fund_code: str, date: str = None) -> pd.DataFr
     """`_load_fund_holdings_classified_cached`의 공개 래퍼.
     TTL 캐시된 DataFrame을 호출자가 in-place로 변형해 캐시를 오염시키지 않도록
     항상 copy를 반환한다."""
+    fund_code = _portfolio_fund(fund_code)
     df = _load_fund_holdings_classified_cached(fund_code, date)
     return df.copy() if isinstance(df, pd.DataFrame) else df
 
@@ -977,6 +994,7 @@ def _load_fund_holdings_lookthrough_cached(fund_code: str, date: str = None) -> 
 def load_fund_holdings_lookthrough(fund_code: str, date: str = None) -> pd.DataFrame:
     """`_load_fund_holdings_lookthrough_cached`의 공개 래퍼.
     캐시 오염 방지를 위해 항상 copy를 반환한다."""
+    fund_code = _portfolio_fund(fund_code)
     df = _load_fund_holdings_lookthrough_cached(fund_code, date)
     return df.copy() if isinstance(df, pd.DataFrame) else df
 
@@ -988,6 +1006,9 @@ def load_fund_holdings_lookthrough(fund_code: str, date: str = None) -> pd.DataF
 # 설정후 수익률 계산용 설정일 기준가 (시스템 일치용)
 _FUND_INCEPTION_BASE = {
     '4JM12': 1970.76,  # 시스템 설정후 수익률 기준가
+    # 07G07: KB투자풀 편입일(2022-01-04) 기준 — 전영업일(2022-01-03) 기준가.
+    # 클래스 설정일은 2021-09-27(시딩 54억)이나 성과는 편입 전일부터 계산 (KB 보고서 규약).
+    '07G07': 1019.50386685184,
 }
 
 
@@ -1553,6 +1574,9 @@ def _load_bm_daily_returns_by_class(bm_info: dict, start_date: str, end_date: st
     sd = pd.Timestamp(f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:8]}") if len(start_date) == 8 else pd.Timestamp(start_date)
     ed = pd.Timestamp(f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:8]}") if len(end_date) == 8 else pd.Timestamp(end_date)
     bm_daily = bm_daily[(bm_daily.index >= sd) & (bm_daily.index <= ed)]
+    # ※ 기간 규약: start 는 "첫 수익 인식일" (base = start 의 전 관측일).
+    #   월간=당월 1일, YTD=1/1 을 넘겨야 base 가 전월말/전년말로 앵커된다.
+    #   12/31 을 넘기면 base 가 12/30 으로 하루 밀림 (2026-07-06 07G07 YTD 진단).
 
     bm_daily.index.name = None  # DatetimeIndex 이름 초기화
     bm_daily = bm_daily.reset_index().rename(columns={'index': '기준일자'})
@@ -2091,7 +2115,12 @@ def compute_brinson_attribution_v2(fund_code: str,
 # ============================================================
 
 def _get_class_mother_fund(fund_code: str) -> str:
-    """모펀드 코드 조회 (DWPI10011.CLSS_MTFD_CD). 없으면 자기 자신 반환."""
+    """모펀드 코드 조회 (DWPI10011.CLSS_MTFD_CD). 없으면 자기 자신 반환.
+
+    _PORTFOLIO_ALIAS 등록 클래스(예: 07G07→07G04)는 DWPI10011 미등록이라 alias 우선.
+    """
+    if fund_code in _PORTFOLIO_ALIAS:
+        return _PORTFOLIO_ALIAS[fund_code]
     conn = get_pandas_connection('dt')
     try:
         sql = """
@@ -3593,6 +3622,7 @@ def load_weight_history_lookthrough(fund_code: str, start_date: str = None,
         (DataFrame[date(YYYY-MM-DD), key, weight(%)], is_fof: bool, keys: list[str])
         keys 는 (버킷 순서, 평균비중 desc) 정렬.
     """
+    fund_code = _portfolio_fund(fund_code)
     start_yyyymmdd = start_date.replace('-', '') if start_date else None
     related = _get_관련_fund_list(fund_code)
     children = [f for f in related if f != fund_code]
@@ -3682,6 +3712,7 @@ def load_weight_trade_markers(fund_code: str, start_date: str,
 
     Returns: DataFrame[date(YYYY-MM-DD), key, net_eok]
     """
+    fund_code = _portfolio_fund(fund_code)
     if end_date is None:
         end_date = datetime.now().strftime('%Y-%m-%d')
     s_int = int(start_date.replace('-', ''))
@@ -3732,6 +3763,7 @@ def load_fund_trades_lookthrough(fund_code: str, start_date: int, end_date: int)
         (DataFrame[날짜, 펀드, 종목명, 자산군, 매수매도, 금액(억)],
          funds_queried: list[str], is_fof: bool)
     """
+    fund_code = _portfolio_fund(fund_code)
     related = _get_관련_fund_list(fund_code)
     children = [f for f in related if f != fund_code]
     is_fof = bool(children)
@@ -3769,6 +3801,7 @@ def load_fx_position_history(fund_code: str, start_date: str = None) -> tuple:
 
     Returns: (DataFrame[date, key(계약명), weight(%)], has_fx: bool)
     """
+    fund_code = _portfolio_fund(fund_code)
     start_yyyymmdd = start_date.replace('-', '') if start_date else None
     related = _get_관련_fund_list(fund_code)
     children = [f for f in related if f != fund_code]
@@ -3921,6 +3954,7 @@ def load_fund_securities(fund_code: str, start_date: str = None) -> pd.DataFrame
 
     Returns: DataFrame[item_cd, item_nm, bucket, weight, has_price, currently_held]
     """
+    fund_code = _portfolio_fund(fund_code)
     frames = []
     current_codes = set()
 
@@ -4042,6 +4076,7 @@ def load_security_return_with_trades(fund_code: str, item_cd: str,
 
     Returns: (DataFrame[date, value], trades: list[{date, side, amount}])
     """
+    fund_code = _portfolio_fund(fund_code)
     price = _load_scip_return_index(item_cd, start_date)
 
     related = _get_관련_fund_list(fund_code)
@@ -4146,6 +4181,7 @@ def load_asset_class_return_index(fund_code: str, asset_class: str,
 
     Returns: (DataFrame[date, value], warning|None)
     """
+    fund_code = _portfolio_fund(fund_code)
     if asset_class == '유동성':
         return pd.DataFrame(columns=['date', 'value']), '유동성은 수익지수 제외'
 

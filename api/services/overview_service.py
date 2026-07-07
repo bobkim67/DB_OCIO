@@ -43,6 +43,11 @@ def _inception_base(fund_code: str) -> float:
     return _FUND_INCEPTION_BASE.get(fund_code, 1000.0)
 
 
+# 설정후 BM 분모 override — 편입일 기준 펀드는 BM도 편입 전영업일 값 앵커.
+# 07G07: KB투자풀 편입(2022-01-04) 전영업일 DT BM1(DWPM10041) 값.
+_FUND_BM_INCEPTION_BASE = {'07G07': 999.55727568946}
+
+
 # -------------------- BM load --------------------
 
 def _load_bm_series(
@@ -425,7 +430,9 @@ def build_overview(
             else:
                 # DT BM은 base 1000 절대지수 — 설정일 행에 이미 1일차 등락이 반영돼
                 # 있어(08K88 -0.70%) 첫 관측값 분모는 설정후를 +1.16%p 왜곡한다.
-                bm_first_val = 1000.0 if bm_src == "dt" else float(_b0)
+                # 편입일 기준 펀드(07G07)는 편입 전영업일 BM 값을 분모로 사용.
+                bm_first_val = _FUND_BM_INCEPTION_BASE.get(fund_code) or (
+                    1000.0 if bm_src == "dt" else float(_b0))
                 sources.append(SourceBreakdown(component="bm", kind="db"))
 
     # --- 3) nav_series 조립 (bm/excess 채움) ---
@@ -492,6 +499,9 @@ def build_overview(
 
     # --- 5) period_returns (포트) ---
     period_returns = _period_returns_from_stats(stats)
+    # SI는 base 규약(1000/승계/편입 override)과 정합 — stats '누적'(ref=1000 고정)은
+    # 4JM12(1970.76)·07G07(1019.50) 등 override 펀드에서 어긋난다.
+    period_returns["SI"] = last_nav / base - 1.0
 
     # --- 5-bis) bm_period_returns (BM 설정 + 정렬 성공 시) ---
     if bm_aligned is not None and bm_first_val is not None:
@@ -645,6 +655,12 @@ def _period_returns_cached(
     # 포트 기간수익률 (앵커=as_of, R 파이프라인 재사용 — Overview 표와 동일 규약)
     stats = _try_compute_stats(fund_code, as_of)
     period_returns = _period_returns_from_stats(stats)
+    # SI는 base 규약 정합 (build_overview 와 동일 — 승계/편입 override 반영)
+    try:
+        _last_nav = float(nav_df["MOD_STPR"].iloc[-1])
+        period_returns["SI"] = _last_nav / _inception_base(fund_code) - 1.0
+    except Exception:
+        pass
 
     # 벤치(BM/SAA) 기간수익률 — build_overview 와 동일 로드 경로, NAV(≤end) 날짜에 정렬
     benchmark_kind: str = "none"
@@ -668,8 +684,10 @@ def _period_returns_cached(
         bm_aligned = bm_series.reindex(nav_dates, method="ffill")
         _b0 = bm_aligned.iloc[0]
         if not (pd.isna(_b0) or _b0 == 0):
+            _si_base = _FUND_BM_INCEPTION_BASE.get(fund_code) or (
+                1000.0 if bm_src == "dt" else None)
             bm_period_returns = _compute_bm_period_returns(
-                bm_aligned, si_base=1000.0 if bm_src == "dt" else None,
+                bm_aligned, si_base=_si_base,
             )
 
     return PeriodReturnsResponseDTO(
