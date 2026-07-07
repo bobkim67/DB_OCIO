@@ -78,6 +78,7 @@ def main() -> None:
             return None
 
     dump("/funds")
+    dump("/warmup-status")  # idle — WarmupGate 오버레이/폴링 즉시 종료용
 
     # 운용보고(매크로): 승인 기간 전부
     mp = dump("/market-report/approved-periods")

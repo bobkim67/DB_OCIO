@@ -16,6 +16,8 @@ export const useWarmupStatus = () =>
     queryKey: ["warmup-status"],
     queryFn: fetchWarmupStatus,
     refetchInterval: (query) => {
+      // endpoint 부재/에러(정적 스냅샷 배포 등)면 폴링 중단 — 오버레이 깜빡임 방지.
+      if (query.state.status === "error") return false;
       const status = query.state.data?.status;
       // 첫 응답 전(undefined) 또는 진행 중(running)이면 계속 폴링.
       if (status === undefined || ACTIVE.has(status)) return 1000;
