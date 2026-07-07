@@ -466,15 +466,17 @@ export default function BrinsonTab({ fundCode }: Props) {
     if (hasEtc) keep.push({ item_nm: "기타", weight: etcW, contrib: etcC, ret: etcW !== 0 ? etcRW / etcW : 0 });
     apSecByClass1.set("유동성및기타", keep);
   }
-  // 자산군별 BM 지수명 배열 — name===자산군명(MP 목표비중뿐)은 제외, FX 제외.
-  // 펼침 시 지수당 개별 상세 행(자산군 컬럼 하위 들여쓰기)으로 표기.
-  const bmNamesByClass1 = new Map<string, string[]>();
+  // 자산군별 BM 지수 배열(기여/수익률 포함) — name===자산군명(MP 목표비중뿐)은 제외, FX 제외.
+  // 펼침 시 지수당 개별 상세 행(자산군 컬럼 하위 들여쓰기 + 지수별 기여/수익률)으로 표기.
+  type BmCompX = { name: string; contrib?: number | null; ret?: number | null };
+  const bmNamesByClass1 = new Map<string, BmCompX[]>();
   for (const c of data.bm_components) {
     if (c.asset_class === "FX") continue;
     if (!c.name || c.name === c.asset_class) continue;
     const g = normCls1(c.asset_class);
     const arr = bmNamesByClass1.get(g) ?? [];
-    arr.push(c.name);
+    const cx = c as unknown as BmCompX; // openapi 재생성 전 임시 확장 (contrib/ret 신규 필드)
+    arr.push({ name: c.name, contrib: cx.contrib ?? null, ret: cx.ret ?? null });
     bmNamesByClass1.set(g, arr);
   }
   // ── 표0(BM/SAA 구성) 데이터 준비 — 컴포넌트 레벨로 호이스팅해 표1과 상세 행수 공유 ──
@@ -900,7 +902,7 @@ export default function BrinsonTab({ fundCode }: Props) {
                           for (let i = 0; i < ap.length; i++) {
                             rows.push(
                               <tr key={`${g}-ap-${i}`}>
-                                <td className="ind">{ap[i].label}</td>
+                                <td className="ind" title={ap[i].label}>{ap[i].label}</td>
                                 <td className="r">{fmtWeight(ap[i].weight, 1)}</td>
                                 <td className="r" />
                               </tr>,
@@ -984,10 +986,11 @@ export default function BrinsonTab({ fundCode }: Props) {
                     ];
                     if (tbl0Expanded) {
                       for (let i = 0; i < names.length; i++) {
+                        const cv = tbl1Metric === "norm" ? names[i].ret : names[i].contrib;
                         rows.push(
                           <tr key={`${r.asset_class}-bmn-${i}`}>
-                            <td className="muted ind" title={names[i]}>{names[i]}</td>
-                            <td className="r" />
+                            <td className="muted ind" title={names[i].name}>{names[i].name}</td>
+                            <td className={`r ${cv != null ? rc(cv) : ""}`}>{cv != null ? fmtPct(cv) : ""}</td>
                           </tr>,
                         );
                       }
@@ -1043,7 +1046,7 @@ export default function BrinsonTab({ fundCode }: Props) {
                         const secVal = isNorm ? secs[i].ret : secs[i].contrib;
                         rows.push(
                           <tr key={`${r.asset_class}-sec-${i}`}>
-                            <td className="ind">{secs[i].item_nm}</td>
+                            <td className="ind" title={secs[i].item_nm}>{secs[i].item_nm}</td>
                             <td className={`r ${rc(secVal)}`}>{fmtPct(secVal)}</td>
                             {!isNorm && <td className="r" />}
                           </tr>,

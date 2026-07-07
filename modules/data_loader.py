@@ -1506,7 +1506,7 @@ def _load_bm_daily_returns_by_class(bm_info: dict, start_date: str, end_date: st
         }
 
     if not comp_returns:
-        return bm_weights, pd.DataFrame()
+        return bm_weights, pd.DataFrame(), None, None
 
     # 영업일 캘린더 기준 (R 동일: intersection 아닌 union, 누락일=0 수익률)
     # _kr_dates가 있으면 사용 (ex_KR 컴포넌트도 이미 _kr_dates 기준으로 계산됨)
@@ -1518,7 +1518,7 @@ def _load_bm_daily_returns_by_class(bm_info: dict, start_date: str, end_date: st
             idx = cr['daily_ret'].dropna().index
             all_dates = idx if all_dates is None else all_dates.union(idx)
     if all_dates is None or len(all_dates) < 2:
-        return bm_weights, pd.DataFrame()
+        return bm_weights, pd.DataFrame(), None, None
     all_dates = all_dates.sort_values()
 
     # 자산군별 일별 수익률 (가중평균)
@@ -1526,12 +1526,24 @@ def _load_bm_daily_returns_by_class(bm_info: dict, start_date: str, end_date: st
     for ac in asset_classes_8:
         bm_daily[ac] = 0.0
 
-    for cr in comp_returns.values():
+    # 컴포넌트(지수)별 원 일별수익률 + 목표비중 — 표1 펼침의 지수별 기여 분해용 (2026-07-07)
+    comp_daily = pd.DataFrame(index=all_dates)
+    comp_target_w: dict = {}
+
+    for cn, cr in comp_returns.items():
         ac = cr['class']
         w = cr['weight']
         total_w = bm_weights[ac] / 100 if bm_weights[ac] > 0 else 1
+        _r = cr['daily_ret'].reindex(all_dates).fillna(0)
         # 자산군 내 비중 비례
-        bm_daily[ac] += cr['daily_ret'].reindex(all_dates).fillna(0) * (w / total_w)
+        bm_daily[ac] += _r * (w / total_w)
+        if cn in comp_daily.columns:
+            # 동일 이름 중복(이론상 없음) — 가중 합산
+            comp_daily[cn] = comp_daily[cn] + _r * w
+            comp_target_w[cn] = comp_target_w.get(cn, 0.0) + w
+        else:
+            comp_daily[cn] = _r
+            comp_target_w[cn] = w
 
     # FX 오버레이: unhedged ex_KR 컴포넌트만 FX 분리 (hedged 컴포넌트는 이미 FX 없음)
     # 각 unhedged 컴포넌트 x: stock_ret = (1+x_ret)/(1+r_fx) - 1; fx_only = x_ret - stock_ret
@@ -1556,11 +1568,18 @@ def _load_bm_daily_returns_by_class(bm_info: dict, start_date: str, end_date: st
                 # 해외주식 자산군에서 unhedged 원수익률 제거 후 stock_ret 추가
                 bm_daily[ac] -= unhedged_ret * (w / total_w_ac)
                 bm_daily[ac] += stock_ret * (w / total_w_ac)
+                # 컴포넌트 뷰도 동일 재버킷 (FX 분리 시 지수별 기여 합 = BM 유지, 2026-07-07)
+                if cn in comp_daily.columns:
+                    comp_daily[cn] = stock_ret
                 # FX 자산군 수익률 = weight 비례 fx_only
                 if _total_unhedged_w > 0:
                     fx_return_series += (unhedged_ret - stock_ret) * (w / _total_unhedged_w)
             bm_daily['FX'] = fx_return_series
             bm_weights['FX'] = _bm_fx_weight
+            # FX 오버레이를 합성 컴포넌트로 노출 (composite 의 FX×W_fx 와 동일 기여)
+            if _bm_fx_weight > 0:
+                comp_daily['FX(환효과)'] = fx_return_series
+                comp_target_w['FX(환효과)'] = _bm_fx_weight / 100.0
         except Exception:
             pass
 
@@ -1574,17 +1593,20 @@ def _load_bm_daily_returns_by_class(bm_info: dict, start_date: str, end_date: st
     sd = pd.Timestamp(f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:8]}") if len(start_date) == 8 else pd.Timestamp(start_date)
     ed = pd.Timestamp(f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:8]}") if len(end_date) == 8 else pd.Timestamp(end_date)
     bm_daily = bm_daily[(bm_daily.index >= sd) & (bm_daily.index <= ed)]
+    comp_daily = comp_daily[(comp_daily.index >= sd) & (comp_daily.index <= ed)]
     # ※ 기간 규약: start 는 "첫 수익 인식일" (base = start 의 전 관측일).
     #   월간=당월 1일, YTD=1/1 을 넘겨야 base 가 전월말/전년말로 앵커된다.
     #   12/31 을 넘기면 base 가 12/30 으로 하루 밀림 (2026-07-06 07G07 YTD 진단).
 
     bm_daily.index.name = None  # DatetimeIndex 이름 초기화
     bm_daily = bm_daily.reset_index().rename(columns={'index': '기준일자'})
+    comp_daily.index.name = None
+    comp_daily = comp_daily.reset_index().rename(columns={'index': '기준일자'})
     # FX 일별 수익률도 반환 (AP FX split에 사용)
     _fx_daily_for_ap = None
     if _fx_on_kr_ret is not None:
         _fx_daily_for_ap = _fx_on_kr_ret.copy()
-    return bm_weights, bm_daily, _fx_daily_for_ap
+    return bm_weights, bm_daily, _fx_daily_for_ap, {'daily': comp_daily, 'weights': comp_target_w}
 
 
 @_ttl_cache()
@@ -1792,11 +1814,12 @@ def compute_brinson_attribution_v2(fund_code: str,
         ['국내주식', '해외주식', '국내채권', '해외채권', 'FX', '유동성'])
     bm_weights_raw = {ac: 0.0 for ac in _BM_ASSET_CLASSES}
     bm_daily_df = pd.DataFrame()
+    _bm_comp = None
 
     if bm_info:
         _sd_dt = pd.Timestamp(f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:8]}")
         _bm_warmup_start = (_sd_dt - timedelta(days=45)).strftime('%Y%m%d')
-        bm_weights_raw, bm_daily_df, _ = _load_bm_daily_returns_by_class(
+        bm_weights_raw, bm_daily_df, _, _bm_comp = _load_bm_daily_returns_by_class(
             bm_info, _bm_warmup_start, end_date, _BM_ASSET_CLASSES, mapping_method,
             fx_split=fx_split)
 
@@ -1849,6 +1872,31 @@ def compute_brinson_attribution_v2(fund_code: str,
             bm_composite_daily += bm_daily_df[ac] * bm_w_daily[ac]
     if bm_available and fund_code in _BM_COST_FUNDS:
         bm_composite_daily -= _BM_COST_DAILY
+
+    # ── 4-bis) BM 컴포넌트(지수)별 경로의존 기여 (표1 펼침용, 2026-07-07) ──
+    # contrib_i = Σ_t w_i × r_i(t) × Π_{s<t}(1+BM(s)) — fixed 모드에서 합 = BM 기간수익률.
+    # drift 모드는 고정 목표비중 근사(자산군 bm_contrib 와 소폭 차이 가능).
+    bm_component_stats = []
+    if bm_available and _bm_comp is not None:
+        try:
+            _cd = _bm_comp['daily']
+            _cw = _bm_comp['weights']
+            if _cd is not None and not _cd.empty:
+                _cd = _cd.set_index('기준일자') if '기준일자' in _cd.columns else _cd
+                _cd = _cd.reindex(dates_idx).fillna(0.0)
+                _bm_cumprev = (1 + bm_composite_daily).cumprod().shift(1).fillna(1.0)
+                for _cn in _cd.columns:
+                    _w = float(_cw.get(_cn, 0.0))
+                    _r = _cd[_cn]
+                    bm_component_stats.append({
+                        'name': str(_cn),
+                        'weight': _w * 100,
+                        'contrib': float((_r * _w * _bm_cumprev).sum()) * 100,
+                        'ret': (float((1 + _r).prod()) - 1) * 100,
+                    })
+        except Exception as _exc:
+            logger.warning(f"[Brinson] BM 컴포넌트 기여 계산 실패: {_exc}")
+            bm_component_stats = []
 
     # ── 5) 보정인자1 (R line 491-505) ──
     # 초과누적상대수익률 = (1+AP_cum)/(1+BM_cum) - 1
@@ -2106,6 +2154,7 @@ def compute_brinson_attribution_v2(fund_code: str,
         'daily_class': daily_class_df,
         'fx_contrib': ap_period_contribs.get('FX', 0) * 100,
         'residual': 0,
+        'bm_component_stats': bm_component_stats,
     }
 
 

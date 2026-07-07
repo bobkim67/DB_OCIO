@@ -539,6 +539,14 @@ def build_brinson(
 
     sources.append(SourceBreakdown(component="pa", kind="db", note="dt.MA000410"))
 
+    # BM 컴포넌트(지수)별 기간 기여/수익률 주입 (compute 산출, 구캐시엔 없음 → None 유지)
+    _cstats = {s["name"]: s for s in (raw.get("bm_component_stats") or [])}
+    for _c in bm_components:
+        _s = _cstats.get(_c.name)
+        if _s:
+            _c.contrib = round(float(_s.get("contrib", 0.0)), 4)
+            _c.ret = round(float(_s.get("ret", 0.0)), 4)
+
     pa_df = raw["pa_df"].copy()
     # BM 미설정 펀드: SAA(MP) 목표비중을 BM비중에 주입 → AP 대비 %p 비교가 동작(item1/5).
     # (수익률/기여 분해는 SAA 인덱스 정의가 없어 불가 → BM기여/Allocation 은 0 유지)

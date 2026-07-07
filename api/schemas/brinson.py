@@ -40,6 +40,9 @@ class BrinsonBmComponentDTO(BaseModel):
     asset_class: str           # 매핑 자산군 (AP 자산군 비중과 대조용)
     region: str = ""           # KR / ex_KR (BM 컴포넌트만)
     hedged: bool = False       # 환헤지 여부 (BM 컴포넌트만)
+    # 지수별 기간 기여/수익률 (%) — 표1 펼침용, 경로의존(합≈BM 기간수익률). 구캐시=None.
+    contrib: float | None = None
+    ret: float | None = None
 
 
 class BrinsonSecContribDTO(BaseModel):
