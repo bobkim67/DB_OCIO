@@ -26,8 +26,7 @@
 
 /* 헤더 */
 .bn-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.bn-head h2 { font-size: 18px; font-weight: 700; margin: 0; }
-.bn-head .code { color: var(--ace-ink-3); font-weight: 600; font-size: 14px; }
+/* 타이틀 폰트는 공용 .fund-title(tokens.css) 사용 — 탭별 정의 금지 */
 .bn-tag { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
 .bn-tag.ok { color: var(--ace-ok); }
 .bn-tag.pending { color: #9a3412; background: #fee2e2; border: 1px solid #fecaca; }
@@ -41,20 +40,23 @@
 .bn-chip.on { background: #EAF1F8; border-color: var(--ace-brand); color: var(--ace-brand); font-weight: 700; }
 
 /* 컨트롤 카드 */
-.bn-ctrl { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; padding: 12px 14px; }
-.bn-field { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 700; color: var(--ace-ink-2); }
+.bn-ctrl { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 12px 14px; }
+/* 필드명(좌)+컨트롤(우) 한 행 (2026-07-07 — 세로 스택에서 변경) */
+.bn-field { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--ace-ink-2); }
 .bn-field select { font-size: 13px; padding: 5px 8px; border: 1px solid var(--ace-line-2); border-radius: 6px; font-family: inherit; color: var(--ace-ink); background: #fff; }
 .bn-apply { align-self: flex-end; font-size: 13px; font-weight: 700; padding: 7px 18px; color: #fff; background: var(--ace-brand); border: 1px solid var(--ace-brand); border-radius: 8px; cursor: pointer; font-family: inherit; }
 .bn-apply:disabled { opacity: 0.5; cursor: default; }
 .bn-dirty { align-self: center; font-size: 11px; color: #b45309; }
 
 /* KPI 3카드 */
-.bn-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-@media (max-width: 760px) { .bn-kpis { grid-template-columns: 1fr; } }
-.bn-kpi { background: var(--ace-surface); border: 1px solid var(--ace-line); border-radius: var(--ace-radius); box-shadow: var(--ace-shadow); padding: 13px 16px; }
-.bn-kpi .k { font-size: 12px; color: var(--ace-ink-2); font-weight: 600; }
-.bn-kpi .vrow { display: flex; align-items: baseline; gap: 10px; margin-top: 5px; flex-wrap: wrap; }
-.bn-kpi .v { font-size: 24px; font-weight: 800; line-height: 1.1; }
+/* 6칸 그리드에 카드 3개 — 카드 폭 절반, 우측 3칸 여백 (2026-07-07 사용자 지정) */
+.bn-kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+@media (max-width: 760px) { .bn-kpis { grid-template-columns: repeat(3, 1fr); } }
+/* KPI 카드 — 필드명(좌)+값(우) 한 줄 (Overview 지표카드 양식, 2026-07-07) */
+.bn-kpi { background: var(--ace-surface); border: 1px solid var(--ace-line); border-radius: var(--ace-radius); box-shadow: var(--ace-shadow); padding: 13px 16px; display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 8px; }
+.bn-kpi .k { font-size: 14px; color: var(--ace-ink-2); font-weight: 700; }
+.bn-kpi .vrow { display: flex; align-items: baseline; gap: 10px; margin-top: 0; flex-wrap: wrap; justify-content: flex-end; }
+.bn-kpi .v { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
 .bn-kpi .ann { font-size: 12.5px; font-weight: 700; color: var(--ace-ink-3); }
 
 /* 위험지표 가로 스트립 */

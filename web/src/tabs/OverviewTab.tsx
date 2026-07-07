@@ -170,9 +170,9 @@ export default function OverviewTab({ fundCode }: Props) {
     <section className="ov-root">
       {/* 헤더 — 목표 있는 펀드는 타이틀 우측에 목표수익률 노출 */}
       <div className="ov-head">
-        <h1>
+        <h2 className="fund-title">
           {data.fund_name} <span className="code">{data.fund_code}</span>
-        </h1>
+        </h2>
         {target != null && (
           <div className="ov-target-card">
             <div className="k">목표수익률</div>

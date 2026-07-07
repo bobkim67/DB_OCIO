@@ -569,8 +569,8 @@ export default function BrinsonTab({ fundCode }: Props) {
       )}
       {/* 헤더 */}
       <div className="bn-head">
-        <h2>
-          {data.fund_name} <span className="code">({data.fund_code})</span>
+        <h2 className="fund-title">
+          {data.fund_name} <span className="code">{data.fund_code}</span>
         </h2>
         <MetaBadge meta={data.meta} />
         {data.data_note ? (

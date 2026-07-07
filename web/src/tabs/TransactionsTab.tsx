@@ -68,12 +68,14 @@ const ASSET_ORDER: Record<string, number> = {
 export default function TransactionsTab({ fundCode }: Props) {
   const today = fmtLocal(new Date());
 
-  // 설정일(inception) — 펀드 목록(useFunds)에서 해당 펀드 메타로 조회. "YYYY-MM-DD".
+  // 설정일(inception)·펀드명 — 펀드 목록(useFunds)에서 해당 펀드 메타로 조회.
   const fundsQ = useFunds();
-  const inceptionDate = useMemo(
-    () => fundsQ.data?.data.find((f) => f.code === fundCode)?.inception ?? null,
+  const fundMeta = useMemo(
+    () => fundsQ.data?.data.find((f) => f.code === fundCode),
     [fundsQ.data, fundCode],
   );
+  const inceptionDate = fundMeta?.inception ?? null;
+  const fundName = fundMeta?.name ?? null;
 
   // ---- 거래내역 기간 ----
   const [preset, setPreset] = useState<TxnPreset>("1M");
@@ -281,6 +283,12 @@ export default function TransactionsTab({ fundCode }: Props) {
       {showLoading && (
         <div className="tx-flash"><span className="tx-spin" />데이터 불러오는 중…</div>
       )}
+      {/* ============ 펀드 타이틀 (전 탭 공통 규격) ============ */}
+      <div className="tx-fundhead">
+        <h2 className="fund-title">
+          {fundName ?? fundCode} <span className="code">{fundCode}</span>
+        </h2>
+      </div>
       {/* ============ 컨트롤: 기준(자산군↔종목) + 기간 + 직접지정 ============ */}
       <div className="tx-card">
         <div className="tx-ctrl">
@@ -294,7 +302,19 @@ export default function TransactionsTab({ fundCode }: Props) {
           </div>
           <span className="div" />
           <span className="lab">기간</span>
-          {TXN_PRESETS.map((p) => (
+          {/* 시작·종료 인풋 — 항상 노출(현재 유효 기간 표시), 수정 시 custom 진입 */}
+          <span className="tx-date">
+            <input
+              type="date" value={txnStart} max={txnEnd}
+              onChange={(e) => { setCustomStart(e.target.value); setCustomEnd(txnEnd); setPreset("custom"); }}
+            />
+            ~
+            <input
+              type="date" value={txnEnd} min={txnStart} max={today}
+              onChange={(e) => { setCustomEnd(e.target.value); setCustomStart(txnStart); setPreset("custom"); }}
+            />
+          </span>
+          {TXN_PRESETS.filter((p) => p.key !== "custom").map((p) => (
             <button
               key={p.key}
               className={`tx-chip ${preset === p.key ? "on" : ""}`}
@@ -303,19 +323,6 @@ export default function TransactionsTab({ fundCode }: Props) {
               {p.label}
             </button>
           ))}
-          {preset === "custom" && (
-            <span className="tx-date">
-              <input
-                type="date" value={customStart} max={customEnd}
-                onChange={(e) => setCustomStart(e.target.value)}
-              />
-              ~
-              <input
-                type="date" value={customEnd} min={customStart}
-                onChange={(e) => setCustomEnd(e.target.value)}
-              />
-            </span>
-          )}
         </div>
       </div>
 
@@ -324,24 +331,20 @@ export default function TransactionsTab({ fundCode }: Props) {
         <div className="tx-kpi">
           <div className="k">매수</div>
           <div className="v num up">{buySum.toFixed(1)}<small>억</small></div>
-          <div className="d">{txnStart} ~ {txnEnd}</div>
         </div>
         <div className="tx-kpi">
           <div className="k">매도</div>
           <div className="v num dn">{sellSum.toFixed(1)}<small>억</small></div>
-          <div className="d">{txnRows.length}건</div>
         </div>
         <div className="tx-kpi">
           <div className="k">순매수</div>
           <div className={`v num ${net >= 0 ? "up" : "dn"}`}>
             {net >= 0 ? "+" : "−"}{Math.abs(net).toFixed(1)}<small>억</small>
           </div>
-          <div className="d">{net >= 0 ? "순매수 우위" : "순매도 우위"}</div>
         </div>
         <div className="tx-kpi">
           <div className="k">거래 건수</div>
           <div className="v num">{txnRows.length}<small>건</small></div>
-          <div className="d">{level === "asset" ? "자산군 기준" : "종목 기준"}</div>
         </div>
       </div>
 

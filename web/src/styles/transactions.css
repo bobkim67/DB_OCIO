@@ -18,17 +18,21 @@
 .tx-seg button.on { background: var(--ace-brand); color: #fff; font-weight: 700; }
 .tx-chip { font-size: 12px; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--ace-line-2); background: #fff; color: var(--ace-ink-2); cursor: pointer; font-family: inherit; }
 .tx-chip.on { background: #EAF1F8; border-color: var(--ace-brand); color: var(--ace-brand); font-weight: 700; }
+/* 펀드 타이틀 헤더 (전 탭 공통 규격 — 타이틀 폰트는 tokens.css .fund-title)
+ * ※ .tx-head 는 섹션 헤더용 기존 클래스라 별도 클래스 사용 */
+.tx-fundhead { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
 .tx-date { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--ace-ink-2); margin-left: 2px; }
 .tx-date input { font-size: 12px; padding: 4px 7px; border: 1px solid var(--ace-line-2); border-radius: 6px; font-family: inherit; color: var(--ace-ink); }
 
 /* KPI */
 .tx-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 @media (max-width: 760px) { .tx-kpis { grid-template-columns: repeat(2, 1fr); } }
-.tx-kpi { background: var(--ace-surface); border: 1px solid var(--ace-line); border-radius: var(--ace-radius); box-shadow: var(--ace-shadow); padding: 13px 16px; }
-.tx-kpi .k { font-size: 12px; color: var(--ace-ink-2); font-weight: 600; }
-.tx-kpi .v { font-size: 24px; font-weight: 800; margin-top: 5px; line-height: 1.1; }
+/* KPI 카드 — 필드명(좌)+값(우) 한 줄 (Overview 지표카드 양식, 2026-07-07) */
+.tx-kpi { background: var(--ace-surface); border: 1px solid var(--ace-line); border-radius: var(--ace-radius); box-shadow: var(--ace-shadow); padding: 13px 16px; display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 8px; }
+.tx-kpi .k { font-size: 14px; color: var(--ace-ink-2); font-weight: 700; }
+.tx-kpi .v { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; text-align: right; }
 .tx-kpi .v small { font-size: 13px; font-weight: 700; }
-.tx-kpi .d { font-size: 11px; color: var(--ace-ink-3); margin-top: 4px; }
 
 /* 섹션/헤더 */
 .tx-sec { padding: 13px 16px 16px; }

@@ -27,3 +27,10 @@
   --ace-radius: 12px;
   --ace-radius-sm: 8px;
 }
+
+/* ---- 공용 펀드 타이틀 (전 탭 동일 규격 — 2026-07-07 통일) ----
+ * 탭별 h1/h2 크기·자간이 제각각이던 것을 단일 클래스로 고정.
+ * 각 탭 헤더 컨테이너(.ov-head/.hd-head/.bn-head/.tx-head)는 유지하되
+ * 타이틀 요소는 반드시 <h2 class="fund-title"> 사용. */
+.fund-title { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; margin: 0; line-height: 1.3; }
+.fund-title .code { color: var(--ace-ink-3); font-weight: 600; font-size: 14px; letter-spacing: 0; }
