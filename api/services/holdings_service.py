@@ -223,7 +223,15 @@ def _build_compliance(
     liq = _liquidity_weight(items)  # 유동성 자산군(현금·미수금 포함)
 
     if fund_code == "08K88":
-        rows.append(_ci("risk_asset", "위험자산", risk, high=0.92))
+        # 자산군별 비중 모니터링 (2026-07-07 사용자 제공 — 구 '위험자산 ≤92%' 대체):
+        # SAA 해외주식 56 / 국내주식 24 / 해외채권 10 / 국내채권 10 (%),
+        # 허용범위 해외주식 ±12%p · 국내주식 ±8%p · 채권 ±2%p
+        def _acw(ac: str) -> float:
+            return sum(it.weight for it in items if it.asset_class == ac)
+        rows.append(_ci("fstk", "해외주식", _acw("해외주식"), low=0.44, high=0.68))
+        rows.append(_ci("kstk", "국내주식", _acw("국내주식"), low=0.16, high=0.32))
+        rows.append(_ci("fbond", "해외채권", _acw("해외채권"), low=0.08, high=0.12))
+        rows.append(_ci("kbond", "국내채권", _acw("국내채권"), low=0.08, high=0.12))
 
     elif fund_code == "2JM23":
         # 위험자산 ≤80% (= 안전자산 ≥20% 동치, 타 펀드와 표기 일관성)

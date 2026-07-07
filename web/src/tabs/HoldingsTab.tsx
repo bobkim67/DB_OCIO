@@ -103,7 +103,17 @@ export default function HoldingsTab({ fundCode }: Props) {
   return (
     <section className="hd-root">
       <div className="hd-head">
-        <h2>{data.fund_name} <span className="code">{data.fund_code}</span></h2>
+        <h2 className="fund-title">{data.fund_name} <span className="code">{data.fund_code}</span></h2>
+        <span className="tx-date" title="기준일자 지정 — 주말·공휴일 선택 시 직전 영업일 스냅샷. 비우면 최신일.">
+          기준일
+          <input type="date" value={asOf} max={todayStr()}
+            onChange={(e) => setAsOf(e.target.value)} />
+          {asOf && (
+            <button type="button" className="hd-expand" onClick={() => setAsOf("")}>
+              최신
+            </button>
+          )}
+        </span>
         <div className="nav num">순자산 <b>{eok(data.nast_amt)}</b>{data.as_of_date ? ` · 기준일자 ${data.as_of_date}` : ""}
           {data.data_note ? (
             <span title="환매정산중: 환매가 잡혔으나 증권 미매도로 증권평가>NAST → 비중이 왜곡되어 직전 정상일을 표시합니다."
@@ -117,17 +127,6 @@ export default function HoldingsTab({ fundCode }: Props) {
             <span style={{ marginLeft: 8, fontSize: 11, color: "#16a34a", fontWeight: 600 }}>✔ 확정</span>
           )}
         </div>
-        <label className="hd-lt" title="기준일자 지정 — 주말·공휴일 선택 시 직전 영업일 스냅샷. 비우면 최신일.">
-          기준일
-          <input type="date" value={asOf} max={todayStr()}
-            onChange={(e) => setAsOf(e.target.value)}
-            style={{ marginLeft: 4, fontSize: 12, fontFamily: "inherit" }} />
-          {asOf && (
-            <button type="button" className="hd-expand" style={{ marginLeft: 4 }} onClick={() => setAsOf("")}>
-              최신
-            </button>
-          )}
-        </label>
         <label className="hd-lt">
           <input type="checkbox" checked={lookthrough} onChange={(e) => setLookthrough(e.target.checked)} />
           look-through{data.lookthrough_applied ? " (적용)" : ""}
@@ -371,71 +370,96 @@ function Gauge({ c, setTip }: { c: ComplianceItemDTO; setTip: (t: Tip) => void }
   const T = kind === "min" ? lo! : hi ?? null; // 기준선 위치
   const axisRef = kind === "band" ? hi! : T ?? V;
   const axisMax = Math.max(V, axisRef ?? V, 0.0001) * 1.18;
-  const P = (x: number) => Math.min(100, Math.max(0, (x / axisMax) * 100));
+  // band 는 0 시작이 아니라 가이드 레인지 중심 축 (2026-07-07 사용자 지정):
+  // 허용구간(lo~hi)이 트랙 중앙을 차지하고 양옆이 위반 구간(옅은 빨강)으로 보이도록.
+  const span = kind === "band" ? hi! - lo! : 0;
+  const bandLo = kind === "band" ? Math.max(0, Math.min(lo! - span * 0.6, V - span * 0.2)) : 0;
+  const bandHi = kind === "band" ? Math.max(hi! + span * 0.6, V + span * 0.2) : axisMax;
+  const P = (x: number) =>
+    kind === "band"
+      ? Math.min(100, Math.max(0, ((x - bandLo) / Math.max(bandHi - bandLo, 1e-9)) * 100))
+      : Math.min(100, Math.max(0, (x / axisMax) * 100));
   const pp = (x: number) => `${P(x)}%`;
   const pc0 = (x: number) => `${(x * 100).toFixed(0)}%`;
 
   const stColor =
     c.status === "breach" ? "#C0392B" : c.status === "warn" ? "#C8862B" : c.status === "ok" ? "#2E9E7B" : "#557EAA";
-  const over = kind === "max" && hi != null && V > hi ? V - hi : 0;
-  const short = kind === "min" && lo != null && V < lo ? lo - V : 0;
+  const over = (kind === "max" || kind === "band") && hi != null && V > hi ? V - hi : 0;
+  const short = (kind === "min" || kind === "band") && lo != null && V < lo ? lo - V : 0;
 
-  // 기준선 마커 레전드 (툴팁용, 가이드 임계값 포함)
-  const markerLeg =
-    kind === "ref" ? `SAA 목표 ${pc0(hi!)}`
-    : kind === "max" ? `가이드 기준선(≤${pc0(hi!)})`
-    : kind === "min" ? `가이드 기준선(≥${pc0(lo!)})`
-    : kind === "band" ? `가이드 기준선(${pc0(lo!)}~${pc0(hi!)})`
-    : "가이드 미설정";
   // 기준선 바로 위 라벨 (≤x% 등)
   const mkLabel =
     kind === "max" ? `≤${pc0(hi!)}`
     : kind === "min" ? `≥${pc0(lo!)}`
-    : kind === "band" ? `${pc0(lo!)}~${pc0(hi!)}`
+    : kind === "band" ? ""  /* band 라벨은 하한·상한 개별 표시 (아래 mkrow 분기) */
     : kind === "ref" ? `SAA ${pc0(hi!)}`
     : "";
   const mkLeft = T != null ? Math.min(92, Math.max(8, P(T))) : 0;
+  const clampPct = (x: number) => Math.min(92, Math.max(8, P(x)));
 
   let note = "", noteCls = "ok";
   if (over > 0) { note = `초과 +${(over * 100).toFixed(1)}%p`; noteCls = "bad"; }
   else if (short > 0) { note = `미달 −${(short * 100).toFixed(1)}%p`; noteCls = "bad"; }
+  else if (kind === "band") { note = `여유 ±${(Math.min(hi! - V, V - lo!) * 100).toFixed(1)}%p`; noteCls = "ok"; }
   else if (isRef) { const d = V - hi!; note = `현재 ${d >= 0 ? "+" : "−"}${(Math.abs(d) * 100).toFixed(1)}%p vs SAA`; noteCls = "ref"; }
   else if (kind === "max") { note = `여유 +${((hi! - V) * 100).toFixed(1)}%p`; noteCls = "ok"; }
   else if (kind === "min") { note = `여유 +${((V - lo!) * 100).toFixed(1)}%p`; noteCls = "ok"; }
 
-  const tipLines = [c.label, `현재 ${pct1(V)} · ${markerLeg}`, `${isRef ? "비교" : STATUS_LABEL[c.status]}${note ? ` · ${note}` : ""}`];
+  // 툴팁: `{자산군}({상태})` + `현재 x% · 가이드(중심 ±허용%p)` — 여유 표기는 제거,
+  // 위반/미달·SAA 비교만 정보성으로 덧붙임 (2026-07-07 사용자 지정)
+  const statusTxt = isRef ? "비교" : STATUS_LABEL[c.status];
+  const guideTxt =
+    kind === "band" ? `가이드(${pc0((lo! + hi!) / 2)} ±${(((hi! - lo!) / 2) * 100).toFixed(0)}%p)`
+    : kind === "max" ? `가이드(≤${pc0(hi!)})`
+    : kind === "min" ? `가이드(≥${pc0(lo!)})`
+    : kind === "ref" ? `SAA 목표 ${pc0(hi!)}`
+    : "가이드 미설정";
+  const tipNote = (noteCls === "bad" || noteCls === "ref") && note ? ` · ${note}` : "";
+  const tipLines = [`${c.label}(${statusTxt})`, `현재 ${pct1(V)} · ${guideTxt}${tipNote}`];
 
   return (
     <div className="hd-card hd-g2"
       onMouseMove={(e) => setTip({ x: e.clientX, y: e.clientY, lines: tipLines })}
       onMouseLeave={() => setTip(null)}>
+      {/* 타이틀 행 — 라벨 + 상태칩 + 값(우측) 한 줄 (Overview 지표카드 양식) */}
       <div className="t">
         <span className="lbl">{c.label}{c.breakdown ? <span className="bd">({c.breakdown})</span> : null}</span>
-        <span className={`st ${c.status}`}>{isRef ? "비교" : STATUS_LABEL[c.status]}</span>
-      </div>
-      <div className="vrow">
+        <span className={`st ${c.status}`}>{statusTxt}</span>
         <span className="v num">{pct1(V)}</span>
-        {note && <span className={`vn ${noteCls}`}>{note}</span>}
       </div>
-      {T != null && mkLabel && (
-        <div className="mkrow"><span className="mklab" style={{ left: `${mkLeft}%` }}>{mkLabel}</span></div>
+      {kind === "band" ? (
+        /* 레인지 라벨 — 하한·상한 경계 바로 위에 각각 표시 (2026-07-07) */
+        <div className="mkrow">
+          <span className="mklab" style={{ left: `${clampPct(lo!)}%` }}>{pc0(lo!)}</span>
+          <span className="mklab" style={{ left: `${clampPct(hi!)}%` }}>{pc0(hi!)}</span>
+        </div>
+      ) : (
+        T != null && mkLabel && (
+          <div className="mkrow"><span className="mklab" style={{ left: `${mkLeft}%` }}>{mkLabel}</span></div>
+        )
       )}
       <div className="track2">
         {kind === "max" && (<><div className="zone ok" style={{ left: 0, width: pp(hi!) }} /><div className="zone bad" style={{ left: pp(hi!), right: 0 }} /></>)}
         {kind === "min" && (<><div className="zone bad" style={{ left: 0, width: pp(lo!) }} /><div className="zone ok" style={{ left: pp(lo!), right: 0 }} /></>)}
         {kind === "band" && (<><div className="zone bad" style={{ left: 0, width: pp(lo!) }} /><div className="zone ok" style={{ left: pp(lo!), width: `${P(hi!) - P(lo!)}%` }} /><div className="zone bad" style={{ left: pp(hi!), right: 0 }} /></>)}
         {kind === "ref" && <div className="zone neu" style={{ left: 0, right: 0 }} />}
-        {/* 값 막대: 초과 시 허용분(녹)+초과분(빨강) 분리 */}
-        <div className="fill2" style={{ width: pp(over > 0 ? hi! : V), background: over > 0 ? "#2E9E7B" : stColor }} />
-        {over > 0 && <div className="fill2 over" style={{ left: pp(hi!), width: `${P(V) - P(hi!)}%` }} />}
-        {short > 0 && <div className="gap2" style={{ left: pp(V), width: `${P(lo!) - P(V)}%` }} />}
-        {/* 가이드 기준선 */}
-        {T != null && <div className="mk" style={{ left: pp(T) }} />}
+        {/* 값 표시: band=현재 위치 마커(축이 0 시작이 아님) / 그 외=0 기반 막대 */}
+        {kind === "band" ? (
+          <div className="vmk" style={{ left: pp(V), background: stColor }} />
+        ) : (
+          <>
+            <div className="fill2" style={{ width: pp(over > 0 ? hi! : V), background: over > 0 ? "#2E9E7B" : stColor }} />
+            {over > 0 && <div className="fill2 over" style={{ left: pp(hi!), width: `${P(V) - P(hi!)}%` }} />}
+            {short > 0 && <div className="gap2" style={{ left: pp(V), width: `${P(lo!) - P(V)}%` }} />}
+          </>
+        )}
+        {/* 가이드 기준선 — band 는 허용/위반 존 색 경계로 충분해 별도 마커 없음 (2026-07-07) */}
+        {kind !== "band" && T != null && <div className="mk" style={{ left: pp(T) }} />}
       </div>
       {kind !== "ref" && kind !== "none" && (
         <div className="mleg">
           <span className="li"><span className="zsw zok" />허용 구간</span>
-          <span className="li"><span className="zsw zbad" />위반·초과 구간</span>
+          <span className="li"><span className="zsw zbad" />초과 구간</span>
         </div>
       )}
     </div>
