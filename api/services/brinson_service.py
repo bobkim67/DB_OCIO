@@ -81,7 +81,9 @@ def _resolve_default_period(fund_code: str) -> tuple[date, date]:
     """
     end = _yesterday_kst()
     year = end.year
-    ytd_start = date(year - 1, 12, 31)
+    # YTD 시작 = 1/1 (엔진 규약: start=첫 수익 인식일, base=전년말).
+    # 12/31 을 넘기면 base 가 12/30 으로 하루 밀려 R 대비 bp 왜곡 (2026-07-06 07G07 진단).
+    ytd_start = date(year, 1, 1)
     inception_str = (FUND_META.get(fund_code, {}) or {}).get("inception", "20220101")
     try:
         inception_dt = datetime.strptime(inception_str, "%Y%m%d").date()
@@ -643,7 +645,7 @@ def _period_start(period: str, end: date, inception: date | None) -> date | None
     elif period == "1Y":
         s = end - relativedelta(years=1)
     elif period == "YTD":
-        s = date(end.year - 1, 12, 31)
+        s = date(end.year, 1, 1)  # base=전년말 (엔진 start=첫 수익 인식일 규약)
     elif period == "SI":
         s = inception
     else:

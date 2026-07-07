@@ -127,7 +127,7 @@ def _duration_info(fund_code: str, end_d: date):
 
 def _period_label(s: date, e: date) -> str:
     """시트명용 기간 라벨 — 1M/3M/6M/1Y/YTD, 그 외 '기간'."""
-    if s == date(e.year - 1, 12, 31):
+    if s in (date(e.year, 1, 1), date(e.year - 1, 12, 31)):
         return "YTD"
     d = (e - s).days
     if 25 <= d <= 35:
@@ -567,7 +567,7 @@ def build_brinson_export_xlsx(
     _lbl1 = _period_label(br.start_date, br.end_date)
     _write_hierarchy_sheet(wb, br1, br3, dur_info, fmts, f"성과분석({_lbl1})")
     if _lbl1 != "YTD":
-        _ytd_s = date(br.end_date.year - 1, 12, 31)
+        _ytd_s = date(br.end_date.year, 1, 1)  # base=전년말 (start=첫 수익 인식일 규약)
         try:
             _inc_d = datetime.strptime(inc_str, "%Y%m%d").date()
             if _inc_d > _ytd_s:

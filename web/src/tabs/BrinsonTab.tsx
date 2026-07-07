@@ -77,7 +77,7 @@ const PERIOD_COLS: [string, string][] = [
 function ytdStartFor(inception: string | null | undefined): string {
   const today = new Date();
   const year = today.getFullYear();
-  const ytd = `${year - 1}-12-31`;
+  const ytd = `${year}-01-01`; // base=전년말 (백엔드 start=첫 수익 인식일 규약, 2026-07-06)
   if (!inception) return ytd;
   const norm = inception.includes("-")
     ? inception
@@ -114,6 +114,7 @@ function inceptionStr(inception: string | null | undefined): string {
 }
 
 // 기간 preset (거래내역 탭과 동일 칩 UI). 종료일은 성과분석 규칙대로 어제(custom 제외).
+// "custom"은 칩 없이 내부 상태로만 사용 — DateField 수동 편집 시 진입(칩 하이라이트 해제).
 type BnPreset = "MTD" | "1M" | "3M" | "6M" | "YTD" | "since" | "custom";
 const BN_PRESETS: { key: BnPreset; label: string }[] = [
   { key: "MTD", label: "당월" },
@@ -122,7 +123,6 @@ const BN_PRESETS: { key: BnPreset; label: string }[] = [
   { key: "6M", label: "6개월" },
   { key: "YTD", label: "연초이후" },
   { key: "since", label: "설정후" },
-  { key: "custom", label: "직접 지정" },
 ];
 
 // 종목표 정렬 키
