@@ -50,11 +50,7 @@
 .hd-g2 .zone { position: absolute; top: 0; height: 100%; }
 .hd-g2 .zone.ok { background: rgba(46, 125, 82, 0.12); }
 .hd-g2 .zone.bad { background: rgba(192, 57, 43, 0.10); }
-.hd-g2 .fill2 { position: absolute; top: 3px; height: 8px; left: 0; border-radius: 4px; }
-.hd-g2 .fill2.over { border-radius: 0 4px 4px 0; background: #C0392B; }
-.hd-g2 .gap2 { position: absolute; top: 3px; height: 8px; border-radius: 2px; background: repeating-linear-gradient(45deg, rgba(192,57,43,0.55) 0 4px, transparent 4px 8px); }
-.hd-g2 .mk { position: absolute; top: -2px; height: 18px; width: 3px; background: var(--ace-ink); border-radius: 2px; z-index: 4; }
-/* band 게이지 현재값 마커 (축이 레인지 중심이라 0-기반 막대 대신 위치 핀) */
+/* 현재값 마커 — 상태색 세로 핀 (전 게이지 공통, 2026-07-07 통일) */
 .hd-g2 .vmk { position: absolute; top: -3px; height: 20px; width: 5px; border-radius: 3px; transform: translateX(-50%); z-index: 5; box-shadow: 0 0 0 1.5px #fff; }
 /* 카드 내 하단 레전드 — 허용/위반 구간 + 가이드 기준선 */
 .hd-g2 .mleg { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 9px; font-size: 11px; color: var(--ace-ink-2); font-weight: 600; }

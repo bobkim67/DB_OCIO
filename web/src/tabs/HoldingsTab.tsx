@@ -443,18 +443,9 @@ function Gauge({ c, setTip }: { c: ComplianceItemDTO; setTip: (t: Tip) => void }
         {kind === "min" && (<><div className="zone bad" style={{ left: 0, width: pp(lo!) }} /><div className="zone ok" style={{ left: pp(lo!), right: 0 }} /></>)}
         {kind === "band" && (<><div className="zone bad" style={{ left: 0, width: pp(lo!) }} /><div className="zone ok" style={{ left: pp(lo!), width: `${P(hi!) - P(lo!)}%` }} /><div className="zone bad" style={{ left: pp(hi!), right: 0 }} /></>)}
         {kind === "ref" && <div className="zone neu" style={{ left: 0, right: 0 }} />}
-        {/* 값 표시: band=현재 위치 마커(축이 0 시작이 아님) / 그 외=0 기반 막대 */}
-        {kind === "band" ? (
-          <div className="vmk" style={{ left: pp(V), background: stColor }} />
-        ) : (
-          <>
-            <div className="fill2" style={{ width: pp(over > 0 ? hi! : V), background: over > 0 ? "#2E9E7B" : stColor }} />
-            {over > 0 && <div className="fill2 over" style={{ left: pp(hi!), width: `${P(V) - P(hi!)}%` }} />}
-            {short > 0 && <div className="gap2" style={{ left: pp(V), width: `${P(lo!) - P(V)}%` }} />}
-          </>
-        )}
-        {/* 가이드 기준선 — band 는 허용/위반 존 색 경계로 충분해 별도 마커 없음 (2026-07-07) */}
-        {kind !== "band" && T != null && <div className="mk" style={{ left: pp(T) }} />}
+        {/* 현재 비중 = 상태색 세로 핀 (전 종류 공통, 2026-07-07 통일).
+            가이드 기준선(검정)은 제거 — 존 색 경계 + 경계 위 라벨로 표시 */}
+        <div className="vmk" style={{ left: pp(V), background: stColor }} />
       </div>
       {kind !== "ref" && kind !== "none" && (
         <div className="mleg">
