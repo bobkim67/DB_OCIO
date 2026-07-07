@@ -36,6 +36,8 @@ export default function OverviewTab({ fundCode }: Props) {
   // 비교선 토글: 목표/벤치(SAA/BM) 독립 ON/OFF — 둘 다 켜거나 둘 다 끌 수 있음 (2026-07-03 사용자 지정).
   const [benchOn, setBenchOn] = useState(true);
   const [targetOn, setTargetOn] = useState(false);
+  // 연환산 표시 토글 — ON 시 수익률 카드·차트 pcards 를 연환산 값으로 전환 (2026-07-07)
+  const [annualize, setAnnualize] = useState(false);
 
   // 조회기간(날짜 윈도우) — 기본 전체 구간(설정후). 펀드 변경 시 리셋.
   const series = data?.nav_series ?? [];
@@ -105,6 +107,16 @@ export default function OverviewTab({ fundCode }: Props) {
     benchActive ? bmpr[k] ?? null : targetActive ? targetForPeriod(k) : null;
   const baseLabel = benchActive ? benchLabel : "목표";
 
+  // 연환산 — R v3 동일 공식 (1+기간수익률)^(365.25/일수) - 1
+  const annualizeBy = (r: number | null, days: number | null): number | null =>
+    r == null || days == null || days <= 0 || r <= -1 ? null : Math.pow(1 + r, 365.25 / days) - 1;
+  const periodDaysOf = (k: string): number | null => {
+    if (!asof) return null;
+    if (k === "SI") return inception ? Math.max(daysBetween(inception, asof), 1) : null;
+    if (k === "YTD") return Math.max(daysBetween(`${asof.slice(0, 4)}-01-01`, asof), 1);
+    return TARGET_DAYS[k] ?? null;
+  };
+
   // 지표카드 데이터
   const navPrice = fm?.nav ?? series[series.length - 1]?.nav ?? null;
   const last = series[series.length - 1];
@@ -121,14 +133,20 @@ export default function OverviewTab({ fundCode }: Props) {
   const bmEqW = data.bm_equity_weight ?? null;
   const eqDiff = eqW != null && bmEqW != null ? eqW - bmEqW : null;
 
-  // 수익률 카드(설정후/YTD 토글) — 활성 기준선 대비
+  // 수익률 카드(설정후/YTD 토글) — 활성 기준선 대비. 연환산 ON 시 연환산 값으로 전환.
   const portRet = pr[retMode] ?? null;
   const baseRet = baseForPeriod(retMode);
-  const baseDelta = portRet != null && baseRet != null ? portRet - baseRet : null;
+  const portRetD = annualize ? annualizeBy(portRet, periodDaysOf(retMode)) : portRet;
+  const baseRetD = annualize
+    ? (benchActive ? annualizeBy(baseRet, periodDaysOf(retMode)) : baseRet != null ? target : null)
+    : baseRet;
+  const baseDeltaD = portRetD != null && baseRetD != null ? portRetD - baseRetD : null;
 
   // 차트 윈도우(pcards) 수익률
   const wf = sliced[0];
   const wl = sliced[sliced.length - 1];
+  const winDays = wf && wl ? Math.max(daysBetween(wf.date, wl.date), 1) : null;
+  const annWin = (r: number | null) => annualizeBy(r, winDays);
   const winPort = sliced.length >= 2 && wf?.nav ? wl.nav / wf.nav - 1 : null;
   const winBench =
     hasBench && wf?.bm != null && wl?.bm != null && wf.bm ? wl.bm / wf.bm - 1 : null;
@@ -173,12 +191,7 @@ export default function OverviewTab({ fundCode }: Props) {
         <h2 className="fund-title">
           {data.fund_name} <span className="code">{data.fund_code}</span>
         </h2>
-        {target != null && (
-          <div className="ov-target-card">
-            <div className="k">목표수익률</div>
-            <div className="v num">연 {(target * 100).toFixed(1)}%</div>
-          </div>
-        )}
+        {/* 목표수익률 카드는 차트 패널 pcards(BM 우측)로 이동 — 타이틀 행 높이 통일 (2026-07-07) */}
       </div>
 
       {/* 메타바 */}
@@ -229,21 +242,21 @@ export default function OverviewTab({ fundCode }: Props) {
           </div>
         </div>
 
-        {/* 수익률 (설정후/YTD 토글) */}
+        {/* 수익률 (설정후/YTD 토글, 연환산 토글 연동) */}
         <div className="ov-stat">
           <div className="ov-stat-top">
-            <span className="label">수익률</span>
+            <span className="label">수익률{annualize ? <span className="sub"> 연환산</span> : null}</span>
             <div className="ov-ctoggle">
               <button type="button" className={retMode === "SI" ? "on" : ""} onClick={() => setRetMode("SI")}>설정후</button>
               <button type="button" className={retMode === "YTD" ? "on" : ""} onClick={() => setRetMode("YTD")}>YTD</button>
             </div>
-            <span className={`val num ${sign(portRet)}`}>{pctSigned(portRet)}</span>
+            <span className={`val num ${sign(portRetD)}`}>{pctSigned(portRetD)}</span>
           </div>
           <div className="cmp">
             {benchActive || targetActive ? (
               <>
-                {baseLabel} <span className="num">{pct(baseRet)}</span>{" "}
-                {baseDelta != null && <span className={`delta ${sign(baseDelta)} num`}>({pctpSigned(baseDelta)})</span>}
+                {baseLabel} <span className="num">{pct(baseRetD)}</span>{" "}
+                {baseDeltaD != null && <span className={`delta ${sign(baseDeltaD)} num`}>({pctpSigned(baseDeltaD)})</span>}
               </>
             ) : <span className="num">{" "}</span>}
           </div>
@@ -309,21 +322,40 @@ export default function OverviewTab({ fundCode }: Props) {
               ))}
             </div>
           </div>
+          {/* 연환산 토글 — ON 시 pcards·상단 수익률 카드 연환산 (2026-07-07) */}
+          <div className="ov-field">
+            <label>연환산</label>
+            <div className="ov-presets">
+              <button type="button" className={annualize ? "on" : ""} onClick={() => setAnnualize((v) => !v)}>
+                {annualize ? "ON" : "OFF"}
+              </button>
+            </div>
+          </div>
           <div className="ov-pcards">
             <div className="ov-pcard">
               <div className="k">포트</div>
-              <div className={`v num ${sign(winPort)}`}>{pctSigned(winPort)}</div>
-            </div>
-            {hasTarget && (
-              <div className={`ov-pcard goal ${targetOn ? "sel" : "off"}`} onClick={() => setTargetOn((v) => !v)}>
-                <div className="k">목표<span className="tag">{targetOn ? "ON" : "OFF"}</span></div>
-                <div className="v num">{pctSigned(winTarget)}</div>
+              <div className={`v num ${sign(winPort)}`}>
+                {pctSigned(annualize ? annWin(winPort) : winPort)}
+                <span className="sub num">
+                  {annualize ? ` (기간 ${pctSigned(winPort)})` : ` (연 ${pctSigned(annWin(winPort))})`}
+                </span>
               </div>
-            )}
+            </div>
             {hasBench && (
               <div className={`ov-pcard saa ${benchOn ? "sel" : "off"}`} onClick={() => setBenchOn((v) => !v)}>
                 <div className="k">{benchLabel}<span className="tag">{benchOn ? "ON" : "OFF"}</span></div>
-                <div className="v num">{pctSigned(winBench)}</div>
+                <div className="v num">{pctSigned(annualize ? annWin(winBench) : winBench)}</div>
+              </div>
+            )}
+            {hasTarget && (
+              <div className={`ov-pcard goal ${targetOn ? "sel" : "off"}`} onClick={() => setTargetOn((v) => !v)}>
+                <div className="k">목표수익률<span className="tag">{targetOn ? "ON" : "OFF"}</span></div>
+                <div className="v num">
+                  {annualize ? `연 ${pct(target)}` : pctSigned(winTarget)}
+                  <span className="sub num">
+                    {annualize ? ` (기간 ${pctSigned(winTarget)})` : ` (연 ${pct(target)})`}
+                  </span>
+                </div>
               </div>
             )}
           </div>

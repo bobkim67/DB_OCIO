@@ -27,13 +27,8 @@
   gap: 14px; margin-bottom: 12px; flex-wrap: wrap;
 }
 /* 타이틀 폰트는 공용 .fund-title(tokens.css) 사용 — 탭별 정의 금지 */
-.ov-target-card {
-  padding: 5px 14px;
-  border: 1px solid rgba(176, 122, 43, 0.35); background: rgba(176, 122, 43, 0.07);
-  border-radius: var(--ace-radius-sm);
-}
-.ov-target-card .k { font-size: 11px; color: var(--ace-ink-3); }
-.ov-target-card .v { font-size: 16px; font-weight: 800; color: var(--ace-saa); line-height: 1.25; }
+/* (목표수익률 카드는 pcards 로 이동 — .ov-target-card 폐기, 2026-07-07) */
+.ov-pcard .sub { font-size: 10px; color: var(--ace-ink-3); font-weight: 600; }
 .ov-asof { display: flex; align-items: center; gap: 8px; }
 .ov-asof .lbl { font-size: 11px; color: var(--ace-ink-3); font-weight: 600; }
 .ov-chip {

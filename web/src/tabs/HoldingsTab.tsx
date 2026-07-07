@@ -104,16 +104,6 @@ export default function HoldingsTab({ fundCode }: Props) {
     <section className="hd-root">
       <div className="hd-head">
         <h2 className="fund-title">{data.fund_name} <span className="code">{data.fund_code}</span></h2>
-        <span className="tx-date" title="기준일자 지정 — 주말·공휴일 선택 시 직전 영업일 스냅샷. 비우면 최신일.">
-          기준일
-          <input type="date" value={asOf} max={todayStr()}
-            onChange={(e) => setAsOf(e.target.value)} />
-          {asOf && (
-            <button type="button" className="hd-expand" onClick={() => setAsOf("")}>
-              최신
-            </button>
-          )}
-        </span>
         <div className="nav num">순자산 <b>{eok(data.nast_amt)}</b>{data.as_of_date ? ` · 기준일자 ${data.as_of_date}` : ""}
           {data.data_note ? (
             <span title="환매정산중: 환매가 잡혔으나 증권 미매도로 증권평가>NAST → 비중이 왜곡되어 직전 정상일을 표시합니다."
@@ -131,6 +121,22 @@ export default function HoldingsTab({ fundCode }: Props) {
           <input type="checkbox" checked={lookthrough} onChange={(e) => setLookthrough(e.target.checked)} />
           look-through{data.lookthrough_applied ? " (적용)" : ""}
         </label>
+      </div>
+
+      {/* 컨트롤 패널 — 기준일 (거래내역 컨트롤 카드 양식, 타이틀 행 높이 통일용) */}
+      <div className="hd-card hd-mb">
+        <div className="tx-ctrl">
+          <span className="lab">기준일</span>
+          <span className="tx-date" title="기준일자 지정 — 주말·공휴일 선택 시 직전 영업일 스냅샷. 비우면 최신일.">
+            <input type="date" value={asOf} max={todayStr()}
+              onChange={(e) => setAsOf(e.target.value)} />
+            {asOf && (
+              <button type="button" className="hd-expand" onClick={() => setAsOf("")}>
+                최신
+              </button>
+            )}
+          </span>
+        </div>
       </div>
 
       {isEmpty ? (
