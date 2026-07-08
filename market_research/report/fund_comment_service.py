@@ -239,6 +239,88 @@ def _summarize_fund_data_for_prompt(pa: dict, holdings: dict,
     return summary
 
 
+def _load_position_events(fund_code: str, prev_last: int, cur_last: int) -> list[str]:
+    """기간초 vs 기간말 보유 스냅샷 diff — 전량 편출 / 신규 편입 / 비중 급변.
+
+    자산군 순매수 합계만으로는 '전량 편출' 이벤트가 드러나지 않아 코멘트가
+    "비중 축소"로 잘못 서술하는 문제 방지 (2026-07-08 사용자 피드백, DB생명 2Q).
+    선물(롤오버 노이즈)·예금·증거금 등 비증권 계정은 제외.
+    """
+    from modules.data_loader import get_connection
+
+    import re
+
+    EXCLUDE_KW = ('예금', '증거금', '미지급', '미수', '원천세', '선물')
+    _FUT_PAT = re.compile(r' F \d{6}$')  # 선물 월물 (예: '미국달러 F 202607') — 롤오버 노이즈 제외
+
+    def _skip(cd: str, nm: str) -> bool:
+        return cd.isdigit() or any(k in nm for k in EXCLUDE_KW) or bool(_FUT_PAT.search(nm))
+
+    def _one(row, key):
+        # get_connection 은 DictCursor — dict/tuple 모두 대응
+        if row is None:
+            return None
+        return row[key] if isinstance(row, dict) else row[0]
+
+    def _snapshot(cur, dt_str: str) -> dict:
+        cur.execute(
+            "SELECT ITEM_CD, ITEM_NM, SUM(EVL_AMT) AS EVL FROM DWPM10530 "
+            "WHERE FUND_CD=%s AND STD_DT=%s GROUP BY ITEM_CD, ITEM_NM "
+            "HAVING SUM(EVL_AMT) != 0", (fund_code, dt_str))
+        rows = cur.fetchall()
+        cur.execute("SELECT NAST_AMT FROM DWPM10510 WHERE FUND_CD=%s AND STD_DT=%s",
+                    (fund_code, dt_str))
+        nast_v = _one(cur.fetchone(), 'NAST_AMT')
+        nast = float(nast_v) if nast_v else None
+        snap = {}
+        if not nast:
+            return snap
+        for row in rows:
+            if isinstance(row, dict):
+                cd, nm, evl = row['ITEM_CD'], row['ITEM_NM'], row['EVL']
+            else:
+                cd, nm, evl = row
+            cd_s, nm_s = str(cd), str(nm or '')
+            if _skip(cd_s, nm_s):
+                continue
+            snap[cd_s] = (nm_s, float(evl) / nast * 100)
+        return snap
+
+    conn = get_connection('dt')
+    try:
+        cur = conn.cursor()
+        s0 = _snapshot(cur, str(int(prev_last)))
+        s1 = _snapshot(cur, str(int(cur_last)))
+        events = []
+        # 전량 편출 (기초 0.5% 이상 → 기말 0). 마지막 보유일 명시.
+        for cd, (nm, w0) in sorted(s0.items(), key=lambda x: -x[1][1]):
+            if cd not in s1 and w0 >= 0.5:
+                cur.execute(
+                    "SELECT MAX(STD_DT) AS MX FROM DWPM10530 WHERE FUND_CD=%s AND ITEM_CD=%s "
+                    "AND STD_DT BETWEEN %s AND %s AND EVL_AMT > 0",
+                    (fund_code, cd, str(int(prev_last)), str(int(cur_last))))
+                mx = _one(cur.fetchone(), 'MX')
+                last_dt = str(mx) if mx else ''
+                tail = f' ({last_dt[4:6]}/{last_dt[6:8]}까지 보유 후 편출)' if len(last_dt) == 8 else ''
+                events.append(f'- 전량 편출: {nm} — 기초 {w0:.1f}% → 기말 0%{tail}')
+        # 신규 편입 (기초 0 → 기말 0.5% 이상)
+        for cd, (nm, w1) in sorted(s1.items(), key=lambda x: -x[1][1]):
+            if cd not in s0 and w1 >= 0.5:
+                events.append(f'- 신규 편입: {nm} — 기초 0% → 기말 {w1:.1f}%')
+        # 비중 급변 (양쪽 보유): ±3%p 이상 또는 포지션의 25% 이상 증감(기초 1% 이상)
+        for cd, (nm, w0) in sorted(s0.items(), key=lambda x: -x[1][1]):
+            if cd in s1:
+                w1 = s1[cd][1]
+                big_abs = abs(w1 - w0) >= 3.0
+                big_rel = w0 >= 1.0 and abs(w1 - w0) / w0 >= 0.25
+                if big_abs or big_rel:
+                    d = '축소' if w1 < w0 else '확대'
+                    events.append(f'- 비중 {d}: {nm} — {w0:.1f}% → {w1:.1f}%')
+        return events
+    finally:
+        conn.close()
+
+
 # ══════════════════════════════════════════
 # 펀드 코멘트 생성 + 저장
 # ══════════════════════════════════════════
@@ -352,6 +434,14 @@ def generate_fund_comment_and_save(
         except Exception as e:
             data_warnings.append(f'거래내역 로드 실패: {e}')
 
+    # 4.5. 종목 편출입 이벤트 — 자산군 합계가 못 잡는 전량 편출/신규 편입 (2026-07-08)
+    position_events = []
+    if prev_last and cur_last:
+        try:
+            position_events = _load_position_events(fund_code, prev_last, cur_last)
+        except Exception as e:
+            data_warnings.append(f'편출입 이벤트 로드 실패: {e}')
+
     # 5. 가격 패턴
     price_patterns = {}
     if prev_last and cur_last:
@@ -387,6 +477,14 @@ def generate_fund_comment_and_save(
     additional_parts = []
     if fund_summary.get('trades_summary'):
         additional_parts.append(f'[기간 중 거래 요약]\n{fund_summary["trades_summary"]}')
+
+    # 종목 편출입 이벤트 — 사실 관계 강제 (전량 편출을 "비중 축소"로 쓰는 오류 방지)
+    if position_events:
+        additional_parts.append(
+            '[기간 중 종목 편출입·비중 변화 (사실 — 반드시 준수)]\n'
+            + '\n'.join(position_events)
+            + '\n(주의: 위 사실과 어긋나는 서술 금지. 전량 편출된 종목/자산을 "비중 축소" 또는 '
+              '"보유 지속·전략 유지"로 쓰지 말고, 편출 사실을 운용 서술에 반영할 것.)')
 
     # (편입 제한은 market_view 상단에서 이미 처리됨)
 
@@ -475,6 +573,7 @@ def generate_fund_comment_and_save(
             'holdings_top3': sorted(holdings_end.items(), key=lambda x: -x[1])[:3] if holdings_end else [],
             'fund_return': fund_ret,
             'trades': trades,
+            'position_events': position_events,
         },
         'inputs_used': inputs_used,
         'edit_history': [],
