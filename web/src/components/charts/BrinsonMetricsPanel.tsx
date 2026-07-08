@@ -39,39 +39,47 @@ export default function BrinsonMetricsPanel({ daily, hasBm, rfPeriod }: Props) {
       </div>
       <div className="bn-mstrip">
         <div className="bn-mitem">
-          <div className="k">연율화 변동성</div>
-          <div className="vrow">
+          <div className="bn-mitem-top">
+            <span className="k">연율화 변동성</span>
             <span className="v num">{fmtPlain(m.apVol)}</span>
-            {hasBm && <span className="vb num">BM {fmtPlain(m.bmVol)}</span>}
+          </div>
+          <div className="cmp">
+            {hasBm ? <>BM <span className="num">{fmtPlain(m.bmVol)}</span></> : <span className="num">{" "}</span>}
           </div>
         </div>
         <div className="bn-mitem">
-          <div className="k">최대낙폭 (MDD)</div>
-          <div className="vrow">
+          <div className="bn-mitem-top">
+            <span className="k">최대낙폭 (MDD)</span>
             <span className="v num dn">{fmtPct(m.apMdd)}</span>
-            {hasBm && <span className="vb num">BM {fmtPct(m.bmMdd)}</span>}
+          </div>
+          <div className="cmp">
+            {hasBm ? <>BM <span className="num">{fmtPct(m.bmMdd)}</span></> : <span className="num">{" "}</span>}
           </div>
         </div>
         <div className="bn-mitem">
-          <div className="k">샤프비율 <span className="bn-info" title="(연율화수익 − 무위험연율) ÷ 연율화변동성. 무위험=KIS CD Index">i</span></div>
-          <div className="vrow">
+          <div className="bn-mitem-top">
+            <span className="k">샤프비율 <span className="bn-info" title="(연율화수익 − 무위험연율) ÷ 연율화변동성. 무위험=KIS CD Index">i</span></span>
             <span className={"v num " + (m.apSharpe < 0 ? "bad" : "ok")}>{fmtNum(m.apSharpe)}</span>
-            {hasBm && <span className="vb num">BM {fmtNum(m.bmSharpe)}</span>}
+          </div>
+          <div className="cmp">
+            {hasBm ? <>BM <span className="num">{fmtNum(m.bmSharpe)}</span></> : <span className="num">{" "}</span>}
           </div>
         </div>
         {hasBm && (
           <>
             <div className="bn-mitem">
-              <div className="k">정보비율 (IR) <span className="bn-info" title="연율화 초과수익 ÷ 트래킹에러(TE)">i</span></div>
-              <div className="vrow">
+              <div className="bn-mitem-top">
+                <span className="k">정보비율 (IR) <span className="bn-info" title="연율화 초과수익 ÷ 트래킹에러(TE)">i</span></span>
                 <span className={"v num " + (m.ir < 0 ? "bad" : "ok")}>{fmtNum(m.ir)}</span>
               </div>
+              <div className="cmp"><span className="num">{" "}</span></div>
             </div>
             <div className="bn-mitem">
-              <div className="k">트래킹에러 (TE) <span className="bn-info" title="AP−BM 일별 초과수익의 표준편차 × √252">i</span></div>
-              <div className="vrow">
+              <div className="bn-mitem-top">
+                <span className="k">트래킹에러 (TE) <span className="bn-info" title="AP−BM 일별 초과수익의 표준편차 × √252">i</span></span>
                 <span className="v num">{fmtPlain(m.te)}</span>
               </div>
+              <div className="cmp"><span className="num">{" "}</span></div>
             </div>
           </>
         )}

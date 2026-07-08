@@ -50,22 +50,32 @@
 
 /* KPI 3카드 */
 /* 6칸 그리드에 카드 3개 — 카드 폭 절반, 우측 3칸 여백 (2026-07-07 사용자 지정) */
-.bn-kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+.bn-kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
 @media (max-width: 760px) { .bn-kpis { grid-template-columns: repeat(3, 1fr); } }
-/* KPI 카드 — 필드명(좌)+값(우) 한 줄 (Overview 지표카드 양식, 2026-07-07) */
-.bn-kpi { background: var(--ace-surface); border: 1px solid var(--ace-line); border-radius: var(--ace-radius); box-shadow: var(--ace-shadow); padding: 13px 16px; display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 8px; }
-.bn-kpi .k { font-size: 14px; color: var(--ace-ink-2); font-weight: 700; }
-.bn-kpi .vrow { display: flex; align-items: baseline; gap: 10px; margin-top: 0; flex-wrap: wrap; justify-content: flex-end; }
-.bn-kpi .v { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
-.bn-kpi .ann { font-size: 12.5px; font-weight: 700; color: var(--ace-ink-3); }
+/* KPI 카드 — Overview 지표카드(.ov-stat) 서식 이식: 상단 라벨(좌)+값(우) / 하단 보조행 (2026-07-08) */
+.bn-kpi { background: var(--ace-surface); border: 1px solid var(--ace-line); border-radius: var(--ace-radius); box-shadow: var(--ace-shadow); padding: 11px 14px; }
+.bn-kpi-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; min-height: 22px; }
+.bn-kpi-top .v { margin-left: auto; text-align: right; }
+.bn-kpi .k { font-size: 12px; color: var(--ace-ink-3); font-weight: 600; }
+.bn-kpi .v { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; line-height: 1; }
+.bn-kpi .cmp {
+  display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 7px;
+  font-size: 12px; color: var(--ace-ink-2); flex-wrap: wrap; text-align: right;
+}
+.bn-kpi .cmp .delta { font-weight: 700; }
 
 /* 위험지표 가로 스트립 */
 .bn-mstrip { display: flex; flex-wrap: wrap; gap: 10px; }
-.bn-mitem { flex: 1 1 130px; min-width: 118px; padding: 10px 13px; border: 1px solid var(--ace-line); border-radius: var(--ace-radius-sm); background: var(--ace-surface-2); }
-.bn-mitem .k { font-size: 11px; color: var(--ace-ink-2); font-weight: 600; }
-.bn-mitem .vrow { display: flex; align-items: baseline; gap: 8px; margin-top: 5px; flex-wrap: wrap; }
-.bn-mitem .v { font-size: 19px; font-weight: 800; line-height: 1.1; }
-.bn-mitem .vb { font-size: 11.5px; font-weight: 700; color: var(--ace-ink-3); }
+/* 위험지표 카드 — Overview 지표카드(.ov-stat) 서식 이식: 상단 라벨(좌)+값(우) / 하단 보조행 (2026-07-08) */
+.bn-mitem { flex: 1 1 130px; min-width: 118px; padding: 11px 14px; border: 1px solid var(--ace-line); border-radius: var(--ace-radius-sm); background: var(--ace-surface-2); }
+.bn-mitem-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; min-height: 22px; }
+.bn-mitem-top .v { margin-left: auto; text-align: right; }
+.bn-mitem .k { font-size: 12px; color: var(--ace-ink-3); font-weight: 600; }
+.bn-mitem .v { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; line-height: 1; }
+.bn-mitem .cmp {
+  display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 7px;
+  font-size: 12px; color: var(--ace-ink-2); flex-wrap: wrap; text-align: right;
+}
 /* (i) 정보 아이콘 — 라벨 옆, native title 툴팁 */
 .bn-info { display: inline-flex; align-items: center; justify-content: center; width: 13px; height: 13px; border: 1px solid var(--ace-ink-3); border-radius: 50%; font-size: 9px; font-weight: 700; font-style: normal; color: var(--ace-ink-3); cursor: help; vertical-align: 1px; line-height: 1; }
 

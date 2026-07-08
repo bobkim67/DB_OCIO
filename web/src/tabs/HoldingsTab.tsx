@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useHoldings } from "../hooks/useHoldings";
 import { useAssetClassReturn, useSecurityReturn } from "../hooks/useTransactions";
 import LoadingBar from "../components/common/LoadingBar";
@@ -37,8 +37,16 @@ export default function HoldingsTab({ fundCode }: Props) {
   const [sel, setSel] = useState<HoldSel | null>(null);
   const [tip, setTip] = useState<Tip>(null);
   // 기준일자 스냅샷 — "" = 최신. 지정 시 해당일(이전 최근 영업일) 보유 스냅샷 조회.
+  // draftAsOf = 입력값(조회 전), asOf = 적용값 — 조회 버튼으로만 갱신 (2026-07-08)
   const [asOf, setAsOf] = useState<string>("");
+  const [draftAsOf, setDraftAsOf] = useState<string>("");
   const { data, isLoading, error } = useHoldings(fundCode, lookthrough, asOf || undefined);
+
+  // 펀드 변경 시 기준일 리셋, 입력 비어 있으면 최신 데이터일로 디폴트 세팅
+  useEffect(() => { setAsOf(""); setDraftAsOf(""); }, [fundCode]);
+  useEffect(() => {
+    if (data?.as_of_date && !draftAsOf) setDraftAsOf(data.as_of_date);
+  }, [data?.as_of_date, draftAsOf]);
 
   // 종목/자산군 차트(비중·수익률·거래) — 선택 1년 구간. hooks 규칙상 early return 전 호출.
   const _asof = data?.as_of_date ?? "";
@@ -100,42 +108,56 @@ export default function HoldingsTab({ fundCode }: Props) {
       });
   });
 
+  // 기준일 dirty — 입력값이 적용값(미지정 시 최신 데이터일)과 다르면 조회 필요
+  const effectiveAsOf = asOf || data.as_of_date || "";
+  const asOfDirty = draftAsOf !== "" && draftAsOf !== effectiveAsOf;
+  // 모자(FoF) 구조 여부 — look-through 적용 중이거나(전개돼 모펀드 행 없음) 보유에 모펀드 존재
+  const isFoF = data.lookthrough_applied || items.some((it) => it.asset_class === "모펀드");
+
   return (
     <section className="hd-root">
       <div className="hd-head">
         <h2 className="fund-title">{data.fund_name} <span className="code">{data.fund_code}</span></h2>
-        <div className="nav num">순자산 <b>{eok(data.nast_amt)}</b>{data.as_of_date ? ` · 기준일자 ${data.as_of_date}` : ""}
-          {data.data_note ? (
-            <span title="환매정산중: 환매가 잡혔으나 증권 미매도로 증권평가>NAST → 비중이 왜곡되어 직전 정상일을 표시합니다."
-              style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, padding: "1px 7px", borderRadius: 999,
-                color: data.data_pending ? "#9a3412" : "#92400e",
-                background: data.data_pending ? "#fee2e2" : "#fef3c7",
-                border: `1px solid ${data.data_pending ? "#fecaca" : "#fde68a"}` }}>
-              {data.data_pending ? "⚠ " : ""}{data.data_note}
-            </span>
-          ) : (
-            <span style={{ marginLeft: 8, fontSize: 11, color: "#16a34a", fontWeight: 600 }}>✔ 확정</span>
-          )}
-        </div>
-        <label className="hd-lt">
-          <input type="checkbox" checked={lookthrough} onChange={(e) => setLookthrough(e.target.checked)} />
-          look-through{data.lookthrough_applied ? " (적용)" : ""}
-        </label>
       </div>
 
-      {/* 컨트롤 패널 — 기준일 (거래내역 컨트롤 카드 양식, 타이틀 행 높이 통일용) */}
+      {/* 컨트롤 패널 — look-through 토글 + 기준일(조회 버튼 갱신) + 해당일 NAV 카드 (2026-07-08) */}
       <div className="hd-card hd-mb">
         <div className="tx-ctrl">
           <span className="lab">기준일</span>
-          <span className="tx-date" title="기준일자 지정 — 주말·공휴일 선택 시 직전 영업일 스냅샷. 비우면 최신일.">
-            <input type="date" value={asOf} max={todayStr()}
-              onChange={(e) => setAsOf(e.target.value)} />
-            {asOf && (
-              <button type="button" className="hd-expand" onClick={() => setAsOf("")}>
-                최신
-              </button>
-            )}
+          <span className="tx-date" title="기준일자 지정 — 주말·공휴일 선택 시 직전 영업일 스냅샷.">
+            <input type="date" value={draftAsOf} max={todayStr()}
+              onChange={(e) => setDraftAsOf(e.target.value)} />
           </span>
+          <button type="button" className="bn-apply" onClick={() => setAsOf(draftAsOf)} disabled={!asOfDirty}>
+            조회
+          </button>
+          {asOf && (
+            <button type="button" className="hd-expand" onClick={() => { setAsOf(""); setDraftAsOf(""); }}>
+              최신
+            </button>
+          )}
+          {asOfDirty && <span className="bn-dirty">변경됨 — 조회를 눌러 갱신</span>}
+          {/* look-through 토글 — 모자(FoF) 구조 펀드에서만 노출 (2026-07-08) */}
+          {isFoF && (
+            <>
+              <span className="div" />
+              <span className="lab">look-through</span>
+              <div className="tx-seg">
+                <button type="button" className={lookthrough ? "on" : ""} onClick={() => setLookthrough(true)}>On</button>
+                <button type="button" className={!lookthrough ? "on" : ""} onClick={() => setLookthrough(false)}>Off</button>
+              </div>
+            </>
+          )}
+          {/* 환매정산중 경고 배지 (확정 표시는 제거, 2026-07-08) */}
+          {data.data_note && (
+            <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 600, padding: "1px 7px", borderRadius: 999,
+                color: data.data_pending ? "#9a3412" : "#92400e",
+                background: data.data_pending ? "#fee2e2" : "#fef3c7",
+                border: `1px solid ${data.data_pending ? "#fecaca" : "#fde68a"}` }}
+              title="환매정산중: 환매대금이 미지급금(부채)으로 먼저 차감돼 증권평가>순자산인 상태. 당일 스냅샷 그대로 표시하되 음수 '환매미지급금' 유동성 라인으로 합계 100%를 맞춥니다. 결제일에 증권 매도로 청산되면 해소됩니다.">
+              {data.data_pending ? "⚠ " : ""}{data.data_note}
+            </span>
+          )}
         </div>
       </div>
 

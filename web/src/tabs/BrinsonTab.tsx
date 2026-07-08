@@ -6,7 +6,6 @@ import { useOverview } from "../hooks/useOverview";
 import { usePeriodReturns } from "../hooks/usePeriodReturns";
 import { useTransactions } from "../hooks/useTransactions";
 import { computeBrinsonMetrics } from "../lib/brinsonMetrics";
-import MetaBadge from "../components/common/MetaBadge";
 import BrinsonWaterfall from "../components/charts/BrinsonWaterfall";
 import BrinsonTrendPanel, { type Mode as TrendMode } from "../components/charts/BrinsonTrendPanel";
 import BrinsonMetricsPanel from "../components/charts/BrinsonMetricsPanel";
@@ -610,17 +609,6 @@ export default function BrinsonTab({ fundCode }: Props) {
         <h2 className="fund-title">
           {data.fund_name} <span className="code">{data.fund_code}</span>
         </h2>
-        <MetaBadge meta={data.meta} />
-        {data.data_note ? (
-          <span
-            className={`bn-tag ${data.data_pending ? "pending" : "note"}`}
-            title="환매정산중: 환매가 잡혔으나 증권 미매도로 증권평가>NAST → 비중 왜곡. 직전 정상일 기준으로 표시합니다."
-          >
-            {data.data_pending ? "⚠ " : ""}{data.data_note}
-          </span>
-        ) : (
-          <span className="bn-tag ok">✔ 확정</span>
-        )}
         {isFetching && <span className="bn-tag recalc">● 재계산 중…</span>}
       </div>
       {isFetching && (
@@ -728,62 +716,81 @@ export default function BrinsonTab({ fundCode }: Props) {
         )}
       </div>
 
-      {/* KPI 3카드 — 기간수익률(큰값) + 연환산(우측 인라인, 위험지표 패널과 동일 소스) */}
+      {/* KPI 6카드 — Overview 지표카드 서식: 상단 라벨(좌)+값(우) / 하단 보조행 (2026-07-08) */}
       <div className="bn-kpis">
         <div className="bn-kpi">
-          <div className="k">AP 수익률</div>
-          <div className="vrow">
+          <div className="bn-kpi-top">
+            <span className="k">AP 수익률</span>
             <span className={`v num ${rc(data.period_ap_return)}`}>{fmtPct(data.period_ap_return)}</span>
-            {metrics.valid && <span className="ann num">연환산 {fmtPct(metrics.apAnnRet)}</span>}
+          </div>
+          <div className="cmp">
+            {metrics.valid ? <>연환산 <span className="num">{fmtPct(metrics.apAnnRet)}</span></> : <span className="num">{" "}</span>}
           </div>
         </div>
         <div className="bn-kpi">
-          <div className="k">BM 수익률</div>
-          <div className="vrow">
+          <div className="bn-kpi-top">
+            <span className="k">BM 수익률</span>
             <span className={`v num ${rc(data.period_bm_return)}`}>{fmtPct(data.period_bm_return)}</span>
-            {metrics.valid && hasBm && <span className="ann num">연환산 {fmtPct(metrics.bmAnnRet)}</span>}
+          </div>
+          <div className="cmp">
+            {metrics.valid && hasBm ? <>연환산 <span className="num">{fmtPct(metrics.bmAnnRet)}</span></> : <span className="num">{" "}</span>}
           </div>
         </div>
         <div className="bn-kpi">
-          <div className="k">초과수익률</div>
-          <div className="vrow">
+          <div className="bn-kpi-top">
+            <span className="k">초과수익률</span>
             <span className={`v num ${ec(data.total_excess)}`}>{fmtPct(data.total_excess)}</span>
-            {metrics.valid && hasBm && <span className="ann num">연환산 {fmtPct(metrics.annExcess)}</span>}
+          </div>
+          <div className="cmp">
+            {metrics.valid && hasBm ? <>연환산 <span className="num">{fmtPct(metrics.annExcess)}</span></> : <span className="num">{" "}</span>}
           </div>
         </div>
         {/* 스냅샷 3카드 — 종료일 기준값 + 시작일 대비 변동 (2026-07-07 사용자 지정) */}
         <div className="bn-kpi">
-          <div className="k">설정액</div>
-          <div className="vrow">
+          <div className="bn-kpi-top">
+            <span className="k">설정액</span>
             <span className="v num">{kpiSnap.setupEnd != null ? `${(kpiSnap.setupEnd / 1e8).toFixed(1)}억` : "—"}</span>
-            <span className={`ann num ${kpiSnap.setupNetEok >= 0 ? "up" : "dn"}`}>
+          </div>
+          <div className="cmp">
+            기간변동{" "}
+            <span className={`delta ${kpiSnap.setupNetEok >= 0 ? "up" : "dn"} num`}>
               {kpiSnap.setupNetEok >= 0 ? "+" : "−"}{Math.abs(kpiSnap.setupNetEok).toFixed(1)}억
               {kpiSnap.setupPct != null ? ` (${kpiSnap.setupPct >= 0 ? "+" : ""}${(kpiSnap.setupPct * 100).toFixed(1)}%)` : ""}
             </span>
           </div>
         </div>
         <div className="bn-kpi">
-          <div className="k">순자산 (NAV)</div>
-          <div className="vrow">
+          <div className="bn-kpi-top">
+            <span className="k">순자산 (NAV)</span>
             <span className="v num">{kpiSnap.nast1 != null ? `${(kpiSnap.nast1 / 1e8).toFixed(1)}억` : "—"}</span>
-            {kpiSnap.nastD != null && (
-              <span className={`ann num ${kpiSnap.nastD >= 0 ? "up" : "dn"}`}>
-                {kpiSnap.nastD >= 0 ? "+" : "−"}{Math.abs(kpiSnap.nastD / 1e8).toFixed(1)}억
-                {kpiSnap.nastPct != null ? ` (${kpiSnap.nastPct >= 0 ? "+" : ""}${(kpiSnap.nastPct * 100).toFixed(1)}%)` : ""}
-              </span>
-            )}
+          </div>
+          <div className="cmp">
+            {kpiSnap.nastD != null ? (
+              <>
+                기간변동{" "}
+                <span className={`delta ${kpiSnap.nastD >= 0 ? "up" : "dn"} num`}>
+                  {kpiSnap.nastD >= 0 ? "+" : "−"}{Math.abs(kpiSnap.nastD / 1e8).toFixed(1)}억
+                  {kpiSnap.nastPct != null ? ` (${kpiSnap.nastPct >= 0 ? "+" : ""}${(kpiSnap.nastPct * 100).toFixed(1)}%)` : ""}
+                </span>
+              </>
+            ) : <span className="num">{" "}</span>}
           </div>
         </div>
         <div className="bn-kpi">
-          <div className="k">기준가</div>
-          <div className="vrow">
+          <div className="bn-kpi-top">
+            <span className="k">기준가</span>
             <span className="v num">{kpiSnap.price1 != null ? kpiSnap.price1.toFixed(2) : "—"}</span>
-            {kpiSnap.priceD != null && (
-              <span className={`ann num ${kpiSnap.priceD >= 0 ? "up" : "dn"}`}>
-                {kpiSnap.priceD >= 0 ? "+" : "−"}{Math.abs(kpiSnap.priceD).toFixed(2)}
-                {kpiSnap.pricePct != null ? ` (${kpiSnap.pricePct >= 0 ? "+" : ""}${(kpiSnap.pricePct * 100).toFixed(2)}%)` : ""}
-              </span>
-            )}
+          </div>
+          <div className="cmp">
+            {kpiSnap.priceD != null ? (
+              <>
+                기간변동{" "}
+                <span className={`delta ${kpiSnap.priceD >= 0 ? "up" : "dn"} num`}>
+                  {kpiSnap.priceD >= 0 ? "+" : "−"}{Math.abs(kpiSnap.priceD).toFixed(2)}
+                  {kpiSnap.pricePct != null ? ` (${kpiSnap.pricePct >= 0 ? "+" : ""}${(kpiSnap.pricePct * 100).toFixed(2)}%)` : ""}
+                </span>
+              </>
+            ) : <span className="num">{" "}</span>}
           </div>
         </div>
       </div>

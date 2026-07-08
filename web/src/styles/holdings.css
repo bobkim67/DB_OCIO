@@ -17,9 +17,6 @@
 /* 헤더 */
 .hd-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
 /* 타이틀 폰트는 공용 .fund-title(tokens.css) 사용 — 탭별 정의 금지 */
-.hd-head .nav { margin-left: auto; font-size: 13px; color: var(--ace-ink-2); }
-.hd-head .nav b { font-size: 15px; color: var(--ace-ink); }
-.hd-lt { font-size: 12px; color: var(--ace-ink-2); display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
 
 /* 스택바 */
 .hd-hero { padding: 14px 18px 12px; }
