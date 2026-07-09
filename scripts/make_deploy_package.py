@@ -42,6 +42,7 @@ ALLOW_PREFIXES = [
     'market_research/data/naver_research/adapted',  # evidence 원천
     'market_research/data/broker_mail',
     'market_research/data/monygeek',
+    'market_research/data/sent_reports',  # 발송 운용보고 아카이브 (DRM 원본+텍스트)
 ]
 
 # ROOT 기준 상대경로 prefix 제외 — 구동 불필요 내부자료 (2026-07-09 사용자 지적로 강화)

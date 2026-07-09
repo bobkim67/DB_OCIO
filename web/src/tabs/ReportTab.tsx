@@ -1,8 +1,9 @@
 import { useState, type CSSProperties } from "react";
 import MarketReportPanel from "./MarketReportPanel";
 import FundReportPanel from "./FundReportPanel";
+import SentReportArchive from "./SentReportArchive";
 
-type SubView = "market" | "fund";
+type SubView = "market" | "fund" | "archive";
 
 const TAB_BTN_BASE: CSSProperties = {
   padding: "6px 14px",
@@ -52,10 +53,17 @@ export default function ReportTab({ fundCode }: { fundCode: string }) {
         >
           펀드 코멘트
         </button>
+        <button
+          style={view === "archive" ? TAB_BTN_ACTIVE : TAB_BTN_BASE}
+          onClick={() => setView("archive")}
+        >
+          발송 보고서
+        </button>
       </div>
 
       {view === "market" && <MarketReportPanel />}
       {view === "fund" && <FundReportPanel fundCode={fundCode} />}
+      {view === "archive" && <SentReportArchive fundCode={fundCode} />}
     </section>
   );
 }

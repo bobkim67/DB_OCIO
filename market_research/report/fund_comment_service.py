@@ -321,6 +321,45 @@ def _load_position_events(fund_code: str, prev_last: int, cur_last: int) -> list
         conn.close()
 
 
+_SENT_REF_CLIP = 3000  # 발송본 참조 텍스트 프롬프트 상한
+
+
+def _load_sent_report_reference(fund_code: str, period_key: str) -> dict | None:
+    """직전 발송 운용보고 텍스트 로드 — 양식·톤·분량 참조용 (2026-07-09).
+
+    data/sent_reports index 에서 해당 펀드의, 생성 기간(period_key) 이전 최신 발송본을
+    고른다. 월 생성(YYYY-MM)은 월간 발송본, 분기 생성(YYYY-QN)은 분기 발송본 우선 —
+    없으면 종류 무관 최신. 텍스트 사이드카 없는 항목(PDF 등)은 제외.
+    """
+    from market_research.collect.sent_report_collector import SENT_DIR, load_index
+
+    entries = [e for e in load_index() if e.get('fund') == fund_code]
+    if not entries:
+        return None
+    is_q = 'Q' in period_key or 'H' in period_key
+    want_kind = '분기' if is_q else '월간'
+
+    def _candidates(kind_filter: bool):
+        out = []
+        for e in entries:
+            if kind_filter and e.get('kind') != want_kind:
+                continue
+            # 같은 형식(월간↔YYYY-MM / 분기↔YYYY-QN)끼리는 문자열 비교로 이전 기간 판별
+            if e.get('kind') == want_kind and e.get('period', '') >= period_key:
+                continue
+            txt = SENT_DIR / (e['rel_path'] + '.txt')
+            if txt.exists():
+                out.append((e, txt))
+        return out
+
+    cands = _candidates(True) or _candidates(False)
+    if not cands:
+        return None
+    e, txt = max(cands, key=lambda x: (x[0].get('period', ''), x[0].get('mail_date', '')))
+    return {'period': e['period'], 'filename': e['filename'],
+            'text': txt.read_text(encoding='utf-8')[:_SENT_REF_CLIP]}
+
+
 # ══════════════════════════════════════════
 # 펀드 코멘트 생성 + 저장
 # ══════════════════════════════════════════
@@ -485,6 +524,19 @@ def generate_fund_comment_and_save(
             + '\n'.join(position_events)
             + '\n(주의: 위 사실과 어긋나는 서술 금지. 전량 편출된 종목/자산을 "비중 축소" 또는 '
               '"보유 지속·전략 유지"로 쓰지 말고, 편출 사실을 운용 서술에 반영할 것.)')
+
+    # 직전 발송 운용보고 참조 — 실제 고객 발송본의 양식·톤·분량 캘리브레이션 (2026-07-09)
+    sent_ref = None
+    try:
+        sent_ref = _load_sent_report_reference(fund_code, period_key)
+    except Exception as e:
+        data_warnings.append(f'발송본 참조 로드 실패: {e}')
+    if sent_ref:
+        additional_parts.append(
+            f'[직전 발송 운용보고 — {sent_ref["period"]} {sent_ref["filename"]} (양식·톤·분량 참조)]\n'
+            + sent_ref['text']
+            + '\n(지시: 위 발송본의 문단 구성·서술 톤·분량을 따라 작성하되, '
+              '수치·사실은 이번 기간 데이터만 사용할 것. 발송본의 과거 수치를 재인용 금지.)')
 
     # (편입 제한은 market_view 상단에서 이미 처리됨)
 

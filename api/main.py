@@ -12,6 +12,7 @@ from .routers import (
     holdings,
     overview,
     report,
+    sent_reports,
     transactions,
     warmup,
 )
@@ -52,6 +53,7 @@ def create_app() -> FastAPI:
     app.include_router(holdings.router, prefix="/api", tags=["holdings"])
     app.include_router(admin.router, prefix="/api", tags=["admin"])
     app.include_router(report.router, prefix="/api", tags=["report"])
+    app.include_router(sent_reports.router, prefix="/api", tags=["sent-reports"])
     app.include_router(brinson.router, prefix="/api", tags=["brinson"])
     app.include_router(transactions.router, prefix="/api", tags=["transactions"])
     app.include_router(warmup.router, prefix="/api", tags=["warmup"])
