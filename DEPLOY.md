@@ -56,6 +56,21 @@ docs/dashboard_features.md   탭별 기능 정리
 배포 불필요 (원본 repo 에만 존재): `General_Backtest/`(R 원본 참조), `MP_monitoring/`(R legacy),
 `debug/`, `devlog/`, `market_research/data/`(리서치 산출물), `.cache/`, `node_modules/`.
 
+## 운용보고 데이터 갱신
+
+운용보고 코멘트는 DB 가 아니라 **파일** 기반이며, 패키지에 배포 시점 데이터가 동봉돼 있다
+(`market_research/data/` 아래 5개 폴더). 코멘트 생성·승인은 담당자 PC 에서 수행하고,
+이후 갱신은 아래 폴더를 서버의 같은 경로에 **덮어쓰기**하면 된다 — 서버 재시작 불필요,
+다음 조회부터 반영.
+
+```
+market_research/data/report_output/          승인 코멘트 (final.json)
+market_research/data/claims/                 근거 claim
+market_research/data/naver_research/adapted/ 근거 원천 (리서치)
+market_research/data/broker_mail/            근거 원천 (리포트 메일)
+market_research/data/monygeek/               근거 원천 (블로그)
+```
+
 ## 운영 주의
 
 - **인증 없음** — 내부망 전용 전제. 외부/전사 노출 시 리버스 프록시(인증·IP 제한) 뒤에 배치할 것. 특히 `/api/admin/*` (코멘트 생성/승인).
