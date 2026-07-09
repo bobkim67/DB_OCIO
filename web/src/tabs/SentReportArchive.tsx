@@ -15,6 +15,7 @@ type FileRow = {
   mail_subject: string;
   has_text: boolean;
   text_chars: number;
+  preview_pages: number;
 };
 type PeriodRow = { period: string; files: FileRow[] };
 
@@ -88,6 +89,7 @@ export default function SentReportArchive({ fundCode }: { fundCode: string }) {
   const [err, setErr] = useState("");
   const [openPath, setOpenPath] = useState("");
   const [text, setText] = useState("");
+  const [previewPath, setPreviewPath] = useState(""); // 원본 캡쳐 보기 토글
 
   useEffect(() => {
     setData(null); setErr(""); setOpenPath(""); setText("");
@@ -151,9 +153,21 @@ export default function SentReportArchive({ fundCode }: { fundCode: string }) {
                 <span className="dt num"> 발송 {f.mail_date}</span>
               </div>
               <div className="acts">
+                {f.preview_pages > 0 && (
+                  <button type="button" className="primary"
+                    onClick={() => setPreviewPath(previewPath === f.rel_path ? "" : f.rel_path)}>
+                    {previewPath === f.rel_path ? "닫기" : `원본 보기 (${f.preview_pages}p)`}
+                  </button>
+                )}
+                {f.filename.toLowerCase().endsWith(".pdf") && (
+                  <a href={`/api/funds/${fundCode}/sent-reports/file?rel_path=${encodeURIComponent(f.rel_path)}&inline=true`}
+                    target="_blank" rel="noreferrer">
+                    <button type="button" className="primary">원본 보기 (PDF)</button>
+                  </a>
+                )}
                 {f.has_text && (
                   <button type="button" onClick={() => loadText(f)}>
-                    {openPath === f.rel_path ? "닫기" : "내용 보기"}
+                    {openPath === f.rel_path ? "닫기" : "텍스트"}
                   </button>
                 )}
                 {f.has_text && <button type="button" onClick={() => saveHtml(f, p.period)}>HTML 저장</button>}
@@ -161,6 +175,14 @@ export default function SentReportArchive({ fundCode }: { fundCode: string }) {
                   <button type="button">원본 다운로드</button>
                 </a>
               </div>
+              {previewPath === f.rel_path && (
+                <div className="sra-preview">
+                  {Array.from({ length: f.preview_pages }, (_, i) => (
+                    <img key={i} loading="lazy" alt={`${f.filename} p${i + 1}`}
+                      src={`/api/funds/${fundCode}/sent-reports/preview?rel_path=${encodeURIComponent(f.rel_path)}&page=${i + 1}`} />
+                  ))}
+                </div>
+              )}
               {openPath === f.rel_path && (
                 <div className="sra-view">{renderTextBlocks(text)}</div>
               )}

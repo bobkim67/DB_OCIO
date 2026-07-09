@@ -25,6 +25,7 @@ class SentReportFileDTO(BaseModel):
     mail_subject: str
     has_text: bool
     text_chars: int = 0
+    preview_pages: int = 0  # 원본 레이아웃 PNG 캡쳐 수 (sent_report_preview 산출)
 
 
 class SentReportPeriodDTO(BaseModel):
@@ -58,6 +59,7 @@ def list_sent_reports(fund: str = Path(..., min_length=1, max_length=32)) -> Sen
             filename=e['filename'], rel_path=e['rel_path'], kind=e.get('kind', ''),
             mail_date=e.get('mail_date', ''), mail_subject=e.get('mail_subject', ''),
             has_text=txt.exists(), text_chars=int(e.get('text_chars') or 0),
+            preview_pages=int(e.get('preview_pages') or 0),
         ))
     periods = [SentReportPeriodDTO(period=p, files=sorted(fs, key=lambda f: f.filename))
                for p, fs in by_period.items()]
@@ -83,7 +85,24 @@ def get_sent_report_text(
 def download_sent_report(
     fund: str = Path(..., min_length=1, max_length=32),
     rel_path: str = Query(..., max_length=300),
+    inline: bool = Query(False),
 ):
-    """발송 원본 파일 (DRM 래핑 그대로 — 사내 PC 에서만 열림, 사용자 확정)."""
+    """발송 원본 파일 (DRM 래핑 그대로 — 사내 PC 에서만 열림, 사용자 확정).
+
+    inline=true 는 클린 PDF(비정기 대면보고) 브라우저 내장 뷰어 표시용.
+    """
     p = _safe_resolve(fund, rel_path)
-    return FileResponse(str(p), filename=p.name)
+    return FileResponse(str(p), filename=p.name,
+                        content_disposition_type='inline' if inline else 'attachment')
+
+
+@router.get('/funds/{fund}/sent-reports/preview')
+def get_sent_report_preview(
+    fund: str = Path(..., min_length=1, max_length=32),
+    rel_path: str = Query(..., max_length=300),
+    page: int = Query(1, ge=1, le=99),
+):
+    """원본 레이아웃 PNG 캡쳐 페이지 (Office COM 렌더 — DRM 미래핑 경로)."""
+    p = _safe_resolve(fund, f'{rel_path}.preview/p{page:02d}.png')
+    return FileResponse(str(p), media_type='image/png',
+                        content_disposition_type='inline')

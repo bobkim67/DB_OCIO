@@ -17,6 +17,13 @@
 .sra-file .acts button { font-size: 11.5px; padding: 3px 10px; border: 1px solid var(--ace-line); background: var(--ace-surface-2); border-radius: var(--ace-radius-sm); cursor: pointer; color: var(--ace-ink-2); font-weight: 600; }
 .sra-file .acts button:hover { border-color: var(--ace-ink-3); color: var(--ace-ink); }
 
+.sra-file .acts button.primary { background: #1a4d8f; color: #fff; border-color: #1a4d8f; }
+.sra-file .acts button.primary:hover { background: #14407a; color: #fff; }
+
+/* 원본 캡쳐 뷰 — 페이지 이미지 세로 스택 */
+.sra-preview { margin-top: 10px; border: 1px solid var(--ace-line); border-radius: var(--ace-radius-sm); background: #f0f2f5; padding: 12px; max-height: 640px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.sra-preview img { width: 100%; height: auto; background: #fff; border: 1px solid #dde3ec; border-radius: 3px; box-shadow: 0 1px 3px rgba(16, 24, 40, 0.08); }
+
 .sra-view { margin-top: 10px; border: 1px solid var(--ace-line); border-radius: var(--ace-radius-sm); background: var(--ace-surface-2); padding: 14px 18px; max-height: 520px; overflow-y: auto; }
 .sra-sec { font-size: 12.5px; font-weight: 700; background: #eef2f7; color: #1a4d8f; border-left: 3px solid #1a4d8f; padding: 4px 10px; margin: 12px 0 4px; }
 .sra-p { font-size: 12.5px; margin: 3px 0; line-height: 1.55; color: var(--ace-ink); }
