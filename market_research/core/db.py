@@ -2,16 +2,30 @@
 """DB 접속 + SCIP blob 파싱 — 단일 소스"""
 
 import json
+import os
+from pathlib import Path
+
 import pymysql
 
+# 시크릿은 repo 루트 .env (배포 하드닝 2026-07-09, .env.example 참조)
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parents[2] / '.env')
+except ImportError:
+    pass
+
 DB_CONFIG = dict(
-    host='192.168.195.55', user='solution', password='Solution123!',
+    host=os.environ.get('OCIO_DB_HOST', '192.168.195.55'),
+    user=os.environ.get('OCIO_DB_USER', 'solution'),
+    password=os.environ.get('OCIO_DB_PASSWORD', ''),
     charset='utf8mb4', cursorclass=pymysql.cursors.DictCursor,
 )
 
 
 def get_conn(db='SCIP'):
     """MariaDB 접속 (SCIP / dt / solution / cream)"""
+    if not DB_CONFIG['password']:
+        raise RuntimeError('OCIO_DB_PASSWORD 미설정 — repo 루트 .env 확인 (.env.example 참조)')
     return pymysql.connect(db=db, **DB_CONFIG)
 
 

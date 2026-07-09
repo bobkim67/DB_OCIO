@@ -160,10 +160,17 @@ FUND_DEFAULT_MAPPING_METHOD = {
 }
 DEFAULT_MAPPING_METHOD = '방법3'
 
-# DB 접속 설정
+# DB 접속 설정 — 시크릿은 repo 루트 .env (배포 하드닝 2026-07-09)
+import os as _os
+try:
+    from dotenv import load_dotenv as _load_dotenv
+    from pathlib import Path as _Path
+    _load_dotenv(_Path(__file__).resolve().parents[1] / '.env')
+except ImportError:
+    pass
 DB_CONFIG = {
-    'host': '192.168.195.55',
-    'user': 'solution',
-    'password': 'Solution123!',
+    'host': _os.environ.get('OCIO_DB_HOST', '192.168.195.55'),
+    'user': _os.environ.get('OCIO_DB_USER', 'solution'),
+    'password': _os.environ.get('OCIO_DB_PASSWORD', ''),
     'charset': 'utf8mb4',
 }

@@ -1,10 +1,12 @@
 # === data_loader.py ===
 # DB 접속 및 데이터 로딩 레이어
 # R benchmark: module_00_data_loading.R
+import os
 import pandas as pd
 import numpy as np
 import pymysql
 from datetime import datetime, timedelta
+from pathlib import Path
 import json
 import warnings
 import logging
@@ -42,18 +44,26 @@ def _ttl_cache(ttl: int = _CACHE_TTL):
     return deco
 
 # ============================================================
-# DB 접속
+# DB 접속 — 시크릿은 repo 루트 .env (배포 하드닝 2026-07-09, .env.example 참조)
 # ============================================================
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parents[1] / '.env')
+except ImportError:
+    pass  # dotenv 미설치 시 OS 환경변수만 사용
+
 DB_CONFIG = {
-    'host': '192.168.195.55',
-    'user': 'solution',
-    'password': 'Solution123!',
+    'host': os.environ.get('OCIO_DB_HOST', '192.168.195.55'),
+    'user': os.environ.get('OCIO_DB_USER', 'solution'),
+    'password': os.environ.get('OCIO_DB_PASSWORD', ''),
     'charset': 'utf8mb4',
 }
 
 def get_connection(db_name: str):
     """MariaDB 접속 (DictCursor). cursor 직접 사용 시."""
+    if not DB_CONFIG['password']:
+        raise RuntimeError('OCIO_DB_PASSWORD 미설정 — repo 루트 .env 확인 (.env.example 참조)')
     return pymysql.connect(**DB_CONFIG, db=db_name, cursorclass=pymysql.cursors.DictCursor)
 
 
@@ -2428,7 +2438,10 @@ def _load_usdkrw_from_ecos(start_date: str = None, end_date: str = None) -> pd.D
     import warnings
     warnings.filterwarnings('ignore', message='Unverified HTTPS request')
 
-    api_key = "FWC2IZWA5YD459SQ7RJM"
+    api_key = os.environ.get('ECOS_API_KEY', '')
+    if not api_key:
+        logger.warning("[ECOS API] ECOS_API_KEY 미설정, DWCI10260 fallback")
+        return _load_usdkrw_from_db(start_date, end_date)
     # 충분한 버퍼 포함 (R: start_time=19000101)
     st = start_date or '20100101'
     ed = end_date or pd.Timestamp.now().strftime('%Y%m%d')

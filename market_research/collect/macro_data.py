@@ -5,6 +5,7 @@
 """
 
 import json
+import os
 import ssl
 import sys
 import urllib.request
@@ -29,9 +30,16 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "macro"
 OUTPUT_FILE = DATA_DIR / "indicators.json"
 OUTPUT_CSV = DATA_DIR / "indicators.csv"
 
-# ── DB 접속 ──
+# ── DB 접속 / API 키 — 시크릿은 repo 루트 .env (배포 하드닝 2026-07-09) ──
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parents[2] / '.env')
+except ImportError:
+    pass
 DB_CONFIG = dict(
-    host='192.168.195.55', user='solution', password='Solution123!',
+    host=os.environ.get('OCIO_DB_HOST', '192.168.195.55'),
+    user=os.environ.get('OCIO_DB_USER', 'solution'),
+    password=os.environ.get('OCIO_DB_PASSWORD', ''),
     charset='utf8mb4', cursorclass=pymysql.cursors.DictCursor
 )
 
@@ -146,7 +154,7 @@ FRED_INDICATORS = {
 # ECOS (한국은행) 수집 — BOK 기준금리
 # ═══════════════════════════════════════════════════════
 
-ECOS_API_KEY = 'FWC2IZWA5YD459SQ7RJM'
+ECOS_API_KEY = os.environ.get('ECOS_API_KEY', '')
 
 ECOS_INDICATORS = {
     'BOK_RATE': {
@@ -558,7 +566,7 @@ def load_naver_finance_news():
 # Finnhub 뉴스 수집
 # ═══════════════════════════════════════════════════════
 
-FINNHUB_KEY = 'd72tmv1r01qlfd9ohbggd72tmv1r01qlfd9ohbh0'
+FINNHUB_KEY = os.environ.get('FINNHUB_API_KEY', '')
 NEWS_DIR = Path(__file__).resolve().parent.parent / "data" / "news"
 
 # 자산군별 ETF 심볼
@@ -747,7 +755,7 @@ def load_news_all():
 # NewsAPI 뉴스 수집
 # ═══════════════════════════════════════════════════════
 
-NEWSAPI_KEY = 'eee66221bc984a679ab63068f6164eeb'
+NEWSAPI_KEY = os.environ.get('NEWSAPI_KEY', '')
 
 # 자산군별 검색 키워드
 NEWS_QUERIES = {
