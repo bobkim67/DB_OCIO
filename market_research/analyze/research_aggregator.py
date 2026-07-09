@@ -159,6 +159,11 @@ def aggregate_by_asset(claims: list[dict], *, include_causal: bool = True,
     for asset, cs in by_asset.items():
         broker = [c for c in cs if c.get("source_type") != "monygeek"]
         monygeek = [c for c in cs if c.get("source_type") == "monygeek"]
+        # 증분 추출(late-month naver/broker_mail)이 claims 파일 뒤에 append 돼 §4
+        # top-12·narrative 입력에서 구조적으로 배제되는 문제 방지 — salience 내림차순
+        # (동률 confidence). vote/strength 는 순서 무관이라 불변 (2026-07-09).
+        broker.sort(key=lambda c: (-float(c.get("salience", 0) or 0),
+                                   -float(c.get("confidence", 0) or 0)))
 
         # D5 — vote 는 broker 만
         vote = Counter(c.get("stance") for c in broker if c.get("stance"))
