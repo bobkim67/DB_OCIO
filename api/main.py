@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .routers import (
     admin,
+    admin_funds,
     brinson,
     funds,
     health,
@@ -52,6 +53,7 @@ def create_app() -> FastAPI:
     app.include_router(overview.router, prefix="/api", tags=["overview"])
     app.include_router(holdings.router, prefix="/api", tags=["holdings"])
     app.include_router(admin.router, prefix="/api", tags=["admin"])
+    app.include_router(admin_funds.router, prefix="/api", tags=["admin-funds"])
     app.include_router(report.router, prefix="/api", tags=["report"])
     app.include_router(sent_reports.router, prefix="/api", tags=["sent-reports"])
     app.include_router(brinson.router, prefix="/api", tags=["brinson"])

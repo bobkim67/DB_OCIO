@@ -4,8 +4,10 @@ import AdminDebateStatusPanel from "./AdminDebateStatusPanel";
 import AdminReportEnrichmentPanel from "./AdminReportEnrichmentPanel";
 import AdminCommentTracePanel from "./AdminCommentTracePanel";
 import AdminWikiContextPackPanel from "./AdminWikiContextPackPanel";
+import AdminFundsPanel from "./AdminFundsPanel";
 
 type SubView =
+  | "funds"
   | "evidence"
   | "debate"
   | "report-enrichment"
@@ -29,7 +31,7 @@ const TAB_BTN_ACTIVE: CSSProperties = {
 };
 
 export default function AdminTab() {
-  const [view, setView] = useState<SubView>("evidence");
+  const [view, setView] = useState<SubView>("funds");
 
   return (
     <section>
@@ -42,6 +44,12 @@ export default function AdminTab() {
           paddingBottom: 12,
         }}
       >
+        <button
+          style={view === "funds" ? TAB_BTN_ACTIVE : TAB_BTN_BASE}
+          onClick={() => setView("funds")}
+        >
+          펀드 운용
+        </button>
         <button
           style={view === "evidence" ? TAB_BTN_ACTIVE : TAB_BTN_BASE}
           onClick={() => setView("evidence")}
@@ -74,6 +82,7 @@ export default function AdminTab() {
         </button>
       </div>
 
+      {view === "funds" && <AdminFundsPanel />}
       {view === "evidence" && <AdminEvidenceQualityPanel />}
       {view === "debate" && <AdminDebateStatusPanel />}
       {view === "report-enrichment" && <AdminReportEnrichmentPanel />}

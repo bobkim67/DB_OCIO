@@ -90,12 +90,9 @@ export default function SentReportArchive({ fundCode }: { fundCode: string }) {
   const [openPath, setOpenPath] = useState("");
   const [text, setText] = useState("");
   const [previewPath, setPreviewPath] = useState(""); // 원본 캡쳐 보기 토글
-  // 보고서 코멘트 생성 (발송본 서식 기반, isolated draft)
-  const [genKind, setGenKind] = useState("월간");
-  const [genPeriod, setGenPeriod] = useState("");
-  const [genBusy, setGenBusy] = useState(false);
-  const [genErr, setGenErr] = useState("");
-  const [genOut, setGenOut] = useState<null | { period: string; comment: string; reference: string; warnings: string[] }>(null);
+  // 승인된 생성 보고서 (Admin 워크플로우 승인본만 노출)
+  const [genReports, setGenReports] = useState<{ period: string; comment: string; approved_at: string }[]>([]);
+  const [openGen, setOpenGen] = useState("");
 
   useEffect(() => {
     setData(null); setErr(""); setOpenPath(""); setText("");
@@ -107,45 +104,13 @@ export default function SentReportArchive({ fundCode }: { fundCode: string }) {
 
   const total = useMemo(() => (data ?? []).reduce((s, p) => s + p.files.length, 0), [data]);
 
-  // 기간 옵션 — 월간: 최근 6개월(전월 기본) / 분기: 최근 4분기
-  const periodOpts = useMemo(() => {
-    const now = new Date();
-    if (genKind === "분기") {
-      const out: string[] = [];
-      let y = now.getFullYear(), q = Math.floor(now.getMonth() / 3) + 1;
-      for (let i = 0; i < 4; i++) {
-        q -= 1; if (q === 0) { q = 4; y -= 1; }
-        out.push(`${y}-Q${q}`);
-      }
-      return out;
-    }
-    const out: string[] = [];
-    let y = now.getFullYear(), m = now.getMonth() + 1;
-    for (let i = 0; i < 6; i++) {
-      m -= 1; if (m === 0) { m = 12; y -= 1; }
-      out.push(`${y}-${String(m).padStart(2, "0")}`);
-    }
-    return out;
-  }, [genKind]);
-  useEffect(() => { setGenPeriod(periodOpts[0] ?? ""); }, [periodOpts]);
-
-  const runGenerate = async () => {
-    setGenBusy(true); setGenErr(""); setGenOut(null);
-    try {
-      const r = await fetch(`/api/funds/${fundCode}/sent-reports/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind: genKind, period: genPeriod }),
-      });
-      const d = await r.json();
-      if (!r.ok) { setGenErr(d?.detail ?? `HTTP ${r.status}`); return; }
-      setGenOut(d);
-    } catch (e) {
-      setGenErr(String(e));
-    } finally {
-      setGenBusy(false);
-    }
-  };
+  useEffect(() => {
+    setGenReports([]); setOpenGen("");
+    fetch(`/api/funds/${fundCode}/sent-reports/generated`)
+      .then((r) => r.json())
+      .then((d) => setGenReports(d.reports ?? []))
+      .catch(() => {});
+  }, [fundCode]);
 
   const loadText = async (f: FileRow) => {
     if (openPath === f.rel_path) { setOpenPath(""); return; }
@@ -183,41 +148,33 @@ export default function SentReportArchive({ fundCode }: { fundCode: string }) {
         <span className="note">원본은 사내 문서보안(DRM) 파일 — 사내 PC에서만 열립니다</span>
       </div>
 
-      {/* 보고서 코멘트 생성 — 직전 발송본 서식을 기준 원고로 잇는 생성 (isolated draft) */}
-      <div className="sra-gen">
-        <span className="lab">보고서 코멘트 생성</span>
-        <select value={genKind} onChange={(e) => setGenKind(e.target.value)}>
-          <option value="월간">월간</option>
-          <option value="분기">분기</option>
-        </select>
-        <select value={genPeriod} onChange={(e) => setGenPeriod(e.target.value)}>
-          {periodOpts.map((p) => <option key={p} value={p}>{p}</option>)}
-        </select>
-        <button type="button" className="go" onClick={runGenerate} disabled={genBusy || !genPeriod}>
-          {genBusy ? "생성 중… (1~2분)" : "생성"}
-        </button>
-        <span className="hint">직전 발송본 서술을 그대로 잇고 이번 기간 내용만 교체 · 승인 워크플로우와 별도(검토용)</span>
-        {genErr && <span className="err">{genErr}</span>}
-      </div>
-      {genOut && (
+      {/* 승인된 생성 보고서 — 생성/편집/승인은 Admin 탭 (코멘트 승인 → 보고서 생성 → 승인 → 노출) */}
+      {genReports.length > 0 && (
         <div className="sra-genout">
-          <div className="gh">
-            {fundCode} {genOut.period} 생성 코멘트
-            {genOut.reference && <span className="ref"> · 기준 서식: {genOut.reference}</span>}
-            <button type="button" onClick={() => {
-              const html = buildStandaloneHtml(`${fundCode} 운용보고 코멘트 — ${genOut.period}`,
-                `기준 서식: ${genOut.reference}`, genOut.comment);
-              const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-              const a = document.createElement("a");
-              a.href = URL.createObjectURL(blob);
-              a.download = `${fundCode}_${genOut.period}_코멘트.html`;
-              a.click(); URL.revokeObjectURL(a.href);
-            }}>HTML 저장</button>
-          </div>
-          <div className="sra-view">{renderTextBlocks(genOut.comment)}</div>
-          {genOut.warnings.length > 0 && (
-            <div className="warns">{genOut.warnings.map((w, i) => <div key={i}>⚠ {w}</div>)}</div>
-          )}
+          <div className="gh">생성 보고서 (승인본) <span className="ref">Admin 승인 완료분만 표시</span></div>
+          {genReports.map((g) => (
+            <div key={g.period} className="sra-file">
+              <div className="fn">{fundCode} {g.period} 운용보고 코멘트
+                <span className="dt num"> 승인 {g.approved_at.slice(0, 10)}</span>
+              </div>
+              <div className="acts">
+                <button type="button" className="primary"
+                  onClick={() => setOpenGen(openGen === g.period ? "" : g.period)}>
+                  {openGen === g.period ? "닫기" : "보기"}
+                </button>
+                <button type="button" onClick={() => {
+                  const html = buildStandaloneHtml(`${fundCode} 운용보고 코멘트 — ${g.period}`,
+                    `승인 ${g.approved_at}`, g.comment);
+                  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+                  const a = document.createElement("a");
+                  a.href = URL.createObjectURL(blob);
+                  a.download = `${fundCode}_${g.period}_코멘트.html`;
+                  a.click(); URL.revokeObjectURL(a.href);
+                }}>HTML 저장</button>
+              </div>
+              {openGen === g.period && <div className="sra-view">{renderTextBlocks(g.comment)}</div>}
+            </div>
+          ))}
         </div>
       )}
       {data.map((p) => (
