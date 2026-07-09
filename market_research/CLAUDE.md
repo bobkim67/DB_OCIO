@@ -2,10 +2,12 @@
 
 ## ⛔ NEWS 데이터 미사용 (2026-06-17 사용자 확정 — 영구)
 
-운영 wiki/코멘트/claim 경로의 소스는 **naver_research + monygeek 블로그**뿐이다.
+운영 wiki/코멘트/claim 경로의 소스는 **naver_research + monygeek 블로그 +
+broker_mail(Outlook 리포트 메일, 2026-07-09 추가)** 이다.
 **news 데이터는 운영에서 쓰지 않는다.** 신규 작업에서 news 를 운영 소스로 끌어오거나
 news claim 을 재생성/참조하지 말 것. 자산군·라벨·claim 재추출은 **전부 research
-(naver_research) 경로 기준**으로만 한다.
+경로 기준**으로만 한다. broker_mail 에서도 신문기사 모음/보도자료 메일(news 성격)은
+어댑터가 원천 제외한다 (`collect/outlook_report_adapter.py` EXCLUDE_SUBJECT_KW).
 
 - 운영 미사용 대상: `data/news/*.json`, news claims(`data/claims/{period}.json` 의 news
   레인), `daily_update` Step 1·2·2.5·2.6·2.7 의 news 산출물, `news_classifier` 출력.
@@ -13,7 +15,9 @@ news claim 을 재생성/참조하지 말 것. 자산군·라벨·claim 재추�
   `report_cache_builder`/`report_service`/`collect_news.bat` 은 2026-07-02 삭제.)
 - fetch/수집 코드 자체는 **삭제하지 않고 보존**한다(추후 스터디 가능성). 단 운영 경로에
   연결하지 말 것.
-- 운영 claim 은 `research_claim_extractor`(`*.research.json`) + monygeek 만.
+- 운영 claim 은 `research_claim_extractor`(`*.research.json`) 3레인
+  (naver_research/monygeek/broker_mail) 만. broker_mail 은 consensus vote 에서
+  research 동급(비-monygeek → broker vote 자동, 2026-07-09 사용자 확정).
 - (근거: 2026-06-17 사용자 명시. 배경: [[project_wiki_from_naver_research]])
 
 ## Project Purpose

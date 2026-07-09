@@ -4,8 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## ⛔ NEWS 데이터 미사용 (2026-06-17 사용자 확정 — 영구)
 
-운영 wiki/코멘트/claim 의 소스는 **naver_research + monygeek** 뿐이다. **news 데이터는
-운영에서 쓰지 않는다** (data/news, news claims, news_classifier/vectordb/content_pool,
+운영 wiki/코멘트/claim 의 소스는 **naver_research + monygeek + broker_mail(Outlook
+리포트 메일, 2026-07-09 추가)** 이다. **news 데이터는 운영에서 쓰지 않는다** (data/news, news claims, news_classifier/vectordb/content_pool,
 daily_update Step 1·2·2.5·2.6·2.7 news 산출물). 신규 작업에서 news 를 운영 소스로
 끌어오거나 news claim 을 재생성/참조하지 말 것. fetch 코드는 보존만. 상세는
 `market_research/CLAUDE.md` 상단 배너 참조. (근거: 2026-06-17 사용자 명시)

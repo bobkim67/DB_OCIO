@@ -93,14 +93,15 @@ RESEARCH_SYSTEM_PROMPT = (
 )
 
 
-def _format_evidence_lines(evidence_items: list[dict], max_items: int) -> str:
+def _format_evidence_lines(evidence_items: list[dict], max_items: int,
+                           desc_chars: int = 300) -> str:
     lines: list[str] = []
     for i, e in enumerate(evidence_items[:max_items]):
         aid = e.get("_article_id") or e.get("article_id") or f"row_{i}"
         title = (e.get("title") or "").strip()[:120]
         source = e.get("source") or e.get("_raw_broker") or ""
         date = e.get("date") or ""
-        desc = (e.get("description") or "").strip().replace("\n", " ")[:300]
+        desc = (e.get("description") or "").strip().replace("\n", " ")[:desc_chars]
         lines.append(f"- [{aid}] ({source} / {date}) {title} :: {desc}")
     return "\n".join(lines)
 
@@ -121,7 +122,11 @@ def build_research_extraction_prompt(
     stance_list = ", ".join(sorted(ALLOWED_STANCES))
     region_list = ", ".join(REGION_TAXONOMY)
     sector_list = ", ".join(TOPIC_TAXONOMY)
-    evidence_block = _format_evidence_lines(evidence_items, max_items)
+    # broker_mail 은 요약문이 아닌 메일 본문이라 앞 300자만으로는 논거가 잘림 → 800자.
+    # naver/monygeek 은 기존 300자 유지 (운영 claim md5 불변).
+    _desc_chars = 800 if source_type == "broker_mail" else 300
+    evidence_block = _format_evidence_lines(evidence_items, max_items,
+                                            desc_chars=_desc_chars)
 
     user_prompt = (
         f"## Period: {period}  (source_type={source_type})\n\n"
@@ -280,6 +285,9 @@ def prep_research_evidence(month: str, source_type: str) -> list[dict]:
     if source_type == "monygeek":
         from market_research.collect.monygeek_research_adapter import build_monygeek_articles
         return build_monygeek_articles(month)
+    if source_type == "broker_mail":
+        from market_research.collect.outlook_report_adapter import load_broker_mail
+        return [a for a in load_broker_mail(month) if a.get("_article_id")]
     raise ValueError(f"unknown source_type: {source_type}")
 
 
@@ -290,7 +298,7 @@ def research_claims_path(month: str) -> Path:
 def run_research_extraction(
     month: str,
     *,
-    source_types: tuple[str, ...] = ("naver_research", "monygeek"),
+    source_types: tuple[str, ...] = ("naver_research", "monygeek", "broker_mail"),
     max_batches: int | None = None,
     cost_cap_usd: float = 3.0,
     dry_run: bool = False,
@@ -393,14 +401,14 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Research claim extractor (P2)")
     ap.add_argument("month", help="YYYY-MM")
     ap.add_argument("--source", action="append",
-                    choices=["naver_research", "monygeek"], default=None)
+                    choices=["naver_research", "monygeek", "broker_mail"], default=None)
     ap.add_argument("--max-batches", type=int, default=None)
     ap.add_argument("--cost-cap", type=float, default=3.0)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--full", action="store_true",
                     help="전량 재추출(증분 아님). 기본은 증분(신규 기사만).")
     args = ap.parse_args()
-    sts = tuple(args.source) if args.source else ("naver_research", "monygeek")
+    sts = tuple(args.source) if args.source else ("naver_research", "monygeek", "broker_mail")
     res = run_research_extraction(
         args.month, source_types=sts, max_batches=args.max_batches,
         cost_cap_usd=args.cost_cap, dry_run=args.dry_run,

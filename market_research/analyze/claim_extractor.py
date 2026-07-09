@@ -119,8 +119,9 @@ ALLOWED_STANCES: frozenset[str] = frozenset({
 })
 
 # research claim 출처 레인. 기존 운영 claim 은 source_type 미보유 → soft 검증이라 무영향.
+# broker_mail = Outlook 업무\리포트 메일 (2026-07-09, 외사 리포트 전달 포함).
 ALLOWED_SOURCE_TYPES: frozenset[str] = frozenset({
-    "naver_research", "monygeek", "news",
+    "naver_research", "monygeek", "news", "broker_mail",
 })
 
 REQUIRED_FIELDS: tuple[str, ...] = (

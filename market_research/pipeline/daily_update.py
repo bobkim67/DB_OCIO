@@ -128,6 +128,12 @@ def daily_update(
     result['steps']['naver_research_adapter'] = nr_adapt_result
     print(f'  → {nr_adapt_result.get("total", 0)}건 (band {nr_adapt_result.get("bands", {})})')
 
+    # ── Step 1.4: Outlook 리포트 메일 수집 (broker_mail 레인) ──
+    print(f'\n[Step 1.4] Outlook 리포트 메일 수집...')
+    om_result = _step_outlook_report()
+    result['steps']['outlook_report'] = om_result
+    print(f'  → status={om_result.get("status")} months={om_result.get("months", {})}')
+
     # ── Step 1.5: 블로그 수집 ──
     print(f'\n[Step 1.5] 블로그 수집...')
     blog_result = _step_collect_blog()
@@ -397,6 +403,22 @@ def _step_naver_research_adapter(month_str: str) -> dict:
         import traceback
         traceback.print_exc()
         return {'status': 'error', 'error': str(exc), 'total': 0, 'bands': {}}
+
+
+def _step_outlook_report() -> dict:
+    """Step 1.4: Outlook 업무\\리포트 폴더 증분 수집 → data/broker_mail/{month}.json.
+
+    broker_mail 레인 (2026-07-09): 증권사 리서치 메일(외사 리포트 전달 포함).
+    신문기사/세미나류 제외 + naver_research 중복 제목 제외는 adapter 가 수행.
+    Outlook 미실행이면 graceful skip — 기존 저장 파일은 추출 레인이 계속 사용.
+    """
+    try:
+        from market_research.collect.outlook_report_adapter import run_fetch_and_save
+        stats = run_fetch_and_save(days_back=14)
+        return {'status': 'ok', 'fetched': stats['fetched'], 'months': stats['months']}
+    except Exception as exc:
+        print(f'  outlook_report 수집 실패 (graceful skip): {exc}')
+        return {'status': 'skip', 'reason': str(exc)}
 
 
 def _step_refine(month_str: str) -> dict:
