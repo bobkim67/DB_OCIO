@@ -533,10 +533,12 @@ def generate_fund_comment_and_save(
         data_warnings.append(f'발송본 참조 로드 실패: {e}')
     if sent_ref:
         additional_parts.append(
-            f'[직전 발송 운용보고 — {sent_ref["period"]} {sent_ref["filename"]} (양식·톤·분량 참조)]\n'
+            f'[직전 발송 운용보고 — {sent_ref["period"]} {sent_ref["filename"]} (기준 서식 — 반드시 준수)]\n'
             + sent_ref['text']
-            + '\n(지시: 위 발송본의 문단 구성·서술 톤·분량을 따라 작성하되, '
-              '수치·사실은 이번 기간 데이터만 사용할 것. 발송본의 과거 수치를 재인용 금지.)')
+            + '\n(지시: 위 발송본의 운용경과/코멘트 서술을 **기준 원고**로 삼아, 문단 구조·'
+              '표현·어투·분량을 그대로 잇는다. 이번 기간의 수치·이벤트·포지션 변화로 내용만 '
+              '교체하고, 새로 필요한 서술은 최소한으로 덧붙인다. 발송본의 과거 수치 재인용 금지. '
+              '발송본에 없는 형식(헤더/불릿 스타일 변경 등) 도입 금지.)')
 
     # (편입 제한은 market_view 상단에서 이미 처리됨)
 

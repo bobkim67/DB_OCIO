@@ -96,6 +96,67 @@ def download_sent_report(
                         content_disposition_type='inline' if inline else 'attachment')
 
 
+class SentGenRequestDTO(BaseModel):
+    kind: str    # '월간' | '분기'
+    period: str  # '2026-06' | '2026-Q2'
+
+
+class SentGenResponseDTO(BaseModel):
+    fund_code: str
+    period: str
+    comment: str
+    reference: str = ''      # 참조한 직전 발송본
+    warnings: list[str] = []
+
+
+@router.post('/funds/{fund}/sent-reports/generate', response_model=SentGenResponseDTO)
+def generate_sent_report_comment(
+    body: SentGenRequestDTO,
+    fund: str = Path(..., min_length=1, max_length=32),
+) -> SentGenResponseDTO:
+    """발송 보고서용 펀드 코멘트 생성 (LLM, 1~2분).
+
+    직전 발송본 서술을 기준 원고로 잇는 프롬프트(fund_comment_service 주입) 사용.
+    target_suffix='sentgen' 격리 저장 — 운영 draft/final 워크플로우 불변.
+    시장 debate 승인본(_market.final)이 해당 기간에 있어야 한다.
+    """
+    import re as _re
+    m = _re.fullmatch(r'(\d{4})-(0[1-9]|1[0-2])', body.period)
+    q = _re.fullmatch(r'(\d{4})-Q([1-4])', body.period)
+    if body.kind == '월간' and m:
+        mode, year, num = '월별', int(m.group(1)), int(m.group(2))
+    elif body.kind == '분기' and q:
+        mode, year, num = '분기', int(q.group(1)), int(q.group(2))
+    else:
+        raise HTTPException(status_code=400, detail='kind/period 조합이 잘못됨 '
+                            '(월간=YYYY-MM, 분기=YYYY-QN)')
+
+    from market_research.report.report_store import load_final
+    market = load_final(body.period, '_market')
+    if not market:
+        raise HTTPException(status_code=409, detail=f'{body.period} 시장 코멘트 승인본 없음 '
+                            '— Admin 에서 시장 debate 승인 후 생성 가능')
+
+    from market_research.report.fund_comment_service import (
+        _load_sent_report_reference, generate_fund_comment_and_save)
+    try:
+        draft = generate_fund_comment_and_save(
+            mode, year, num, fund, body.period, market, target_suffix='sentgen')
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f'생성 실패: {exc}')
+    ref = None
+    try:
+        ref = _load_sent_report_reference(fund, body.period)
+    except Exception:
+        pass
+    comment = str(draft.get('draft_comment') or draft.get('comment') or '')
+    return SentGenResponseDTO(
+        fund_code=fund, period=body.period, comment=comment,
+        reference=f"{ref['period']} {ref['filename']}" if ref else '',
+        warnings=[str(w) for w in (draft.get('data_warnings') or [])][:8],
+    )
+
+
 @router.get('/funds/{fund}/sent-reports/preview')
 def get_sent_report_preview(
     fund: str = Path(..., min_length=1, max_length=32),
