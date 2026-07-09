@@ -4,7 +4,7 @@ status: draft
 promoted_to_canonical: false
 latest_period: 2026-07
 latest_phase: P1
-updated_at: 2026-07-01T08:08:47
+updated_at: 2026-07-02T12:55:37
 ---
 
 # Transmission Paths — Summary
@@ -16,35 +16,36 @@ updated_at: 2026-07-01T08:08:47
 
 - **Period**: 2026-07
 - **Phase**: P1
-- **Total paths**: 2
-- **Unique triggers**: 1 / 7 (coverage 14%)
-- **Unique targets**: 2 / 7 (coverage 29%)
-- **Avg confidence**: 0.930
+- **Total paths**: 5
+- **Unique triggers**: 3 / 7 (coverage 43%)
+- **Unique targets**: 5 / 8 (coverage 62%)
+- **Avg confidence**: 0.870
 - **Graph size**: ? nodes / ? edges
 
 ## Active triggers
 
+- `물가_인플레이션`
+- `지정학`
 - `테크_AI_반도체`
 
 ## Active targets
 
 - `국내주식`
+- `금리`
+- `유가`
+- `크립토`
 - `해외주식`
 
 ## Unmatched triggers (candidate에 있으나 path 없음)
 
 - `달러_글로벌유동성`
-- `물가_인플레이션`
 - `에너지_원자재`
 - `유동성_크레딧`
-- `지정학`
 - `통화정책`
 
 ## Unmatched targets
 
 - `금`
-- `금리`
-- `유가`
 - `해외채권`
 - `환율`
 
@@ -52,12 +53,12 @@ updated_at: 2026-07-01T08:08:47
 
 | Month | Phase | Paths | Triggers | Targets | Avg Conf |
 |-------|-------|-------|----------|---------|----------|
-| 2026-02 | P1 | 4 | 3/7 | 3/7 | 0.342 |
-| 2026-03 | P1 | 11 | 4/7 | 5/7 | 0.642 |
-| 2026-04 | P1 | 4 | 3/7 | 3/7 | 0.359 |
-| 2026-05 | P1 | 3 | 3/7 | 3/7 | 0.697 |
-| 2026-06 | P1 | 2 | 2/7 | 2/7 | 0.948 |
-| 2026-07 | P1 | 2 | 1/7 | 2/7 | 0.930 |
+| 2026-02 | P1 | 4 | 3/7 | 3/8 | 0.342 |
+| 2026-03 | P1 | 11 | 4/7 | 5/8 | 0.642 |
+| 2026-04 | P1 | 4 | 3/7 | 3/8 | 0.359 |
+| 2026-05 | P1 | 3 | 3/7 | 3/8 | 0.697 |
+| 2026-06 | P1 | 2 | 2/7 | 2/8 | 0.948 |
+| 2026-07 | P1 | 5 | 3/7 | 5/8 | 0.870 |
 
 ## Guardrails
 
