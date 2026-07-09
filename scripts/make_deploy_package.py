@@ -20,7 +20,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 INCLUDE = [
-    'api', 'modules', 'config', 'market_research', 'web', 'scripts', 'docs', 'tools',
+    'api', 'modules', 'config', 'market_research', 'web',
+    # scripts 는 기동 관련만 (설치/배포도구/데일리배치 제외)
+    'scripts/launch_dashboard.bat', 'scripts/launch_fastapi.bat',
+    'scripts/uvicorn_logging.json', 'scripts/pick_free_port.py',
+    'docs/dashboard_features.md',
     'DEPLOY.md', '.env.example',
 ]
 
@@ -29,14 +33,20 @@ EXCLUDE_DIR_NAMES = {
     '__pycache__', 'node_modules', '.git', '.cache', '.pytest_cache',
     'dist-snapshot', '.venv', 'venv',
 }
-# ROOT 기준 상대경로 prefix 제외
+# ROOT 기준 상대경로 prefix 제외 — 구동 불필요 내부자료 (2026-07-09 사용자 지적로 강화)
 EXCLUDE_PREFIXES = [
     'market_research/data',      # 리서치 산출물 (뉴스/claim/wiki/보고서)
     'market_research/debug',
+    'market_research/devlog',
+    'market_research/docs',      # 설계문서/리뷰패킷 (내부)
+    'market_research/output',
+    'market_research/research',
+    'market_research/tests',
+    'market_research/tools',     # 운영 배치 도구 (서버 구동 불필요)
+    'api/tests',
     'web/dist_dev',
-    'docs/pa_validation.md',     # 내부 검증 수치 문서 (공유 불필요)
 ]
-EXCLUDE_FILE_NAMES = {'.env', 'db_cache.sqlite'}
+EXCLUDE_FILE_NAMES = {'.env', 'db_cache.sqlite', 'CLAUDE.md'}
 EXCLUDE_SUFFIXES = {'.pyc', '.pkl', '.log'}
 
 # zip 내부 시크릿 잔존 검사 — 실제 시크릿 값은 로컬 .env 에서 읽어 동적 구성
