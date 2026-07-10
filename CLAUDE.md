@@ -18,6 +18,15 @@ daily_update Step 1·2·2.5·2.6·2.7 news 산출물). 신규 작업에서 news 
 보존하며 현역이 아니다. 데이터 로더(`modules/data_loader.py`)는 폐기 대상이
 아니라 `api/` 가 재사용한다. (근거: 2026-05-13 사용자 명시)
 
+## 현행 상태 (2026-07-10 — React 앱)
+
+- **펀드 11개** (`config/funds.py FUND_LIST`): **06X08**(신규 — 퇴직연금 알아서RSP, 설정 2022-02-14, 수익자 한국투자증권) + 07G02·07G03·07G04·07G07·08K88·08N33·08N81·08P22·2JM23·4JM12.
+- **최상위 탭**: Overview / 편입종목(PDF) / 거래내역 / 성과분석 / 운용보고 / Admin. **Admin은 관리자 전용** (role-gate: `web/src/lib/auth.ts` `useIsAdmin()` 스텁, `?role=client`로 클라이언트 화면 미리보기 — 실인증 추후).
+- **Admin 서브탭 2개**: `펀드 운용`(전 펀드 스냅샷 — 거래내역식 날짜패널 + 조회기간/기간수익률 + BM펀드 BM초과 병기 + 채권Dur(펀드)·YTM + 컴플 미니게이지) / `코멘트 생성·관리`(코멘트→보고서 2단계 승인 워크플로우). 구 5개 패널(Evidence Quality~Wiki Context Pack) 제거.
+- **BM(FUND_BM) 설정**: 07G04(=07G07 공유)·08K88·4JM12 + **06X08**(0.5×MSCI ACWI Gross TR 57/9 + 0.5×KIS 종합채권 TR 279/40). 07G02/03·08N33/81/22·2JM23은 SAA/proxy.
+- **컴플 가이드**(`holdings_service._build_compliance`): 07G02=ISP(주식≤20/위험≤20)·07G03/06X08=RSP(주식≤55/위험≤70)·07G04/07G07=07G04 내 서브펀드(07G02/03) 비중 가중평균 2행·08K88=자산군밴드·2JM23/4JM12=위험자산한도·SAA펀드(08N33/81/22)=SAA대비.
+- ⚠️ **BM/설정 변경 시 `.cache/brinson/{fund}_*.pkl` 삭제 + 서버 재시작**(LRU) 필요 (DEPLOY.md §운영주의). 07G07 듀레이션은 `build_holdings` NAST를 `_portfolio_fund`(07G07→07G04)로 정규화해야 정상(2026-07-10 fix).
+
 **2026-07-02 파일 삭제 완료**: `prototype.py`, `tabs/`, `modules/{auth,comment_ui,
 charts,item_abbrev,mock_db_pension_data,snapshot_fallback}.py`, `config/users.yaml`,
 `api/warmup_cli.py` + data_loader 내 tabs 전용/고아 14함수(VP 계열 등). 아래

@@ -1,18 +1,10 @@
 import { useState, type CSSProperties } from "react";
-import AdminEvidenceQualityPanel from "./AdminEvidenceQualityPanel";
-import AdminDebateStatusPanel from "./AdminDebateStatusPanel";
-import AdminReportEnrichmentPanel from "./AdminReportEnrichmentPanel";
-import AdminCommentTracePanel from "./AdminCommentTracePanel";
-import AdminWikiContextPackPanel from "./AdminWikiContextPackPanel";
 import AdminFundsPanel from "./AdminFundsPanel";
+import AdminCommentWorkflowPanel from "./AdminCommentWorkflowPanel";
 
-type SubView =
-  | "funds"
-  | "evidence"
-  | "debate"
-  | "report-enrichment"
-  | "comment-trace"
-  | "wiki-pack";
+// Admin 서브탭 2개: 펀드 운용(모니터링) / 코멘트 생성·관리(워크플로우).
+// (Evidence Quality ~ Wiki Context Pack 5개 패널은 2026-07-10 제거)
+type SubView = "funds" | "comment";
 
 const TAB_BTN_BASE: CSSProperties = {
   padding: "6px 14px",
@@ -51,43 +43,15 @@ export default function AdminTab() {
           펀드 운용
         </button>
         <button
-          style={view === "evidence" ? TAB_BTN_ACTIVE : TAB_BTN_BASE}
-          onClick={() => setView("evidence")}
+          style={view === "comment" ? TAB_BTN_ACTIVE : TAB_BTN_BASE}
+          onClick={() => setView("comment")}
         >
-          Evidence Quality
-        </button>
-        <button
-          style={view === "debate" ? TAB_BTN_ACTIVE : TAB_BTN_BASE}
-          onClick={() => setView("debate")}
-        >
-          Debate Status
-        </button>
-        <button
-          style={view === "report-enrichment" ? TAB_BTN_ACTIVE : TAB_BTN_BASE}
-          onClick={() => setView("report-enrichment")}
-        >
-          Report Enrichment
-        </button>
-        <button
-          style={view === "comment-trace" ? TAB_BTN_ACTIVE : TAB_BTN_BASE}
-          onClick={() => setView("comment-trace")}
-        >
-          Comment Trace
-        </button>
-        <button
-          style={view === "wiki-pack" ? TAB_BTN_ACTIVE : TAB_BTN_BASE}
-          onClick={() => setView("wiki-pack")}
-        >
-          Wiki Context Pack
+          코멘트 생성/관리
         </button>
       </div>
 
       {view === "funds" && <AdminFundsPanel />}
-      {view === "evidence" && <AdminEvidenceQualityPanel />}
-      {view === "debate" && <AdminDebateStatusPanel />}
-      {view === "report-enrichment" && <AdminReportEnrichmentPanel />}
-      {view === "comment-trace" && <AdminCommentTracePanel />}
-      {view === "wiki-pack" && <AdminWikiContextPackPanel />}
+      {view === "comment" && <AdminCommentWorkflowPanel />}
     </section>
   );
 }

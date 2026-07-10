@@ -213,6 +213,31 @@ def _subfund_metrics(fund_code: str) -> dict | None:
     }
 
 
+def _subfund_weights(parent_code: str) -> dict[str, float]:
+    """부모 펀드(07G04) 내 서브펀드(07G02/07G03) 비중 {서브코드: EVL 비중}.
+    ITEM_CD 가 '...07G02'/'...07G03' 형태로 서브펀드 코드를 포함한다."""
+    try:
+        df = _load_holdings_df(parent_code, None, lookthrough=False)
+    except Exception:
+        return {}
+    if df is None or len(df) == 0 or "EVL_AMT" not in df.columns:
+        return {}
+    tot = float(df["EVL_AMT"].sum())
+    if tot <= 0:
+        return {}
+    out: dict[str, float] = {}
+    for _, row in df.iterrows():
+        cd = str(_val(row, "ITEM_CD", default=""))
+        evl = _val(row, "EVL_AMT")
+        for sub in ("07G02", "07G03"):
+            if sub in cd and evl is not None:
+                try:
+                    out[sub] = out.get(sub, 0.0) + float(evl) / tot
+                except (TypeError, ValueError):
+                    pass
+    return out
+
+
 def _build_compliance(
     fund_code: str, items: list[HoldingItemDTO],
     mix: PortfolioMixSummaryDTO, fx_hedge: FxHedgeSummaryDTO | None,
@@ -251,15 +276,36 @@ def _build_compliance(
             r.breakdown = "해외자산+10%p"
             rows.append(r)
 
-    elif fund_code == "07G04":
-        for sub, nm, eq_lim, risk_lim in [
-            ("07G02", "ISP", 0.20, 0.20), ("07G03", "RSP", 0.55, 0.70),
-        ]:
+    elif fund_code == "07G02":
+        # ISP(인컴추구 모펀드) 단독 가이드: 주식 ≤20%, 위험자산 ≤20%
+        # (07G04 내 ISP 서브펀드 한도와 동일 — 2026-07-09 사용자 확정)
+        rows.append(_ci("equity", "주식비중", mix.equity_weight, high=0.20))
+        rows.append(_ci("risk_asset", "위험자산", risk, high=0.20))
+
+    elif fund_code in ("07G03", "06X08"):
+        # RSP 가이드: 주식 ≤55%, 위험자산 ≤70%.
+        # 07G03(수익추구 모펀드) = 07G04 내 RSP 서브펀드 한도(2026-07-09).
+        # 06X08(퇴직연금 알아서RSP)도 07G03과 동일 적용(2026-07-10 사용자 지시).
+        rows.append(_ci("equity", "주식비중", mix.equity_weight, high=0.55))
+        rows.append(_ci("risk_asset", "위험자산", risk, high=0.70))
+
+    elif fund_code in ("07G04", "07G07"):
+        # 07G07 은 07G04 의 C-F 클래스 별칭 → 동일 가이드 적용.
+        # ISP(07G02)/RSP(07G03) 를 나눠 기재하지 않고 07G04 내 서브펀드 비중으로
+        # 가중평균해 주식비중·위험자산 2행으로 표기 (2026-07-10 사용자 지시).
+        subw = _subfund_weights("07G04")   # {서브펀드코드: 07G04 내 비중}
+        tot_w = v_eq = v_risk = lim_eq = lim_risk = 0.0
+        for sub, eq_lim, risk_lim in (("07G02", 0.20, 0.20), ("07G03", 0.55, 0.70)):
             m = _subfund_metrics(sub)
-            if m is None:
+            w = subw.get(sub, 0.0)
+            if m is None or w <= 0:
                 continue
-            rows.append(_ci(f"{sub}_eq", f"{nm} 주식비중", m["equity"], high=eq_lim))
-            rows.append(_ci(f"{sub}_risk", f"{nm} 위험자산", m["risk"], high=risk_lim))
+            tot_w += w
+            v_eq += w * m["equity"]; v_risk += w * m["risk"]
+            lim_eq += w * eq_lim; lim_risk += w * risk_lim
+        if tot_w > 0:
+            rows.append(_ci("equity", "주식비중", v_eq / tot_w, high=lim_eq / tot_w))
+            rows.append(_ci("risk_asset", "위험자산", v_risk / tot_w, high=lim_risk / tot_w))
 
     elif fund_code in ("08N33", "08N81", "08P22"):
         # SAA 펀드 = 위반 판정 없이 현재 비중 vs SAA 목표 고지(비교용) only.
@@ -573,8 +619,13 @@ def build_holdings(
     as_of = _extract_as_of(df) or _resolve_as_of_from_db(fund_code, as_of_param)
 
     # 3) NAST_AMT + OPNG_AMT
-    nast = _load_nast(fund_code, as_of)
-    opng = _load_opng(fund_code, as_of)
+    #    룩스루 홀딩스의 EVL_AMT 는 포트폴리오 마스터(07G07→07G04) 절대금액이므로
+    #    비중 분모(NAST)도 마스터 기준이어야 정합. 안 그러면 07G07 은 07G04 NAST/07G07 NAST
+    #    (~3.94배)만큼 비중이 부풀려져 듀레이션 등이 왜곡된다 (2026-07-10 fix).
+    from modules.data_loader import _portfolio_fund
+    _pf = _portfolio_fund(fund_code)
+    nast = _load_nast(_pf, as_of)
+    opng = _load_opng(_pf, as_of)
     if nast is None or nast <= 0:
         warnings.append("NAST_AMT 미확보, 평가금액 비율로 대체")
         sources.append(SourceBreakdown(

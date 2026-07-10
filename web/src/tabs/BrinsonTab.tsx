@@ -838,7 +838,7 @@ export default function BrinsonTab({ fundCode }: Props) {
                   <table className="bn-tbl">
                     <colgroup>
                       <col />
-                      <col style={{ width: 68 }} />
+                      <col style={{ width: 96 }} />
                     </colgroup>
                     <thead>
                       <tr>
@@ -877,8 +877,10 @@ export default function BrinsonTab({ fundCode }: Props) {
                   <table className="bn-tbl">
                     <colgroup>
                       <col />
-                      <col style={{ width: 68 }} />
-                      <col style={{ width: 64 }} />
+                      {/* AP비중 112 / 차이 102 — 자산군별 기여 표(112/84)와 시각적 갭 일치.
+                          차이 값(+63.6%p)이 초과기여(+1.10%)보다 넓어 컬럼폭을 더 줌 (2026-07-10) */}
+                      <col style={{ width: 112 }} />
+                      <col style={{ width: 102 }} />
                     </colgroup>
                     <thead>
                       <tr>

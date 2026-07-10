@@ -137,7 +137,12 @@
 .bn-split > table { min-width: 0; table-layout: fixed; flex: 1; }
 .bn-split > table:first-child { flex: 0 0 40%; }
 .bn-split .bn-tbl td,
-.bn-split .bn-tbl th { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 6px; padding-right: 6px; }
+.bn-split .bn-tbl th { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 4px; padding-right: 4px; }
+/* 숫자 컬럼(BM비중·AP비중·차이·수익률·초과기여)에 충분한 고정폭을 줘서 값이 잘리지 않게 하고,
+   긴 종목명(첫 컬럼)만 말줄임되게 하여 여유공간을 값 컬럼으로 배분 (2026-07-10 사용자 요청).
+   table-layout:fixed 라 th/td 양쪽에 width 지정. */
+.bn-split .bn-tbl td.r,
+.bn-split .bn-tbl th.r { width: 76px; }
 /* 위 패딩 축소가 들여쓰기(.ind/.resid 18px)를 덮지 않게 복원 — 개별 티커/종목 하위레벨 표기 */
 .bn-split .bn-tbl td.ind,
 .bn-split .bn-tbl td.resid { padding-left: 20px; }

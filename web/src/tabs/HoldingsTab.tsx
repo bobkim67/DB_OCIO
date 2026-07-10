@@ -455,17 +455,6 @@ function Gauge({ c, setTip }: { c: ComplianceItemDTO; setTip: (t: Tip) => void }
         <span className={`st ${c.status}`}>{statusTxt}</span>
         <span className="v num">{pct1(V)}</span>
       </div>
-      {kind === "band" ? (
-        /* 레인지 라벨 — 하한·상한 경계 바로 위에 각각 표시 (2026-07-07) */
-        <div className="mkrow">
-          <span className="mklab" style={{ left: `${clampPct(lo!)}%` }}>{pc0(lo!)}</span>
-          <span className="mklab" style={{ left: `${clampPct(hi!)}%` }}>{pc0(hi!)}</span>
-        </div>
-      ) : (
-        T != null && mkLabel && (
-          <div className="mkrow"><span className="mklab" style={{ left: `${mkLeft}%` }}>{mkLabel}</span></div>
-        )
-      )}
       <div className="track2">
         {kind === "max" && (<><div className="zone ok" style={{ left: 0, width: pp(hi!) }} /><div className="zone bad" style={{ left: pp(hi!), right: 0 }} /></>)}
         {kind === "min" && (<><div className="zone bad" style={{ left: 0, width: pp(lo!) }} /><div className="zone ok" style={{ left: pp(lo!), right: 0 }} /></>)}
@@ -476,6 +465,17 @@ function Gauge({ c, setTip }: { c: ComplianceItemDTO; setTip: (t: Tip) => void }
             가이드 기준선(검정)은 제거 — 존 색 경계 + 경계 위 라벨로 표시 */}
         <div className="vmk" style={{ left: pp(V), background: stColor }} />
       </div>
+      {kind === "band" ? (
+        /* 레인지 라벨 — 하한·상한 경계 바로 아래에 각각 표시 (2026-07-10 하단 이동) */
+        <div className="mkrow">
+          <span className="mklab" style={{ left: `${clampPct(lo!)}%` }}>{pc0(lo!)}</span>
+          <span className="mklab" style={{ left: `${clampPct(hi!)}%` }}>{pc0(hi!)}</span>
+        </div>
+      ) : (
+        T != null && mkLabel && (
+          <div className="mkrow"><span className="mklab" style={{ left: `${mkLeft}%` }}>{mkLabel}</span></div>
+        )
+      )}
       {kind !== "none" && (
         <div className="mleg">
           <span className="li"><span className="zsw zok" />{kind === "ref" ? "SAA 이하" : "허용 구간"}</span>

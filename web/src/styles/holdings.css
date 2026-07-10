@@ -41,9 +41,9 @@
 /* 값 = 타이틀 행 우측 한 줄 (Overview 지표카드 양식, 2026-07-07) */
 .hd-g2 .t .v { margin-left: 8px; font-size: 20px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
 /* 가이드 기준선 위 라벨 (≤x% 등) — 마커 바로 위 */
-.hd-g2 .mkrow { position: relative; height: 16px; margin-top: 8px; }
-.hd-g2 .mklab { position: absolute; bottom: 0; transform: translateX(-50%); font-size: 13px; font-weight: 800; color: var(--ace-ink); white-space: nowrap; }
-.hd-g2 .track2 { position: relative; height: 14px; border-radius: 5px; background: #EEF1F4; margin-top: 2px; overflow: hidden; }
+.hd-g2 .mkrow { position: relative; height: 16px; margin-top: 4px; }
+.hd-g2 .mklab { position: absolute; top: 0; transform: translateX(-50%); font-size: 13px; font-weight: 800; color: var(--ace-ink); white-space: nowrap; }
+.hd-g2 .track2 { position: relative; height: 14px; border-radius: 5px; background: #EEF1F4; margin-top: 9px; overflow: hidden; }
 .hd-g2 .zone { position: absolute; top: 0; height: 100%; }
 .hd-g2 .zone.ok { background: rgba(46, 125, 82, 0.12); }
 .hd-g2 .zone.bad { background: rgba(192, 57, 43, 0.10); }

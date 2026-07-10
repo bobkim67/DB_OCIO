@@ -1,204 +1,222 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import "../styles/sentreports.css";
+import "../styles/transactions.css";   // 거래내역 날짜패널(tx-date/tx-chip) 재사용
+import type { ComplianceItemDTO } from "../api/endpoints";
 
 /**
- * Admin 펀드 운용 콘솔 (2026-07-09) — 상단 펀드 선택과 무관하게 전 펀드 표시.
- * 컴플/가이드 위반 + 기간수익률 + 2단계 승인 워크플로우:
- *   펀드코멘트 생성→편집→승인 → (승인 후) 보고서 생성→편집→승인 → client 노출.
+ * Admin > 펀드 운용 (모니터링, 2026-07-10 재설계 v3).
+ * 거래내역식 날짜패널(시작~종료 + 프리셋, 디폴트 당월) + 전 펀드 1행:
+ *   펀드(코드·수익자) | 조회기간 | 1M~SI(BM펀드 BM초과 병기) | 채권Dur(펀드,년) | 채권YTM(펀드,%) | 컴플 가이드(가로 미니게이지)
  */
-
 type Row = {
   fund_code: string;
-  fund_name: string;
-  compliance_status: string;
-  compliance_breaches: string[];
+  beneficiary: string | null;
+  compliance: ComplianceItemDTO[];
   returns: Record<string, number>;
-  comment_status: string;
-  report_status: string;
+  bm_returns: Record<string, number>;
+  benchmark_kind: string;
+  duration_bond: number | null;
+  ytm_bond: number | null;
+  duration_overall: number | null;
+  ytm_overall: number | null;
 };
-type Stage = { status: string; text: string; approved_at: string; generated_at: string };
 
-const ST_LABEL: Record<string, string> = {
-  not_generated: "미생성", draft_generated: "초안", edited: "수정됨", approved: "승인",
+// 07G02(ISP)/07G03(RSP) 모펀드 표기 — 수익자 없음
+const BENEF_OVERRIDE: Record<string, string> = {
+  "07G02": "공모_모펀드(ISP)",
+  "07G03": "공모_모펀드(RSP)",
 };
-const ST_COLOR: Record<string, { bg: string; fg: string }> = {
-  not_generated: { bg: "#eef0f3", fg: "#667085" },
-  draft_generated: { bg: "#e8f0fe", fg: "#1a4d8f" },
-  edited: { bg: "#fef3e0", fg: "#8a5a00" },
-  approved: { bg: "#e6f4ea", fg: "#1e7b45" },
-};
-const COMP_COLOR: Record<string, { bg: string; fg: string; label: string }> = {
-  breach: { bg: "#fee2e2", fg: "#9a3412", label: "위반" },
-  warn: { bg: "#fef3c7", fg: "#92400e", label: "주의" },
-  ok: { bg: "#e6f4ea", fg: "#1e7b45", label: "양호" },
-  none: { bg: "#eef0f3", fg: "#667085", label: "—" },
-  error: { bg: "#eef0f3", fg: "#667085", label: "?" },
-};
-const RET_COLS = ["1M", "3M", "6M", "YTD", "1Y", "SI"];
 
-function pct(v: number | undefined): string {
-  return v == null ? "—" : `${v >= 0 ? "+" : ""}${(v * 100).toFixed(2)}%`;
+const PRESETS: { key: string; label: string }[] = [
+  { key: "MTD", label: "당월" },
+  { key: "1M", label: "1개월" },
+  { key: "3M", label: "3개월" },
+  { key: "6M", label: "6개월" },
+  { key: "YTD", label: "연초이후" },
+  { key: "SI", label: "설정후" },
+];
+const TRAIL_COLS = ["1M", "3M", "6M", "YTD", "1Y", "SI"];
+
+const pct = (v: number | undefined) =>
+  v == null ? "—" : `${v >= 0 ? "+" : ""}${(v * 100).toFixed(2)}%`;
+const yr1 = (v: number | null) => (v == null ? "—" : v.toFixed(1));
+const p2 = (v: number | null) => (v == null ? "—" : v.toFixed(2));
+const fmt = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const todayStr = () => fmt(new Date());
+// 프리셋별 시작일 (종료=기준일)
+function presetStart(key: string, end: string): string {
+  const e = end ? new Date(end) : new Date();
+  if (key === "MTD") return fmt(new Date(e.getFullYear(), e.getMonth(), 1));
+  if (key === "YTD") return fmt(new Date(e.getFullYear(), 0, 1));
+  if (key === "SI") return "";
+  const n = key === "1M" ? 1 : key === "3M" ? 3 : key === "6M" ? 6 : 0;
+  const s = new Date(e); s.setMonth(s.getMonth() - n); return fmt(s);
 }
 
-function StBadge({ s }: { s: string }) {
-  const c = ST_COLOR[s] ?? ST_COLOR.not_generated;
-  return <span className="afp-badge" style={{ background: c.bg, color: c.fg }}>{ST_LABEL[s] ?? s}</span>;
+const NUMFONT: CSSProperties = { fontVariantNumeric: "tabular-nums" };
+
+// 수익률 셀 — 값 + (BM 펀드면) BM 대비 초과 병기
+function RetCell({ v, bm, isBM, strong }: { v?: number; bm?: number; isBM: boolean; strong?: boolean }) {
+  const cls = v == null ? "" : v >= 0 ? "up" : "dn";
+  const exc = isBM && v != null && bm != null ? v - bm : null;
+  return (
+    <td className={`num ${cls}`} style={{ ...NUMFONT, fontSize: 13.5, ...(strong ? { fontWeight: 700 } : {}) }}>
+      {pct(v)}
+      {exc != null && (
+        <div style={{ ...NUMFONT, fontSize: 11, fontWeight: 400, color: "#98a0ab", marginTop: 1 }}>
+          BM{exc >= 0 ? "+" : ""}{(exc * 100).toFixed(2)}%p
+        </div>
+      )}
+    </td>
+  );
+}
+
+// 컴플 미니게이지 — 편입종목 가이드 카드 축소판:
+//   현재값(편입비중)=핀 바로 위, 가이드라인 레이블=음영 경계선 위 (카드와 동일 위치 규칙).
+const ST_HEX: Record<string, string> = { breach: "#C0392B", warn: "#C8862B", ok: "#2E9E7B", none: "#557EAA" };
+const pc0 = (v: number) => `${(v * 100).toFixed(0)}%`;
+function MiniGauge({ c }: { c: ComplianceItemDTO }) {
+  const lo = c.band_low, hi = c.band_high, V = c.value;
+  const isRef = c.status === "none" && hi != null;
+  const kind = lo != null && hi != null ? "band" : hi != null ? (isRef ? "ref" : "max") : lo != null ? "min" : "none";
+  const clamp = (x: number) => Math.min(100, Math.max(0, x));
+  // band 는 가이드 레인지를 트랙 중앙에 놓는 축(카드와 동일)
+  const span = kind === "band" ? hi! - lo! : 0;
+  const bandLo = kind === "band" ? Math.max(0, Math.min(lo! - span * 0.6, V - span * 0.2)) : 0;
+  const axisRef = kind === "band" ? hi! : kind === "min" ? lo! : hi ?? V;
+  const axisMax = Math.max(V, axisRef ?? V, 0.0001) * 1.18;
+  const bandHi = kind === "band" ? Math.max(hi! + span * 0.6, V + span * 0.2) : axisMax;
+  const P = (x: number) => kind === "band"
+    ? clamp(((x - bandLo) / Math.max(bandHi - bandLo, 1e-9)) * 100)
+    : clamp((x / axisMax) * 100);
+  const cp = (x: number) => Math.min(92, Math.max(8, P(x)));  // 라벨 위치 클램프
+  const col = ST_HEX[c.status] ?? ST_HEX.none;
+  const G = "#d8efe0", R = "#fbe1de";
+  const zones: CSSProperties[] = [];
+  const marks: { x: number; label: string }[] = [];
+  if (kind === "max" || kind === "ref") {
+    zones.push({ left: 0, width: `${P(hi!)}%`, background: G }, { left: `${P(hi!)}%`, right: 0, background: R });
+    marks.push({ x: hi!, label: kind === "ref" ? `SAA ${pc0(hi!)}` : `≤${pc0(hi!)}` });
+  } else if (kind === "min") {
+    zones.push({ left: 0, width: `${P(lo!)}%`, background: R }, { left: `${P(lo!)}%`, right: 0, background: G });
+    marks.push({ x: lo!, label: `≥${pc0(lo!)}` });
+  } else if (kind === "band") {
+    zones.push({ left: 0, width: `${P(lo!)}%`, background: R },
+      { left: `${P(lo!)}%`, width: `${P(hi!) - P(lo!)}%`, background: G },
+      { left: `${P(hi!)}%`, right: 0, background: R });
+    marks.push({ x: lo!, label: pc0(lo!) }, { x: hi!, label: pc0(hi!) });
+  }
+  return (
+    <div style={{ flex: "1 1 0", minWidth: 150, maxWidth: 460 }}>
+      <div style={{ fontSize: 11.5, color: "#5b626d", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginBottom: 3 }}>{c.label}</div>
+      {/* 현재값 — 핀 바로 위 */}
+      <div style={{ position: "relative", height: 15 }}>
+        <span style={{ position: "absolute", left: `${cp(V)}%`, transform: "translateX(-50%)", ...NUMFONT, fontSize: 12, fontWeight: 700, color: col, whiteSpace: "nowrap" }}>{pc0(V)}</span>
+      </div>
+      {/* 트랙 */}
+      <div style={{ position: "relative", height: 9, background: "#eef0f3", borderRadius: 3, overflow: "hidden" }}>
+        {zones.map((z, i) => <div key={i} style={{ position: "absolute", top: 0, bottom: 0, ...z }} />)}
+        <div style={{ position: "absolute", top: -1, bottom: -1, left: `${P(V)}%`, width: 2, background: col, transform: "translateX(-1px)" }} />
+      </div>
+      {/* 가이드라인 레이블 — 음영 경계선 아래(하단) */}
+      <div style={{ position: "relative", height: 13, marginTop: 1 }}>
+        {marks.map((m, i) => (
+          <span key={i} style={{ position: "absolute", left: `${cp(m.x)}%`, transform: "translateX(-50%)", ...NUMFONT, fontSize: 10, color: "#8a8f98", whiteSpace: "nowrap" }}>{m.label}</span>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export default function AdminFundsPanel() {
-  const now = new Date();
-  const periodOpts = useMemo(() => {
-    const out: string[] = [];
-    let y = now.getFullYear(), m = now.getMonth() + 1;
-    for (let i = 0; i < 6; i++) { m -= 1; if (m === 0) { m = 12; y -= 1; } out.push(`${y}-${String(m).padStart(2, "0")}`); }
-    let qy = now.getFullYear(), q = Math.floor(now.getMonth() / 3) + 1;
-    for (let i = 0; i < 3; i++) { q -= 1; if (q === 0) { q = 4; qy -= 1; } out.push(`${qy}-Q${q}`); }
-    return out;
-  }, []);
-  const [period, setPeriod] = useState(periodOpts[0]);
-  const kind = period.includes("Q") ? "분기" : "월간";
-
+  const [preset, setPreset] = useState("MTD");
+  const [date, setDate] = useState<string>("");           // 종료(기준일) "" = 최신
+  const [asOfActual, setAsOfActual] = useState("");
   const [rows, setRows] = useState<Row[] | null>(null);
   const [err, setErr] = useState("");
-  const [sel, setSel] = useState("");           // 펼친 펀드
-  const [wf, setWf] = useState<{ comment: Stage; report: Stage } | null>(null);
-  const [editText, setEditText] = useState("");
-  const [editRpt, setEditRpt] = useState("");
-  const [busy, setBusy] = useState("");          // 진행 중 작업 라벨
-  const [msg, setMsg] = useState("");
 
-  const loadRows = useCallback(() => {
+  const load = useCallback(() => {
     setRows(null); setErr("");
-    fetch(`/api/admin/funds-overview?period=${period}`)
+    const q = date ? `?as_of=${date}` : "";
+    fetch(`/api/admin/funds-overview${q}`)
       .then((r) => r.json())
-      .then((d) => setRows(d.rows ?? []))
+      .then((d) => {
+        setRows(d.rows ?? []);
+        setAsOfActual(d.as_of_date ?? "");
+        if (!date && d.as_of_date) setDate(d.as_of_date);
+      })
       .catch((e) => setErr(String(e)));
-  }, [period]);
-  useEffect(loadRows, [loadRows]);
+  }, [date]);
+  useEffect(load, [load]);
 
-  const loadWf = useCallback((fund: string) => {
-    setWf(null);
-    fetch(`/api/admin/funds/${fund}/workflow?period=${period}`)
-      .then((r) => r.json())
-      .then((d) => { setWf(d); setEditText(d.comment?.text ?? ""); setEditRpt(d.report?.text ?? ""); })
-      .catch((e) => setErr(String(e)));
-  }, [period]);
-
-  const act = async (fund: string, path: string, body: object, label: string) => {
-    setBusy(label); setMsg("");
-    try {
-      const method = path.includes("/draft") ? "PUT" : "POST";
-      const r = await fetch(`/api/admin/funds/${fund}/${path}`, {
-        method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-      });
-      const d = await r.json();
-      if (!r.ok) { setMsg(`✖ ${d?.detail ?? `HTTP ${r.status}`}`); return; }
-      setMsg(`✔ ${label} 완료`);
-      loadWf(fund); loadRows();
-    } catch (e) { setMsg(`✖ ${String(e)}`); } finally { setBusy(""); }
-  };
+  const endDate = date || asOfActual || todayStr();
+  const startDate = useMemo(() => presetStart(preset, endDate), [preset, endDate]);
 
   return (
-    <div className="afp-root">
-      <div className="sra-gen">
-        <span className="lab">전 펀드 운용 현황 · 워크플로우</span>
-        <select value={period} onChange={(e) => { setPeriod(e.target.value); setSel(""); setWf(null); }}>
-          {periodOpts.map((p) => <option key={p} value={p}>{p}</option>)}
-        </select>
-        <span className="hint">프로세스: 펀드코멘트 생성→승인 → 보고서 생성→승인 → client 노출 (운용보고/발송 보고서 뷰)</span>
+    <div className="afp-root" style={{ fontSize: 13.5 }}>
+      {/* 조회기간 패널 — 거래내역 날짜패널 이식 */}
+      <div className="tx-controls" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+        <span className="lab" style={{ fontSize: 13, fontWeight: 700, color: "#4b5563" }}>조회기간</span>
+        <span className="tx-date" style={{ fontSize: 13 }}>
+          <input type="date" style={NUMFONT} value={startDate} max={endDate} onChange={() => { /* 시작일 표시(범위조회 별도) */ }} />
+          ~
+          <input type="date" style={NUMFONT} value={endDate} max={todayStr()} onChange={(e) => setDate(e.target.value)} />
+        </span>
+        {PRESETS.map((p) => (
+          <button key={p.key} type="button" className={`tx-chip ${preset === p.key ? "on" : ""}`} onClick={() => setPreset(p.key)}>
+            {p.label}
+          </button>
+        ))}
+        {asOfActual && <span style={{ fontSize: 12, color: "#98a0ab" }}>데이터 기준일 {asOfActual}</span>}
         {err && <span className="err">{err}</span>}
       </div>
 
       {rows === null ? (
-        <div className="sra-empty">전 펀드 컴플·수익률 집계 중… (콜드 시 수십 초)</div>
+        <div className="sra-empty">전 펀드 스냅샷 집계 중… (콜드 시 수십 초)</div>
       ) : (
         <div className="afp-tablewrap">
-          <table className="afp-table">
+          <table className="afp-table" style={{ fontSize: 13.5 }}>
             <thead>
               <tr>
-                <th>펀드</th><th>컴플/가이드</th>
-                {RET_COLS.map((c) => <th key={c} className="num">{c}</th>)}
-                <th>코멘트</th><th>보고서</th><th></th>
+                <th>펀드</th>
+                <th className="num">조회기간</th>
+                {TRAIL_COLS.map((c) => <th key={c} className="num">{c}</th>)}
+                <th className="num">채권Dur(펀드,년)</th>
+                <th className="num">채권YTM(펀드,%)</th>
+                <th>컴플라이언스 가이드</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => {
-                const cc = COMP_COLOR[r.compliance_status] ?? COMP_COLOR.none;
+                const isBM = r.benchmark_kind === "BM";
+                const benef = BENEF_OVERRIDE[r.fund_code] ?? r.beneficiary ?? "—";
                 return (
-                  <tr key={r.fund_code} className={sel === r.fund_code ? "on" : ""}>
-                    <td><b>{r.fund_code}</b><div className="fname">{r.fund_name}</div></td>
-                    <td>
-                      <span className="afp-badge" style={{ background: cc.bg, color: cc.fg }}
-                        title={r.compliance_breaches.join(", ")}>{cc.label}</span>
-                      {r.compliance_breaches.length > 0 && (
-                        <div className="fname">{r.compliance_breaches.join(", ")}</div>
-                      )}
+                  <tr key={r.fund_code}>
+                    <td style={{ maxWidth: 128 }}>
+                      <b style={{ fontSize: 14 }}>{r.fund_code}</b>
+                      <div className="fname" style={{ fontSize: 11.5, color: "#6b7280", whiteSpace: "normal", wordBreak: "keep-all", lineHeight: 1.25 }}>
+                        {benef}
+                      </div>
                     </td>
-                    {RET_COLS.map((c) => (
-                      <td key={c} className={`num ${r.returns[c] != null ? (r.returns[c] >= 0 ? "up" : "dn") : ""}`}>
-                        {pct(r.returns[c])}
-                      </td>
+                    <RetCell v={r.returns[preset]} bm={r.bm_returns[preset]} isBM={isBM} strong />
+                    {TRAIL_COLS.map((c) => (
+                      <RetCell key={c} v={r.returns[c]} bm={r.bm_returns[c]} isBM={isBM} />
                     ))}
-                    <td><StBadge s={r.comment_status} /></td>
-                    <td><StBadge s={r.report_status} /></td>
-                    <td>
-                      <button type="button" className="afp-open"
-                        onClick={() => { const f = sel === r.fund_code ? "" : r.fund_code; setSel(f); if (f) loadWf(f); }}>
-                        {sel === r.fund_code ? "닫기" : "작업"}
-                      </button>
+                    <td className="num" style={{ ...NUMFONT, fontSize: 13 }}>{yr1(r.duration_bond)}<span style={{ color: "#98a0ab" }}>({yr1(r.duration_overall)})</span></td>
+                    <td className="num" style={{ ...NUMFONT, fontSize: 13 }}>{p2(r.ytm_bond)}<span style={{ color: "#98a0ab" }}>({p2(r.ytm_overall)})</span></td>
+                    <td style={{ minWidth: 340 }}>
+                      {r.compliance.length === 0
+                        ? <span className="fname">가이드 미설정</span>
+                        : <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 18px" }}>
+                            {r.compliance.map((c) => <MiniGauge key={c.key} c={c} />)}
+                          </div>}
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-        </div>
-      )}
-
-      {sel && (
-        <div className="sra-genout">
-          <div className="gh">{sel} · {period} 워크플로우 {busy && <span className="ref">⏳ {busy} 진행 중…</span>} {msg && <span className="ref">{msg}</span>}</div>
-          {!wf ? <div className="sra-empty">로드 중…</div> : (
-            <div className="afp-wf">
-              {/* 1단계 — 펀드코멘트 */}
-              <div className="stage">
-                <div className="sh">① 펀드코멘트 <StBadge s={wf.comment.status} />
-                  {wf.comment.approved_at && <span className="ref">승인 {wf.comment.approved_at.slice(0, 16)}</span>}
-                </div>
-                <div className="btns">
-                  <button type="button" disabled={!!busy}
-                    onClick={() => act(sel, "comment/generate", { kind, period }, "코멘트 생성 (1~2분)")}>
-                    {wf.comment.status === "not_generated" ? "생성" : "재생성"}
-                  </button>
-                  <button type="button" disabled={!!busy || wf.comment.status === "not_generated"}
-                    onClick={() => act(sel, "comment/draft", { period, text: editText }, "코멘트 수정 저장")}>수정 저장</button>
-                  <button type="button" className="approve" disabled={!!busy || wf.comment.status === "not_generated"}
-                    onClick={() => act(sel, "comment/approve", { period }, "코멘트 승인")}>승인</button>
-                </div>
-                <textarea value={editText} onChange={(e) => setEditText(e.target.value)}
-                  placeholder="코멘트 생성 후 편집" rows={10} />
-              </div>
-              {/* 2단계 — 보고서 (코멘트 승인 게이트) */}
-              <div className="stage">
-                <div className="sh">② 보고서 (발송용) <StBadge s={wf.report.status} />
-                  {wf.report.approved_at && <span className="ref">승인 {wf.report.approved_at.slice(0, 16)}</span>}
-                </div>
-                <div className="btns">
-                  <button type="button" disabled={!!busy || wf.comment.status !== "approved"}
-                    title={wf.comment.status !== "approved" ? "펀드코멘트 승인 후 생성 가능" : ""}
-                    onClick={() => act(sel, "report/generate", { kind, period }, "보고서 생성 (1~2분)")}>
-                    {wf.report.status === "not_generated" ? "생성" : "재생성"}
-                  </button>
-                  <button type="button" disabled={!!busy || wf.report.status === "not_generated"}
-                    onClick={() => act(sel, "report/draft", { period, text: editRpt }, "보고서 수정 저장")}>수정 저장</button>
-                  <button type="button" className="approve" disabled={!!busy || wf.report.status === "not_generated"}
-                    onClick={() => act(sel, "report/approve", { period }, "보고서 승인")}>승인</button>
-                </div>
-                <textarea value={editRpt} onChange={(e) => setEditRpt(e.target.value)}
-                  placeholder="① 승인 후 생성 → 편집" rows={10} />
-              </div>
-            </div>
-          )}
         </div>
       )}
     </div>

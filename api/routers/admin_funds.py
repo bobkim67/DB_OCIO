@@ -14,6 +14,8 @@ import re
 from fastapi import APIRouter, HTTPException, Path, Query
 from pydantic import BaseModel
 
+from api.schemas.holdings import ComplianceItemDTO
+
 REPORT_SUFFIX = 'sentrep'  # 발송 보고서 아티팩트 suffix
 
 router = APIRouter()
@@ -24,15 +26,21 @@ router = APIRouter()
 class AdminFundRowDTO(BaseModel):
     fund_code: str
     fund_name: str
+    beneficiary: str | None = None    # 수익자 (FUND_BENEFICIARY)
     compliance_status: str            # breach | warn | ok | none | error
     compliance_breaches: list[str] = []   # 위반/주의 항목 라벨
-    returns: dict[str, float] = {}    # 1M/3M/6M/YTD/1Y/SI (raw ratio)
-    comment_status: str               # not_generated | draft_generated | edited | approved
-    report_status: str
+    compliance: list[ComplianceItemDTO] = []  # 항목별 가이드 게이지 데이터(전 펀드 노출용)
+    returns: dict[str, float] = {}    # MTD/1M/3M/6M/YTD/1Y/SI (raw ratio)
+    bm_returns: dict[str, float] = {}    # 동일 기간 BM 수익률 (BM 펀드만)
+    benchmark_kind: str = "none"      # BM | SAA | none
+    duration_bond: float | None = None     # 채권성 가중평균 듀레이션 (년)
+    ytm_bond: float | None = None          # 채권성 가중평균 YTM (%)
+    duration_overall: float | None = None  # 펀드 전체 가중평균 듀레이션 (년)
+    ytm_overall: float | None = None       # 펀드 전체 가중평균 YTM (%)
 
 
 class AdminFundsOverviewDTO(BaseModel):
-    period: str
+    as_of_date: str | None = None     # 스냅샷 기준일 (실제 데이터 기준일)
     rows: list[AdminFundRowDTO]
 
 
@@ -113,49 +121,66 @@ def _generate(fund: str, body: GenBodyDTO, suffix: str | None) -> WorkflowStageD
 
 @router.get('/admin/funds-overview', response_model=AdminFundsOverviewDTO)
 def get_admin_funds_overview(
-    period: str = Query(..., pattern=r'^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4])$'),
+    as_of: str | None = Query(None, pattern=r'^\d{4}-\d{2}-\d{2}$'),
 ) -> AdminFundsOverviewDTO:
-    """전 펀드: 컴플라이언스 상태 + 기간수익률 + 코멘트/보고서 워크플로우 상태."""
-    from config.funds import FUND_LIST, FUND_META
-    from market_research.report.report_store import get_status
+    """전 펀드 스냅샷: 컴플라이언스 가이드(항목별) + 기간수익률 + 채권/펀드 듀레이션·YTM.
+    as_of(YYYY-MM-DD) 미지정 시 최신 영업일 기준."""
+    from config.funds import FUND_LIST, FUND_META, FUND_BENEFICIARY
 
     _SEV = {'breach': 3, 'warn': 2, 'ok': 1, 'none': 0}
+    _RET_KEYS = ('MTD', '1M', '3M', '6M', 'YTD', '1Y', 'SI')
     rows: list[AdminFundRowDTO] = []
+    snapshot: str | None = None
     for fund in FUND_LIST:
-        # 컴플라이언스 — holdings compliance 재사용 (인메모리 캐시, 콜드 시 수 초/펀드)
+        # 컴플라이언스 가이드 + 듀레이션/YTM — holdings 재사용 (인메모리 캐시)
         comp_status, breaches = 'error', []
+        comp_items: list[ComplianceItemDTO] = []
+        d_bond = y_bond = d_all = y_all = None
         try:
             from api.services.holdings_service import build_holdings
-            h = build_holdings(fund, lookthrough=True)
-            comp = getattr(h, 'compliance', None) or []
+            h = build_holdings(fund, lookthrough=True, as_of_date=as_of)
+            comp_items = list(getattr(h, 'compliance', None) or [])
             worst = 0
-            for c in comp:
+            for c in comp_items:
                 s = getattr(c, 'status', 'none')
                 worst = max(worst, _SEV.get(s, 0))
                 if s in ('breach', 'warn'):
                     breaches.append(f'{getattr(c, "label", "?")}({s})')
             comp_status = {3: 'breach', 2: 'warn', 1: 'ok', 0: 'none'}[worst]
+            ds = getattr(h, 'duration_summary', None)
+            if ds is not None:
+                d_bond, y_bond = ds.duration_bond, ds.ytm_bond
+                d_all, y_all = ds.duration_overall, ds.ytm_overall
+            if snapshot is None and getattr(h, 'as_of_date', None):
+                snapshot = str(h.as_of_date)
         except Exception:
             pass
-        # 기간수익률
+        # 기간수익률 + 동일기간 BM 수익률 (as_of 앵커)
         rets: dict[str, float] = {}
+        bm_rets: dict[str, float] = {}
+        bm_kind = 'none'
         try:
             from api.services.overview_service import build_period_returns
-            pr = build_period_returns(fund)
-            rets = {k: v for k, v in (pr.period_returns or {}).items()
-                    if k in ('1M', '3M', '6M', 'YTD', '1Y', 'SI')}
+            pr = build_period_returns(fund, end_date=as_of)
+            rets = {k: v for k, v in (pr.period_returns or {}).items() if k in _RET_KEYS}
+            bm_rets = {k: v for k, v in (pr.bm_period_returns or {}).items() if k in _RET_KEYS}
+            bm_kind = pr.benchmark_kind
         except Exception:
             pass
         rows.append(AdminFundRowDTO(
             fund_code=fund,
             fund_name=str(FUND_META.get(fund, {}).get('name', '')),
+            beneficiary=FUND_BENEFICIARY.get(fund),
             compliance_status=comp_status,
             compliance_breaches=breaches,
+            compliance=comp_items,
             returns=rets,
-            comment_status=get_status(period, fund),
-            report_status=get_status(period, fund, target_suffix=REPORT_SUFFIX),
+            bm_returns=bm_rets,
+            benchmark_kind=bm_kind,
+            duration_bond=d_bond, ytm_bond=y_bond,
+            duration_overall=d_all, ytm_overall=y_all,
         ))
-    return AdminFundsOverviewDTO(period=period, rows=rows)
+    return AdminFundsOverviewDTO(as_of_date=snapshot or as_of, rows=rows)
 
 
 # ── 워크플로우 조회 ──

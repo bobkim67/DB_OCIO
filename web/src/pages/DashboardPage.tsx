@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useFunds } from "../hooks/useFunds";
+import { useIsAdmin } from "../lib/auth";
 import "../styles/shell.css";
 import LoadingBar from "../components/common/LoadingBar";
 import WarmupGate from "../components/common/WarmupGate";
@@ -20,6 +21,7 @@ type TabKey =
 
 export default function DashboardPage() {
   const { data, isLoading, error } = useFunds();
+  const isAdmin = useIsAdmin(); // 클라이언트는 false → Admin 탭 숨김 (TODO: 실제 인증 연동)
   const [selected, setSelected] = useState<string>("08K88");
   const [tab, setTab] = useState<TabKey>("overview");
   // keep-alive: 방문한 탭은 언마운트하지 않고 display:none 으로 숨겨 로컬 상태
@@ -102,14 +104,17 @@ export default function DashboardPage() {
         {tabBtn("transactions", "거래내역")}
         {tabBtn("brinson", "성과분석")}
         {tabBtn("report", "운용보고")}
-        {tabBtn("admin", "Admin")}
+        {/* Admin 탭은 관리자에게만 노출. 클라이언트(비관리자)는 나머지 탭 전부 접근. */}
+        {isAdmin && tabBtn("admin", "Admin")}
       </div>
 
-      {visited.map((key) => (
-        <div key={key} style={{ display: tab === key ? undefined : "none" }}>
-          {tabBody(key)}
-        </div>
-      ))}
+      {visited.map((key) =>
+        key === "admin" && !isAdmin ? null : (
+          <div key={key} style={{ display: tab === key ? undefined : "none" }}>
+            {tabBody(key)}
+          </div>
+        )
+      )}
     </div>
   );
 }
