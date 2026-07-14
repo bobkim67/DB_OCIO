@@ -124,7 +124,23 @@ FUND_BM = {
             _C(279, 40, 0.50, 'KIS 종합채권 TR'),
         ],
     },
-    # BM 미설정 펀드: 07G02, 07G03, 08N33, 08N81, 08P22, 2JM23
+    # 07G02(인컴추구 모): MSCI ACWI 20% + KIS 종합채권 TR 80%. 2026-07-13 사용자 제공.
+    '07G02': {
+        'name': '0.20×MSCI ACWI + 0.80×KIS 종합채권 TR',
+        'components': [
+            _C(57, 9, 0.20, 'MSCI ACWI Gross TR', cur='USD', region='ex_KR'),
+            _C(279, 40, 0.80, 'KIS 종합채권 TR'),
+        ],
+    },
+    # 07G03(수익추구 모): MSCI ACWI 40% + KIS 종합채권 TR 60%. 2026-07-13 사용자 제공.
+    '07G03': {
+        'name': '0.40×MSCI ACWI + 0.60×KIS 종합채권 TR',
+        'components': [
+            _C(57, 9, 0.40, 'MSCI ACWI Gross TR', cur='USD', region='ex_KR'),
+            _C(279, 40, 0.60, 'KIS 종합채권 TR'),
+        ],
+    },
+    # BM 미설정 펀드: 08N33, 08N81, 08P22, 2JM23
     # → Tab 0에서 BM 없이 표시
 }
 
