@@ -1,24 +1,1093 @@
 {
   "month": "2026-07",
-  "generated_at": "2026-07-02T12:55:39",
-  "windows": [],
-  "timeline": [],
+  "generated_at": "2026-07-14T08:52:40",
+  "windows": [
+    {
+      "window_id": "e0252c01b7",
+      "asset_class": "국내주식",
+      "benchmark": "KOSPI",
+      "date_from": "2026-07-02",
+      "date_to": "2026-07-02",
+      "signal_type": "drawdown",
+      "benchmark_move_pct": -14.3552,
+      "zscore": -2.8432,
+      "pivot_date": "2026-07-02",
+      "event_count": 1,
+      "mapped_evidence_ids": [
+        "a8968ba30781",
+        "a049af04a3b4",
+        "d414ccfbd445",
+        "2b20956d6799",
+        "e9a9852b22c3",
+        "8b9eb0ef3b23",
+        "32ccc267f391",
+        "8896fbf716b0"
+      ],
+      "mapped_topics": [
+        "테크_AI_반도체",
+        "통화정책"
+      ],
+      "mapped_event_groups": [
+        "event_028fbcf91f",
+        "event_0afe8debd6",
+        "event_1302fb36a5",
+        "event_829c2254d8",
+        "event_8e201a2fd6"
+      ],
+      "evidence_count": 8,
+      "evidence_source_mix": {
+        "naver_research": 5,
+        "news": 3
+      },
+      "confidence": 1.0662,
+      "graph_seed_size": {
+        "nodes": 12,
+        "edges": 5
+      }
+    },
+    {
+      "window_id": "c10f5b82ed",
+      "asset_class": "대체투자",
+      "benchmark": "Gold",
+      "date_from": "2026-07-02",
+      "date_to": "2026-07-02",
+      "signal_type": "trend_break",
+      "benchmark_move_pct": 2.0578,
+      "zscore": 1.0411,
+      "pivot_date": "2026-07-02",
+      "event_count": 1,
+      "mapped_evidence_ids": [
+        "1373acf63068",
+        "ec3238f089b1",
+        "634457ef9c96",
+        "bcd8d2ba7ca6",
+        "440f60c8f069",
+        "2d519243f72e",
+        "230fc646f01e",
+        "691663725b9f"
+      ],
+      "mapped_topics": [
+        "경기_소비",
+        "부동산",
+        "에너지_원자재",
+        "유동성_크레딧",
+        "지정학",
+        "테크_AI_반도체"
+      ],
+      "mapped_event_groups": [
+        "event_210aefe9b0",
+        "event_2141515ad2",
+        "event_5d9c09d40d",
+        "event_625148b02c",
+        "event_92a8b1ea96",
+        "event_cc1ecacb50",
+        "event_fd815a819f"
+      ],
+      "evidence_count": 8,
+      "evidence_source_mix": {
+        "naver_research": 5,
+        "news": 3
+      },
+      "confidence": 0.3904,
+      "graph_seed_size": {
+        "nodes": 12,
+        "edges": 5
+      }
+    },
+    {
+      "window_id": "dce3eff1d8",
+      "asset_class": "대체투자",
+      "benchmark": "Gold",
+      "date_from": "2026-07-03",
+      "date_to": "2026-07-03",
+      "signal_type": "rebound",
+      "benchmark_move_pct": 3.0214,
+      "zscore": 1.4381,
+      "pivot_date": "2026-07-03",
+      "event_count": 1,
+      "mapped_evidence_ids": [
+        "1373acf63068",
+        "ec3238f089b1",
+        "634457ef9c96",
+        "bcd8d2ba7ca6",
+        "440f60c8f069",
+        "2d519243f72e",
+        "230fc646f01e",
+        "691663725b9f"
+      ],
+      "mapped_topics": [
+        "경기_소비",
+        "부동산",
+        "에너지_원자재",
+        "유동성_크레딧",
+        "지정학",
+        "테크_AI_반도체"
+      ],
+      "mapped_event_groups": [
+        "event_210aefe9b0",
+        "event_2141515ad2",
+        "event_5d9c09d40d",
+        "event_625148b02c",
+        "event_92a8b1ea96",
+        "event_cc1ecacb50",
+        "event_fd815a819f"
+      ],
+      "evidence_count": 8,
+      "evidence_source_mix": {
+        "naver_research": 5,
+        "news": 3
+      },
+      "confidence": 0.5393,
+      "graph_seed_size": {
+        "nodes": 12,
+        "edges": 5
+      }
+    }
+  ],
+  "timeline": [
+    {
+      "date": "2026-07-01",
+      "kind": "evidence",
+      "window_id": "e0252c01b7",
+      "asset_class": "국내주식",
+      "evidence_id": "32ccc267f391",
+      "source_type": "news",
+      "primary_topic": "테크_AI_반도체"
+    },
+    {
+      "date": "2026-07-01",
+      "kind": "evidence",
+      "window_id": "e0252c01b7",
+      "asset_class": "국내주식",
+      "evidence_id": "8896fbf716b0",
+      "source_type": "news",
+      "primary_topic": "통화정책"
+    },
+    {
+      "date": "2026-07-01",
+      "kind": "evidence",
+      "window_id": "c10f5b82ed",
+      "asset_class": "대체투자",
+      "evidence_id": "230fc646f01e",
+      "source_type": "news",
+      "primary_topic": "지정학"
+    },
+    {
+      "date": "2026-07-01",
+      "kind": "evidence",
+      "window_id": "dce3eff1d8",
+      "asset_class": "대체투자",
+      "evidence_id": "230fc646f01e",
+      "source_type": "news",
+      "primary_topic": "지정학"
+    },
+    {
+      "date": "2026-07-02",
+      "kind": "bm_pivot",
+      "window_id": "e0252c01b7",
+      "asset_class": "국내주식",
+      "benchmark": "KOSPI",
+      "signal_type": "drawdown",
+      "zscore": -2.8432,
+      "move_pct": -14.3552
+    },
+    {
+      "date": "2026-07-02",
+      "kind": "bm_pivot",
+      "window_id": "c10f5b82ed",
+      "asset_class": "대체투자",
+      "benchmark": "Gold",
+      "signal_type": "trend_break",
+      "zscore": 1.0411,
+      "move_pct": 2.0578
+    },
+    {
+      "date": "2026-07-02",
+      "kind": "evidence",
+      "window_id": "e0252c01b7",
+      "asset_class": "국내주식",
+      "evidence_id": "a8968ba30781",
+      "source_type": "naver_research",
+      "primary_topic": "테크_AI_반도체"
+    },
+    {
+      "date": "2026-07-02",
+      "kind": "evidence",
+      "window_id": "e0252c01b7",
+      "asset_class": "국내주식",
+      "evidence_id": "a049af04a3b4",
+      "source_type": "naver_research",
+      "primary_topic": "테크_AI_반도체"
+    },
+    {
+      "date": "2026-07-02",
+      "kind": "evidence",
+      "window_id": "e0252c01b7",
+      "asset_class": "국내주식",
+      "evidence_id": "d414ccfbd445",
+      "source_type": "naver_research",
+      "primary_topic": "테크_AI_반도체"
+    },
+    {
+      "date": "2026-07-02",
+      "kind": "evidence",
+      "window_id": "e0252c01b7",
+      "asset_class": "국내주식",
+      "evidence_id": "2b20956d6799",
+      "source_type": "naver_research",
+      "primary_topic": "테크_AI_반도체"
+    },
+    {
+      "date": "2026-07-02",
+      "kind": "evidence",
+      "window_id": "e0252c01b7",
+      "asset_class": "국내주식",
+      "evidence_id": "e9a9852b22c3",
+      "source_type": "naver_research",
+      "primary_topic": "테크_AI_반도체"
+    },
+    {
+      "date": "2026-07-02",
+      "kind": "evidence",
+      "window_id": "e0252c01b7",
+      "asset_class": "국내주식",
+      "evidence_id": "8b9eb0ef3b23",
+      "source_type": "news",
+      "primary_topic": "테크_AI_반도체"
+    },
+    {
+      "date": "2026-07-02",
+      "kind": "evidence",
+      "window_id": "c10f5b82ed",
+      "asset_class": "대체투자",
+      "evidence_id": "1373acf63068",
+      "source_type": "naver_research",
+      "primary_topic": "에너지_원자재"
+    },
+    {
+      "date": "2026-07-02",
+      "kind": "evidence",
+      "window_id": "c10f5b82ed",
+      "asset_class": "대체투자",
+      "evidence_id": "ec3238f089b1",
+      "source_type": "naver_research",
+      "primary_topic": "부동산"
+    },
+    {
+      "date": "2026-07-02",
+      "kind": "evidence",
+      "window_id": "c10f5b82ed",
+      "asset_class": "대체투자",
+      "evidence_id": "634457ef9c96",
+      "source_type": "naver_research",
+      "primary_topic": "경기_소비"
+    },
+    {
+      "date": "2026-07-02",
+      "kind": "evidence",
+      "window_id": "c10f5b82ed",
+      "asset_class": "대체투자",
+      "evidence_id": "bcd8d2ba7ca6",
+      "source_type": "naver_research",
+      "primary_topic": "유동성_크레딧"
+    },
+    {
+      "date": "2026-07-02",
+      "kind": "evidence",
+      "window_id": "c10f5b82ed",
+      "asset_class": "대체투자",
+      "evidence_id": "440f60c8f069",
+      "source_type": "naver_research",
+      "primary_topic": "테크_AI_반도체"
+    },
+    {
+      "date": "2026-07-02",
+      "kind": "evidence",
+      "window_id": "c10f5b82ed",
+      "asset_class": "대체투자",
+      "evidence_id": "2d519243f72e",
+      "source_type": "news",
+      "primary_topic": "에너지_원자재"
+    },
+    {
+      "date": "2026-07-02",
+      "kind": "evidence",
+      "window_id": "c10f5b82ed",
+      "asset_class": "대체투자",
+      "evidence_id": "691663725b9f",
+      "source_type": "news",
+      "primary_topic": "에너지_원자재"
+    },
+    {
+      "date": "2026-07-02",
+      "kind": "evidence",
+      "window_id": "dce3eff1d8",
+      "asset_class": "대체투자",
+      "evidence_id": "1373acf63068",
+      "source_type": "naver_research",
+      "primary_topic": "에너지_원자재"
+    },
+    {
+      "date": "2026-07-02",
+      "kind": "evidence",
+      "window_id": "dce3eff1d8",
+      "asset_class": "대체투자",
+      "evidence_id": "ec3238f089b1",
+      "source_type": "naver_research",
+      "primary_topic": "부동산"
+    },
+    {
+      "date": "2026-07-02",
+      "kind": "evidence",
+      "window_id": "dce3eff1d8",
+      "asset_class": "대체투자",
+      "evidence_id": "634457ef9c96",
+      "source_type": "naver_research",
+      "primary_topic": "경기_소비"
+    },
+    {
+      "date": "2026-07-02",
+      "kind": "evidence",
+      "window_id": "dce3eff1d8",
+      "asset_class": "대체투자",
+      "evidence_id": "bcd8d2ba7ca6",
+      "source_type": "naver_research",
+      "primary_topic": "유동성_크레딧"
+    },
+    {
+      "date": "2026-07-02",
+      "kind": "evidence",
+      "window_id": "dce3eff1d8",
+      "asset_class": "대체투자",
+      "evidence_id": "440f60c8f069",
+      "source_type": "naver_research",
+      "primary_topic": "테크_AI_반도체"
+    },
+    {
+      "date": "2026-07-02",
+      "kind": "evidence",
+      "window_id": "dce3eff1d8",
+      "asset_class": "대체투자",
+      "evidence_id": "2d519243f72e",
+      "source_type": "news",
+      "primary_topic": "에너지_원자재"
+    },
+    {
+      "date": "2026-07-02",
+      "kind": "evidence",
+      "window_id": "dce3eff1d8",
+      "asset_class": "대체투자",
+      "evidence_id": "691663725b9f",
+      "source_type": "news",
+      "primary_topic": "에너지_원자재"
+    },
+    {
+      "date": "2026-07-03",
+      "kind": "bm_pivot",
+      "window_id": "dce3eff1d8",
+      "asset_class": "대체투자",
+      "benchmark": "Gold",
+      "signal_type": "rebound",
+      "zscore": 1.4381,
+      "move_pct": 3.0214
+    }
+  ],
   "graph": {
-    "nodes": [],
-    "edges": []
+    "nodes": [
+      {
+        "node_id": "안도_랠리_유동성_빅테크_집중",
+        "label": "안도 랠리, 유동성 빅테크 집중",
+        "topic": "안전자산",
+        "severity": "positive",
+        "source_types": [],
+        "window_ids": [
+          "e0252c01b7"
+        ]
+      },
+      {
+        "node_id": "REPO_FAILS_DEL",
+        "label": "REPO_FAILS_DEL",
+        "topic": "유로달러",
+        "severity": "neutral",
+        "source_types": [],
+        "window_ids": [
+          "e0252c01b7"
+        ]
+      },
+      {
+        "node_id": "REPO_FAILS_RCV",
+        "label": "REPO_FAILS_RCV",
+        "topic": "유로달러",
+        "severity": "neutral",
+        "source_types": [],
+        "window_ids": [
+          "e0252c01b7"
+        ]
+      },
+      {
+        "node_id": "AI_반도체",
+        "label": "AI_반도체",
+        "topic": "AI_반도체",
+        "severity": "neutral",
+        "source_types": [],
+        "window_ids": [
+          "e0252c01b7"
+        ]
+      },
+      {
+        "node_id": "SP500_TR",
+        "label": "SP500_TR",
+        "topic": "AI_반도체",
+        "severity": "neutral",
+        "source_types": [],
+        "window_ids": [
+          "e0252c01b7"
+        ]
+      },
+      {
+        "node_id": "MSCI_EAFE",
+        "label": "MSCI_EAFE",
+        "topic": "AI_반도체",
+        "severity": "neutral",
+        "source_types": [],
+        "window_ids": [
+          "e0252c01b7"
+        ]
+      },
+      {
+        "node_id": "MSCI_EM",
+        "label": "MSCI_EM",
+        "topic": "AI_반도체",
+        "severity": "neutral",
+        "source_types": [],
+        "window_ids": [
+          "e0252c01b7"
+        ]
+      },
+      {
+        "node_id": "MSCI_JAPAN",
+        "label": "MSCI_JAPAN",
+        "topic": "AI_반도체",
+        "severity": "neutral",
+        "source_types": [],
+        "window_ids": [
+          "e0252c01b7"
+        ]
+      },
+      {
+        "node_id": "반도체",
+        "label": "반도체",
+        "topic": "news_daily",
+        "severity": "neutral",
+        "source_types": [
+          "news",
+          "naver_research"
+        ],
+        "window_ids": [
+          "e0252c01b7"
+        ]
+      },
+      {
+        "node_id": "코스피",
+        "label": "코스피",
+        "topic": "news_daily",
+        "severity": "neutral",
+        "source_types": [
+          "news"
+        ],
+        "window_ids": [
+          "e0252c01b7"
+        ]
+      },
+      {
+        "node_id": "AI",
+        "label": "AI",
+        "topic": "news_daily",
+        "severity": "neutral",
+        "source_types": [
+          "news"
+        ],
+        "window_ids": [
+          "e0252c01b7"
+        ]
+      },
+      {
+        "node_id": "반도체_대형주_주가_연동",
+        "label": "반도체_대형주_주가_연동",
+        "topic": "inferred",
+        "severity": "neutral",
+        "source_types": [
+          "news"
+        ],
+        "window_ids": [
+          "e0252c01b7"
+        ]
+      },
+      {
+        "node_id": "글로벌_달러_유동성_부족_심화",
+        "label": "글로벌 달러 유동성 부족 심화",
+        "topic": "달러",
+        "severity": "warning",
+        "source_types": [],
+        "window_ids": [
+          "c10f5b82ed",
+          "dce3eff1d8"
+        ]
+      },
+      {
+        "node_id": "자금시장_안정",
+        "label": "자금시장 안정",
+        "topic": "유로달러",
+        "severity": "neutral",
+        "source_types": [],
+        "window_ids": [
+          "c10f5b82ed",
+          "dce3eff1d8"
+        ]
+      },
+      {
+        "node_id": "유동성_쿠션_소진_근접_블로거:_증시_직접_영향은_아님",
+        "label": "유동성 쿠션 소진 근접 (블로거: 증시 직접 영향은 아님)",
+        "topic": "유로달러",
+        "severity": "neutral",
+        "source_types": [],
+        "window_ids": [
+          "c10f5b82ed",
+          "dce3eff1d8"
+        ]
+      },
+      {
+        "node_id": "10년_금리_5일간_급등",
+        "label": "10년 금리 5일간 급등",
+        "topic": "금리",
+        "severity": "warning",
+        "source_types": [],
+        "window_ids": [
+          "c10f5b82ed",
+          "dce3eff1d8"
+        ]
+      },
+      {
+        "node_id": "글로벌_중앙은행_미국채_매도달러_확보_가능성",
+        "label": "글로벌 중앙은행 미국채 매도(달러 확보) 가능성",
+        "topic": "금리",
+        "severity": "warning",
+        "source_types": [],
+        "window_ids": [
+          "c10f5b82ed",
+          "dce3eff1d8"
+        ]
+      },
+      {
+        "node_id": "10Y-2Y_스프레드",
+        "label": "10Y-2Y 스프레드",
+        "topic": "금리",
+        "severity": "neutral",
+        "source_types": [],
+        "window_ids": [
+          "c10f5b82ed",
+          "dce3eff1d8"
+        ]
+      },
+      {
+        "node_id": "수익률_곡선_정상화_진행",
+        "label": "수익률 곡선 정상화 진행",
+        "topic": "금리",
+        "severity": "neutral",
+        "source_types": [],
+        "window_ids": [
+          "c10f5b82ed",
+          "dce3eff1d8"
+        ]
+      },
+      {
+        "node_id": "30bp_이상",
+        "label": "30bp 이상",
+        "topic": "금리",
+        "severity": "neutral",
+        "source_types": [],
+        "window_ids": [
+          "c10f5b82ed",
+          "dce3eff1d8"
+        ]
+      },
+      {
+        "node_id": "MOVE_100~120",
+        "label": "MOVE 100~120",
+        "topic": "금리",
+        "severity": "neutral",
+        "source_types": [],
+        "window_ids": [
+          "c10f5b82ed",
+          "dce3eff1d8"
+        ]
+      },
+      {
+        "node_id": "채권시장_변동성_상승_중_주시_필요",
+        "label": "채권시장 변동성 상승 중, 주시 필요",
+        "topic": "금리",
+        "severity": "neutral",
+        "source_types": [],
+        "window_ids": [
+          "c10f5b82ed",
+          "dce3eff1d8"
+        ]
+      },
+      {
+        "node_id": "MOVE_120+",
+        "label": "MOVE 120+",
+        "topic": "금리",
+        "severity": "warning",
+        "source_types": [],
+        "window_ids": [
+          "c10f5b82ed",
+          "dce3eff1d8"
+        ]
+      },
+      {
+        "node_id": "채권시장_변동성_경고",
+        "label": "채권시장 변동성 경고",
+        "topic": "금리",
+        "severity": "warning",
+        "source_types": [],
+        "window_ids": [
+          "c10f5b82ed",
+          "dce3eff1d8"
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "from": "SP500_TR",
+        "to": "AI_반도체",
+        "relation": "indicates",
+        "weight": 0.2545417171759122,
+        "rule_name": "",
+        "source_type": ""
+      },
+      {
+        "from": "MSCI_EAFE",
+        "to": "AI_반도체",
+        "relation": "indicates",
+        "weight": 0.2545417171759122,
+        "rule_name": "",
+        "source_type": ""
+      },
+      {
+        "from": "MSCI_EM",
+        "to": "AI_반도체",
+        "relation": "indicates",
+        "weight": 0.2545417171759122,
+        "rule_name": "",
+        "source_type": ""
+      },
+      {
+        "from": "MSCI_JAPAN",
+        "to": "AI_반도체",
+        "relation": "indicates",
+        "weight": 0.2545417171759122,
+        "rule_name": "",
+        "source_type": ""
+      },
+      {
+        "from": "반도체_대형주_주가_연동",
+        "to": "반도체",
+        "relation": "correlates",
+        "weight": 0.44672071364372584,
+        "rule_name": "",
+        "source_type": "news"
+      },
+      {
+        "from": "10년_금리_5일간_급등",
+        "to": "글로벌_중앙은행_미국채_매도달러_확보_가능성",
+        "relation": "causes",
+        "weight": 0.356358404046277,
+        "rule_name": "장기금리 급등",
+        "source_type": ""
+      },
+      {
+        "from": "10Y-2Y_스프레드",
+        "to": "수익률_곡선_정상화_진행",
+        "relation": "causes",
+        "weight": 0.15272503030554732,
+        "rule_name": "수익률 곡선 정상화",
+        "source_type": ""
+      },
+      {
+        "from": "30bp_이상",
+        "to": "수익률_곡선_정상화_진행",
+        "relation": "causes",
+        "weight": 0.15272503030554732,
+        "rule_name": "수익률 곡선 정상화",
+        "source_type": ""
+      },
+      {
+        "from": "MOVE_100~120",
+        "to": "채권시장_변동성_상승_중_주시_필요",
+        "relation": "causes",
+        "weight": 0.15272503030554732,
+        "rule_name": "MOVE 경계",
+        "source_type": ""
+      },
+      {
+        "from": "MOVE_120+",
+        "to": "채권시장_변동성_경고",
+        "relation": "causes",
+        "weight": 0.356358404046277,
+        "rule_name": "MOVE 경고",
+        "source_type": ""
+      }
+    ]
   },
-  "evidence_cards": [],
+  "evidence_cards": [
+    {
+      "window_id": "e0252c01b7",
+      "evidence_id": "a8968ba30781",
+      "source_type": "naver_research",
+      "date": "2026-07-02",
+      "asset_class": "국내주식",
+      "primary_topic": "테크_AI_반도체",
+      "title": "Daily Morning Brief(2026.07.02)",
+      "source": "다올투자증권",
+      "broker": "다올투자증권",
+      "salience": 0.762,
+      "asset_relevance": 0.48,
+      "match_level": 1
+    },
+    {
+      "window_id": "e0252c01b7",
+      "evidence_id": "a049af04a3b4",
+      "source_type": "naver_research",
+      "date": "2026-07-02",
+      "asset_class": "국내주식",
+      "primary_topic": "테크_AI_반도체",
+      "title": "07/02, Kiwoom Morning Letter",
+      "source": "키움증권",
+      "broker": "키움증권",
+      "salience": 0.731,
+      "asset_relevance": 0.42,
+      "match_level": 1
+    },
+    {
+      "window_id": "e0252c01b7",
+      "evidence_id": "d414ccfbd445",
+      "source_type": "naver_research",
+      "date": "2026-07-02",
+      "asset_class": "국내주식",
+      "primary_topic": "테크_AI_반도체",
+      "title": "Daily 신한생각 (7월 2일)",
+      "source": "신한투자증권",
+      "broker": "신한투자증권",
+      "salience": 0.731,
+      "asset_relevance": 0.42,
+      "match_level": 1
+    },
+    {
+      "window_id": "e0252c01b7",
+      "evidence_id": "2b20956d6799",
+      "source_type": "naver_research",
+      "date": "2026-07-02",
+      "asset_class": "국내주식",
+      "primary_topic": "테크_AI_반도체",
+      "title": "Yuanta Morning Snapshot (2026.07.02)",
+      "source": "유안타증권",
+      "broker": "유안타증권",
+      "salience": 0.731,
+      "asset_relevance": 0.42,
+      "match_level": 1
+    },
+    {
+      "window_id": "e0252c01b7",
+      "evidence_id": "e9a9852b22c3",
+      "source_type": "naver_research",
+      "date": "2026-07-02",
+      "asset_class": "국내주식",
+      "primary_topic": "테크_AI_반도체",
+      "title": "연 1조 달러 수출로 4% 성장 가시화",
+      "source": "iM증권",
+      "broker": "iM증권",
+      "salience": 0.637,
+      "asset_relevance": 0.6,
+      "match_level": 1
+    },
+    {
+      "window_id": "e0252c01b7",
+      "evidence_id": "8b9eb0ef3b23",
+      "source_type": "news",
+      "date": "2026-07-02",
+      "asset_class": "국내주식",
+      "primary_topic": "테크_AI_반도체",
+      "title": "[속보] 코스피 4%대 하락 출발…7,900선 후퇴",
+      "source": "연합뉴스TV",
+      "broker": "",
+      "salience": 0.938,
+      "asset_relevance": 0.48,
+      "match_level": 1
+    },
+    {
+      "window_id": "e0252c01b7",
+      "evidence_id": "32ccc267f391",
+      "source_type": "news",
+      "date": "2026-07-01",
+      "asset_class": "국내주식",
+      "primary_topic": "테크_AI_반도체",
+      "title": "[오늘의 증시]S&P·나스닥 6년 만에 최고 상승률…코스피, 다시 강세장 ...",
+      "source": "뉴시스",
+      "broker": "",
+      "salience": 0.938,
+      "asset_relevance": 0.48,
+      "match_level": 1
+    },
+    {
+      "window_id": "e0252c01b7",
+      "evidence_id": "8896fbf716b0",
+      "source_type": "news",
+      "date": "2026-07-01",
+      "asset_class": "국내주식",
+      "primary_topic": "통화정책",
+      "title": "클리블랜드 연은 총재 \"인플레 안 꺾이면 금리 더 올려야 할 수도\"",
+      "source": "뉴스1",
+      "broker": "",
+      "salience": 0.938,
+      "asset_relevance": 0.32,
+      "match_level": 1
+    },
+    {
+      "window_id": "c10f5b82ed",
+      "evidence_id": "1373acf63068",
+      "source_type": "naver_research",
+      "date": "2026-07-02",
+      "asset_class": "대체투자",
+      "primary_topic": "에너지_원자재",
+      "title": "[신흥국 전략] 인도 증시 단기 체크포인트",
+      "source": "하나증권",
+      "broker": "하나증권",
+      "salience": 0.575,
+      "asset_relevance": 0.0,
+      "match_level": 1
+    },
+    {
+      "window_id": "c10f5b82ed",
+      "evidence_id": "ec3238f089b1",
+      "source_type": "naver_research",
+      "date": "2026-07-02",
+      "asset_class": "대체투자",
+      "primary_topic": "부동산",
+      "title": "건물주(建物株)와 지주(地株): 자산 재평가 ..",
+      "source": "한화투자증권",
+      "broker": "한화투자증권",
+      "salience": 0.575,
+      "asset_relevance": 0.0,
+      "match_level": 1
+    },
+    {
+      "window_id": "c10f5b82ed",
+      "evidence_id": "634457ef9c96",
+      "source_type": "naver_research",
+      "date": "2026-07-02",
+      "asset_class": "대체투자",
+      "primary_topic": "경기_소비",
+      "title": "또 한번의 호실적에도 황당한 수준의 저평가",
+      "source": "하나증권",
+      "broker": "하나증권",
+      "salience": 0.575,
+      "asset_relevance": 0.0,
+      "match_level": 1
+    },
+    {
+      "window_id": "c10f5b82ed",
+      "evidence_id": "bcd8d2ba7ca6",
+      "source_type": "naver_research",
+      "date": "2026-07-02",
+      "asset_class": "대체투자",
+      "primary_topic": "유동성_크레딧",
+      "title": "문제가 없어서 문제, 하이일드 고평가",
+      "source": "메리츠증권",
+      "broker": "메리츠증권",
+      "salience": 0.575,
+      "asset_relevance": 0.0,
+      "match_level": 1
+    },
+    {
+      "window_id": "c10f5b82ed",
+      "evidence_id": "440f60c8f069",
+      "source_type": "naver_research",
+      "date": "2026-07-02",
+      "asset_class": "대체투자",
+      "primary_topic": "테크_AI_반도체",
+      "title": "7/2 KB 리서치 모닝코멘트",
+      "source": "KB증권",
+      "broker": "KB증권",
+      "salience": 0.544,
+      "asset_relevance": 0.0,
+      "match_level": 1
+    },
+    {
+      "window_id": "c10f5b82ed",
+      "evidence_id": "2d519243f72e",
+      "source_type": "news",
+      "date": "2026-07-02",
+      "asset_class": "대체투자",
+      "primary_topic": "에너지_원자재",
+      "title": "국제유가 하락, 미국·이란 간접 회담 소식에 영향",
+      "source": "비즈니스포스트",
+      "broker": "",
+      "salience": 0.731,
+      "asset_relevance": 0.0,
+      "match_level": 1
+    },
+    {
+      "window_id": "c10f5b82ed",
+      "evidence_id": "230fc646f01e",
+      "source_type": "news",
+      "date": "2026-07-01",
+      "asset_class": "대체투자",
+      "primary_topic": "지정학",
+      "title": "Iran war and AI boom drive wild ride on global markets - Reuters",
+      "source": "Reuters",
+      "broker": "",
+      "salience": 0.688,
+      "asset_relevance": 0.0,
+      "match_level": 1
+    },
+    {
+      "window_id": "c10f5b82ed",
+      "evidence_id": "691663725b9f",
+      "source_type": "news",
+      "date": "2026-07-02",
+      "asset_class": "대체투자",
+      "primary_topic": "에너지_원자재",
+      "title": "미·이란 협상타결 기대…국제유가 4개월 만에 최저",
+      "source": "junggi.co.kr",
+      "broker": "",
+      "salience": 0.644,
+      "asset_relevance": 0.0,
+      "match_level": 1
+    },
+    {
+      "window_id": "dce3eff1d8",
+      "evidence_id": "1373acf63068",
+      "source_type": "naver_research",
+      "date": "2026-07-02",
+      "asset_class": "대체투자",
+      "primary_topic": "에너지_원자재",
+      "title": "[신흥국 전략] 인도 증시 단기 체크포인트",
+      "source": "하나증권",
+      "broker": "하나증권",
+      "salience": 0.575,
+      "asset_relevance": 0.0,
+      "match_level": 1
+    },
+    {
+      "window_id": "dce3eff1d8",
+      "evidence_id": "ec3238f089b1",
+      "source_type": "naver_research",
+      "date": "2026-07-02",
+      "asset_class": "대체투자",
+      "primary_topic": "부동산",
+      "title": "건물주(建物株)와 지주(地株): 자산 재평가 ..",
+      "source": "한화투자증권",
+      "broker": "한화투자증권",
+      "salience": 0.575,
+      "asset_relevance": 0.0,
+      "match_level": 1
+    },
+    {
+      "window_id": "dce3eff1d8",
+      "evidence_id": "634457ef9c96",
+      "source_type": "naver_research",
+      "date": "2026-07-02",
+      "asset_class": "대체투자",
+      "primary_topic": "경기_소비",
+      "title": "또 한번의 호실적에도 황당한 수준의 저평가",
+      "source": "하나증권",
+      "broker": "하나증권",
+      "salience": 0.575,
+      "asset_relevance": 0.0,
+      "match_level": 1
+    },
+    {
+      "window_id": "dce3eff1d8",
+      "evidence_id": "bcd8d2ba7ca6",
+      "source_type": "naver_research",
+      "date": "2026-07-02",
+      "asset_class": "대체투자",
+      "primary_topic": "유동성_크레딧",
+      "title": "문제가 없어서 문제, 하이일드 고평가",
+      "source": "메리츠증권",
+      "broker": "메리츠증권",
+      "salience": 0.575,
+      "asset_relevance": 0.0,
+      "match_level": 1
+    },
+    {
+      "window_id": "dce3eff1d8",
+      "evidence_id": "440f60c8f069",
+      "source_type": "naver_research",
+      "date": "2026-07-02",
+      "asset_class": "대체투자",
+      "primary_topic": "테크_AI_반도체",
+      "title": "7/2 KB 리서치 모닝코멘트",
+      "source": "KB증권",
+      "broker": "KB증권",
+      "salience": 0.544,
+      "asset_relevance": 0.0,
+      "match_level": 1
+    },
+    {
+      "window_id": "dce3eff1d8",
+      "evidence_id": "2d519243f72e",
+      "source_type": "news",
+      "date": "2026-07-02",
+      "asset_class": "대체투자",
+      "primary_topic": "에너지_원자재",
+      "title": "국제유가 하락, 미국·이란 간접 회담 소식에 영향",
+      "source": "비즈니스포스트",
+      "broker": "",
+      "salience": 0.731,
+      "asset_relevance": 0.0,
+      "match_level": 1
+    },
+    {
+      "window_id": "dce3eff1d8",
+      "evidence_id": "230fc646f01e",
+      "source_type": "news",
+      "date": "2026-07-01",
+      "asset_class": "대체투자",
+      "primary_topic": "지정학",
+      "title": "Iran war and AI boom drive wild ride on global markets - Reuters",
+      "source": "Reuters",
+      "broker": "",
+      "salience": 0.688,
+      "asset_relevance": 0.0,
+      "match_level": 1
+    },
+    {
+      "window_id": "dce3eff1d8",
+      "evidence_id": "691663725b9f",
+      "source_type": "news",
+      "date": "2026-07-02",
+      "asset_class": "대체투자",
+      "primary_topic": "에너지_원자재",
+      "title": "미·이란 협상타결 기대…국제유가 4개월 만에 최저",
+      "source": "junggi.co.kr",
+      "broker": "",
+      "salience": 0.644,
+      "asset_relevance": 0.0,
+      "match_level": 1
+    }
+  ],
   "debug": {
-    "window_count": 0,
+    "window_count": 3,
     "unmapped_windows": 0,
-    "evidence_total": 0,
+    "evidence_total": 24,
     "source_mix": {
-      "naver_research": 0,
-      "news": 0
+      "naver_research": 15,
+      "news": 9
     },
     "graph_size": {
-      "nodes": 0,
-      "edges": 0
+      "nodes": 24,
+      "edges": 10
     },
     "parameters": {
       "core_bms": [
