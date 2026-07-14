@@ -41,6 +41,24 @@ def _spec():
     return _spec_cache
 
 
+def _toc_fund_label(fund_code):
+    """목차 부제 = 펀드명 (2026-07-14 사용자 규칙).
+
+    2JM23·4JM12 는 펀드명 전체, 나머지는 '일반사모…투자신탁'/'증권자투자신탁'/
+    '증권모투자신탁'(+후행 괄호) 앞부분만.
+    """
+    from config.funds import FUND_META
+    name = FUND_META.get(fund_code, {}).get('name', fund_code)
+    if fund_code in ('2JM23', '4JM12'):
+        return name
+    cut = len(name)
+    for token in ('일반사모', '증권자투자신탁', '증권모투자신탁'):
+        i = name.find(token)
+        if 0 < i < cut:
+            cut = i
+    return name[:cut].strip()
+
+
 def _fill_text(sh, sp, subs):
     """스펙의 문단/런을 도형 텍스트프레임에 채움."""
     tf = sh.text_frame
@@ -103,12 +121,17 @@ def _apply_fill_line(sh, sp):
     sh.shadow.inherit = False
 
 
-def _draw_shape(sl, sp, subs):
+def _draw_shape(sl, sp, subs, overrides=None):
     typ = sp['type']
     L, T, W, H = sp['L'], sp['T'], sp['W'], sp['H']
+    # 텍스트 전체 교체 (run 분할과 무관하게 첫 run 서식으로 단일 run 재구성)
+    if overrides and sp.get('name') in overrides and sp.get('paras'):
+        p0 = sp['paras'][0]
+        r0 = (p0.get('runs') or [{}])[0]
+        sp = {**sp, 'paras': [{**p0, 'runs': [{**r0, 'text': overrides[sp['name']]}]}]}
     if typ == 6:                                    # 그룹 → 절대좌표 평면화
         for c in sp.get('children', []):
-            _draw_shape(sl, c, subs)
+            _draw_shape(sl, c, subs, overrides)
         return
     if typ == 13:                                   # 그림
         asset = _PIC_ASSETS.get(sp['name'])
@@ -154,7 +177,7 @@ def _draw_shape(sl, sp, subs):
     print(f"[s_static] 미지원 도형 type={typ} '{sp['name']}' → 생략")
 
 
-def _add_from_spec(prs, key, layout_name, ctx=None):
+def _add_from_spec(prs, key, layout_name, ctx=None, overrides=None):
     from .common import layout_by_name
     spec = _spec()[key]
     sl = prs.slides.add_slide(layout_by_name(prs, layout_name))
@@ -163,7 +186,7 @@ def _add_from_spec(prs, key, layout_name, ctx=None):
         y, m = ctx['asof'][:4], int(ctx['asof'][5:7])
         subs['2026년 6월'] = f'{y}년 {m}월'          # 표지 년월 동적 치환
     for sp in spec['shapes']:
-        _draw_shape(sl, sp, subs)
+        _draw_shape(sl, sp, subs, overrides)
     return sl
 
 
@@ -171,8 +194,9 @@ def add_cover(prs, ctx):
     return _add_from_spec(prs, 'slide1', '제목 및 내용', ctx)
 
 
-def add_toc(prs, ctx=None):
-    return _add_from_spec(prs, 'slide2', '제목 및 내용')
+def add_toc(prs, fund_code=None):
+    ov = {'TextBox 25': _toc_fund_label(fund_code)} if fund_code else None
+    return _add_from_spec(prs, 'slide2', '제목 및 내용', overrides=ov)
 
 
 def add_section(prs, which):

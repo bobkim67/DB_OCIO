@@ -29,7 +29,7 @@ def build_report(fund_code: str, end_date: str, start_date: str | None = None,
     prs = new_presentation()
     # 16장 구성 = 사용자 재구성 202606 편집본 (2026-07-14): 표지·목차·섹션 4장 + 데이터 10장
     s_static.add_cover(prs, ctx)                  # 1
-    s_static.add_toc(prs)                         # 2
+    s_static.add_toc(prs, fund_code)              # 2 (부제 = 펀드명 규칙)
     s_static.add_section(prs, 'slide3')           # 3  01 금융시장 리뷰
     s04.add(prs, ctx)                             # 4
     s_static.add_section(prs, 'slide5')           # 5  02 운용 및 성과 리뷰
