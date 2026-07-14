@@ -1,0 +1,51 @@
+{
+  "_comment": "4p 자산군표·코멘트 데이터. 수치 갱신 시 이 파일만 수정 후 build_slides.py 실행. v1=표시통화 %, v2=원화환산 %, null=빈칸(–). row.type: grp(회색 요약행)/krow(피치 국내행)/row(일반).",
+  "period_line": "한국: 2025.12.31 ~ 2026.06.30, 해외: 2025.12.30 ~ 2026.06.29",
+  "headline": "국내채권 < 국내주식, 해외채권 < 해외주식, 선진국주식 < 신흥국주식, 원화 < 달러인덱스 바스켓, 금 < 원유",
+  "bar_max": 128.04,
+  "rows": [
+    {"type": "grp",  "cat": "주식", "cat_span": 11, "label": "글로벌", "v1": 10.64, "v2": 18.99, "bench": "MSCI ACWI"},
+    {"type": "krow", "sub": "국내", "sub_span": 2, "label": "시장", "v1": 102.95, "v2": 102.95, "bench": "KOSPI"},
+    {"type": "krow", "label": "일반", "v1": 128.04, "v2": 128.04, "bench": "KOSPI 200"},
+    {"type": "row",  "sub": "미국", "sub_span": 5, "label": "시장", "v1": 9.31, "v2": 17.56, "bench": "S&P500"},
+    {"type": "row",  "label": "성장", "v1": 4.59, "v2": 12.48, "bench": "CRSP US Large Cap Growth"},
+    {"type": "row",  "label": "가치", "v1": 15.60, "v2": 24.33, "bench": "CRSP US Large Cap Value"},
+    {"type": "row",  "label": "중소형", "v1": 22.07, "v2": 31.29, "bench": "Russell 2000"},
+    {"type": "row",  "label": "고배당", "v1": 18.34, "v2": 27.28, "bench": "DJ Dividend 100"},
+    {"type": "row",  "sub": "미국외 선진국", "sub_span": 1, "label": "일반", "v1": 8.86, "v2": 17.07, "bench": "MSCI World ex US"},
+    {"type": "row",  "sub": "선진국", "sub_span": 1, "label": "일반", "v1": 9.45, "v2": 17.71, "bench": "MSCI World"},
+    {"type": "row",  "sub": "신흥시장", "sub_span": 1, "label": "일반", "v1": 22.80, "v2": 32.07, "bench": "MSCI EM"},
+    {"type": "grp",  "cat": "채권", "cat_span": 8, "label": "글로벌 (UH)", "v1": -0.02, "v2": 7.53, "bench": "Barclays Global Agg."},
+    {"type": "krow", "sub": "국내", "sub_span": 3, "label": "국채 3년", "v1": -0.005, "v2": -0.005, "bench": "매경채권지수", "label_override": "-0.00%"},
+    {"type": "krow", "label": "국고 10년", "v1": -3.00, "v2": -3.00, "bench": "KRX 10년국채지수"},
+    {"type": "krow", "label": "종합채권", "v1": -3.19, "v2": -3.19, "bench": "KBP 종합지수"},
+    {"type": "row",  "sub": "미국", "sub_span": 3, "label": "종합채권", "v1": 1.03, "v2": 8.66, "bench": "Barclays US Agg."},
+    {"type": "row",  "label": "투자등급", "v1": 1.29, "v2": 8.94, "bench": "IBOX Investment Grade"},
+    {"type": "row",  "label": "하이일드", "v1": 1.89, "v2": 9.58, "bench": "IBOX High Yield"},
+    {"type": "row",  "sub": "신흥시장", "sub_span": 1, "label": "달러국채", "v1": 2.60, "v2": 10.35, "bench": "JP Morgan EM Bond"},
+    {"type": "row",  "cat": "대체투자", "cat_span": 5, "sub": "원자재", "sub_span": 2, "label": "WTI", "v1": 23.21, "v2": 32.52, "bench": "WTI Crude Oil"},
+    {"type": "row",  "label": "Gold", "v1": -7.82, "v2": -0.86, "bench": "Gold"},
+    {"type": "row",  "sub": "인프라", "sub_span": 1, "label": "글로벌인프라", "v1": 11.06, "v2": 19.44, "bench": "S&P Global Infrastructure"},
+    {"type": "row",  "sub": "부동산", "sub_span": 2, "label": "미국리츠", "v1": 17.70, "v2": 26.58, "bench": "MSCI US REITs"},
+    {"type": "row",  "label": "미국 제외 글로벌 리츠", "v1": -1.35, "v2": 6.09, "bench": "S&P Global ex US Property"},
+    {"type": "grp",  "cat": "통화", "cat_span": 2, "label": "달러 인덱스", "v1": 2.88, "v2": 10.65, "bench": "달러 인덱스"},
+    {"type": "krow", "label": "USD/KRW", "label_colspan": 2, "v1": 7.55, "v2": null, "bench": "USDKRW"}
+  ],
+  "comments": [
+    {"label": "글로벌<br>주식", "min_h": 150, "lines": [
+      "· 환 노출 성과: 미국외 선진국 < 미국 < 신흥국 < 한국",
+      "· 미국: 성장주 < 시장 < 가치주 < 고배당 < 중소형",
+      "· 글로벌 경기 회복 및 위험자산 선호에 따른 한국(반도체 중심)의 성과 우위"
+    ]},
+    {"label": "글로벌<br>채권", "min_h": 210, "lines": [
+      "· 표시 통화 성과: 한국종합채권 < 미국 종합채권 < 미국 투자등급 < 미국하이일드 < 신흥국 달러표시채권",
+      "· 이란 전쟁 발 유가 및 달러 강세장에서 신흥(산유)국 달러표시채권 수혜",
+      "· 지정학적 리스크 및 인플레 우려에도 불구하고 미국의 견조한 매크로 펀더멘털 기반으로 크레딧 스프레드 축소세 지속",
+      "· 한국 채권시장은 정부의 재정 지출 확대에 따른 국채 수급 우려와 고환율·금융안정을 겨냥한 매파적 통화정책 장기화"
+    ]},
+    {"label": "대체/<br>통화", "min_h": 154, "lines": [
+      "· 금: 글로벌 중앙은행 수요와 금리 인하 기대에 급등했으나, 미-이란 전쟁 발 유가 및 금리 상승 우려, 달러 강세가 겹치며 급락",
+      "· 통화: 반도체 수출 호조는 원화 강세 요인으로 작용했으나, 국내주식 급등 이후 차익실현성 달러 환전 수요와 지정학적 리스크로 달러 강세가 나타나며 원화 약세 압력 우세"
+    ]}
+  ]
+}
