@@ -1,10 +1,11 @@
 import { useState, type CSSProperties } from "react";
 import AdminFundsPanel from "./AdminFundsPanel";
 import AdminCommentWorkflowPanel from "./AdminCommentWorkflowPanel";
+import AdminReportPptPanel from "./AdminReportPptPanel";
 
-// Admin 서브탭 2개: 펀드 운용(모니터링) / 코멘트 생성·관리(워크플로우).
+// Admin 서브탭 3개: 펀드 운용(모니터링) / 코멘트 생성·관리(워크플로우) / 운용보고 PPT(빌드·검수).
 // (Evidence Quality ~ Wiki Context Pack 5개 패널은 2026-07-10 제거)
-type SubView = "funds" | "comment";
+type SubView = "funds" | "comment" | "ppt";
 
 const TAB_BTN_BASE: CSSProperties = {
   padding: "6px 14px",
@@ -48,10 +49,17 @@ export default function AdminTab() {
         >
           코멘트 생성/관리
         </button>
+        <button
+          style={view === "ppt" ? TAB_BTN_ACTIVE : TAB_BTN_BASE}
+          onClick={() => setView("ppt")}
+        >
+          운용보고 PPT
+        </button>
       </div>
 
       {view === "funds" && <AdminFundsPanel />}
       {view === "comment" && <AdminCommentWorkflowPanel />}
+      {view === "ppt" && <AdminReportPptPanel />}
     </section>
   );
 }
