@@ -232,9 +232,7 @@ export default function AdminReportPptPanel() {
               {p.label}
             </button>
           ))}
-          {fund && fund !== "07G07" && (
-            <span className="err">⚠ 표지·목차 문구는 현재 07G07 기준 — 타 펀드는 PPT 에서 수정 필요</span>
-          )}
+          {/* 표지·목차는 펀드별 동적(펀드명·수익자·위험등급) — 2026-07-14 파라미터화 완료 */}
         </div>
       </div>
 
