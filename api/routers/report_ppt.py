@@ -166,6 +166,34 @@ def save_ppt_comments(body: PptCommentsSaveBodyDTO) -> PptCommentsSaveBodyDTO:
     return body
 
 
+class PptFileDTO(BaseModel):
+    file: str
+    size_kb: int
+    mtime: str
+
+
+class PptFileListDTO(BaseModel):
+    files: list[PptFileDTO]
+
+
+@router.get("/admin/report-ppt/files", response_model=PptFileListDTO)
+def list_ppt_files() -> PptFileListDTO:
+    """생성된 pptx 목록 (최신순) — 재빌드 없이 기존 산출물 다운로드용."""
+    import datetime
+    out = _out_dir()
+    rows = []
+    for p in out.glob("report_*.pptx"):
+        if p.name.startswith("~$"):
+            continue
+        st = p.stat()
+        rows.append(PptFileDTO(
+            file=p.name, size_kb=round(st.st_size / 1024),
+            mtime=datetime.datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M"),
+        ))
+    rows.sort(key=lambda r: r.mtime, reverse=True)
+    return PptFileListDTO(files=rows)
+
+
 @router.get("/admin/report-ppt/download")
 def download_ppt(file: str = Query(..., max_length=128)) -> FileResponse:
     if not _PPTX_FILE_RE.match(file):

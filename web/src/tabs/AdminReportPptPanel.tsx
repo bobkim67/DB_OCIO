@@ -12,11 +12,16 @@ type S4Block = { label: string; lines: string[] };
 type S4 = { headline: string; comments: S4Block[] };
 type S6 = { bullets: string[]; digest?: string | null };
 type PptComments = { s4_file: string; s4: S4 | null; s6_file: string; s6: S6 | null };
+type PptFile = { file: string; size_kb: number; mtime: string };
 
-function isoLastMonthEnd(): string {
-  const now = new Date();
-  const d = new Date(now.getFullYear(), now.getMonth(), 0); // 전월 말일
+function iso(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** 최근 월말 n개 (전월말부터 과거로) */
+function monthEnds(n: number): string[] {
+  const now = new Date();
+  return Array.from({ length: n }, (_v, i) => iso(new Date(now.getFullYear(), now.getMonth() - i, 0)));
 }
 
 export default function AdminReportPptPanel() {
@@ -28,13 +33,22 @@ export default function AdminReportPptPanel() {
 
   const [fund, setFund] = useState("");
   useEffect(() => { if (!fund && fundList.length) setFund(fundList[0].code); }, [fundList, fund]);
-  const [endDate, setEndDate] = useState(isoLastMonthEnd());
+  const [endDate, setEndDate] = useState(monthEnds(1)[0]);
   const [startDate, setStartDate] = useState(""); // ''=전년말(YTD)
   const [regen, setRegen] = useState(false);
 
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState("");
   const [pptxFile, setPptxFile] = useState("");
+  const [files, setFiles] = useState<PptFile[]>([]);
+
+  const loadFiles = useCallback(() => {
+    fetch("/api/admin/report-ppt/files")
+      .then((r) => r.json())
+      .then((d) => setFiles(d.files))
+      .catch(() => setFiles([]));
+  }, []);
+  useEffect(() => { loadFiles(); }, [loadFiles]);
 
   // 코멘트 검수 폼 상태 (s4: headline + 블록별 lines / s6: bullets)
   const [cm, setCm] = useState<PptComments | null>(null);
@@ -79,6 +93,7 @@ export default function AdminReportPptPanel() {
       applyComments(d.comments);
       setRegen(false);
       setMsg(`✔ 빌드 완료 (${d.elapsed_sec}s)`);
+      loadFiles();
     } catch (e) { setMsg(`✖ ${String(e)}`); } finally { setBusy(""); }
   };
 
@@ -123,16 +138,27 @@ export default function AdminReportPptPanel() {
         <select value={fund} onChange={(e) => setFund(e.target.value)}>
           {fundList.map((f) => <option key={f.code} value={f.code}>{f.code} — {f.name}</option>)}
         </select>
-        <label>종료일 <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></label>
+        <label>종료일
+          <select value={monthEnds(8).includes(endDate) ? endDate : ""} onChange={(e) => e.target.value && setEndDate(e.target.value)} title="최근 월말 프리셋">
+            <option value="">직접 입력…</option>
+            {monthEnds(8).map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+        </label>
         <label>시작일 <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} title="비우면 전년말(YTD)" /></label>
         {startDate && <button type="button" onClick={() => setStartDate("")}>YTD로</button>}
         <label title="s4/s6 코멘트 캐시를 지우고 LLM 으로 재생성">
           <input type="checkbox" checked={regen} onChange={(e) => setRegen(e.target.checked)} /> 코멘트 재생성
         </label>
         <button type="button" disabled={!!busy || !fund} onClick={build}>
-          {pptxFile || hasComments ? "재빌드" : "PPT 생성"} (수 분 소요)
+          {pptxFile || hasComments ? "재빌드" : "PPT 생성"} (1~2분 소요)
         </button>
-        <span className="hint">데이터 슬라이드 10장(4·6·7·9~14·16) — s9~16 은 종료일 기준 YTD 고정</span>
+        <span className="hint">16장(표지·목차·섹션 + 데이터 10장) — s9~16 은 종료일 기준 YTD 고정</span>
+        {fund && fund !== "07G07" && (
+          <span className="err" title="표지 펀드명·수익자·위험등급, 목차 부제가 아직 07G07 기준 고정 텍스트입니다">
+            ⚠ 표지·목차 문구는 현재 07G07 기준 — 타 펀드는 PPT 에서 수정 필요
+          </span>
+        )}
       </div>
 
       <div className="sra-genout">
@@ -189,6 +215,30 @@ export default function AdminReportPptPanel() {
               <span className="hint">저장 후 "재빌드" 를 눌러야 PPT 에 반영됩니다</span>
             </div>
           </div>
+        )}
+      </div>
+
+      {/* 생성된 파일 목록 — 재빌드 없이 기존 산출물 다운로드 */}
+      <div className="sra-genout" style={{ marginTop: 12 }}>
+        <div className="gh">생성된 보고서 파일 ({files.length})</div>
+        {files.length === 0 ? (
+          <div className="sra-empty">생성된 pptx 없음</div>
+        ) : (
+          <table style={{ borderCollapse: "collapse", fontSize: 13 }}>
+            <tbody>
+              {files.map((f) => (
+                <tr key={f.file} style={{ borderBottom: "1px solid #f1f2f4" }}>
+                  <td style={{ padding: "4px 16px 4px 4px" }}>
+                    <a href={`/api/admin/report-ppt/download?file=${encodeURIComponent(f.file)}`} download>
+                      ⬇ {f.file}
+                    </a>
+                  </td>
+                  <td style={{ padding: "4px 16px", color: "#667085" }}>{Math.round(f.size_kb / 1024 * 10) / 10} MB</td>
+                  <td style={{ padding: "4px 4px", color: "#667085" }}>{f.mtime}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
     </div>
