@@ -196,8 +196,7 @@ def gen_table(data):
     cell(xs[5], xs[6], 2, TH, '벤치마크', fill='#5B9BD5', bold=True, color='white')
 
     y = 2 + TH
-    cat_open = {}     # cat rowspan 처리
-    sub_open = {}
+    sub_cover = 0     # 직전 sub 셀 rowspan 이 이 행을 덮는지 (잔여 행수)
     for r in rows:
         krow = r['type'] == 'krow'
         grp = r['type'] == 'grp'
@@ -207,11 +206,19 @@ def gen_table(data):
         # sub / label
         if grp:
             cell(xs[1], xs[3], y, TD, r['label'], fill='#F2F2F2', bold=True)
+            sub_cover = 0
         else:
             if 'sub' in r:
                 cell(xs[1], xs[2], y, TD * r['sub_span'], r['sub'],
                      fill='#F8E6D6' if krow else 'white')
-            cell(xs[2], xs[3], y, TD, r['label'], fill='#F8E6D6' if krow else 'white')
+                sub_cover = r['sub_span']
+            if sub_cover <= 0:
+                # sub 셀이 없는 단독행(USD/KRW): 좌측 칸과 병합 — 윗행 달러인덱스와 동일
+                # 전폭 셀이라 하단 테두리도 생김 (2026-07-14 사용자 지시)
+                cell(xs[1], xs[3], y, TD, r['label'], fill='#F8E6D6' if krow else 'white')
+            else:
+                cell(xs[2], xs[3], y, TD, r['label'], fill='#F8E6D6' if krow else 'white')
+            sub_cover -= 1
         v2_override = '–' if (r['v2'] is None and r['v1'] is not None) else None
         bar_cell(xs[3], xs[4], y, r['v1'], krow)
         bar_cell(xs[4], xs[5], y, r['v2'], krow, v2_override if r['v2'] is None else None)

@@ -70,7 +70,7 @@ def make_shell(base_name: str) -> Path:
     d.rectangle((30, 780, 1470, 823), fill='white')    # 푸터라인(824) 위 잘린 각주 잔재 (base09 등)
     d.rectangle((30, 825, 1470, 831), fill='white')    # 라인 아래 잔재 디센더 (base09)
     a = np.array(im)
-    a[118:196, :] = a[118:196, 1300:1301]              # 밴드 전폭 균일화 + 코너딥 평탄화
+    a[118:196, :] = 255                                # 제목 하단 음영밴드 제거 (2026-07-14 사용자 지시)
     filler = np.repeat(a[500:501, :, :], PX_H - 900, axis=0)   # y500 = 균일 백색 행
     a = np.vstack([a[:500], filler, a[500:]])
     OUT.mkdir(parents=True, exist_ok=True)
