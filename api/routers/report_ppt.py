@@ -67,6 +67,22 @@ class PptCommentsSaveBodyDTO(BaseModel):
     s4: S4CommentDTO | None = None
     s6_file: str | None = None
     s6: S6CommentDTO | None = None
+    # 아카이브 메타 (저장 이력 파일명·내용에 기록)
+    fund_code: str | None = None
+    end_date: str | None = None
+    start_date: str | None = None
+
+
+class PptArchiveEntryDTO(BaseModel):
+    file: str
+    saved_at: str
+    fund_code: str
+    end_date: str
+    start_date: str | None = None
+
+
+class PptArchiveListDTO(BaseModel):
+    entries: list[PptArchiveEntryDTO]
 
 
 def _out_dir() -> Path:
@@ -163,7 +179,93 @@ def save_ppt_comments(body: PptCommentsSaveBodyDTO) -> PptCommentsSaveBodyDTO:
             raise HTTPException(422, f"s6_file 형식 오류: {body.s6_file!r}")
         (out / body.s6_file).write_text(
             json.dumps(body.s6.model_dump(), ensure_ascii=False, indent=1), encoding="utf-8")
+    # 아카이브 — 날짜·시간·펀드코드 파일명으로 이력 보존 (추후 불러오기)
+    if body.fund_code and body.end_date:
+        import datetime
+        arc = out / "archive"
+        arc.mkdir(parents=True, exist_ok=True)
+        now = datetime.datetime.now()
+        end8 = body.end_date.replace("-", "")
+        s8 = f"_{body.start_date.replace('-', '')}" if body.start_date else ""
+        fname = f"{now.strftime('%Y%m%d_%H%M%S')}_{body.fund_code}_{end8}{s8}.json"
+        (arc / fname).write_text(json.dumps({
+            "saved_at": now.strftime("%Y-%m-%d %H:%M:%S"),
+            "fund_code": body.fund_code, "end_date": body.end_date,
+            "start_date": body.start_date,
+            "s4_file": body.s4_file, "s4": body.s4.model_dump() if body.s4 else None,
+            "s6_file": body.s6_file, "s6": body.s6.model_dump() if body.s6 else None,
+        }, ensure_ascii=False, indent=1), encoding="utf-8")
     return body
+
+
+@router.post("/admin/report-ppt/comments/generate", response_model=PptCommentsDTO)
+def generate_ppt_comments(body: PptBuildBodyDTO) -> PptCommentsDTO:
+    """s4/s6 코멘트 LLM 생성 (기존 캐시 삭제 후 재생성) — 빌드와 분리된 전용 경로."""
+    _check_date(body.end_date, "end_date")
+    if body.start_date:
+        _check_date(body.start_date, "start_date")
+    if not _BUILD_LOCK.acquire(blocking=False):
+        raise HTTPException(409, "다른 빌드/생성이 진행 중입니다 — 잠시 후 다시 시도하세요.")
+    try:
+        s4_p, s6_p = _resolve_comment_files(body.fund_code, body.end_date, body.start_date)
+        for p in (s4_p, s6_p):
+            p.unlink(missing_ok=True)
+        try:
+            # 빌더 s04.add/s06.add 와 동일한 앵커·태그 규약으로 생성
+            from reporting.builder.data_fund import get_fund_data
+            from reporting.builder.s04 import compute_rows
+            from reporting.builder.s04_comment import build_manual
+            from reporting.builder.s06_comment import build_s6_bullets
+            ctx = get_fund_data(body.fund_code, body.end_date, body.start_date)
+            is_ytd = ctx.get("is_ytd", True)
+            data = compute_rows(body.end_date, None if is_ytd else ctx["period_start"])
+            build_manual(data, body.end_date, use_llm=True,
+                         tag="" if is_ytd else ctx["period_start"])
+            build_s6_bullets(body.fund_code, ctx["period_start"], body.end_date)
+        except Exception as e:            # noqa: BLE001 — DB/LLM 실패를 메시지로 전달
+            raise HTTPException(500, f"코멘트 생성 실패: {e}") from e
+        return _load_comments(body.fund_code, body.end_date, body.start_date)
+    finally:
+        _BUILD_LOCK.release()
+
+
+_ARC_FILE_RE = re.compile(r"^\d{8}_\d{6}_[A-Za-z0-9]{5}_\d{8}(_\d{8})?\.json$")
+
+
+@router.get("/admin/report-ppt/comments/archive", response_model=PptArchiveListDTO)
+def list_comment_archive(
+    fund: str | None = Query(default=None, max_length=32),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> PptArchiveListDTO:
+    arc = _out_dir() / "archive"
+    entries = []
+    if arc.exists():
+        for p in sorted(arc.glob("*.json"), reverse=True):
+            if not _ARC_FILE_RE.match(p.name):
+                continue
+            try:
+                d = json.loads(p.read_text(encoding="utf-8"))
+            except Exception:             # noqa: BLE001 — 파손 항목 건너뜀
+                continue
+            if fund and d.get("fund_code") != fund:
+                continue
+            entries.append(PptArchiveEntryDTO(
+                file=p.name, saved_at=d.get("saved_at", ""),
+                fund_code=d.get("fund_code", ""), end_date=d.get("end_date", ""),
+                start_date=d.get("start_date")))
+            if len(entries) >= limit:
+                break
+    return PptArchiveListDTO(entries=entries)
+
+
+@router.get("/admin/report-ppt/comments/archive/{file}")
+def get_comment_archive(file: str) -> dict:
+    if not _ARC_FILE_RE.match(file):
+        raise HTTPException(422, f"파일명 형식 오류: {file!r}")
+    p = _out_dir() / "archive" / file
+    if not p.exists():
+        raise HTTPException(404, f"이력 없음: {file}")
+    return json.loads(p.read_text(encoding="utf-8"))
 
 
 class PptFileDTO(BaseModel):
