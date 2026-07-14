@@ -692,6 +692,30 @@ def build_holdings(
     # 4.6) FX(달러선물 등)는 포지션(notional)이지 NAV 구성이 아니므로 제외 (2026-06-24 사용자 확정)
     items = [it for it in items if it.asset_class != "FX"]
 
+    def _load_payable_rows(fc: str, asof) -> list[tuple[str, float]]:
+        """원장 부채성 계정(25x·미지급 계열, 로더 제외분) — 잔차 실명 표기용 (2026-07-14)."""
+        from modules.data_loader import _portfolio_fund, get_connection
+        std = str(asof).replace("-", "")[:8]
+        try:
+            conn = get_connection("dt")
+            try:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT ITEM_NM, SUM(EVL_AMT) amt FROM DWPM10530 "
+                    "WHERE FUND_CD=%s AND STD_DT=%s "
+                    "AND (ITEM_CD LIKE '25%%' OR ITEM_NM LIKE '%%미지급%%') "
+                    "AND EVL_AMT > 0 GROUP BY ITEM_NM",
+                    (_portfolio_fund(fc), std))
+                rows = cur.fetchall()
+                # get_connection 커서가 dict/tuple 어느 쪽이든 대응
+                return [(str(r['ITEM_NM'] if isinstance(r, dict) else r[0]),
+                         float(r['amt'] if isinstance(r, dict) else r[1]))
+                        for r in rows]
+            finally:
+                conn.close()
+        except Exception:                 # noqa: BLE001 — 조회 실패 시 기존 라벨 폴백
+            return []
+
     # 4.7) 현금잔여 = NAST − Σ보유증권. 양수=현금·미수금(DWPM10530 미포함분), 음수=환매미지급금.
     #   환매 등 정산중엔 미지급금이 NAST에서만 차감(증권 미매도)돼 Σ증권>NAST → 음수 유동성 라인으로
     #   100% 균형 유지 + '환매미지급금' 별도 표기(결제일에 증권 매도로 청산). (2026-06-26 사용자 확정)
@@ -703,12 +727,24 @@ def build_holdings(
                 asset_class="유동성", weight=resid / nast, evl_amt=resid,
             ))
         elif resid < -nast * 0.005:
-            items.append(HoldingItemDTO(
-                item_cd="_REDEMPTION_PAYABLE_", item_nm="환매미지급금",
-                asset_class="유동성", weight=resid / nast, evl_amt=resid,
-            ))
-            data_pending = True
-            data_note = "환매 정산중 — 미지급금 반영(증권평가>순자산)"
+            # 실제 부채 계정 조회 (2026-07-14): 잔차의 실체가 매입미지급금(정상 T+1~2 결제대기)
+            # 인 경우가 있는데 일괄 '환매미지급금' 표기는 오인 유발 (2JM23 ACE200 매수 사례).
+            # 원장 25x/미지급 계열과 금액이 맞으면 실명으로, 아니면 기존 라벨 폴백.
+            payables = _load_payable_rows(fund_code, as_of)
+            if payables and abs(sum(a for _n, a in payables) + resid) < max(abs(resid) * 0.05, 1e6):
+                for nm, amt in payables:
+                    items.append(HoldingItemDTO(
+                        item_cd="_PAYABLE_", item_nm=nm,
+                        asset_class="유동성", weight=-amt / nast, evl_amt=-amt,
+                    ))
+                data_note = "결제 대기 — " + "·".join(n for n, _a in payables) + " 반영"
+            else:
+                items.append(HoldingItemDTO(
+                    item_cd="_REDEMPTION_PAYABLE_", item_nm="환매미지급금",
+                    asset_class="유동성", weight=resid / nast, evl_amt=resid,
+                ))
+                data_pending = True
+                data_note = "환매 정산중 — 미지급금 반영(증권평가>순자산)"
 
     # 5) 자산군 집계
     by_class: dict[str, list[HoldingItemDTO]] = {}

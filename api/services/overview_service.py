@@ -287,13 +287,21 @@ def _compute_bm_period_returns(
     # MTD: 전월말 영업일 시작(전산 일치) — target=월초-1일 → '<=' 조회가 전월말로 떨어짐.
     # YTD: 연초(1/1) target + '<=' → 1/1 휴장이라 전년말로 떨어짐(포트 _calc_ref_dates 와 동일).
     _month_start = pd.Timestamp(f"{end_dt.year}-{end_dt.month:02d}-01")
+    # 트레일링(1M/3M/6M/1Y): 기준일이 월말이면 상대 월 말일로 스냅
+    # (DT DWPM10040 규약 — data_loader._calc_ref_dates 와 동일, 2026-07-14)
+    _snap = end_dt == end_dt + relativedelta(day=31)
+
+    def _trail(**kw):
+        t = end_dt - relativedelta(**kw)
+        return t + relativedelta(day=31) if _snap else t
+
     targets = {
         "1W": end_dt - pd.Timedelta(days=7),
         "MTD": _month_start - pd.Timedelta(days=1),
-        "1M": end_dt - relativedelta(months=1),
-        "3M": end_dt - relativedelta(months=3),
-        "6M": end_dt - relativedelta(months=6),
-        "1Y": end_dt - relativedelta(years=1),
+        "1M": _trail(months=1),
+        "3M": _trail(months=3),
+        "6M": _trail(months=6),
+        "1Y": _trail(years=1),
         "YTD": pd.Timestamp(f"{end_dt.year}-01-01"),
     }
     idx = bm_aligned.index

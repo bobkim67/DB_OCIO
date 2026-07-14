@@ -264,6 +264,10 @@ export default function OverviewTab({ fundCode }: Props) {
               </>
             ) : <span className="num">{" "}</span>}
           </div>
+          {/* 07G07: SI 분모 앵커(편입일) 안내 — 07G07만, 설정후 모드에서만 (2026-07-13 사용자 지정) */}
+          {fundCode === "07G07" && retMode === "SI" && (
+            <div className="cmp"><span className="num">20220104</span> 설정</div>
+          )}
         </div>
 
         {/* 변동성 (수익률과 동기화된 설정후/YTD 토글) */}

@@ -4673,6 +4673,10 @@ def _calc_ref_dates(end_date: pd.Timestamp, periods: list,
                     target = end_date - relativedelta(months=n)
                 else:
                     target = end_date - relativedelta(years=n)
+                # 월말 스냅 (DT DWPM10040 역산 검증 2026-07-14): 기준일이 월말이면
+                # 상대 월의 말일로 (6/30 → 3M=3/31·6M=12/31. 월중은 같은날짜 그대로)
+                if end_date == end_date + relativedelta(day=31):
+                    target = target + relativedelta(day=31)
                 near = business_days[business_days <= target]
                 ref[p] = near[-1] if len(near) > 0 else pd.NaT
             else:
