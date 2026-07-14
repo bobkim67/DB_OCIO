@@ -10,6 +10,7 @@ import TransactionsTab from "../tabs/TransactionsTab";
 import BrinsonTab from "../tabs/BrinsonTab";
 import ReportTab from "../tabs/ReportTab";
 import AdminTab from "../tabs/AdminTab";
+import MemoTab from "../tabs/MemoTab";
 
 type TabKey =
   | "overview"
@@ -17,7 +18,8 @@ type TabKey =
   | "transactions"
   | "brinson"
   | "report"
-  | "admin";
+  | "admin"
+  | "memo";
 
 export default function DashboardPage() {
   const { data, isLoading, error } = useFunds();
@@ -68,6 +70,8 @@ export default function DashboardPage() {
       <BrinsonTab fundCode={selected} />
     ) : key === "report" ? (
       <ReportTab fundCode={selected} />
+    ) : key === "memo" ? (
+      <MemoTab />
     ) : (
       <AdminTab />
     );
@@ -104,12 +108,13 @@ export default function DashboardPage() {
         {tabBtn("transactions", "거래내역")}
         {tabBtn("brinson", "성과분석")}
         {tabBtn("report", "운용보고")}
-        {/* Admin 탭은 관리자에게만 노출. 클라이언트(비관리자)는 나머지 탭 전부 접근. */}
+        {/* Admin·메모 탭은 관리자에게만 노출. 클라이언트(비관리자)는 나머지 탭 전부 접근. */}
         {isAdmin && tabBtn("admin", "Admin")}
+        {isAdmin && tabBtn("memo", "메모")}
       </div>
 
       {visited.map((key) =>
-        key === "admin" && !isAdmin ? null : (
+        (key === "admin" || key === "memo") && !isAdmin ? null : (
           <div key={key} style={{ display: tab === key ? undefined : "none" }}>
             {tabBody(key)}
           </div>

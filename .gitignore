@@ -117,3 +117,6 @@ market_research/debug/wiki/
 # 정적 스냅샷 (gh-pages 배포 산출물 — tools/dump_static_snapshot.py)
 web/public/snapshot/
 dist_package/
+
+# 메모 탭 사용자 데이터 (서버 저장, 2026-07-14)
+data/memos.json
