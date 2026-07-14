@@ -2,9 +2,11 @@
 
 스펙 = reference/static_slides_202606.json (열린 편집본 COM 추출 — pt 좌표·런 단위 서식).
 그림 = template/static/*.png (클립보드 4배 캡처). 그룹은 절대좌표로 평면화해 그림
-(사용자가 PPT 에서 재그룹 가능). 표지 년월은 ctx['asof'] 로 동적 치환.
+(사용자가 PPT 에서 재그룹 가능). 동적 치환: 표지 년월(asof)·펀드명(목차 부제 규칙과
+동일)·수익자("{수익자}{을/를} 위한" — 받침 판별), 목차 부제.
 """
 import json
+import re
 
 from .common import ROOT, PTE, set_ko_font
 
@@ -57,6 +59,27 @@ def _toc_fund_label(fund_code):
         if 0 < i < cut:
             cut = i
     return name[:cut].strip()
+
+
+def _josa_eul(word):
+    """을/를 조사 — 마지막 한글 음절 받침 유무 (비한글 끝은 '를')."""
+    ch = word[-1] if word else ''
+    if '가' <= ch <= '힣':
+        return '을' if (ord(ch) - 0xAC00) % 28 else '를'
+    return '를'
+
+
+def _beneficiary_line(fund_code):
+    """표지 '{수익자}{을/를} 위한' — FUND_BENEFICIARY 매핑, 후행 괄호는 표기 제외.
+
+    매핑 없는 펀드(모펀드 07G02/03 등)는 빈 줄.
+    """
+    from config.funds import FUND_BENEFICIARY
+    b = FUND_BENEFICIARY.get(fund_code, '')
+    disp = re.sub(r'\([^)]*\)\s*$', '', b).strip()
+    if not disp:
+        return ''
+    return f'{disp}{_josa_eul(disp)} 위한'
 
 
 def _fill_text(sh, sp, subs):
@@ -124,11 +147,13 @@ def _apply_fill_line(sh, sp):
 def _draw_shape(sl, sp, subs, overrides=None):
     typ = sp['type']
     L, T, W, H = sp['L'], sp['T'], sp['W'], sp['H']
-    # 텍스트 전체 교체 (run 분할과 무관하게 첫 run 서식으로 단일 run 재구성)
+    # 첫 문단 텍스트 교체 (run 분할과 무관하게 첫 run 서식으로 단일 run 재구성 —
+    # 뒷 문단은 보존: 표지 TB35 의 '운용보고' 줄처럼 서식이 다른 후행 문단)
     if overrides and sp.get('name') in overrides and sp.get('paras'):
         p0 = sp['paras'][0]
         r0 = (p0.get('runs') or [{}])[0]
-        sp = {**sp, 'paras': [{**p0, 'runs': [{**r0, 'text': overrides[sp['name']]}]}]}
+        new_p0 = {**p0, 'runs': [{**r0, 'text': overrides[sp['name']]}]}
+        sp = {**sp, 'paras': [new_p0] + sp['paras'][1:]}
     if typ == 6:                                    # 그룹 → 절대좌표 평면화
         for c in sp.get('children', []):
             _draw_shape(sl, c, subs, overrides)
@@ -190,8 +215,14 @@ def _add_from_spec(prs, key, layout_name, ctx=None, overrides=None):
     return sl
 
 
-def add_cover(prs, ctx):
-    return _add_from_spec(prs, 'slide1', '제목 및 내용', ctx)
+def add_cover(prs, ctx, fund_code=None):
+    ov = None
+    if fund_code:
+        ov = {
+            'TextBox 22': _beneficiary_line(fund_code),   # '{수익자}{을/를} 위한'
+            'TextBox 35': _toc_fund_label(fund_code),     # 펀드명 (목차 부제와 동일 규칙)
+        }
+    return _add_from_spec(prs, 'slide1', '제목 및 내용', ctx, overrides=ov)
 
 
 def add_toc(prs, fund_code=None):

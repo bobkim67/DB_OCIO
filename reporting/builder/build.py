@@ -28,7 +28,7 @@ def build_report(fund_code: str, end_date: str, start_date: str | None = None,
     ctx['brinson'] = get_brinson_contrib(fund_code, br_start, ctx['asof'])
     prs = new_presentation()
     # 16장 구성 = 사용자 재구성 202606 편집본 (2026-07-14): 표지·목차·섹션 4장 + 데이터 10장
-    s_static.add_cover(prs, ctx)                  # 1
+    s_static.add_cover(prs, ctx, fund_code)       # 1 (펀드명·수익자 동적)
     s_static.add_toc(prs, fund_code)              # 2 (부제 = 펀드명 규칙)
     s_static.add_section(prs, 'slide3')           # 3  01 금융시장 리뷰
     s04.add(prs, ctx)                             # 4
