@@ -72,14 +72,38 @@ def _josa_eul(word):
 def _beneficiary_line(fund_code):
     """표지 '{수익자}{을/를} 위한' — FUND_BENEFICIARY 매핑, 후행 괄호는 표기 제외.
 
-    매핑 없는 펀드(모펀드 07G02/03 등)는 빈 줄.
+    매핑 없는 펀드(모펀드 07G02/03)·07G04(공모 — 수익자 표기 부적절, 2026-07-14
+    사용자 확정)는 빈 줄.
     """
     from config.funds import FUND_BENEFICIARY
+    if fund_code == '07G04':
+        return ''
     b = FUND_BENEFICIARY.get(fund_code, '')
     disp = re.sub(r'\([^)]*\)\s*$', '', b).strip()
     if not disp:
         return ''
     return f'{disp}{_josa_eul(disp)} 위한'
+
+
+def _risk_grade(fund_code):
+    from config.funds import FUND_RISK_GRADE, DEFAULT_RISK_GRADE, RISK_GRADE_NAME
+    g = FUND_RISK_GRADE.get(fund_code, DEFAULT_RISK_GRADE)
+    return g, RISK_GRADE_NAME[g]
+
+
+def _gauge_hook(grade):
+    """표지 위험등급 게이지(둥근 사각형 11~16 = 1~6등급) — 강조 박스만 불투명.
+
+    원본 규약: 강조=fillTransparency 0, 비강조=0.7 (bold 잔재는 정규화).
+    """
+    def hook(sp):
+        if not re.fullmatch(r'모서리가 둥근 직사각형 1[1-6]', sp.get('name', '')):
+            return sp
+        n = int(sp['name'][-2:]) - 10
+        paras = [{**p, 'runs': [{**r, 'bold': 0} for r in p.get('runs', [])]}
+                 for p in sp.get('paras', [])]
+        return {**sp, 'fillTransparency': 0 if n == grade else 0.7, 'paras': paras}
+    return hook
 
 
 def _fill_text(sh, sp, subs):
@@ -147,13 +171,16 @@ def _apply_fill_line(sh, sp):
 def _draw_shape(sl, sp, subs, overrides=None):
     typ = sp['type']
     L, T, W, H = sp['L'], sp['T'], sp['W'], sp['H']
-    # 첫 문단 텍스트 교체 (run 분할과 무관하게 첫 run 서식으로 단일 run 재구성 —
-    # 뒷 문단은 보존: 표지 TB35 의 '운용보고' 줄처럼 서식이 다른 후행 문단)
+    # 첫 문단 텍스트 교체 (run 분할과 무관하게 첫 run 서식 기반 재구성 —
+    # 뒷 문단은 보존: 표지 TB35 의 '운용보고' 줄처럼 서식이 다른 후행 문단).
+    # override 값: str(단일 run) | list[dict](run 별 서식 패치 — 예: 등급 강조)
     if overrides and sp.get('name') in overrides and sp.get('paras'):
         p0 = sp['paras'][0]
         r0 = (p0.get('runs') or [{}])[0]
-        new_p0 = {**p0, 'runs': [{**r0, 'text': overrides[sp['name']]}]}
-        sp = {**sp, 'paras': [new_p0] + sp['paras'][1:]}
+        val = overrides[sp['name']]
+        runs = ([{**r0, 'text': val}] if isinstance(val, str)
+                else [{**r0, **rd} for rd in val])
+        sp = {**sp, 'paras': [{**p0, 'runs': runs}] + sp['paras'][1:]}
     if typ == 6:                                    # 그룹 → 절대좌표 평면화
         for c in sp.get('children', []):
             _draw_shape(sl, c, subs, overrides)
@@ -202,7 +229,7 @@ def _draw_shape(sl, sp, subs, overrides=None):
     print(f"[s_static] 미지원 도형 type={typ} '{sp['name']}' → 생략")
 
 
-def _add_from_spec(prs, key, layout_name, ctx=None, overrides=None):
+def _add_from_spec(prs, key, layout_name, ctx=None, overrides=None, shape_hook=None):
     from .common import layout_by_name
     spec = _spec()[key]
     sl = prs.slides.add_slide(layout_by_name(prs, layout_name))
@@ -211,18 +238,24 @@ def _add_from_spec(prs, key, layout_name, ctx=None, overrides=None):
         y, m = ctx['asof'][:4], int(ctx['asof'][5:7])
         subs['2026년 6월'] = f'{y}년 {m}월'          # 표지 년월 동적 치환
     for sp in spec['shapes']:
+        if shape_hook:
+            sp = shape_hook(sp)
         _draw_shape(sl, sp, subs, overrides)
     return sl
 
 
 def add_cover(prs, ctx, fund_code=None):
-    ov = None
+    ov = hook = None
     if fund_code:
+        g, gname = _risk_grade(fund_code)
         ov = {
             'TextBox 22': _beneficiary_line(fund_code),   # '{수익자}{을/를} 위한'
             'TextBox 35': _toc_fund_label(fund_code),     # 펀드명 (목차 부제와 동일 규칙)
+            'TextBox 21': [{'text': '투자 위험 등급 : '},
+                           {'text': f'{g}등급({gname})', 'font': 'Pretendard ExtraBold'}],
         }
-    return _add_from_spec(prs, 'slide1', '제목 및 내용', ctx, overrides=ov)
+        hook = _gauge_hook(g)
+    return _add_from_spec(prs, 'slide1', '제목 및 내용', ctx, overrides=ov, shape_hook=hook)
 
 
 def add_toc(prs, fund_code=None):
