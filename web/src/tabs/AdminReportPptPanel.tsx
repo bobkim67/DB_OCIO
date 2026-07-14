@@ -202,7 +202,7 @@ export default function AdminReportPptPanel() {
   const canBuild = !busy && !!fund && hasSaved && !dirty;
 
   return (
-    <div className="afp-root">
+    <div className="afp-root rpt">
       {/* ===== 컨트롤: 펀드 + 기간 (거래내역 위젯 서식) ===== */}
       <div className="tx-card">
         <div className="tx-ctrl">
@@ -232,7 +232,6 @@ export default function AdminReportPptPanel() {
               {p.label}
             </button>
           ))}
-          <span className="hint">연초이후=전년말 앵커 · s9~16 은 종료일 기준 YTD 고정</span>
           {fund && fund !== "07G07" && (
             <span className="err">⚠ 표지·목차 문구는 현재 07G07 기준 — 타 펀드는 PPT 에서 수정 필요</span>
           )}
@@ -322,17 +321,17 @@ export default function AdminReportPptPanel() {
         {files.length === 0 ? (
           <div className="sra-empty">생성된 pptx 없음</div>
         ) : (
-          <table style={{ borderCollapse: "collapse", fontSize: 13 }}>
+          <table className="files-tbl">
             <tbody>
               {files.map((f) => (
-                <tr key={f.file} style={{ borderBottom: "1px solid #f1f2f4" }}>
-                  <td style={{ padding: "4px 16px 4px 4px" }}>
+                <tr key={f.file}>
+                  <td>
                     <a href={`/api/admin/report-ppt/download?file=${encodeURIComponent(f.file)}`} download>
                       ⬇ {f.file}
                     </a>
                   </td>
-                  <td style={{ padding: "4px 16px", color: "#667085" }}>{Math.round(f.size_kb / 1024 * 10) / 10} MB</td>
-                  <td style={{ padding: "4px 4px", color: "#667085" }}>{f.mtime}</td>
+                  <td className="meta">{Math.round(f.size_kb / 1024 * 10) / 10} MB</td>
+                  <td className="meta">{f.mtime}</td>
                 </tr>
               ))}
             </tbody>
