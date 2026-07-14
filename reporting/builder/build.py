@@ -11,7 +11,7 @@ from .common import OUT, new_presentation
 from .data_fund import get_fund_data, get_brinson_contrib
 from .data_regime import fetch_regime
 from .data_valuation import load_valuation
-from . import s04, s06, s07, s09, s10, s11, s12, s13, s14, s16
+from . import s_static, s04, s06, s07, s09, s10, s11, s12, s13, s14, s16
 
 
 def build_report(fund_code: str, end_date: str, start_date: str | None = None,
@@ -27,16 +27,23 @@ def build_report(fund_code: str, end_date: str, start_date: str | None = None,
                       else ctx['period_start']))
     ctx['brinson'] = get_brinson_contrib(fund_code, br_start, ctx['asof'])
     prs = new_presentation()
-    s04.add(prs, ctx)
-    s06.add(prs, ctx)
-    s07.add(prs, ctx)
+    # 16장 구성 = 사용자 재구성 202606 편집본 (2026-07-14): 표지·목차·섹션 4장 + 데이터 10장
+    s_static.add_cover(prs, ctx)                  # 1
+    s_static.add_toc(prs)                         # 2
+    s_static.add_section(prs, 'slide3')           # 3  01 금융시장 리뷰
+    s04.add(prs, ctx)                             # 4
+    s_static.add_section(prs, 'slide5')           # 5  02 운용 및 성과 리뷰
+    s06.add(prs, ctx)                             # 6
+    s07.add(prs, ctx)                             # 7
+    s_static.add_section(prs, 'slide8')           # 8  03 펀더멘털 점검
     s09.add(prs, ctx)
     s10.add(prs, ctx)
     s11.add(prs, ctx)
     s12.add(prs, ctx)
     s13.add(prs, ctx)
     s14.add(prs, ctx)
-    s16.add(prs, ctx)
+    s_static.add_section(prs, 'slide15')          # 15 04 운용 계획
+    s16.add(prs, ctx)                             # 16
     _tag = f'_{start_date.replace("-", "")}' if start_date else ''
     out = out_path or (OUT / f'report_{fund_code}_{end_date.replace("-", "")}{_tag}.pptx')
     base = out

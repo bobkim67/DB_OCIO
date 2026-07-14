@@ -99,11 +99,20 @@ def set_ko_font(font, family):
         latin.addnext(e)
 
 
+def PTE(pt):
+    """pt → EMU (정적 슬라이드·레이아웃 — 사용자 파일 실측 pt 좌표 직접 사용)."""
+    return Emu(round(pt * 12_700))
+
+
 def new_presentation():
     prs = Presentation()
     prs.slide_width, prs.slide_height = Emu(EMU_PAGE_W), Emu(EMU_PAGE_H)
-    _ensure_layout_frame(prs)
+    _setup_layouts(prs)
     return prs
+
+
+def layout_by_name(prs, name):
+    return prs.slide_masters[0].slide_layouts.get_by_name(name)
 
 
 _FRAME_DISCLAIMER = (
@@ -117,14 +126,9 @@ _NS = ('xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
        'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"')
 
 
-def _ensure_layout_frame(prs):
-    """blank 레이아웃에 공통 프레임 삽입 — 사용자 재구성 템플릿의 'Title Slide'
-    레이아웃(백색 캔버스 + 푸터라인 + 면책문구) 재현 (2026-07-14).
-
-    LayoutShapes 는 add_* 미지원이라 sp XML 직접 삽입. 좌표 = 사용자 파일 실측(pt).
-    """
-    from pptx.oxml import parse_xml
-
+def _frame_shape_xmls():
+    """'1_Title Slide' 레이아웃 프레임(백색 캔버스+푸터라인+면책문구) sp XML —
+    사용자 재구성 템플릿 실측(pt) 그대로 (2026-07-14)."""
     def _e(pt):
         return round(pt * 12_700)
 
@@ -157,10 +161,66 @@ def _ensure_layout_frame(prs):
         f'<a:latin typeface="Pretendard"/><a:ea typeface="Pretendard"/>'
         f'<a:cs typeface="Pretendard"/></a:rPr>'
         f'<a:t>{_FRAME_DISCLAIMER}</a:t></a:r></a:p></p:txBody></p:sp>')
+    return [rect, line, disc]
 
-    spTree = prs.slide_layouts[6].shapes._spTree
-    for xml in (rect, line, disc):
+
+def _add_layout(prs, name, shape_xmls):
+    """slideLayout 파트를 새로 만들어 마스터에 등록 (python-pptx 에 API 없음 —
+    blank 레이아웃 XML 을 복제해 이름/도형 교체, placeholder 는 제거)."""
+    from copy import deepcopy
+    from pptx.opc.constants import RELATIONSHIP_TYPE as RT
+    from pptx.opc.packuri import PackURI
+    from pptx.oxml import parse_xml
+    from pptx.parts.slide import SlideLayoutPart
+
+    master = prs.slide_masters[0]
+    blank = prs.slide_layouts[6]
+    el = deepcopy(blank._element)
+    cSld = el.find(qn('p:cSld'))
+    cSld.set('name', name)
+    spTree = cSld.find(qn('p:spTree'))
+    for sp in spTree.findall(qn('p:sp')):        # 기본 placeholder 제거 (사용자 레이아웃 동일)
+        spTree.remove(sp)
+    for xml in shape_xmls:
         spTree.append(parse_xml(xml))
+
+    existing = {str(ly.part.partname) for m in prs.slide_masters for ly in m.slide_layouts}
+    idx = 12
+    while f'/ppt/slideLayouts/slideLayout{idx}.xml' in existing:
+        idx += 1
+    part = SlideLayoutPart(PackURI(f'/ppt/slideLayouts/slideLayout{idx}.xml'),
+                           blank.part.content_type, prs.part.package, el)
+    part.relate_to(master.part, RT.SLIDE_MASTER)
+    rid = master.part.relate_to(part, RT.SLIDE_LAYOUT)
+    lst = master._element.find(qn('p:sldLayoutIdLst'))
+    new_id = max(int(e.get('id')) for e in lst) + 1
+    ent = lst.makeelement(qn('p:sldLayoutId'), {'id': str(new_id)})
+    ent.set(qn('r:id'), rid)
+    lst.append(ent)
+
+
+def _setup_layouts(prs):
+    """사용자 재구성 템플릿(2026-07-14)의 커스텀 레이아웃 3종 생성.
+
+    '1_Title Slide'   — 데이터 슬라이드 프레임 (백색 캔버스·푸터라인·면책문구)
+    '1_Title and Content' — 섹션 표지 (우측 백색 패널)
+    '제목 및 내용'      — 표지·목차 (빈 레이아웃)
+    """
+    def _e(pt):
+        return round(pt * 12_700)
+
+    right_panel = (
+        f'<p:sp {_NS}><p:nvSpPr><p:cNvPr id="911" name="Section Right Panel"/>'
+        f'<p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>'
+        f'<a:xfrm><a:off x="{_e(264.2)}" y="0"/>'
+        f'<a:ext cx="{_e(515.8)}" cy="{_e(540)}"/></a:xfrm>'
+        f'<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>'
+        f'<a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill>'
+        f'<a:ln><a:noFill/></a:ln></p:spPr>'
+        f'<p:txBody><a:bodyPr/><a:p/></p:txBody></p:sp>')
+    _add_layout(prs, '1_Title Slide', _frame_shape_xmls())
+    _add_layout(prs, '1_Title and Content', [right_panel])
+    _add_layout(prs, '제목 및 내용', [])
 
 
 def add_text(sl, px_x, px_y, px_w, px_h, text, pt_size, color, bold=False,
@@ -270,10 +330,10 @@ def slide_scaffold(prs, base_name, title, asof_iso, page_label, subtitle='기준
     """공통 골격: 고해상 로고 + 제목 + 부제 + 페이지번호.
 
     base_name: (구 A4 셸 PNG — 2026-07-14 사용자 템플릿 재구성으로 폐지, 호환용 무시.
-    프레임(백색 캔버스·푸터라인·면책문구)은 blank 레이아웃에 있음 — _ensure_layout_frame.)
+    프레임(백색 캔버스·푸터라인·면책문구)은 '1_Title Slide' 레이아웃에 있음.)
     subtitle: '기준일'(기본 — asof 로 포맷) | 임의 문자열 | None(생략, s11/12 등)
     """
-    sl = prs.slides.add_slide(prs.slide_layouts[6])
+    sl = prs.slides.add_slide(layout_by_name(prs, '1_Title Slide'))
     LOGO_W = 150
     LOGO_H = round(LOGO_W * 607 / 2467)
     sl.shapes.add_picture(str(KI_LOGO), EX(1600 - 27 - LOGO_W), E(14), E(LOGO_W), E(LOGO_H))
