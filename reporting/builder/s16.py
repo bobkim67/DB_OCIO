@@ -5,7 +5,7 @@ from matplotlib.colors import LinearSegmentedColormap
 
 from .common import (
     OUT, BODY_PT, HDR_BLUE, Z1, Z2, INK, RED, BLUE,
-    sv, E, add_text, add_bullets, add_table, slide_scaffold, plt,
+    sv, E, EX, add_text, add_bullets, add_table, slide_scaffold, plt,
 )
 
 # 스파이럴 팔레트 (SCIP 다크 테마 근사)
@@ -104,7 +104,7 @@ def add(prs, ctx, page_label='16'):
     # 우: 스파이럴 (SCIP 원천데이터 렌더) + 현재 배지 = 네이티브 편집 도형 (2026-07-13)
     png, (w, h), (bx, by, right_side) = gen_spiral(ctx)
     x0, y0 = 620, 230
-    sl.shapes.add_picture(str(png), E(x0), E(y0), E(w), E(h))
+    sl.shapes.add_picture(str(png), EX(x0), E(y0), E(w), E(h))
     from pptx.enum.shapes import MSO_SHAPE
     from pptx.enum.text import PP_ALIGN as _AL, MSO_ANCHOR as _AN
     from pptx.util import Pt
@@ -115,7 +115,7 @@ def add(prs, ctx, page_label='16'):
     by_s = y0 + by + 20
     bx_s = max(x0 + 8, min(bx_s, x0 + w - BW - 8))
     by_s = max(y0 + 8, min(by_s, y0 + h - BH - 8))
-    sh = sl.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, E(bx_s), E(by_s), E(BW), E(BH))
+    sh = sl.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, EX(bx_s), E(by_s), E(BW), E(BH))
     sh.fill.solid(); sh.fill.fore_color.rgb = RGBColor.from_string('10141F')
     sh.line.color.rgb = RGBColor.from_string('F5D46A'); sh.line.width = Pt(1.2)
     sh.shadow.inherit = False

@@ -1,7 +1,7 @@
 """슬라이드 12 — Historical Valuation: 지역/국가별 12M 선행 PER 박스 (이미지)."""
 import math
 
-from .common import (OUT, E, add_text, slide_scaffold, plt, BODY_PT,
+from .common import (OUT, E, EX, add_text, slide_scaffold, plt, BODY_PT,
                      PT_PER_PX, PP_ALIGN, kdate)
 
 # 러시아 제외 (2026-07-13 사용자 지시 — 2023-02 이후 데이터 중단)
@@ -83,7 +83,7 @@ def add(prs, ctx, page_label='12'):
     add_text(sl, 100, 160, 1400, 34, title, 23 * PT_PER_PX, '222222', bold=True,
              align=PP_ALIGN.CENTER)
     png, (w, h) = gen_chart(val, start, end)
-    sl.shapes.add_picture(str(png), E(40), E(210), E(w), E(h))
+    sl.shapes.add_picture(str(png), EX(40), E(210), E(w), E(h))
     add_text(sl, 900, 1010, 660, 26, f'· 자료: {kdate(end)}, Bloomberg, 한국투자신탁운용',
              BODY_PT - 2, '787878', align=PP_ALIGN.RIGHT)
     return sl

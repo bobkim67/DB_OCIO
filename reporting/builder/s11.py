@@ -2,7 +2,7 @@
 import datetime
 import math
 
-from .common import (OUT, E, add_text, slide_scaffold, plt, BODY_PT,
+from .common import (OUT, E, EX, add_text, slide_scaffold, plt, BODY_PT,
                      PT_PER_PX, PP_ALIGN, kdate)
 
 SERIES = [('MXKR', 'Korea', '#A6A6A6', '#7F7F7F'),
@@ -76,7 +76,7 @@ def add(prs, ctx, page_label='11'):
     add_text(sl, 100, 160, 1400, 34, '12개월 선행 EPS 추이', 24 * PT_PER_PX,
              '222222', bold=True, align=PP_ALIGN.CENTER)
     png, (w, h) = gen_chart(ctx['valuation'], end)
-    sl.shapes.add_picture(str(png), E(40), E(210), E(w), E(h))
+    sl.shapes.add_picture(str(png), EX(40), E(210), E(w), E(h))
     add_text(sl, 900, 1010, 660, 26, f'· 자료: {kdate(end)}, Factset, 한국투자신탁운용',
              BODY_PT - 2, '787878', align=PP_ALIGN.RIGHT)
     return sl

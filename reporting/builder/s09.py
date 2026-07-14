@@ -1,7 +1,7 @@
 """슬라이드 9 — Total Return Breakdown: PER×EPS 분해 누적바 + 표 (이미지)."""
 import math
 
-from .common import (OUT, E, add_text, slide_scaffold, plt, BODY_PT,
+from .common import (OUT, E, EX, add_text, slide_scaffold, plt, BODY_PT,
     PT_PER_PX, PP_ALIGN, kdate)
 
 # (표시명, 심볼) — 발송본 14열. 데이터 없으면 빈칸.
@@ -37,7 +37,8 @@ def subtitle_rank(dec):
 
 
 def gen_chart(dec):
-    W, H = 1520, 760
+    """누적바 차트만 이미지로 (표는 네이티브 — 2026-07-14 사용자 지시)."""
+    W, H = 1520, 428
     PL, PR, PT_, PH = 112, 17, 14, 400
     fig = plt.figure(figsize=(W / 72, H / 72), dpi=144)
     ax = fig.add_axes([0, 0, 1, 1])
@@ -72,48 +73,113 @@ def gen_chart(dec):
                 top = y0 + dn * S; dn += -v
             ax.add_patch(plt.Rectangle((cx - BW / 2, top), BW, h, facecolor=col,
                                        edgecolor='none', zorder=3))
-    # ── 표 ──
-    ty = PT_ + PH + 14
-    col0 = PL
-    cw = PW / len(CATS)
-    TH, TD = 52, 44
-    labels = ['총수익', 'PER 변화율', 'EPS 변화율', '기타']
-    swatch = {1: C_B, 2: C_R, 3: C_G}
-    def cell_rect(x, y, w, h, fill=None):
-        ax.add_patch(plt.Rectangle((x, y), w, h, facecolor=fill or 'none',
-                                   edgecolor='#C9C9C9', lw=1, zorder=2))
-    # 헤더
-    for i, (nm, _s) in enumerate(CATS):
-        x = col0 + i * cw
-        cell_rect(x, ty, cw, TH, '#F5F5F5')
-        ax.text(x + cw / 2, ty + TH / 2, nm, ha='center', va='center', fontsize=14.5,
-                fontweight='bold', color='#222', linespacing=1.1)
-    for ri, lab in enumerate(labels):
-        y = ty + TH + ri * TD
-        fill0 = '#F2F2F2' if ri == 0 else '#FAFAFA'
-        cell_rect(col0 - 112, y, 112, TD, fill0)
-        if ri in swatch:
-            ax.add_patch(plt.Rectangle((col0 - 106, y + TD / 2 - 7), 14, 14,
-                                       facecolor=swatch[ri], edgecolor='none', zorder=3))
-            ax.text(col0 - 86, y + TD / 2, lab, ha='left', va='center', fontsize=15,
-                    fontweight='bold', color='#222')
-        else:
-            ax.text(col0 - 104, y + TD / 2, lab, ha='left', va='center', fontsize=15,
-                    fontweight='bold', color='#222')
-        for i, (nm, sym) in enumerate(CATS):
-            x = col0 + i * cw
-            fill = '#F2F2F2' if ri == 0 else None
-            cell_rect(x, y, cw, TD, fill)
-            if sym in dec:
-                v = dec[sym][3] if ri == 0 else dec[sym][ri - 1]
-                ax.text(x + cw / 2, y + TD / 2, f'{v:.1f}%', ha='center', va='center',
-                        fontsize=15, color='#222',
-                        fontweight='bold' if ri == 0 else 'normal')
-    # 헤더행 좌측 빈 셀
-    cell_rect(col0 - 112, ty, 112, TH, 'white')
     fig.savefig(OUT / 's9_chart.png', facecolor='white')
     plt.close(fig)
     return OUT / 's9_chart.png', (W, H)
+
+
+def add_native_table(sl, dec, px_x, px_y):
+    """차트 하단 데이터 표 — 네이티브 편집 표 (2026-07-14 사용자 지시).
+
+    구 이미지 표와 동일 지오메트리: 라벨열 112px + 14열, 헤더 52px + 4행 44px,
+    전체 그리드 #C9C9C9, 총수익행 강조, PER/EPS/기타 라벨에 색상 스와치(■).
+    """
+    from pptx.util import Emu, Pt
+    from pptx.dml.color import RGBColor
+    from pptx.enum.text import MSO_ANCHOR
+    from pptx.oxml.ns import qn
+    from lxml import etree
+    from .common import E, EX, EMU_PER_PX, PT_PER_PX, set_ko_font
+
+    PW = 1520 - 112 - 17
+    col_w = [112] + [PW / len(CATS)] * len(CATS)
+    row_h = [52, 44, 44, 44, 44]
+    labels = ['총수익', 'PER 변화율', 'EPS 변화율', '기타']
+    swatch = {1: C_B, 2: C_R, 3: C_G}
+    FS = Pt(round(15 * PT_PER_PX, 1))          # 이미지 표 fontsize 15px 등가
+    FS_H = Pt(round(14.5 * PT_PER_PX, 1))
+
+    gf = sl.shapes.add_table(5, len(CATS) + 1, EX(px_x), E(px_y),
+                             E(sum(col_w)), E(sum(row_h)))
+    tbl = gf.table
+    tblPr = tbl._tbl.tblPr
+    tblPr.set('firstRow', '0'); tblPr.set('bandRow', '0')
+    sid = tblPr.find(qn('a:tableStyleId'))
+    if sid is not None:
+        sid.text = '{2D5ABB26-0587-4C30-8999-92F81FD0307C}'   # No Style, No Grid
+    for i, w in enumerate(col_w):
+        tbl.columns[i].width = E(w)
+    for i, h in enumerate(row_h):
+        tbl.rows[i].height = E(h)
+
+    def _borders(cell):
+        # tcPr 자식은 스키마 시퀀스(lnL→lnR→lnT→lnB→…→fill) 순서 필수 —
+        # 역순 삽입 시 PowerPoint 가 파일 자체를 거부 (2026-07-14 확인)
+        tcPr = cell._tc.get_or_add_tcPr()
+        for idx, tag in enumerate(('a:lnL', 'a:lnR', 'a:lnT', 'a:lnB')):
+            ln = tcPr.makeelement(qn(tag), {'w': '6350', 'cap': 'flat'})   # 0.5pt
+            sf = etree.SubElement(ln, qn('a:solidFill'))
+            etree.SubElement(sf, qn('a:srgbClr')).set('val', 'C9C9C9')
+            tcPr.insert(idx, ln)
+
+    def _put(cell, runs, fs, align, fill=None):
+        """runs: [(text, bold, color_hex)] — '\\n' 은 문단 분리."""
+        if fill:
+            cell.fill.solid()
+            cell.fill.fore_color.rgb = RGBColor.from_string(fill)
+        else:
+            cell.fill.solid()
+            cell.fill.fore_color.rgb = RGBColor.from_string('FFFFFF')
+        _borders(cell)
+        cell.vertical_anchor = MSO_ANCHOR.MIDDLE
+        tf = cell.text_frame
+        tf.word_wrap = False
+        tf.margin_top = tf.margin_bottom = 0
+        tf.margin_left = tf.margin_right = Emu(round(3 * EMU_PER_PX))
+        def _prep(p):
+            """문단 서식 — 문단당 1회만 (run 마다 재호출 금지: ea/cs 중복 → 파일 거부)."""
+            p.alignment = align
+            p.font.name = 'Pretendard'; p.font.size = fs       # 빈 셀 행높이 방지
+            set_ko_font(p.font, 'Pretendard')
+
+        p = None
+        for text, bold, color in runs:
+            for j, seg in enumerate(text.split('\n')):
+                if p is None:
+                    p = tf.paragraphs[0]; _prep(p)
+                elif j > 0:
+                    p = tf.add_paragraph(); _prep(p)
+                if not seg:
+                    continue
+                r = p.add_run(); r.text = seg
+                r.font.name = 'Pretendard'; r.font.size = fs
+                r.font.bold = bold; r.font.color.rgb = RGBColor.from_string(color)
+                set_ko_font(r.font, 'Pretendard')
+
+    # 헤더행: 좌측 빈 셀 + 카테고리명 (2줄 헤더는 문단 분리)
+    _put(tbl.cell(0, 0), [('', False, '222222')], FS_H, PP_ALIGN.CENTER)
+    for i, (nm, _s) in enumerate(CATS):
+        _put(tbl.cell(0, i + 1), [(nm, True, '222222')], FS_H, PP_ALIGN.CENTER,
+             fill='F5F5F5')
+    # 데이터행
+    for ri, lab in enumerate(labels):
+        row = ri + 1
+        fill0 = 'F2F2F2' if ri == 0 else 'FAFAFA'
+        if ri in swatch:
+            _put(tbl.cell(row, 0), [('■ ', False, swatch[ri].lstrip('#')),
+                                    (lab, True, '222222')], FS, PP_ALIGN.LEFT, fill=fill0)
+        else:
+            _put(tbl.cell(row, 0), [(lab, True, '222222')], FS, PP_ALIGN.LEFT, fill=fill0)
+        for i, (nm, sym) in enumerate(CATS):
+            fill = 'F2F2F2' if ri == 0 else None
+            if sym in dec:
+                v = dec[sym][3] if ri == 0 else dec[sym][ri - 1]
+                _put(tbl.cell(row, i + 1), [(f'{v:.1f}%', ri == 0, '222222')],
+                     FS, PP_ALIGN.CENTER, fill=fill)
+            else:
+                _put(tbl.cell(row, i + 1), [('', False, '222222')], FS,
+                     PP_ALIGN.CENTER, fill=fill)
+    return gf
 
 
 def add(prs, ctx, page_label='9'):
@@ -127,7 +193,8 @@ def add(prs, ctx, page_label='9'):
     add_text(sl, 100, 208, 1400, 34, title, 24 * PT_PER_PX, '222222', bold=True,
              align=PP_ALIGN.CENTER)
     png, (w, h) = gen_chart(dec)
-    sl.shapes.add_picture(str(png), E(40), E(252), E(w), E(h))
+    sl.shapes.add_picture(str(png), EX(40), E(252), E(w), E(h))
+    add_native_table(sl, dec, 40, 252 + 428)      # 구 이미지 표와 동일 위치(y680)
     add_text(sl, 100, 1018, 900, 26,
              '총수익은 12M 선행 PER×EPS 기반 가격수익률(USD, 배당 제외), 기타는 PER·EPS 변동의 교차항',
              13 * PT_PER_PX * 1.4, '777777')

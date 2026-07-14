@@ -8,7 +8,7 @@ import math
 
 import pymysql
 
-from .common import (OUT, E, add_text, slide_scaffold, plt, BODY_PT,
+from .common import (OUT, E, EX, add_text, slide_scaffold, plt, BODY_PT,
                      PT_PER_PX, PP_ALIGN, kdate)
 from modules.data_loader import parse_data_blob
 
@@ -121,7 +121,7 @@ def add(prs, ctx, page_label='13'):
     data = _load(end)
     png, (w, h), events_geo = gen_chart(data, end)
     x0, y0 = (1600 - w) // 2, 258
-    sl.shapes.add_picture(str(png), E(x0), E(y0), E(w), E(h))
+    sl.shapes.add_picture(str(png), EX(x0), E(y0), E(w), E(h))
     # 이벤트 타원(점선) + 라벨 = 네이티브 편집 개체 (2026-07-13 사용자 지시)
     from pptx.enum.shapes import MSO_SHAPE
     from pptx.enum.text import MSO_ANCHOR
@@ -131,7 +131,7 @@ def add(prs, ctx, page_label='13'):
     for ev in events_geo:
         sh = sl.shapes.add_shape(
             MSO_SHAPE.OVAL,
-            E(x0 + ev['cx'] - ev['w'] / 2), E(y0 + ev['cy'] - ev['h'] / 2),
+            EX(x0 + ev['cx'] - ev['w'] / 2), E(y0 + ev['cy'] - ev['h'] / 2),
             E(ev['w']), E(ev['h']))
         sh.fill.background()
         sh.shadow.inherit = False

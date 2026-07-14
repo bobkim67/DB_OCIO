@@ -2,7 +2,7 @@
 import datetime
 import math
 
-from .common import (OUT, E, add_text, slide_scaffold, plt, BODY_PT,
+from .common import (OUT, E, EX, add_text, slide_scaffold, plt, BODY_PT,
                      PT_PER_PX, PP_ALIGN, kdate)
 
 C_PX, C_PE = '#C0392B', '#2E6DB4'
@@ -67,24 +67,22 @@ def gen_chart(kr, end):
                 rotation=32, ha='right', va='top', rotation_mode='anchor')
     ax.plot([X(d) for d, _ in px], [YL(v) for _, v in px], color=C_PX, lw=2, zorder=3)
     ax.plot([X(d) for d, _, _ in ser], [YR(p) for _, p, _ in ser], color=C_PE, lw=2, zorder=3)
-    # 주석 박스 + 점선 인출선 (원본 앵커: PER→2021-03-02, 가격→2019-09-02)
+    fig.savefig(OUT / 's10_chart.png', facecolor='white')
+    plt.close(fig)
+    # 주석 박스 + 점선 인출선 = 네이티브 편집 개체 (2026-07-14 사용자 지시) —
+    # 앵커(이미지 px 좌표)만 계산해 add() 로 전달 (원본 앵커: PER→2021-03-02, 가격→2019-09-02)
     d_b = next((d for d, _, _ in ser if d >= '2021-03-02'), ser[len(ser) // 2][0])
     p_b = dict((d, p) for d, p, _ in ser)[d_b]
     d_r = next((d for d, _ in px if d >= '2019-09-02'), px[len(px) // 3][0])
     v_r = dict(px)[d_r]
-    ax.plot([960, X(d_b)], [130, YR(p_b) - 4], color='#2E5E9E', lw=2,
-            linestyle=(0, (7, 5)), zorder=2)
-    ax.text(960, 100, '12개월 선행 PER\n( MSCI Korea, 우)', fontsize=19, color='#2E5E9E',
-            ha='center', va='center', zorder=4, linespacing=1.25,
-            bbox=dict(boxstyle='square,pad=0.4', fc='white', ec='#2E5E9E', lw=2))
-    ax.plot([420, X(d_r)], [300, YL(v_r) - 4], color='#A83232', lw=2,
-            linestyle=(0, (7, 5)), zorder=2)
-    ax.text(420, 265, 'Price Index\n( MSCI Korea, 좌)', fontsize=19, color='#A83232',
-            ha='center', va='center', zorder=4, linespacing=1.25,
-            bbox=dict(boxstyle='square,pad=0.4', fc='white', ec='#A83232', lw=2))
-    fig.savefig(OUT / 's10_chart.png', facecolor='white')
-    plt.close(fig)
-    return OUT / 's10_chart.png', (W, H)
+    annos = [
+        # (라벨, 색hex, 박스중심 x/y, 인출선 시작 x/y, 인출선 끝 x/y)
+        ('12개월 선행 PER\n( MSCI Korea, 우)', '2E5E9E',
+         (960, 100), (960, 130), (X(d_b), YR(p_b) - 4)),
+        ('Price Index\n( MSCI Korea, 좌)', 'A83232',
+         (420, 265), (420, 300), (X(d_r), YL(v_r) - 4)),
+    ]
+    return OUT / 's10_chart.png', (W, H), annos
 
 
 def add(prs, ctx, page_label='10'):
@@ -96,8 +94,42 @@ def add(prs, ctx, page_label='10'):
     sl = slide_scaffold(prs, 'base_slide10.png', 'MSCI KR', end, page_label, subtitle=sub)
     add_text(sl, 100, 208, 1400, 34, '한국 가격지수 vs 밸류에이션', 24 * PT_PER_PX,
              '222222', bold=True, align=PP_ALIGN.CENTER)
-    png, (w, h) = gen_chart(kr, end)
-    sl.shapes.add_picture(str(png), E(40), E(252), E(w), E(h))
+    png, (w, h), annos = gen_chart(kr, end)
+    IX, IY = 40, 252                              # 차트 이미지 원점 (슬라이드 px)
+    sl.shapes.add_picture(str(png), EX(IX), E(IY), E(w), E(h))
+    # 주석 = 네이티브: 점선 인출선(커넥터) 먼저(뒤), 테두리 텍스트박스 나중(앞)
+    from pptx.enum.shapes import MSO_CONNECTOR, MSO_SHAPE
+    from pptx.enum.text import MSO_ANCHOR
+    from pptx.util import Pt
+    from pptx.dml.color import RGBColor
+    from pptx.oxml.ns import qn
+    from .common import set_ko_font
+    BXW, BXH = 210, 58                            # 주석 박스 크기 (px)
+    for label, chex, (bcx, bcy), (lx0, ly0), (lx1, ly1) in annos:
+        ln = sl.shapes.add_connector(
+            MSO_CONNECTOR.STRAIGHT, EX(IX + lx0), E(IY + ly0), EX(IX + lx1), E(IY + ly1))
+        ln.line.color.rgb = RGBColor.from_string(chex)
+        ln.line.width = Pt(2 * PT_PER_PX)
+        pd = ln.line._get_or_add_ln().makeelement(qn('a:prstDash'), {'val': 'dash'})
+        ln.line._get_or_add_ln().append(pd)
+        bx = sl.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE,
+            EX(IX + bcx - BXW / 2), E(IY + bcy - BXH / 2), E(BXW), E(BXH))
+        bx.fill.solid(); bx.fill.fore_color.rgb = RGBColor.from_string('FFFFFF')
+        bx.line.color.rgb = RGBColor.from_string(chex)
+        bx.line.width = Pt(2 * PT_PER_PX)
+        bx.shadow.inherit = False
+        tf = bx.text_frame
+        tf.word_wrap = False
+        tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        for i, seg in enumerate(label.split('\n')):
+            p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+            p.alignment = PP_ALIGN.CENTER
+            r = p.add_run(); r.text = seg
+            r.font.name = 'Pretendard'; r.font.size = Pt(round(19 * PT_PER_PX, 1))
+            r.font.color.rgb = RGBColor.from_string(chex)
+            set_ko_font(r.font, 'Pretendard')
     add_text(sl, 900, 1028, 660, 26, f'· 자료: {kdate(end)}, Bloomberg, 한국투자신탁운용',
              BODY_PT - 2, '787878', align=PP_ALIGN.RIGHT)
     return sl

@@ -11,7 +11,7 @@ import json
 import numpy as np
 import pymysql
 
-from .common import (OUT, ROOT, E, add_text, slide_scaffold, plt, BODY_PT,
+from .common import (OUT, ROOT, E, EX, add_text, slide_scaffold, plt, BODY_PT,
                      PT_PER_PX, PP_ALIGN, kdate)
 from modules.data_loader import parse_data_blob
 
@@ -263,7 +263,7 @@ def add(prs, ctx, page_label='4'):
         add_text(sl, 52, 210, 1500, 30, manual['headline'], BODY_PT + 1, '111111', bold=True)
     # 좌: 자산군표 (그라디언트 바 — 이미지)
     png, (w, h) = gen_table(data)
-    sl.shapes.add_picture(str(png), E(40), E(255), E(w), E(h))
+    sl.shapes.add_picture(str(png), EX(40), E(255), E(w), E(h))
     # 우: 코멘트 = 네이티브 표 (2026-07-13 사용자 지정 — 2열, 가로 구분선만,
     #   라벨=가운데/중간, 상세=왼쪽/중간, 글머리(·) hanging indent, 총높이=좌측 표와 동일)
     from pptx.util import Emu, Pt
@@ -281,7 +281,7 @@ def add(prs, ctx, page_label='4'):
     row_h = [max(60, round(h * e / tot)) for e in est]
     row_h[-1] = max(60, h - sum(row_h[:-1]))
 
-    gf = sl.shapes.add_table(len(secs), 2, E(cx), E(255), E(cw), E(h))
+    gf = sl.shapes.add_table(len(secs), 2, EX(cx), E(255), E(cw), E(h))
     tbl = gf.table
     tblPr = tbl._tbl.tblPr
     tblPr.set('firstRow', '0'); tblPr.set('bandRow', '0')

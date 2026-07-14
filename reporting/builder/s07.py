@@ -3,7 +3,7 @@ import math
 
 from .common import (
     OUT, CANVAS_OFF, BODY_PT, HDR_BLUE, Z1, Z2, INK, C_FUND, C_BM, C_EXC,
-    remap, sv, E, add_text, add_pbar, add_table, slide_scaffold, plt,
+    remap, sv, E, EX, add_text, add_pbar, add_table, slide_scaffold, plt,
 )
 
 TH, TD = sv(38), sv(36)
@@ -152,5 +152,5 @@ def add(prs, ctx, page_label='7'):
               [TH] + [TD] * (len(rows) - 1), rows)
 
     chart_png, (cx0, cw, ch) = gen_perf_chart(ctx)
-    sl.shapes.add_picture(str(chart_png), E(OX + cx0), E(remap(OY + 290)), E(cw), E(ch))
+    sl.shapes.add_picture(str(chart_png), EX(OX + cx0), E(remap(OY + 290)), E(cw), E(ch))
     return sl

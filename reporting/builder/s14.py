@@ -9,7 +9,7 @@ import math
 
 import pymysql
 
-from .common import (OUT, E, add_text, slide_scaffold, plt, BODY_PT,
+from .common import (OUT, E, EX, add_text, slide_scaffold, plt, BODY_PT,
                      PT_PER_PX, PP_ALIGN, kdate)
 from modules.data_loader import parse_data_blob
 
@@ -141,7 +141,7 @@ def add(prs, ctx, page_label='14'):
     add_text(sl, 100, 208, 1400, 34, '선진국 통화바스켓 대비 원화 상대가치', 24 * PT_PER_PX,
              '222222', bold=True, align=PP_ALIGN.CENTER)
     png, (w, h) = gen_chart(dates, rv, mean, up, dn)
-    sl.shapes.add_picture(str(png), E((1600 - w) // 2), E(258), E(w), E(h))
+    sl.shapes.add_picture(str(png), EX((1600 - w) // 2), E(258), E(w), E(h))
     add_text(sl, 900, 1015, 660, 26, f'· 자료: {kdate(end)}, Bloomberg, 한국투자신탁운용',
              BODY_PT - 2, '787878', align=PP_ALIGN.RIGHT)
     return sl

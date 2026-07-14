@@ -22,19 +22,22 @@ if str(REPO) not in sys.path:
 
 OUT = ROOT / 'out'
 FONTS = ROOT / 'template' / 'fonts'
-BASE_DIR = ROOT / 'template' / 'base'
 KI_LOGO = REPO / 'web' / 'public' / 'ki-logo.png'
 
 for _f in FONTS.glob('*.otf'):
     font_manager.fontManager.addfont(str(_f))
 plt.rcParams['font.family'] = 'Pretendard'
 
-# ── A4 좌표계 ──
-EMU_A4_W, EMU_A4_H = 10_692_000, 7_560_000          # 29.7 x 21 cm
-EMU_PER_PX = EMU_A4_W / 1600                         # 6682.5
+# ── 페이지 좌표계 (2026-07-14 사용자 재구성 템플릿 780x540pt 기준) ──
+# 내부 설계 px(1600x1131, 구 A4 좌표)는 전부 유지하고 출력만 균등 축소:
+# 1px = 540pt/1131 = 0.47745pt (높이 맞춤) + 가로 중앙정렬 X_OFF(+8.05pt).
+# 사용자 파일 역산 검증: 제목 36.27pt=76px, 본문 10.89pt, 이미지/표 위치 일치.
+EMU_PAGE_W, EMU_PAGE_H = 780 * 12_700, 540 * 12_700  # 780 x 540 pt
+EMU_PER_PX = EMU_PAGE_H / 1131                       # 6063.66
+X_OFF = EMU_PAGE_W / EMU_PER_PX / 2 - 800            # 16.86px = 8.05pt (가로 중앙)
 PX_H = 1131
-PT_PER_PX = 72 / (1600 / (EMU_A4_W / 914_400))       # 0.5262 (제목패널 비례 환산)
-BODY_PT = 12                                         # 본문 고정
+PT_PER_PX = 540 / 1131                               # 0.47745 (px→pt)
+BODY_PT = round(12 * PT_PER_PX / 0.5262, 2)          # 10.89 (구 A4 12pt 등가)
 CANVAS_OFF = (40, 192)
 _FOOT_OLD, _FOOT_NEW, _HDR = 824, 824 + (PX_H - 900), 196   # 푸터라인 1055
 SV = (_FOOT_NEW - _HDR) / (_FOOT_OLD - _HDR)                 # 1.3678
@@ -56,29 +59,6 @@ def sv(h):
     return round(h * SV)
 
 
-# ──────────────────────────── A4 셸 base ────────────────────────────
-def make_shell(base_name: str) -> Path:
-    """base_slideNN.png → A4 셸: 제목/로고/페이지번호 제거, 밴드 균일화, 세로 확장."""
-    from PIL import Image, ImageDraw
-    import numpy as np
-    src = BASE_DIR / base_name
-    im = Image.open(src).convert('RGB')
-    d = ImageDraw.Draw(im)
-    d.rectangle([25, 12, 1150, 118], fill='white')     # 제목 (편집 텍스트로 대체)
-    d.rectangle((1460, 12, 1576, 37), fill='white')    # 저해상 로고 (고해상 개체로 대체)
-    d.rectangle((1480, 826, 1590, 890), fill='white')  # 페이지번호 (편집 텍스트로 대체)
-    d.rectangle((30, 780, 1470, 823), fill='white')    # 푸터라인(824) 위 잘린 각주 잔재 (base09 등)
-    d.rectangle((30, 825, 1470, 831), fill='white')    # 라인 아래 잔재 디센더 (base09)
-    a = np.array(im)
-    a[118:196, :] = 255                                # 제목 하단 음영밴드 제거 (2026-07-14 사용자 지시)
-    filler = np.repeat(a[500:501, :, :], PX_H - 900, axis=0)   # y500 = 균일 백색 행
-    a = np.vstack([a[:500], filler, a[500:]])
-    OUT.mkdir(parents=True, exist_ok=True)
-    p = OUT / f'shell_{base_name}'
-    Image.fromarray(a).save(p)
-    return p
-
-
 # ──────────────────────────── pptx 헬퍼 ────────────────────────────
 from pptx import Presentation                                  # noqa: E402
 from pptx.util import Emu, Pt                                  # noqa: E402
@@ -91,31 +71,102 @@ from lxml import etree                                         # noqa: E402
 
 
 def E(px):
+    """길이(폭·높이) px → EMU."""
     return Emu(round(px * EMU_PER_PX))
 
 
+def EX(px):
+    """x 위치 px → EMU (가로 중앙정렬 오프셋 포함)."""
+    return Emu(round((px + X_OFF) * EMU_PER_PX))
+
+
 def set_ko_font(font, family):
-    """a:latin 만으로는 한글이 테마 EA(맑은고딕)로 폴백 — a:ea/a:cs 도 지정."""
+    """a:latin 만으로는 한글이 테마 EA(맑은고딕)로 폴백 — a:ea/a:cs 도 지정.
+
+    멱등: 같은 rPr 에 재호출해도 a:ea/a:cs 가 중복 삽입되지 않음
+    (중복되면 스키마 위반으로 PowerPoint 가 파일을 거부 — 2026-07-14 확인).
+    """
     font.language_id = MSO_LANGUAGE_ID.KOREAN
     rPr = font._rPr
     latin = rPr.find(qn('a:latin')) if rPr is not None else None
     if latin is None:
         return
     for tag in ('a:cs', 'a:ea'):            # addnext 역순 → latin, ea, cs 순서
+        old = rPr.find(qn(tag))
+        if old is not None:
+            rPr.remove(old)
         e = rPr.makeelement(qn(tag), {'typeface': family})
         latin.addnext(e)
 
 
 def new_presentation():
     prs = Presentation()
-    prs.slide_width, prs.slide_height = Emu(EMU_A4_W), Emu(EMU_A4_H)
+    prs.slide_width, prs.slide_height = Emu(EMU_PAGE_W), Emu(EMU_PAGE_H)
+    _ensure_layout_frame(prs)
     return prs
+
+
+_FRAME_DISCLAIMER = (
+    '본 자료는 당사의 승인 없이 불법적으로 복제 또는 유통될 수 없습니다. '
+    '본 자료에 기재된 운용 전략 및 전망은 시장상황 변동 등에 따라 변경될 수 '
+    '있으며, 상기 예시 수익률이 미래의 수익을 보장하는 것은 아닙니다. '
+    '본 자료 중 예측 및 전망에 관한 자료는 참고 자료이며 향후의 결과를 '
+    '보증하는 것은 아닙니다.')
+
+_NS = ('xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+       'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"')
+
+
+def _ensure_layout_frame(prs):
+    """blank 레이아웃에 공통 프레임 삽입 — 사용자 재구성 템플릿의 'Title Slide'
+    레이아웃(백색 캔버스 + 푸터라인 + 면책문구) 재현 (2026-07-14).
+
+    LayoutShapes 는 add_* 미지원이라 sp XML 직접 삽입. 좌표 = 사용자 파일 실측(pt).
+    """
+    from pptx.oxml import parse_xml
+
+    def _e(pt):
+        return round(pt * 12_700)
+
+    rect = (
+        f'<p:sp {_NS}><p:nvSpPr><p:cNvPr id="901" name="Frame Canvas"/>'
+        f'<p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>'
+        f'<a:xfrm><a:off x="{_e(0)}" y="{_e(86)}"/>'
+        f'<a:ext cx="{_e(780)}" cy="{_e(454)}"/></a:xfrm>'
+        f'<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>'
+        f'<a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill>'
+        f'<a:ln><a:noFill/></a:ln></p:spPr>'
+        f'<p:txBody><a:bodyPr/><a:p/></p:txBody></p:sp>')
+    line = (
+        f'<p:cxnSp {_NS}><p:nvCxnSpPr><p:cNvPr id="902" name="Frame Footer Line"/>'
+        f'<p:cNvCxnSpPr/><p:nvPr/></p:nvCxnSpPr><p:spPr>'
+        f'<a:xfrm><a:off x="{_e(22.8)}" y="{_e(504.7)}"/>'
+        f'<a:ext cx="{_e(734.4)}" cy="0"/></a:xfrm>'
+        f'<a:prstGeom prst="line"><a:avLst/></a:prstGeom>'
+        f'<a:ln w="9525"><a:solidFill><a:srgbClr val="D9D9D9"/></a:solidFill></a:ln>'
+        f'</p:spPr></p:cxnSp>')
+    disc = (
+        f'<p:sp {_NS}><p:nvSpPr><p:cNvPr id="903" name="Frame Disclaimer"/>'
+        f'<p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr>'
+        f'<a:xfrm><a:off x="{_e(25.2)}" y="{_e(508.8)}"/>'
+        f'<a:ext cx="{_e(686.5)}" cy="{_e(30.5)}"/></a:xfrm>'
+        f'<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr>'
+        f'<p:txBody><a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0"/>'
+        f'<a:p><a:r><a:rPr lang="ko-KR" sz="800" dirty="0">'
+        f'<a:solidFill><a:srgbClr val="4A2119"/></a:solidFill>'
+        f'<a:latin typeface="Pretendard"/><a:ea typeface="Pretendard"/>'
+        f'<a:cs typeface="Pretendard"/></a:rPr>'
+        f'<a:t>{_FRAME_DISCLAIMER}</a:t></a:r></a:p></p:txBody></p:sp>')
+
+    spTree = prs.slide_layouts[6].shapes._spTree
+    for xml in (rect, line, disc):
+        spTree.append(parse_xml(xml))
 
 
 def add_text(sl, px_x, px_y, px_w, px_h, text, pt_size, color, bold=False,
              family='Pretendard', align=PP_ALIGN.LEFT, anchor=MSO_ANCHOR.TOP,
              wrap=False):
-    tb = sl.shapes.add_textbox(E(px_x), E(px_y), E(px_w), E(px_h))
+    tb = sl.shapes.add_textbox(EX(px_x), E(px_y), E(px_w), E(px_h))
     tf = tb.text_frame
     tf.word_wrap = wrap
     tf.vertical_anchor = anchor
@@ -133,7 +184,7 @@ def add_bullets(sl, px_x, px_y, px_w, lines, pt_size=BODY_PT, color=INK,
                 line_gap_px=None):
     """여러 불릿 문단 텍스트박스 (word_wrap, 문단 간격)."""
     from pptx.util import Pt as _Pt
-    tb = sl.shapes.add_textbox(E(px_x), E(px_y), E(px_w), E(40 * len(lines)))
+    tb = sl.shapes.add_textbox(EX(px_x), E(px_y), E(px_w), E(40 * len(lines)))
     tf = tb.text_frame
     tf.word_wrap = True
     tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
@@ -151,7 +202,7 @@ def add_bullets(sl, px_x, px_y, px_w, lines, pt_size=BODY_PT, color=INK,
 def add_pbar(sl, px_x, px_y, px_w, text, px_h=None):
     """파란 소제목 바 (편집 가능 도형)."""
     h = px_h or sv(34)
-    sh = sl.shapes.add_shape(MSO_SHAPE.RECTANGLE, E(px_x), E(px_y), E(px_w), E(h))
+    sh = sl.shapes.add_shape(MSO_SHAPE.RECTANGLE, EX(px_x), E(px_y), E(px_w), E(h))
     sh.fill.solid(); sh.fill.fore_color.rgb = RGBColor.from_string(HDR_BLUE)
     sh.line.fill.background()
     sh.shadow.inherit = False
@@ -169,7 +220,7 @@ def add_pbar(sl, px_x, px_y, px_w, text, px_h=None):
 def add_table(sl, px_x, px_y, col_w_px, row_h_px, rows_spec):
     """네이티브 표. rows_spec: [(fill_hex|None, [(text, bold, color_hex), ...]), ...]"""
     n_r, n_c = len(rows_spec), len(col_w_px)
-    gf = sl.shapes.add_table(n_r, n_c, E(px_x), E(px_y),
+    gf = sl.shapes.add_table(n_r, n_c, EX(px_x), E(px_y),
                              E(sum(col_w_px)), E(sum(row_h_px)))
     tbl = gf.table
     tblPr = tbl._tbl.tblPr
@@ -216,15 +267,16 @@ def kdate(iso):
 
 
 def slide_scaffold(prs, base_name, title, asof_iso, page_label, subtitle='기준일'):
-    """공통 골격: A4 셸 배경 + 고해상 로고 + 제목 + 부제 + 페이지번호.
+    """공통 골격: 고해상 로고 + 제목 + 부제 + 페이지번호.
 
+    base_name: (구 A4 셸 PNG — 2026-07-14 사용자 템플릿 재구성으로 폐지, 호환용 무시.
+    프레임(백색 캔버스·푸터라인·면책문구)은 blank 레이아웃에 있음 — _ensure_layout_frame.)
     subtitle: '기준일'(기본 — asof 로 포맷) | 임의 문자열 | None(생략, s11/12 등)
     """
     sl = prs.slides.add_slide(prs.slide_layouts[6])
-    sl.shapes.add_picture(str(make_shell(base_name)), 0, 0, Emu(EMU_A4_W), Emu(EMU_A4_H))
     LOGO_W = 150
     LOGO_H = round(LOGO_W * 607 / 2467)
-    sl.shapes.add_picture(str(KI_LOGO), E(1600 - 27 - LOGO_W), E(14), E(LOGO_W), E(LOGO_H))
+    sl.shapes.add_picture(str(KI_LOGO), EX(1600 - 27 - LOGO_W), E(14), E(LOGO_W), E(LOGO_H))
     add_text(sl, 36, 22, 1000, 96, title, 76 * PT_PER_PX, '000000', family='Pretendard Black')
     if subtitle == '기준일':
         subtitle = f'기준일: {kdate(asof_iso)}'
