@@ -77,7 +77,7 @@ def gen_chart(data, end):
                 lw=1, zorder=1)
         ax.text(PL - 10, Y(v), f'{v}%', ha='right', va='center', fontsize=FS, color='#333')
     y0, y1 = int(common_d[0][:4]), int(common_d[-1][:4])
-    for yr in range(y0 - 1, y1 + 1):
+    for yr in range(y0 - 1, y1 + 1, 3):    # 눈금 3년 주기 (2026-07-14 사용자 지시)
         d = f'{yr}-12-31'
         if _dnum(d) < T0 or _dnum(d) > T1:
             continue
