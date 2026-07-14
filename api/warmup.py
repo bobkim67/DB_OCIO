@@ -127,6 +127,16 @@ def _build_steps() -> list[tuple[str, object]]:
     return _build_essential_steps()
 
 
+def _warm_admin_overview():
+    """Admin > 펀드 운용 스냅샷 (당월/최신 기준) 선계산 — 2026-07-14 사용자 지시.
+
+    holdings 는 essential 에서 이미 웜 → 여기서는 기간수익률(lru)·컴플·듀레이션이
+    채워진다. 패널 기본 호출(as_of 없음)과 캐시 키 동일.
+    """
+    from api.routers.admin_funds import get_admin_funds_overview
+    return get_admin_funds_overview(as_of=None)
+
+
 def _warm_brinson(fund: str):
     from api.services.brinson_service import build_brinson
     # 성과분석 프론트 디폴트와 동일: 기본기간(YTD/inception~어제), 펀드 기본 분류방법,
@@ -135,10 +145,13 @@ def _warm_brinson(fund: str):
 
 
 def _build_brinson_steps() -> list[tuple[str, object]]:
-    """brinson 백그라운드 워밍업 스텝(펀드당 1). essential 게이트 해제 뒤 실행."""
+    """백그라운드 워밍업 스텝 — Admin 펀드운용 스냅샷(1) + brinson(펀드당 1).
+
+    essential 게이트 해제 뒤 실행. Admin 스냅샷을 brinson 보다 먼저.
+    """
     from config.funds import FUND_LIST
 
-    return [
+    return [("Admin · 펀드운용 스냅샷", _warm_admin_overview)] + [
         (f"{fund} · 성과분석(Brinson)", lambda f=fund: _warm_brinson(f))
         for fund in FUND_LIST
     ]
@@ -216,8 +229,8 @@ def _run() -> None:
             _state.phase = "brinson"
             _state.current = ""
 
-        # brinson 단계: 전 펀드 성과분석 선계산(디스크 캐시 있으면 즉시 스킵).
-        # 게이트는 이미 열렸고, 느린 콜드도 여기서 미리 흡수해 첫 진입을 warm 화.
+        # Admin 펀드운용 스냅샷 선계산 (게이트 해제 직후 — brinson 보다 우선.
+        # total 집계에는 brinson_steps 에 포함돼 있음)
         for label, fn in brinson_steps:
             _run_step(label, fn, _BRINSON_STEP_TIMEOUT)
             with _state_lock:

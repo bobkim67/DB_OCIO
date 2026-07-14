@@ -119,12 +119,33 @@ def _generate(fund: str, body: GenBodyDTO, suffix: str | None) -> WorkflowStageD
 
 # ── 전 펀드 요약 ──
 
+_OVERVIEW_TTL = 600.0                     # 대시보드 캐시 관례(600s)
+_overview_cache: dict = {}                # {as_of|None: (monotonic_ts, DTO)}
+_overview_lock = __import__('threading').Lock()
+
+
 @router.get('/admin/funds-overview', response_model=AdminFundsOverviewDTO)
 def get_admin_funds_overview(
     as_of: str | None = Query(None, pattern=r'^\d{4}-\d{2}-\d{2}$'),
 ) -> AdminFundsOverviewDTO:
     """전 펀드 스냅샷: 컴플라이언스 가이드(항목별) + 기간수익률 + 채권/펀드 듀레이션·YTM.
-    as_of(YYYY-MM-DD) 미지정 시 최신 영업일 기준."""
+    as_of(YYYY-MM-DD) 미지정 시 최신 영업일 기준.
+
+    응답 TTL 캐시(600s) — 펀드당 ~2s x 11 재계산 방지. 서버 웜업이 선채움
+    (api/warmup._warm_admin_overview, 2026-07-14).
+    """
+    import time as _time
+    with _overview_lock:
+        hit = _overview_cache.get(as_of)
+        if hit and _time.monotonic() - hit[0] < _OVERVIEW_TTL:
+            return hit[1]
+    dto = _build_funds_overview(as_of)
+    with _overview_lock:
+        _overview_cache[as_of] = (_time.monotonic(), dto)
+    return dto
+
+
+def _build_funds_overview(as_of: str | None) -> AdminFundsOverviewDTO:
     from config.funds import FUND_LIST, FUND_META, FUND_BENEFICIARY
 
     _SEV = {'breach': 3, 'warn': 2, 'ok': 1, 'none': 0}
