@@ -164,9 +164,13 @@ def _frame_shape_xmls():
     return [rect, line, disc]
 
 
-def _add_layout(prs, name, shape_xmls):
+def _add_layout(prs, name, items):
     """slideLayout 파트를 새로 만들어 마스터에 등록 (python-pptx 에 API 없음 —
-    blank 레이아웃 XML 을 복제해 이름/도형 교체, placeholder 는 제거)."""
+    blank 레이아웃 XML 을 복제해 이름/도형 교체, placeholder 는 제거).
+
+    items: ('xml', sp_xml_str) | ('pic', 이미지경로, 이름, L, T, W, H — pt) 의
+    순서 리스트 (순서 = z-order). 그림은 레이아웃 파트에 image rel 을 만들어 삽입.
+    """
     from copy import deepcopy
     from pptx.opc.constants import RELATIONSHIP_TYPE as RT
     from pptx.opc.packuri import PackURI
@@ -181,8 +185,6 @@ def _add_layout(prs, name, shape_xmls):
     spTree = cSld.find(qn('p:spTree'))
     for sp in spTree.findall(qn('p:sp')):        # 기본 placeholder 제거 (사용자 레이아웃 동일)
         spTree.remove(sp)
-    for xml in shape_xmls:
-        spTree.append(parse_xml(xml))
 
     existing = {str(ly.part.partname) for m in prs.slide_masters for ly in m.slide_layouts}
     idx = 12
@@ -191,7 +193,30 @@ def _add_layout(prs, name, shape_xmls):
     part = SlideLayoutPart(PackURI(f'/ppt/slideLayouts/slideLayout{idx}.xml'),
                            blank.part.content_type, prs.part.package, el)
     part.relate_to(master.part, RT.SLIDE_MASTER)
+    # ★그림 추가 전에 마스터→레이아웃 관계 먼저 — 파트가 패키지 그래프에 연결돼야
+    # 이미지 파트명 할당이 기존 이미지를 보고 중복(image1.png 2회 → PPT 거부)을 피함
     rid = master.part.relate_to(part, RT.SLIDE_LAYOUT)
+
+    pic_id = 950
+    for item in items:
+        if item[0] == 'xml':
+            spTree.append(parse_xml(item[1]))
+            continue
+        _tag, path, pname, L, T, W, H = item
+        _img, rid_img = part.get_or_add_image_part(str(path))
+        pic_id += 1
+        pic = (
+            f'<p:pic {_NS} '
+            f'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            f'<p:nvPicPr><p:cNvPr id="{pic_id}" name="{pname}"/>'
+            f'<p:cNvPicPr/><p:nvPr/></p:nvPicPr>'
+            f'<p:blipFill><a:blip r:embed="{rid_img}"/>'
+            f'<a:stretch><a:fillRect/></a:stretch></p:blipFill>'
+            f'<p:spPr><a:xfrm><a:off x="{round(L * 12_700)}" y="{round(T * 12_700)}"/>'
+            f'<a:ext cx="{round(W * 12_700)}" cy="{round(H * 12_700)}"/></a:xfrm>'
+            f'<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>')
+        spTree.append(parse_xml(pic))
+
     lst = master._element.find(qn('p:sldLayoutIdLst'))
     new_id = max(int(e.get('id')) for e in lst) + 1
     ent = lst.makeelement(qn('p:sldLayoutId'), {'id': str(new_id)})
@@ -199,27 +224,66 @@ def _add_layout(prs, name, shape_xmls):
     lst.append(ent)
 
 
+def _clean_master(prs):
+    """마스터의 기본 placeholder 제거 — 사용자 재구성 템플릿의 마스터(도형 0개) 재현.
+
+    (2026-07-14 사용자 확인: 빌드본 마스터에 기본 placeholder 5개가 남아있던 것 수정)
+    """
+    spTree = prs.slide_masters[0].shapes._spTree
+    for sp in spTree.findall(qn('p:sp')):
+        spTree.remove(sp)
+
+
+def _rect_xml(sid, name, L, T, W, H, fill, prst='rect'):
+    def _e(pt):
+        return round(pt * 12_700)
+    return (
+        f'<p:sp {_NS}><p:nvSpPr><p:cNvPr id="{sid}" name="{name}"/>'
+        f'<p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>'
+        f'<a:xfrm><a:off x="{_e(L)}" y="{_e(T)}"/>'
+        f'<a:ext cx="{_e(W)}" cy="{_e(H)}"/></a:xfrm>'
+        f'<a:prstGeom prst="{prst}"><a:avLst/></a:prstGeom>'
+        f'<a:solidFill><a:srgbClr val="{fill}"/></a:solidFill>'
+        f'<a:ln><a:noFill/></a:ln></p:spPr>'
+        f'<p:txBody><a:bodyPr/><a:p/></p:txBody></p:sp>')
+
+
 def _setup_layouts(prs):
-    """사용자 재구성 템플릿(2026-07-14)의 커스텀 레이아웃 3종 생성.
+    """사용자 재구성 템플릿(2026-07-14)의 마스터 정리 + 커스텀 레이아웃 4종 생성.
 
     '1_Title Slide'   — 데이터 슬라이드 프레임 (백색 캔버스·푸터라인·면책문구)
     '1_Title and Content' — 섹션 표지 (우측 백색 패널)
+    '1_Section Header' — 예비 섹션 레이아웃 (배경 텍스처·브라운 라인·로고·아이콘 — 미사용)
     '제목 및 내용'      — 표지·목차 (빈 레이아웃)
     """
+    from pathlib import Path as _P
+    STATIC = ROOT / 'template' / 'static'
+
     def _e(pt):
         return round(pt * 12_700)
 
-    right_panel = (
-        f'<p:sp {_NS}><p:nvSpPr><p:cNvPr id="911" name="Section Right Panel"/>'
-        f'<p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>'
-        f'<a:xfrm><a:off x="{_e(264.2)}" y="0"/>'
-        f'<a:ext cx="{_e(515.8)}" cy="{_e(540)}"/></a:xfrm>'
-        f'<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>'
-        f'<a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill>'
-        f'<a:ln><a:noFill/></a:ln></p:spPr>'
-        f'<p:txBody><a:bodyPr/><a:p/></p:txBody></p:sp>')
-    _add_layout(prs, '1_Title Slide', _frame_shape_xmls())
-    _add_layout(prs, '1_Title and Content', [right_panel])
+    _clean_master(prs)
+
+    right_panel = _rect_xml(911, 'Section Right Panel', 264.2, 0, 515.8, 540, 'FFFFFF')
+    _add_layout(prs, '1_Title Slide', [('xml', x) for x in _frame_shape_xmls()])
+    _add_layout(prs, '1_Title and Content', [('xml', right_panel)])
+
+    # '1_Section Header' — 사용자 원본 실측. 배경 텍스처는 원본에선 z 최상단(반투명)이나
+    # 클립보드 캡처가 알파를 잃어 최하단 배치 (텍스처가 극연한 화이트라 육안 동일).
+    frame_line, frame_disc = _frame_shape_xmls()[1], _frame_shape_xmls()[2]
+    sec_items = [
+        ('pic', STATIC / 'section_hdr_bg.png', 'Section BG', 0, 0, 781.22, 540),
+        ('xml', _rect_xml(921, 'Section Top Rule', 35.45, 75.09, 709.09, 1.78, '4A2119')),
+        ('pic', STATIC / 'section_hdr_logo.png', 'Section Logo', 658.72, 42.27, 90.71, 27.55),
+        ('xml', _rect_xml(922, 'Section Icon Box', 35.45, 37.76, 30.54, 30.54, '4A2119',
+                          prst='round2DiagRect')),
+        ('xml', _rect_xml(923, 'Section Icon Dot', 41.53, 43.83, 18.39, 18.39, 'FFFFFF',
+                          prst='ellipse')),
+        ('xml', frame_line),
+        ('xml', frame_disc),
+    ]
+    if (STATIC / 'section_hdr_bg.png').exists():
+        _add_layout(prs, '1_Section Header', sec_items)
     _add_layout(prs, '제목 및 내용', [])
 
 
