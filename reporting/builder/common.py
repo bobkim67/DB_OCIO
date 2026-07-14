@@ -126,12 +126,20 @@ _NS = ('xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
        'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"')
 
 
-def _frame_shape_xmls():
-    """'1_Title Slide' 레이아웃 프레임(백색 캔버스+푸터라인+면책문구) sp XML —
-    사용자 재구성 템플릿 실측(pt) 그대로 (2026-07-14)."""
+def _frame_shape_xmls(shadow=False):
+    """프레임(백색 캔버스+푸터라인+면책문구) sp XML — 사용자 템플릿 실측(pt).
+
+    shadow=True: 캔버스에 외부 그림자(7F7F7F 80% 투명, blur 42pt, 좌 3pt) —
+    캔버스(y86) 상단으로 번지는 음영효과 (2026-07-14 사용자 'Title Slide' 레이아웃 실측:
+    COM Shadow type=-2 style=outer blur=42 offX=-3 offY=0 size=100 tr=0.8).
+    """
     def _e(pt):
         return round(pt * 12_700)
 
+    # dist=3pt, dir=180°(offsetX=-3), alpha=20%(투명도 0.8)
+    fx = ('<a:effectLst><a:outerShdw blurRad="533400" dist="38100" dir="10800000" '
+          'rotWithShape="0"><a:srgbClr val="7F7F7F"><a:alpha val="20000"/></a:srgbClr>'
+          '</a:outerShdw></a:effectLst>') if shadow else ''
     rect = (
         f'<p:sp {_NS}><p:nvSpPr><p:cNvPr id="901" name="Frame Canvas"/>'
         f'<p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>'
@@ -139,7 +147,7 @@ def _frame_shape_xmls():
         f'<a:ext cx="{_e(780)}" cy="{_e(454)}"/></a:xfrm>'
         f'<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>'
         f'<a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill>'
-        f'<a:ln><a:noFill/></a:ln></p:spPr>'
+        f'<a:ln><a:noFill/></a:ln>{fx}</p:spPr>'
         f'<p:txBody><a:bodyPr/><a:p/></p:txBody></p:sp>')
     line = (
         f'<p:cxnSp {_NS}><p:nvCxnSpPr><p:cNvPr id="902" name="Frame Footer Line"/>'
@@ -157,7 +165,7 @@ def _frame_shape_xmls():
         f'<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr>'
         f'<p:txBody><a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0"/>'
         f'<a:p><a:r><a:rPr lang="ko-KR" sz="800" dirty="0">'
-        f'<a:solidFill><a:srgbClr val="4A2119"/></a:solidFill>'
+        f'<a:solidFill><a:srgbClr val="19214A"/></a:solidFill>'
         f'<a:latin typeface="Pretendard"/><a:ea typeface="Pretendard"/>'
         f'<a:cs typeface="Pretendard"/></a:rPr>'
         f'<a:t>{_FRAME_DISCLAIMER}</a:t></a:r></a:p></p:txBody></p:sp>')
@@ -248,23 +256,43 @@ def _rect_xml(sid, name, L, T, W, H, fill, prst='rect'):
         f'<p:txBody><a:bodyPr/><a:p/></p:txBody></p:sp>')
 
 
-def _setup_layouts(prs):
-    """사용자 재구성 템플릿(2026-07-14)의 마스터 정리 + 커스텀 레이아웃 4종 생성.
+def _drop_layout(prs, layout):
+    """레이아웃을 마스터에서 제거 — sldLayoutIdLst 엔트리 + 관계 삭제.
 
-    '1_Title Slide'   — 데이터 슬라이드 프레임 (백색 캔버스·푸터라인·면책문구)
-    '1_Title and Content' — 섹션 표지 (우측 백색 패널)
-    '1_Section Header' — 예비 섹션 레이아웃 (배경 텍스처·브라운 라인·로고·아이콘 — 미사용)
-    '제목 및 내용'      — 표지·목차 (빈 레이아웃)
+    관계가 끊긴 파트는 저장 시 패키지 그래프에서 제외돼 자연 소멸.
     """
-    from pathlib import Path as _P
+    master = prs.slide_masters[0]
+    rid = None
+    for rel_id, rel in master.part.rels.items():
+        if getattr(rel, 'target_part', None) is layout.part:
+            rid = rel_id
+            break
+    if rid is None:
+        return
+    lst = master._element.find(qn('p:sldLayoutIdLst'))
+    for ent in list(lst):
+        if ent.get(qn('r:id')) == rid:
+            lst.remove(ent)
+    master.part.drop_rel(rid)
+
+
+def _setup_layouts(prs):
+    """사용자 재구성 템플릿(2026-07-14 저녁 편집본)의 마스터 재현 — 레이아웃 5종만.
+
+    'Title Slide'     — 데이터 슬라이드 프레임 + 캔버스 그림자(상단 음영효과) ★사용
+    '1_Title Slide'   — 그림자 없는 구 프레임 (사용자 편집본에 존재 — 보존)
+    '1_Title and Content' — 섹션 표지 (우측 백색 패널)
+    '1_Section Header' — 예비 섹션 레이아웃 (배경 텍스처·라인·로고·아이콘 — 미사용)
+    '제목 및 내용'      — 표지·목차 (빈 레이아웃)
+    기본 11종 레이아웃은 사용자 편집본대로 삭제.
+    """
     STATIC = ROOT / 'template' / 'static'
 
-    def _e(pt):
-        return round(pt * 12_700)
-
     _clean_master(prs)
+    stock = list(prs.slide_masters[0].slide_layouts)     # 기본 11종 (삭제 대상)
 
     right_panel = _rect_xml(911, 'Section Right Panel', 264.2, 0, 515.8, 540, 'FFFFFF')
+    _add_layout(prs, 'Title Slide', [('xml', x) for x in _frame_shape_xmls(shadow=True)])
     _add_layout(prs, '1_Title Slide', [('xml', x) for x in _frame_shape_xmls()])
     _add_layout(prs, '1_Title and Content', [('xml', right_panel)])
 
@@ -273,9 +301,9 @@ def _setup_layouts(prs):
     frame_line, frame_disc = _frame_shape_xmls()[1], _frame_shape_xmls()[2]
     sec_items = [
         ('pic', STATIC / 'section_hdr_bg.png', 'Section BG', 0, 0, 781.22, 540),
-        ('xml', _rect_xml(921, 'Section Top Rule', 35.45, 75.09, 709.09, 1.78, '4A2119')),
+        ('xml', _rect_xml(921, 'Section Top Rule', 35.45, 75.09, 709.09, 1.78, '19214A')),
         ('pic', STATIC / 'section_hdr_logo.png', 'Section Logo', 658.72, 42.27, 90.71, 27.55),
-        ('xml', _rect_xml(922, 'Section Icon Box', 35.45, 37.76, 30.54, 30.54, '4A2119',
+        ('xml', _rect_xml(922, 'Section Icon Box', 35.45, 37.76, 30.54, 30.54, '19214A',
                           prst='round2DiagRect')),
         ('xml', _rect_xml(923, 'Section Icon Dot', 41.53, 43.83, 18.39, 18.39, 'FFFFFF',
                           prst='ellipse')),
@@ -285,6 +313,8 @@ def _setup_layouts(prs):
     if (STATIC / 'section_hdr_bg.png').exists():
         _add_layout(prs, '1_Section Header', sec_items)
     _add_layout(prs, '제목 및 내용', [])
+    for ly in stock:                         # 기본 레이아웃 삭제 (커스텀 생성 후 —
+        _drop_layout(prs, ly)                # blank 가 _add_layout 의 donor 라 순서 중요)
 
 
 def add_text(sl, px_x, px_y, px_w, px_h, text, pt_size, color, bold=False,
@@ -394,10 +424,10 @@ def slide_scaffold(prs, base_name, title, asof_iso, page_label, subtitle='기준
     """공통 골격: 고해상 로고 + 제목 + 부제 + 페이지번호.
 
     base_name: (구 A4 셸 PNG — 2026-07-14 사용자 템플릿 재구성으로 폐지, 호환용 무시.
-    프레임(백색 캔버스·푸터라인·면책문구)은 '1_Title Slide' 레이아웃에 있음.)
+    프레임(백색 캔버스+그림자·푸터라인·면책문구)은 'Title Slide' 레이아웃에 있음.)
     subtitle: '기준일'(기본 — asof 로 포맷) | 임의 문자열 | None(생략, s11/12 등)
     """
-    sl = prs.slides.add_slide(layout_by_name(prs, '1_Title Slide'))
+    sl = prs.slides.add_slide(layout_by_name(prs, 'Title Slide'))
     LOGO_W = 150
     LOGO_H = round(LOGO_W * 607 / 2467)
     sl.shapes.add_picture(str(KI_LOGO), EX(1600 - 27 - LOGO_W), E(14), E(LOGO_W), E(LOGO_H))
