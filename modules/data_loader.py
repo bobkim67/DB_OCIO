@@ -3645,6 +3645,20 @@ def _collapse_to_6bucket(ac: str) -> str:
     return _EIGHT_TO_SIX.get(str(ac), '유동성')
 
 
+# 달러선물 등 FX 파생의 EVL_AMT 는 명목금액(예: 4JM12 NAV 대비 ~22%) —
+# 유동성 버킷에 흡수되면 유동성 과대 + 분모 부풀림으로 전 자산군 과소 왜곡.
+# → 비중/마커 계산에서 분자·분모 모두 제외 (2026-07-24 사용자 합의).
+# 헤지 포지션은 load_fx_position_history 로 별도 표시. USD DEPOSIT 등
+# 외화예치금(실자산)은 제외 대상 아님 (파생 종목명 키워드만 매칭).
+_FX_DERIV_NAME_KWS = ('달러선물', '달러 선물', '미국달러 F', 'USD F',
+                      'USD선물', 'NDF', '통화선물', '선물환', 'FX FORWARD')
+
+
+def _is_fx_derivative_name(item_nm) -> bool:
+    nm = str(item_nm or '').upper()
+    return any(kw in nm for kw in _FX_DERIV_NAME_KWS)
+
+
 @_ttl_cache()
 def load_business_days_set(start_yyyymmdd: str, end_yyyymmdd: str) -> frozenset:
     """DWCI10220 영업일(hldy_yn='N')의 'YYYY-MM-DD' 집합. 주말+평일공휴일 제외.
@@ -3678,7 +3692,8 @@ def load_weight_history_lookthrough(fund_code: str, start_date: str = None,
     6버킷: 자산군은 국내주식/해외주식/국내채권/해외채권/금·대체/유동성으로 축소.
       - level='asset': key=버킷
       - level='security': 버킷 1~5 종목은 종목명 개별, 그 외(유동성·FX·모펀드)는 '유동성'으로 묶음
-    FX(달러선물)는 영역에서 유동성으로 흡수되며, 포지션은 load_fx_position_history 로 별도 표시.
+    FX 파생(달러선물 등)은 명목평가액이라 비중에서 제외(분자·분모 모두) —
+    포지션은 load_fx_position_history 로 별도 표시. 외화예치금(USD DEPOSIT)은 유동성 유지.
 
     Returns:
         (DataFrame[date(YYYY-MM-DD), key, weight(%)], is_fof: bool, keys: list[str])
@@ -3717,6 +3732,8 @@ def load_weight_history_lookthrough(fund_code: str, start_date: str = None,
             frames.append(m[['STD_DT', 'ITEM_NM', '자산군', 'EVL_AMT']])
 
     allrows = pd.concat(frames, ignore_index=True)
+    # 달러선물 등 FX 파생(명목평가액) 제외 — 분자·분모 모두 (비중 왜곡 방지)
+    allrows = allrows[~allrows['ITEM_NM'].map(_is_fx_derivative_name)]
     if allrows.empty:
         return pd.DataFrame(), is_fof, []
 
@@ -3788,6 +3805,9 @@ def load_weight_trade_markers(fund_code: str, start_date: str,
     d = df.copy()
     # BA정산(발행/환매 정산성, qty=0)은 마커에서 제외 (사용자 요청)
     d = d[~d['매수매도'].astype(str).str.contains('BA정산')].copy()
+    # 달러선물 등 FX 파생 거래(월물 롤오버 등) 제외 — 비중 영역과 정합
+    # (거래내역 표에는 유지, 마커만 제외)
+    d = d[~d['종목명'].map(_is_fx_derivative_name)].copy()
     if d.empty:
         return pd.DataFrame(columns=cols)
 
@@ -4228,6 +4248,7 @@ def _asset_class_member_names(fund_code: str, asset_class: str,
         h = _load_holdings_range(f, s_int)
         if h is None or h.empty:
             continue
+        h = h[~h['ITEM_NM'].map(_is_fx_derivative_name)]  # 비중 제외와 정합
         b = h['자산군'].map(_collapse_to_6bucket)
         names |= set(h.loc[b == asset_class, 'ITEM_NM'].astype(str))
     return names
