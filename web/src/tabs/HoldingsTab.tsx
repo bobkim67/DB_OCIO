@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useHoldings } from "../hooks/useHoldings";
+import { useFunds } from "../hooks/useFunds";
 import { useAssetClassReturn, useSecurityReturn } from "../hooks/useTransactions";
 import LoadingBar from "../components/common/LoadingBar";
 import EquityFocusChart from "../components/charts/EquityFocusChart";
@@ -41,6 +42,7 @@ export default function HoldingsTab({ fundCode }: Props) {
   const [asOf, setAsOf] = useState<string>("");
   const [draftAsOf, setDraftAsOf] = useState<string>("");
   const { data, isLoading, error } = useHoldings(fundCode, lookthrough, asOf || undefined);
+  const { data: fundsData } = useFunds();   // 편입현황 합계행 설정일용
 
   // 펀드 변경 시 기준일 리셋, 입력 비어 있으면 최신 데이터일로 디폴트 세팅
   useEffect(() => { setAsOf(""); setDraftAsOf(""); }, [fundCode]);
@@ -80,6 +82,11 @@ export default function HoldingsTab({ fundCode }: Props) {
   const ord = (ac: string) => { const i = ASSET_ORDER.indexOf(ac); return i < 0 ? 99 : i; };
   const sortedAcw = [...acw].sort((a, b) => ord(a.asset_class) - ord(b.asset_class));
   const maxGroupW = Math.max(...sortedAcw.map((w) => w.weight), 0.0001);
+
+  // 편입현황 합계행 — 평가액=Σ자산군, Dur/YTM=펀드 전체(채권비중×채권Dur/YTM =
+  // duration_summary overall, Admin 패널과 동일 정의), 최초편입일=펀드 설정일
+  const totalEvl = sortedAcw.reduce((s, w) => s + w.evl_amt, 0);
+  const fundInception = fundsData?.data.find((f) => f.code === fundCode)?.inception ?? null;
 
   // 07G04 예외(사용자 지정 2026-07-02): look-through 해제 시 상단 스택바의 모펀드
   // 버킷을 수익추구/인컴추구 모펀드별 세그먼트로 분해해 혼합 비율을 표기.
@@ -255,6 +262,17 @@ export default function HoldingsTab({ fundCode }: Props) {
                       }) : []),
                     ];
                   })}
+                  {/* 합계행 — 펀드 전체 (2026-07-24 사용자 지정) */}
+                  <tr className="grp" key="total-fund" style={{ borderTop: "2px solid var(--ace-line-2)" }}>
+                    <td className="l"><span className="gn">펀드</span></td>
+                    <td className="wbl" />
+                    <td><span className="gw num">{pct1(1)}</span></td>
+                    <td className="wbr" />
+                    <td className="num gd">{eok(totalEvl)}</td>
+                    <td className="num gd">{num(ds?.duration_overall, 1)}</td>
+                    <td className="num gd">{ds?.ytm_overall == null ? "—" : num(ds.ytm_overall, 2)}</td>
+                    <td className="num gd" style={{ whiteSpace: "nowrap" }}>{fundInception ?? "—"}</td>
+                  </tr>
                 </tbody>
               </table>
             </div>
