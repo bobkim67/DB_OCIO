@@ -110,6 +110,15 @@
 }
 .ov-chartwrap { flex: 1; min-height: 0; }
 
+/* 작은 화면(노트북 등): 고정높이 flex 가 차트를 0까지 누름 → 고정높이 해제하고
+ * 세로 스크롤로 전환. 이때 % 높이 체인이 끊겨 Plotly 는 기본높이(450px)로 렌더.
+ * 임계 900px = 카드/표 고정분(~630px)+차트 최소 260px+상단탭 174px 근사.
+ * (2026-07-24 사용자 합의 — 큰 화면은 기존 no-scroll 유지) */
+@media (max-height: 899px) {
+  .ov-root { height: auto; min-height: calc(100vh - 174px); }
+  .ov-chartwrap { min-height: 260px; }
+}
+
 /* ---- 기간별 수익률 표 (차트 하단, 성과분석 탭과 동일 양식) ---- */
 .ov-ptbl { margin-top: 14px; }
 .ov-ptbl .t { font-size: 13px; font-weight: 700; color: var(--ace-ink); margin-bottom: 8px; }

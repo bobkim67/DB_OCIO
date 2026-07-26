@@ -208,7 +208,9 @@ export default function AdminFundsPanel() {
                     <td style={{ minWidth: 340 }}>
                       {r.compliance.length === 0
                         ? <span className="fname">가이드 미설정</span>
-                        : <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 18px" }}>
+                        : /* nowrap: 좁은 화면에서 게이지 줄바꿈(3+1 등) 방지 —
+                             넘치면 .afp-tablewrap 가로 스크롤이 받음 (2026-07-24) */
+                          <div style={{ display: "flex", flexWrap: "nowrap", gap: "8px 18px" }}>
                             {r.compliance.map((c) => <MiniGauge key={c.key} c={c} />)}
                           </div>}
                     </td>
