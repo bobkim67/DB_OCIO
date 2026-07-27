@@ -39,7 +39,8 @@ DOMAIN_BROKER = {
     'dbsec.co.kr': 'DB금융투자',
     'nhsec.com': 'NH증권',
 }
-# 사내 Exchange(EX) 발신자 — 표시명 기준 (한투증권 세일즈의 외사 리포트 전달)
+# 사내 Exchange(EX) 발신자 fallback — 표시명 기준. ExchangeUser 조회(_sender_domain)가
+# 실패할 때만 쓰인다. 정상 조회되면 위 DOMAIN_BROKER 로 매핑됨.
 INTERNAL_SENDER_BROKER = {
     '김태훈': '한국투자증권',
 }
@@ -52,6 +53,21 @@ EXCLUDE_SUBJECT_KW = (
 BODY_STORE_CLIP = 3000   # 저장 본문 상한 (프롬프트는 desc 800자만 사용)
 NAVER_DUP_RATIO = 0.85   # 제목 유사도 임계
 _MIN_CONTAIN_LEN = 8     # containment 매칭 최소 정규화 길이
+
+# ── 첨부 파싱 (커버노트형 발신자, 2026-07-27) ──
+# A/B 실측: 본문이 인사말·서명뿐이고 내용 100%가 첨부에만 있는 '커버노트형' 발신자만
+# 첨부를 읽는다. 나머지(김태훈·홍석민·DB증권·유민제 등)는 본문에 요약이 실려 있어
+# 파싱 불필요 — 발신인 기준이라 본문 길이가 그날그날 흔들려도 판정이 안 바뀐다.
+# description 은 첨부 본문으로 **대체**한다 (prompt 가 desc 앞 800자만 쓰므로 뒤에
+# 덧붙이면 창 밖으로 밀려 무의미). 원본 본문은 _raw_body 로 보존.
+ATTACH_PARSE_SENDERS = {
+    '신성준': '키움증권',      # 외사 리포트(MS/BofA/UBS 등) 전달 — 본문 190~400자 인사말
+    '이정민': '한국투자증권',   # 주간회의자료_매크로.docx(DRM) — 본문 531자 전부 서명
+}
+ATTACH_MAX_FILES = 3          # 메일당 파싱 첨부 상한
+ATTACH_PDF_MAX_PAGES = 10     # PDF 앞 N 페이지만
+ATTACH_TEXT_CLIP = 6000       # 저장 첨부 본문 상한
+ATTACH_EXTS = ('.pdf', '.docx')
 
 
 def _article_id(source: str, date: str, title: str) -> str:
@@ -178,59 +194,201 @@ def _open_report_folder():
     return folder
 
 
+def should_parse_attachments(sender_name: str, broker: str) -> bool:
+    """커버노트형 발신자 판정 — 첨부를 읽어 description 을 대체할 대상인지."""
+    return ATTACH_PARSE_SENDERS.get((sender_name or '').strip()) == broker
+
+
+def _squeeze_extracted(text: str) -> str:
+    """추출 텍스트 압축 — 빈 줄/중복 공백 제거.
+
+    Word Content.Text 는 이미지·표 자리마다 빈 문단을 뱉고, 표 셀/행 끝을 제어문자
+    \\x07 로 표시한다(공백이 아니라 strip 으로 안 지워짐). prompt 는 desc 앞 800자만
+    보므로 이걸 걷어내야 실제 내용이 창 안에 들어온다.
+    """
+    s = (text or '').replace('\r', '\n')
+    s = re.sub(r'[\x0b\x0c]', '\n', s)               # vertical tab / page break → 개행
+    s = re.sub(r'[\x00-\x08\x0e-\x1f\x7f]', ' ', s)  # 표 셀 마커(\x07) 등 제어문자 제거
+    lines = [re.sub(r'[ \t ]+', ' ', ln).strip()
+             for ln in s.split('\n')]
+    return '\n'.join(ln for ln in lines if ln)
+
+
+def _pdf_text(fp: Path) -> str:
+    """PDF 앞 ATTACH_PDF_MAX_PAGES 페이지 텍스트. 실패 시 ''."""
+    try:
+        import pdfplumber
+    except ImportError:
+        return ''
+    try:
+        with pdfplumber.open(str(fp)) as pdf:
+            parts = []
+            for pg in pdf.pages[:ATTACH_PDF_MAX_PAGES]:
+                try:
+                    parts.append(pg.extract_text() or '')
+                except Exception:
+                    pass
+        return '\n'.join(parts).strip()
+    except Exception:
+        return ''
+
+
+def _docx_text(fp: Path, word_state: dict) -> str:
+    """docx 텍스트. 사내 생성 docx 는 DRM 래핑(`<DOCUMENT SAFER`)이라 zip 파서가
+    실패하므로 Word COM 으로 연다(문서보안 에이전트가 투명 복호화). 실패 시 ''.
+
+    word_state 로 Word 인스턴스를 fetch 1회 동안 재사용 — 파일마다 띄우면 느리다.
+    """
+    try:
+        import win32com.client
+    except ImportError:
+        return ''
+    try:
+        app = word_state.get('app')
+        if app is None:
+            app = win32com.client.Dispatch('Word.Application')
+            app.Visible = False
+            app.DisplayAlerts = False
+            word_state['app'] = app
+        doc = app.Documents.Open(str(fp), ReadOnly=True)
+        try:
+            return (doc.Content.Text or '').replace('\r', '\n').strip()
+        finally:
+            doc.Close(False)
+    except Exception:
+        return ''
+
+
+def _parse_attachments(mail, tmpdir: Path, word_state: dict) -> tuple[str, list[str]]:
+    """커버노트형 메일의 첨부 본문 추출 → (text, parsed_filenames).
+
+    개별 첨부 실패는 skip (COM/파서 오류가 수집 전체를 막지 않게).
+    """
+    texts, names = [], []
+    for a in mail.Attachments:
+        if len(names) >= ATTACH_MAX_FILES:
+            break
+        fn = str(a.FileName or '')
+        low = fn.lower()
+        if not low.endswith(ATTACH_EXTS):
+            continue
+        safe = re.sub(r'[^0-9A-Za-z가-힣._-]+', '_', fn)[:80]
+        fp = tmpdir / safe
+        try:
+            a.SaveAsFile(str(fp))
+        except Exception:
+            continue
+        text = _squeeze_extracted(
+            _pdf_text(fp) if low.endswith('.pdf') else _docx_text(fp, word_state))
+        try:
+            fp.unlink()
+        except Exception:
+            pass
+        if not text:
+            continue
+        texts.append(f'[{fn}]\n{text}')
+        names.append(fn)
+    return '\n\n'.join(texts).strip()[:ATTACH_TEXT_CLIP], names
+
+
+def _sender_domain(mail) -> str:
+    """발신 SMTP 도메인 (소문자). 없으면 ''.
+
+    사내 Exchange 발신자는 SenderEmailType='EX' 라 SenderEmailAddress 가 X500 DN
+    (`/O=.../CN=RECIPIENTS/CN=...`) — 도메인을 못 얻는다. 이 경우 ExchangeUser 를
+    조회해 실제 SMTP 를 얻어 DOMAIN_BROKER 매핑을 그대로 태운다.
+    (2026-07-27: EX 발신 리서치 메일이 통째로 누락되던 문제 수정.)
+    """
+    etype = str(getattr(mail, 'SenderEmailType', '') or '')
+    addr = str(getattr(mail, 'SenderEmailAddress', '') or '')
+    if etype == 'SMTP':
+        return addr.rsplit('@', 1)[-1].lower()
+    try:
+        smtp = str(mail.Sender.GetExchangeUser().PrimarySmtpAddress or '')
+        if '@' in smtp:
+            return smtp.rsplit('@', 1)[-1].lower()
+    except Exception:
+        pass
+    return ''
+
+
 def fetch_outlook_reports(days_back: int = 35) -> list[dict]:
     """업무\\리포트 폴더에서 최근 days_back 일 메일 → article-like dict 리스트.
 
     화이트리스트/제외키워드 필터 적용. naver dedupe 는 여기서 하지 않음
     (run_fetch_and_save 에서 월별로 수행 — 필터 순서 명확화).
     """
+    import shutil
+    import tempfile
+
     folder = _open_report_folder()
     cut = (datetime.now() - timedelta(days=days_back)).strftime('%m/%d/%Y %H:%M')
     items = folder.Items.Restrict(f"[ReceivedTime] >= '{cut}'")
     out: list[dict] = []
-    for m in items:
-        try:
-            if getattr(m, 'Class', None) != 43:  # olMail
-                continue
-            sender_name = str(m.SenderName or '')
-            domain = ''
-            if str(getattr(m, 'SenderEmailType', '')) == 'SMTP':
-                domain = str(m.SenderEmailAddress or '').rsplit('@', 1)[-1]
-            subject = str(m.Subject or '').strip()
-            if not should_collect(domain, sender_name, subject):
-                continue
-            broker = resolve_broker(domain, sender_name) or ''
-            received = m.ReceivedTime
-            date = f'{received.year:04d}-{received.month:02d}-{received.day:02d}'
-            body = clean_body(str(m.Body or ''))
-            attach_names = []
-            for a in m.Attachments:
-                fn = str(a.FileName or '')
-                if fn.lower().endswith(('.pdf', '.xlsx', '.docx', '.pptx')):
-                    attach_names.append(fn)
-            flags = []
-            if len(body) < 80:
-                flags.append('short_body')
-            out.append({
-                # 뉴스 article 스키마 호환 (naver/monygeek adapter 동일)
-                'title': subject,
-                'date': date,
-                'source': broker,
-                'url': '',
-                'description': body,
-                'source_type': 'broker_mail',
-                '_article_id': _article_id(broker, date, subject),
-                # raw 보존
-                '_raw_entry_id': str(m.EntryID or ''),
-                '_raw_sender': sender_name,
-                '_raw_sender_domain': domain,
-                '_raw_received': str(received),
-                '_raw_attach_names': attach_names,
-                '_raw_broker': broker,
-                '_adapter_flags': flags,
-            })
-        except Exception:
-            continue  # 개별 메일 실패는 skip (COM 간헐 오류 방어)
+    tmpdir = Path(tempfile.mkdtemp(prefix='broker_mail_att_'))
+    word_state: dict = {}
+    try:
+        for m in items:
+            try:
+                if getattr(m, 'Class', None) != 43:  # olMail
+                    continue
+                sender_name = str(m.SenderName or '')
+                domain = _sender_domain(m)
+                subject = str(m.Subject or '').strip()
+                if not should_collect(domain, sender_name, subject):
+                    continue
+                broker = resolve_broker(domain, sender_name) or ''
+                received = m.ReceivedTime
+                date = f'{received.year:04d}-{received.month:02d}-{received.day:02d}'
+                body = clean_body(str(m.Body or ''))
+                attach_names = []
+                for a in m.Attachments:
+                    fn = str(a.FileName or '')
+                    if fn.lower().endswith(('.pdf', '.xlsx', '.docx', '.pptx')):
+                        attach_names.append(fn)
+                flags = []
+                if len(body) < 80:
+                    flags.append('short_body')
+                # 커버노트형 발신자 → 첨부 본문으로 description 대체
+                desc = body
+                attach_text, parsed = '', []
+                if attach_names and should_parse_attachments(sender_name, broker):
+                    attach_text, parsed = _parse_attachments(m, tmpdir, word_state)
+                    if attach_text:
+                        desc = attach_text
+                        flags.append('attach_parsed')
+                    else:
+                        flags.append('attach_parse_failed')
+                out.append({
+                    # 뉴스 article 스키마 호환 (naver/monygeek adapter 동일)
+                    'title': subject,
+                    'date': date,
+                    'source': broker,
+                    'url': '',
+                    'description': desc,
+                    'source_type': 'broker_mail',
+                    '_article_id': _article_id(broker, date, subject),
+                    # raw 보존
+                    '_raw_entry_id': str(m.EntryID or ''),
+                    '_raw_sender': sender_name,
+                    '_raw_sender_domain': domain,
+                    '_raw_received': str(received),
+                    '_raw_attach_names': attach_names,
+                    '_raw_broker': broker,
+                    '_raw_body': body if attach_text else '',
+                    '_attach_parsed_files': parsed,
+                    '_adapter_flags': flags,
+                })
+            except Exception:
+                continue  # 개별 메일 실패는 skip (COM 간헐 오류 방어)
+    finally:
+        app = word_state.get('app')
+        if app is not None:
+            try:
+                app.Quit()
+            except Exception:
+                pass
+        shutil.rmtree(tmpdir, ignore_errors=True)
     return out
 
 
@@ -265,10 +423,26 @@ def load_broker_mail(month: str) -> list[dict]:
 
 
 def save_broker_mail(month: str, articles: list[dict]) -> tuple[Path, int]:
-    """merge-on-save: 기존 파일과 _article_id union (신규만 append). → (path, n_new)."""
+    """merge-on-save: 기존 파일과 _article_id union (신규만 append). → (path, n_new).
+
+    예외로 **첨부 파싱 업그레이드**는 기존 레코드에도 반영한다 — 첨부 파싱 도입
+    이전에 커버노트 본문(인사말)만 저장된 건을 재수집 시 본문으로 채우기 위함.
+    그 외 필드는 기존 값을 보존(재수집으로 인한 무의미한 변경 방지).
+    """
     BROKER_MAIL_DIR.mkdir(parents=True, exist_ok=True)
     p = broker_mail_path(month)
     existing = load_broker_mail(month)
+    incoming = {a['_article_id']: a for a in articles if a.get('_article_id')}
+    for old in existing:
+        cur = incoming.get(old.get('_article_id'))
+        if cur is None:
+            continue
+        if ('attach_parsed' in (cur.get('_adapter_flags') or [])
+                and 'attach_parsed' not in (old.get('_adapter_flags') or [])):
+            old['description'] = cur['description']
+            old['_raw_body'] = cur.get('_raw_body', '')
+            old['_attach_parsed_files'] = cur.get('_attach_parsed_files', [])
+            old['_adapter_flags'] = cur.get('_adapter_flags') or []
     seen = {a.get('_article_id') for a in existing if a.get('_article_id')}
     new = [a for a in articles if a.get('_article_id') and a['_article_id'] not in seen]
     merged = existing + new
