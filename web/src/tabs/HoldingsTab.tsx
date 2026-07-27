@@ -307,8 +307,8 @@ export default function HoldingsTab({ fundCode }: Props) {
                 <div>
                   <div className="hd-bsum">
                     <div><div className="k">채권 비중</div><div className="v num">{pct1(mix?.bond_weight)}</div></div>
-                    <div><div className="k">가중 듀레이션</div><div className="v num">{num(ds?.duration_bond, 1, "년")}</div></div>
-                    <div><div className="k">가중 YTM</div><div className="v num">{ds?.ytm_bond == null ? "—" : num(ds.ytm_bond, 2, "%")}</div></div>
+                    <div><div className="k">가중 듀레이션</div><div className="v num">{num(ds?.duration_bond, 1, "년")}{ds?.duration_overall != null && <span style={{ color: "#98a0ab", fontSize: 12, marginLeft: 3 }} title="괄호=펀드 전체 기준">({num(ds.duration_overall, 1)})</span>}</div></div>
+                    <div><div className="k">가중 YTM</div><div className="v num">{ds?.ytm_bond == null ? "—" : num(ds.ytm_bond, 2, "%")}{ds?.ytm_overall != null && <span style={{ color: "#98a0ab", fontSize: 12, marginLeft: 3 }} title="괄호=펀드 전체 기준">({num(ds.ytm_overall, 2)})</span>}</div></div>
                   </div>
                   <BondDurationChart bonds={bonds} avgDuration={ds?.duration_bond ?? null} instanceKey={`${fundCode}-bd`} />
                   <div className="hd-fmeta">

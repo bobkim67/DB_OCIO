@@ -26,14 +26,9 @@ choice /C YN /T 10 /D N /M "Run daily_update now? Default N in 10s"
 set "RUN_DU=%errorlevel%"
 echo.
 
-REM ----- PDF collection prompt (only when daily_update will run) -----
-set "OCIO_NAVER_PDF=Y"
-if "%RUN_DU%"=="1" (
-    choice /C YN /T 10 /D Y /M "  Collect naver_research PDFs too ^(slower ~5-6min^)? Default Y in 10s"
-    if !errorlevel! equ 2 set "OCIO_NAVER_PDF=N"
-    echo       naver PDF collection : !OCIO_NAVER_PDF!
-    echo.
-)
+REM ----- naver_research PDF: always skip (2026-07-27 user decision) -----
+REM PDF text is never parsed downstream; only size-based band tier-up is lost.
+set "OCIO_NAVER_PDF=N"
 
 REM ===== watchdog pause flag: keep ocio_watchdog.ps1 from racing us during build =====
 if not exist ".cache" mkdir ".cache"
