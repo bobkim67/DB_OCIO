@@ -6,7 +6,8 @@ import { computeBrinsonMetrics } from "../../lib/brinsonMetrics";
  *
  * 연율화변동성·MDD·샤프비율(AP/BM) + 정보비율(IR)·트래킹에러(TE).
  * (연율화수익률은 KPI 카드 연환산으로 이동 — 동일 소스 computeBrinsonMetrics.)
- * 252 영업일 기준 일별 시계열 파생값. 샤프=(연율화수익−RF연율)/연율화변동성.
+ * 리스크 지표(변동성·TE·IR·샤프 분모)는 **주간수익률 std × √52** (Overview 와 동일 기준).
+ * MDD 만 일별(주중 저점 보존). 샤프=(연율화수익−RF연율)/연율화변동성.
  */
 function fmtPct(v: number, digits = 2): string {
   if (!Number.isFinite(v)) return "—";
@@ -35,7 +36,7 @@ export default function BrinsonMetricsPanel({ daily, hasBm, rfPeriod }: Props) {
     <div className="bn-sec">
       <div className="bn-head2">
         <h3>위험조정 성과지표</h3>
-        <span className="sub">일별 기준·연율화(252d) · 무위험=KIS CD Index</span>
+        <span className="sub">주간수익률 기준·연율화(√52) · MDD는 일별 · 무위험=KIS CD Index</span>
       </div>
       <div className="bn-mstrip">
         <div className="bn-mitem">
@@ -76,7 +77,7 @@ export default function BrinsonMetricsPanel({ daily, hasBm, rfPeriod }: Props) {
             </div>
             <div className="bn-mitem">
               <div className="bn-mitem-top">
-                <span className="k">트래킹에러 (TE) <span className="bn-info" title="AP−BM 일별 초과수익의 표준편차 × √252">i</span></span>
+                <span className="k">트래킹에러 (TE) <span className="bn-info" title="AP−BM 주간 초과수익의 표준편차 × √52">i</span></span>
                 <span className="v num">{fmtPlain(m.te)}</span>
               </div>
               <div className="cmp"><span className="num">{" "}</span></div>
