@@ -7,7 +7,9 @@
 
 설계:
   - 중심 객체: Benchmark Event Window (date_from~date_to × asset_class × benchmark)
-  - source-aware evidence: naver_research = primary, news = corroboration
+  - evidence 소스 = naver_research 단일 (⛔ NEWS 미사용 정책 2026-06-17 —
+    news corroboration lane 은 2026-07-27 제거. 과거 월 contract 의 news 혼입분은
+    timeseries_narrator 로드 시 재차 필터)
   - graph subgraph seed: GraphRAG 전체 재계산 안 함 — 기존 월별 그래프에서 window별로
     관련 노드/엣지만 슬라이스해 설명용으로 제공
   - 기존 quota / vectorDB / GraphRAG 본체는 건드리지 않음 (read-only 소비자)
@@ -33,7 +35,6 @@ from pathlib import Path
 _BASE = Path(__file__).resolve().parent.parent
 _OUT_DIR = _BASE / 'data' / 'benchmark_events'
 _OUT_DIR.mkdir(parents=True, exist_ok=True)
-_NEWS_DIR = _BASE / 'data' / 'news'
 _NR_DIR = _BASE / 'data' / 'naver_research' / 'adapted'
 _GRAPH_DIR = _BASE / 'data' / 'insight_graph'
 
@@ -260,19 +261,13 @@ def _topic_matches_asset_class(topic: str, asset_class: str) -> bool:
 
 
 def _load_articles(year: int, month: int) -> tuple[list, list]:
-    """(news_articles, nr_articles) — primary + classified만."""
+    """(news_articles, nr_articles) — primary + classified만.
+
+    ⛔ NEWS 미사용 정책: news lane 은 로드하지 않는다 (항상 빈 리스트).
+    반환 tuple 구조는 호출부 호환을 위해 유지.
+    """
     period = f'{year}-{month:02d}'
-    news = []
-    news_fp = _NEWS_DIR / f'{period}.json'
-    if news_fp.exists():
-        try:
-            data = json.loads(news_fp.read_text(encoding='utf-8'))
-            for a in data.get('articles', []):
-                if a.get('_classified_topics') and a.get('is_primary', True):
-                    a.setdefault('source_type', 'news')
-                    news.append(a)
-        except Exception:
-            pass
+    news: list = []
     nr = []
     nr_fp = _NR_DIR / f'{period}.json'
     if nr_fp.exists():

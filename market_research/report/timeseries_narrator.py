@@ -357,6 +357,10 @@ def _load_bew_for_period(news_months):
                 continue
             out['windows_by_bm'].setdefault(bm, []).append(w)
         for card in c.get('evidence_cards', []) or []:
+            # ⛔ NEWS 미사용 정책 — 과거 월 contract 에 남은 news 혼입분 차단
+            # (mapper 는 2026-07-27 부터 naver_research 단일 소스로 생성)
+            if (card.get('source_type') or '') == 'news':
+                continue
             cid = card.get('evidence_id', '')
             if cid:
                 out['cards_by_id'][cid] = card
