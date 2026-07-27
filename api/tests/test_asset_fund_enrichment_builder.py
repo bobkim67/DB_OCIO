@@ -11,7 +11,7 @@ import pytest
 
 
 # ─────────────────────────────────────────────────────────────────────
-# Plan basics — 8 asset + 7 fund pages, 07G02/07G03 skip
+# Plan basics — 7 asset + 7 fund pages, 07G02/07G03 skip
 # ─────────────────────────────────────────────────────────────────────
 
 def test_plan_creates_8_asset_pages():
@@ -19,23 +19,23 @@ def test_plan_creates_8_asset_pages():
         REQUIRED_ASSET_CLASSES, ASSET_FILENAME_STEMS, build_enrichment_plan,
     )
     plan = build_enrichment_plan("2026-04")
-    assert len(plan.asset_pages) == 8
+    assert len(plan.asset_pages) == 7
     expected_stems = {ASSET_FILENAME_STEMS[ac] for ac in REQUIRED_ASSET_CLASSES}
     actual_stems = {Path(rel).stem.replace("2026-04_", "") for rel in plan.asset_pages}
     assert expected_stems == actual_stems
 
 
 def test_required_assets_not_missing():
-    """국내채권 / 해외채권 / 크레딧 / 현금성 은 누락되어선 안 됨."""
+    """국내채권 / 해외채권 / 대체 / 유동성 은 누락되어선 안 됨."""
     from market_research.wiki.asset_fund_enrichment_builder import build_enrichment_plan
     plan = build_enrichment_plan("2026-04")
     rels = list(plan.asset_pages.keys())
-    for must in ("국내채권", "해외채권", "크레딧", "현금성"):
+    for must in ("국내채권", "해외채권", "대체", "유동성"):
         assert any(must in rel for rel in rels), f"missing asset page: {must}"
 
 
 def test_asset_page_chars_threshold():
-    """P3-4.1: 핵심 6 자산 ≥1000ch, 보조 2 자산(크레딧/현금성) ≥700ch.
+    """P3-4.1: 핵심 6 자산 ≥1000ch, 보조 1 자산(유동성) ≥700ch.
 
     1000ch 강제 아님. 700~1000ch 허용 + filler 회피.
     """
@@ -52,7 +52,7 @@ def test_asset_page_chars_threshold():
 
 
 def test_credit_cash_event_disclaimer():
-    """P3-4.1: 크레딧/현금성 page 에 직접 이벤트 제한 / 영향 제한 / 특이 이벤트 부재 류 문구 포함."""
+    """P3-4.1: 보조자산(유동성) page 에 직접 이벤트 제한 / 영향 제한 / 특이 이벤트 부재 류 문구 포함."""
     from market_research.wiki.asset_fund_enrichment_builder import build_enrichment_plan
     plan = build_enrichment_plan("2026-04")
     DISCLAIMER_TOKENS = (
@@ -60,7 +60,7 @@ def test_credit_cash_event_disclaimer():
         "특이 이벤트 부재", "직접 관련 펀드 제한적",
         "영향 제한",
     )
-    for stem in ("크레딧", "현금성"):
+    for stem in ("유동성",):
         rel = f"03_Assets/2026-04_{stem}.md"
         body = plan.asset_pages[rel]
         assert any(tok in body for tok in DISCLAIMER_TOKENS), \
@@ -68,23 +68,23 @@ def test_credit_cash_event_disclaimer():
 
 
 def test_credit_required_chips():
-    """크레딧 page: HY / 회사채 / 신용스프레드 / credit spread 중 ≥2."""
+    """해외채권 page(크레딧 흡수): HY / 회사채 / 신용스프레드 / credit spread 중 ≥2."""
     from market_research.wiki.asset_fund_enrichment_builder import build_enrichment_plan
     plan = build_enrichment_plan("2026-04")
-    body = plan.asset_pages["03_Assets/2026-04_크레딧.md"]
+    body = plan.asset_pages["03_Assets/2026-04_해외채권.md"]
     chips = ("HY", "회사채", "신용스프레드", "credit spread")
     hits = [c for c in chips if c in body]
-    assert len(hits) >= 2, f"크레딧 page 필수 chip <2: hits={hits}"
+    assert len(hits) >= 2, f"해외채권 page 필수 chip <2: hits={hits}"
 
 
 def test_cash_required_chips():
-    """현금성 page: 단기금리 / CD / MMF / 유동성 / 리밸런싱 대기자금 / 대기성 자금 중 ≥2."""
+    """유동성 page: 단기금리 / CD / MMF / 유동성 / 리밸런싱 대기자금 / 대기성 자금 중 ≥2."""
     from market_research.wiki.asset_fund_enrichment_builder import build_enrichment_plan
     plan = build_enrichment_plan("2026-04")
-    body = plan.asset_pages["03_Assets/2026-04_현금성.md"]
+    body = plan.asset_pages["03_Assets/2026-04_유동성.md"]
     chips = ("단기금리", "CD", "MMF", "유동성", "리밸런싱", "대기성 자금")
     hits = [c for c in chips if c in body]
-    assert len(hits) >= 2, f"현금성 page 필수 chip <2: hits={hits}"
+    assert len(hits) >= 2, f"유동성 page 필수 chip <2: hits={hits}"
 
 
 def test_no_filler_repetition_in_any_page():
@@ -106,8 +106,8 @@ def test_asset_page_has_event_entity_fund_links():
     plan = build_enrichment_plan("2026-04")
     LINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
     for rel, body in plan.asset_pages.items():
-        # 크레딧/현금성은 graph/event 매칭이 약해 link 적을 수 있음 — 그 외 자산은 검증
-        if "크레딧" in rel or "현금성" in rel:
+        # 유동성은 graph/event 매칭이 약해 link 적을 수 있음 — 그 외 자산은 검증
+        if "유동성" in rel:
             continue
         toks = LINK_RE.findall(body)
         # event link OR entity link OR fund link 중 최소 1종 이상
@@ -209,14 +209,14 @@ def test_retrieval_eligibility_threshold():
     )
     plan = build_enrichment_plan("2026-04")
     elig = evaluate_retrieval_eligibility(plan)
-    # asset: 8 중 6 이상 (크레딧/현금성 보조점검은 제외 허용)
+    # asset: 7 중 6 이상 (유동성 보조점검은 제외 허용)
     assert elig["asset_eligible_count"] >= 6
     # fund: 7/7 모두 충족
     assert elig["fund_eligible_count"] == 7
 
 
 def test_eligibility_threshold_is_lower_for_boundary_assets():
-    """P3-4.1: boundary 자산(크레딧/현금성)은 700ch 기준으로, 핵심 자산은 1000ch 기준으로
+    """P3-4.1: boundary 자산(유동성)은 700ch 기준으로, 핵심 자산은 1000ch 기준으로
     구분해서 eligibility 가 평가됨을 확인."""
     from market_research.wiki.asset_fund_enrichment_builder import (
         evaluate_retrieval_eligibility, build_enrichment_plan,
@@ -226,7 +226,7 @@ def test_eligibility_threshold_is_lower_for_boundary_assets():
     assert elig["asset_min_chars_core"] == 1000
     assert elig["asset_min_chars_boundary"] == 700
     # 보강 후 모든 page 가 충족하는 것이 정상 ─ 실패 시 보강이 빠진 것
-    assert elig["asset_eligible_count"] == 8
+    assert elig["asset_eligible_count"] == 7
     assert elig["fund_eligible_count"] == 7
 
 

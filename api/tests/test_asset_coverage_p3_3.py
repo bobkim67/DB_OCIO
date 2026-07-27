@@ -38,9 +38,9 @@ def test_coverage_dominant_middle_east_does_not_starve_other_assets():
     )
     assert cov["dominant_topic"] == "지정학"
     assert cov["dominant_topic_share"] >= 0.7
-    # 8 자산군 모두 분류됨
+    # 7 자산군 모두 분류됨 (2026-06-17 개편: 크레딧→해외채권, 현금성→유동성, 금/대체→대체)
     accs = [r["asset_class"] for r in cov["asset_coverage_map"]]
-    assert len(accs) == 8
+    assert len(accs) == 7
     # 비중동 자산군이 weak/missing 으로 잡힘
     assert "국내주식" in cov["weak_asset_classes"] + cov["missing_asset_classes"]
     assert "국내채권" in cov["weak_asset_classes"] + cov["missing_asset_classes"]
@@ -150,7 +150,7 @@ def test_format_for_prompt_contains_section_header():
     text = format_asset_coverage_for_prompt(cov)
     assert "## 자산군별 필수 점검" in text
     for ac in ("국내주식", "해외주식", "국내채권", "해외채권",
-               "환율", "금/대체", "크레딧", "현금성"):
+               "환율", "대체", "유동성"):
         assert ac in text
 
 

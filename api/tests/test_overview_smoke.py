@@ -86,12 +86,12 @@ def test_overview_nav_series_has_bm_for_08K88(client):
             assert len(non_null_bm) > 0
 
 
-def test_overview_bmless_saa_unavailable_07G02(client, monkeypatch):
-    """07G02는 BM 미설정 → SAA 시도. SAA 로더 실패 주입 시 bm/excess 전부 null,
+def test_overview_bmless_saa_unavailable_08P22(client, monkeypatch):
+    """08P22는 BM 미설정 → SAA 시도. SAA 로더 실패 주입 시 bm/excess 전부 null,
     benchmark_kind='none'. (실제 proxy SAA 계산은 느려 테스트에선 차단)"""
     import api.services.overview_service as svc
     monkeypatch.setattr(svc, "_load_saa_series", lambda code, start, as_of: None)
-    r = client.get("/api/funds/07G02/overview")
+    r = client.get("/api/funds/08P22/overview")
     assert r.status_code == 200
     body = r.json()
     assert body["bm_configured"] is False
@@ -162,7 +162,7 @@ def test_overview_bm_period_returns_empty_when_saa_unavailable(client, monkeypat
     """BM 미설정 + SAA 로더 실패(주입) → bm_period_returns = {}"""
     import api.services.overview_service as svc
     monkeypatch.setattr(svc, "_load_saa_series", lambda code, start, as_of: None)
-    r = client.get("/api/funds/07G02/overview")
+    r = client.get("/api/funds/08P22/overview")
     body = r.json()
     assert body["bm_configured"] is False
     assert body["bm_period_returns"] == {}

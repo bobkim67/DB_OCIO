@@ -24,44 +24,44 @@ def _mk_article(topics: list[str], primary: bool = True) -> dict:
 
 def test_goldman_sachs_not_gold():
     from market_research.report.asset_coverage import _scan_text_for_asset
-    assert _scan_text_for_asset("Goldman Sachs report", "금/대체") == 0
-    assert _scan_text_for_asset("골드만삭스 추천 종목", "금/대체") == 0
+    assert _scan_text_for_asset("Goldman Sachs report", "대체") == 0
+    assert _scan_text_for_asset("골드만삭스 추천 종목", "대체") == 0
 
 
 def test_금리_not_gold():
     from market_research.report.asset_coverage import _scan_text_for_asset
-    assert _scan_text_for_asset("금리 상승 압력", "금/대체") == 0
-    assert _scan_text_for_asset("기준금리 동결", "금/대체") == 0
+    assert _scan_text_for_asset("금리 상승 압력", "대체") == 0
+    assert _scan_text_for_asset("기준금리 동결", "대체") == 0
 
 
 def test_금융_not_gold():
     from market_research.report.asset_coverage import _scan_text_for_asset
-    assert _scan_text_for_asset("금융시장 변동성", "금/대체") == 0
-    assert _scan_text_for_asset("금융위기 가능성", "금/대체") == 0
+    assert _scan_text_for_asset("금융시장 변동성", "대체") == 0
+    assert _scan_text_for_asset("금융위기 가능성", "대체") == 0
 
 
 def test_gold_price_hits_gold():
     from market_research.report.asset_coverage import _scan_text_for_asset
-    assert _scan_text_for_asset("금 가격 사상 최고", "금/대체") >= 1
-    assert _scan_text_for_asset("국제 금 시세 급등", "금/대체") >= 1
+    assert _scan_text_for_asset("금 가격 사상 최고", "대체") >= 1
+    assert _scan_text_for_asset("국제 금 시세 급등", "대체") >= 1
 
 
 def test_gld_ticker_hits_gold():
     from market_research.report.asset_coverage import _scan_text_for_asset
-    assert _scan_text_for_asset("GLD ETF 자금 유입", "금/대체") >= 1
-    assert _scan_text_for_asset("GLD held above resistance", "금/대체") >= 1
+    assert _scan_text_for_asset("GLD ETF 자금 유입", "대체") >= 1
+    assert _scan_text_for_asset("GLD held above resistance", "대체") >= 1
 
 
-def test_credit_card_not_credit():
+def test_credit_card_not_credit():  # 크레딧 폐지(2026-06-17) → 해외채권 흡수
     from market_research.report.asset_coverage import _scan_text_for_asset
-    assert _scan_text_for_asset("신용카드 사용액", "크레딧") == 0
-    assert _scan_text_for_asset("credit card delinquency", "크레딧") == 0
+    assert _scan_text_for_asset("신용카드 사용액", "해외채권") == 0
+    assert _scan_text_for_asset("credit card delinquency", "해외채권") == 0
 
 
-def test_credit_spread_hits_credit():
+def test_credit_spread_hits_credit():  # 크레딧 폐지(2026-06-17) → 해외채권 흡수
     from market_research.report.asset_coverage import _scan_text_for_asset
-    assert _scan_text_for_asset("credit spread widened", "크레딧") >= 1
-    assert _scan_text_for_asset("HY 스프레드 확대", "크레딧") >= 1
+    assert _scan_text_for_asset("credit spread widened", "해외채권") >= 1
+    assert _scan_text_for_asset("HY 스프레드 확대", "해외채권") >= 1
 
 
 def test_only_미국_does_not_hit_overseas_equity():

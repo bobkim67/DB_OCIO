@@ -31,15 +31,11 @@ from market_research.report.asset_coverage import (
 # ─────────────────────────────────────────────────────────────────────
 # 표준 파일명 / 자산군 상수
 # ─────────────────────────────────────────────────────────────────────
+# REQUIRED_ASSET_CLASSES 에서 파생 — 2026-06-17 자산군 개편(크레딧→해외채권 흡수 /
+# 유동성→유동성 / 대체→대체) 때 이 dict 만 옛 라벨로 남아 KeyError 가 났다.
+# 하드코딩 대신 파생시켜 다음 개편 때 다시 어긋나지 않게 한다.
 ASSET_FILENAME_STEMS: dict[str, str] = {
-    "국내주식": "국내주식",
-    "해외주식": "해외주식",
-    "국내채권": "국내채권",
-    "해외채권": "해외채권",
-    "환율": "환율",
-    "금/대체": "금_대체",      # 슬래시 대신 언더스코어
-    "크레딧": "크레딧",
-    "현금성": "현금성",
+    ac: ac.replace("/", "_") for ac in REQUIRED_ASSET_CLASSES
 }
 
 # 펀드 운용보고 대상 (사용자 지시) — 07G02/07G03 제외
@@ -70,10 +66,10 @@ FUND_META: dict[str, dict[str, str]] = {
               "primary_assets": "국내채권, 해외채권, 국내주식",
               "note": "종합채권+은행채 중심"},
     "2JM23": {"name": "오렌지라이프자산배분B형",
-              "primary_assets": "해외주식, 국내주식, 금/대체",
+              "primary_assets": "해외주식, 국내주식, 대체",
               "note": "글로벌자산배분, 절대수익 목표"},
     "4JM12": {"name": "(무)동부글로벌 Active 자산배분혼합형",
-              "primary_assets": "금/대체, 해외주식, 환율",
+              "primary_assets": "대체, 해외주식, 환율",
               "note": "금광주, 달러선물 활용"},
 }
 
@@ -84,8 +80,8 @@ FUND_PRIMARY_ASSETS: dict[str, tuple[str, ...]] = {
     "08N33": ("국내채권", "국내주식", "해외주식"),
     "08N81": ("해외채권", "해외주식", "국내채권"),
     "08P22": ("국내채권", "해외채권", "국내주식"),
-    "2JM23": ("해외주식", "국내주식", "금/대체"),
-    "4JM12": ("금/대체", "해외주식", "환율"),
+    "2JM23": ("해외주식", "국내주식", "대체"),
+    "4JM12": ("대체", "해외주식", "환율"),
 }
 
 # 자산군별 운용보고 활용 메모 (정형 문구 — 단정 회피)
@@ -126,22 +122,15 @@ ASSET_OVERVIEW: dict[str, str] = {
         "회복 시 원화 강세가 진행된다. 본월 환율 변동은 펀드 해외주식·해외채권 "
         "평가액에 직접 반영되며, 환헷지 펀드는 헷지 비용/베이시스 위험이 동반된다."
     ),
-    "금/대체": (
-        "금/대체 자산은 인플레이션 헤지 + 지정학 리스크 헤지 역할이며, "
+    "대체": (
+        "대체 자산(금·원자재·리츠)은 인플레이션 헤지 + 지정학 리스크 헤지 역할이며, "
         "유가/원자재/금 가격 흐름이 핵심 변수다. "
         "OCIO 펀드는 GLD/IAU/금ETF 또는 원자재 ETF (DBC/PDBC), 리츠 등으로 "
         "분산 노출을 가져가며, 달러 흐름과 역상관 + 실질금리 역상관이 일반적이다. "
         "본월 중동/지정학 이벤트와 OPEC 산유 정책이 유가·금 가격에 직접 영향."
     ),
-    "크레딧": (
-        "크레딧(HY/회사채)은 위험자산 + 캐리 수익 목적이며, "
-        "신용스프레드, 디폴트율, 금리 환경에 민감하다. "
-        "OCIO 펀드는 HYG/JNK/IG 회사채 ETF 또는 직접 회사채 편입으로 노출을 가져가며, "
-        "경기 사이클 후반부에 변동성이 확대되는 특성이 있다. "
-        "스프레드 확대/축소 방향이 단기 수익률을 좌우하고, 디폴트 사이클이 중기 위험."
-    ),
-    "현금성": (
-        "현금성 자산은 유동성 확보와 단기금리 수익 목적이며, "
+    "유동성": (
+        "유동성 자산은 유동성 확보와 단기금리 수익 목적이며, "
         "MMF/CD/콜 금리 흐름이 핵심이지만 펀드 운용보고 영향도는 낮다. "
         "본 자산군은 유동성 버퍼/단기 환매 대비 목적이 주된 기능이며, "
         "월별 수익 기여도는 제한적이다. 단기 정책금리 변동이 캐리 수익에 영향을 주나, "
@@ -268,21 +257,20 @@ def build_asset_page(asset_class: str, period: str) -> str:
     if asset_class in ("국내채권", "해외채권"):
         body.append("- 금리/물가/중앙은행 정책 동향이 듀레이션·캐리 수익률을 좌우.")
         body.append("- 환율/유가가 인플레이션 경로를 통해 간접 영향.")
+        if asset_class == "해외채권":
+            # 2026-06-17 크레딧 폐지 → 해외채권 흡수. 크레딧 chip 을 여기서 강제.
+            body.append("- 핵심 변수: HY 스프레드, 회사채 발행 환경, 신용스프레드 (credit spread).")
+            body.append("- 디폴트율/회수율은 중기 위험. 사이클 후반부에 변동성 확대 가능성.")
     elif asset_class in ("국내주식", "해외주식"):
         body.append("- 기업 실적/통화정책/지정학 이벤트가 위험자산 sentiment 를 좌우.")
         body.append("- 환율은 해외주식의 원화환산 수익률에 직접 영향.")
     elif asset_class == "환율":
         body.append("- USDKRW 는 달러 강/약세, 한미 금리차, 외국인 수급에 따라 변동.")
         body.append("- 펀드 해외자산 노출 비중에 따라 수익률 영향이 크게 달라짐.")
-    elif asset_class == "금/대체":
+    elif asset_class == "대체":
         body.append("- 유가/원자재/금 가격이 인플레이션 헤지/지정학 헤지 수요를 반영.")
         body.append("- 달러 흐름과 역상관, 실질금리와도 연동.")
-    elif asset_class == "크레딧":
-        # P3-4.1: 핵심 변수 chip 강제 (HY / 회사채 / 신용스프레드 / credit spread / 금리 경로 / 위험선호)
-        body.append("- 핵심 변수: HY 스프레드, 회사채 발행 환경, 신용스프레드 (credit spread).")
-        body.append("- 금리 경로와 위험선호 변화가 단기 변동성을 좌우.")
-        body.append("- 디폴트율/회수율은 중기 위험. 사이클 후반부에 변동성 확대 가능성.")
-    else:  # 현금성
+    else:  # 유동성
         # P3-4.1: 핵심 변수 chip 강제 (단기금리 / CD / MMF / 유동성 / 리밸런싱 대기자금)
         body.append("- 핵심 변수: 단기금리, CD/MMF 금리, 콜 금리.")
         body.append("- 유동성 버퍼 역할 + 리밸런싱 대기자금/대기성 자금 보유 목적.")
@@ -296,11 +284,9 @@ def build_asset_page(asset_class: str, period: str) -> str:
         body.append("- 시장 변동성, 섹터 쏠림, 외국인 수급, 환율 노출.")
     elif asset_class == "환율":
         body.append("- 환차손익이 펀드 해외자산 평가에 직접 반영.")
-    elif asset_class == "금/대체":
+    elif asset_class == "대체":
         body.append("- 가격 변동성, 보관/롤오버 비용, 통화 노출.")
-    elif asset_class == "크레딧":
-        body.append("- 신용 risk, 유동성 risk, 금리 risk 가 동시 노출.")
-    else:
+    else:  # 유동성
         body.append("- 단기금리 변동에 따른 캐리 수익 외 대형 위험은 제한적.")
     body.append("")
 
@@ -310,8 +296,8 @@ def build_asset_page(asset_class: str, period: str) -> str:
             body.append(f"- {_wiki_link(fp)}")
     else:
         body.append("- (본월 직접 매칭 이벤트 없음 — 가격 흐름 중심으로 점검)")
-    # P3-4.1: 크레딧/현금성은 직접 이벤트 제한 가능성 명시 (filler 대신 사실 표시)
-    if asset_class in ("크레딧", "현금성"):
+    # P3-4.1: 유동성은 직접 이벤트 제한 가능성 명시 (filler 대신 사실 표시)
+    if asset_class == "유동성":
         if not events:
             body.append("")
             body.append(
@@ -343,7 +329,7 @@ def build_asset_page(asset_class: str, period: str) -> str:
     body.append("")
 
     body.append("## 6. 운용보고 활용 메모")
-    if asset_class == "현금성":
+    if asset_class == "유동성":
         # P3-4.1: 직접 이벤트 제한적 명시 + 펀드 역할 명시 (또는 제한적 명시)
         body.append(
             "- 본월 특이 이벤트 부재 가능성 — '영향 제한' / '가격 흐름 중심' 표현 권장."
@@ -356,7 +342,7 @@ def build_asset_page(asset_class: str, period: str) -> str:
             "- 펀드 역할: 직접 관련 펀드 제한적. 모든 OCIO 펀드의 유동성 버퍼 / "
             "리밸런싱 대기자금 형태로만 기능하며, 단독 비중 의사결정 대상이 아님."
         )
-    elif asset_class == "크레딧":
+    elif asset_class == "유동성":
         # P3-4.1: 직접 이벤트 제한적 명시 + 운용보고 활용 방식 + 펀드 역할
         body.append(
             "- 직접 이벤트가 제한적일 수 있음 — '관찰 필요' / 'HY 스프레드 변화' / "
@@ -470,7 +456,7 @@ def build_fund_page(fund_code: str, period: str) -> str:
             "- 듀레이션·금리 민감도가 핵심 위험. 본월 한은/연준 정책, "
             "장단기 금리 스프레드, 물가 경로 변화가 채권 평가액에 직접 영향."
         )
-    if "금/대체" in primary_assets:
+    if "대체" in primary_assets:
         body.append(
             "- 금/원자재 가격 변동성과 달러 흐름이 주요 변수. 지정학 "
             "이벤트/OPEC 정책/실질금리 변동이 단기 변동성을 키우는 트리거."
@@ -635,10 +621,10 @@ def commit_enrichment_plan(plan: EnrichmentPlan) -> dict:
 # ─────────────────────────────────────────────────────────────────────
 
 ASSET_FUND_ELIGIBILITY_MIN_CHARS = 1000   # 03_Assets 핵심 6 자산
-ASSET_BOUNDARY_MIN_CHARS = 700           # 03_Assets 보조 (크레딧/현금성)
+ASSET_BOUNDARY_MIN_CHARS = 700           # 03_Assets 보조 (유동성)
 FUND_ELIGIBILITY_MIN_CHARS = 1200        # 04_Funds
 
-BOUNDARY_ASSETS: tuple[str, ...] = ("크레딧", "현금성")
+BOUNDARY_ASSETS: tuple[str, ...] = ("유동성",)
 
 
 def evaluate_retrieval_eligibility(plan: EnrichmentPlan) -> dict:
@@ -646,7 +632,7 @@ def evaluate_retrieval_eligibility(plan: EnrichmentPlan) -> dict:
 
     P3-4.1 변경:
       - 핵심 6 자산: ≥ ASSET_FUND_ELIGIBILITY_MIN_CHARS (1000ch)
-      - 보조 (크레딧/현금성): ≥ ASSET_BOUNDARY_MIN_CHARS (700ch) — filler 회피
+      - 보조 (유동성): ≥ ASSET_BOUNDARY_MIN_CHARS (700ch) — filler 회피
     """
     asset_ok: dict[str, bool] = {}
     for rel, body in plan.asset_pages.items():
