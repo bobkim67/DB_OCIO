@@ -300,7 +300,13 @@ def _load_daily_nast(fund_code: str, start_date: str = None, end_date: str = Non
 
 
 def _load_net_subscription(fund_code: str, start_date: str = None, end_date: str = None) -> pd.DataFrame:
-    """일별 순설정금액 (DWPM12880)."""
+    """일별 순설정금액 (DWPM12880) = 설정 − 해지.
+
+    ★ ocpy_flct_amt 는 설정·해지 모두 **양수 magnitude** 라 방향은 tr_cd 로만 판별한다
+    (A010=설정 +, A030=일부해지 −, A230=외화일부해지 −). 단순 SUM 하면 해지를 유입으로
+    더해 누적 설정액이 부풀려진다 (08K88: 365.1억 설정 + 136.7억 해지 → 501.8억으로
+    표시되던 버그, 2026-07-27 수정. 실제 순설정 228.4억).
+    """
     conn = get_pandas_connection('dt')
     try:
         conditions = ["fund_cd = %s"]
@@ -314,7 +320,8 @@ def _load_net_subscription(fund_code: str, start_date: str = None, end_date: str
         where = " AND ".join(conditions)
         sql = f"""
             SELECT tr_dt,
-                   SUM(ocpy_flct_amt) as net_subscription
+                   SUM(CASE WHEN tr_cd IN ('A030', 'A230') THEN -ocpy_flct_amt
+                            ELSE ocpy_flct_amt END) as net_subscription
             FROM DWPM12880
             WHERE {where}
             GROUP BY tr_dt
