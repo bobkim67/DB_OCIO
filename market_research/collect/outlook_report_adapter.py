@@ -60,10 +60,16 @@ _MIN_CONTAIN_LEN = 8     # containment 매칭 최소 정규화 길이
 # 파싱 불필요 — 발신인 기준이라 본문 길이가 그날그날 흔들려도 판정이 안 바뀐다.
 # description 은 첨부 본문으로 **대체**한다 (prompt 가 desc 앞 800자만 쓰므로 뒤에
 # 덧붙이면 창 밖으로 밀려 무의미). 원본 본문은 _raw_body 로 보존.
+# sender → (broker, mode).
+#   mode='replace' : 커버노트형 — 본문은 인사말뿐이라 첨부 본문으로 대체(_raw_body 보존)
+#   mode='append'  : 본문 요약 + 첨부 원문 둘 다 유효 → 이어붙임
 ATTACH_PARSE_SENDERS = {
-    '신성준': '키움증권',      # 외사 리포트(MS/BofA/UBS 등) 전달 — 본문 190~400자 인사말
-    '이정민': '한국투자증권',   # 주간회의자료_매크로.docx(DRM) — 본문 531자 전부 서명
+    '신성준': ('키움증권', 'replace'),      # 외사 리포트(MS/BofA/UBS) 전달 — 본문 190~400자 인사말
+    '이정민': ('한국투자증권', 'replace'),   # 주간회의자료_매크로.docx(DRM) — 본문 531자 전부 서명
+    '홍석민': ('키움증권', 'append'),       # 일일 글로벌 시황 + 당사 리포트 첨부 (2026-07-27 사용자 지시)
 }
+# 상한 없이 전문 저장할 발신자 — 본문 clip·첨부 clip·페이지수·파일수 제한 전부 해제.
+ATTACH_NO_CLIP_SENDERS = {'홍석민'}
 ATTACH_MAX_FILES = 3          # 메일당 파싱 첨부 상한
 ATTACH_PDF_MAX_PAGES = 10     # PDF 앞 N 페이지만
 ATTACH_TEXT_CLIP = 6000       # 저장 첨부 본문 상한
@@ -141,7 +147,7 @@ _DISCLAIMER_KW = (
 )
 
 
-def clean_body(body: str) -> str:
+def clean_body(body: str, clip: int | None = BODY_STORE_CLIP) -> str:
     """메일 본문 정리 — 프롬프트가 desc 앞부분만 쓰므로 인사말/서명을 걷어낸다.
 
     1) 앞쪽 인사말 줄(첫 5줄 내 짧은 greeting) 제거
@@ -166,7 +172,7 @@ def clean_body(body: str) -> str:
     # 3) 공백 정리
     text = re.sub(r'[ \t]+', ' ', text)
     text = re.sub(r'\n{3,}', '\n\n', text).strip()
-    return text[:BODY_STORE_CLIP]
+    return text if clip is None else text[:clip]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -194,9 +200,12 @@ def _open_report_folder():
     return folder
 
 
-def should_parse_attachments(sender_name: str, broker: str) -> bool:
-    """커버노트형 발신자 판정 — 첨부를 읽어 description 을 대체할 대상인지."""
-    return ATTACH_PARSE_SENDERS.get((sender_name or '').strip()) == broker
+def attach_parse_mode(sender_name: str, broker: str) -> str | None:
+    """첨부 파싱 대상 발신자면 mode('replace'|'append'), 아니면 None."""
+    cfg = ATTACH_PARSE_SENDERS.get((sender_name or '').strip())
+    if not cfg or cfg[0] != broker:
+        return None
+    return cfg[1]
 
 
 def _squeeze_extracted(text: str) -> str:
@@ -214,8 +223,8 @@ def _squeeze_extracted(text: str) -> str:
     return '\n'.join(ln for ln in lines if ln)
 
 
-def _pdf_text(fp: Path) -> str:
-    """PDF 앞 ATTACH_PDF_MAX_PAGES 페이지 텍스트. 실패 시 ''."""
+def _pdf_text(fp: Path, max_pages: int | None = ATTACH_PDF_MAX_PAGES) -> str:
+    """PDF 텍스트 (max_pages=None 이면 전 페이지). 실패 시 ''."""
     try:
         import pdfplumber
     except ImportError:
@@ -223,7 +232,7 @@ def _pdf_text(fp: Path) -> str:
     try:
         with pdfplumber.open(str(fp)) as pdf:
             parts = []
-            for pg in pdf.pages[:ATTACH_PDF_MAX_PAGES]:
+            for pg in (pdf.pages if max_pages is None else pdf.pages[:max_pages]):
                 try:
                     parts.append(pg.extract_text() or '')
                 except Exception:
@@ -259,14 +268,18 @@ def _docx_text(fp: Path, word_state: dict) -> str:
         return ''
 
 
-def _parse_attachments(mail, tmpdir: Path, word_state: dict) -> tuple[str, list[str]]:
-    """커버노트형 메일의 첨부 본문 추출 → (text, parsed_filenames).
+def _parse_attachments(mail, tmpdir: Path, word_state: dict,
+                       *, no_clip: bool = False) -> tuple[str, list[str]]:
+    """첨부 본문 추출 → (text, parsed_filenames).
 
+    no_clip=True 면 파일수·페이지수·길이 상한 없이 전문을 담는다(ATTACH_NO_CLIP_SENDERS).
     개별 첨부 실패는 skip (COM/파서 오류가 수집 전체를 막지 않게).
     """
+    max_files = None if no_clip else ATTACH_MAX_FILES
+    max_pages = None if no_clip else ATTACH_PDF_MAX_PAGES
     texts, names = [], []
     for a in mail.Attachments:
-        if len(names) >= ATTACH_MAX_FILES:
+        if max_files is not None and len(names) >= max_files:
             break
         fn = str(a.FileName or '')
         low = fn.lower()
@@ -279,7 +292,8 @@ def _parse_attachments(mail, tmpdir: Path, word_state: dict) -> tuple[str, list[
         except Exception:
             continue
         text = _squeeze_extracted(
-            _pdf_text(fp) if low.endswith('.pdf') else _docx_text(fp, word_state))
+            _pdf_text(fp, max_pages) if low.endswith('.pdf')
+            else _docx_text(fp, word_state))
         try:
             fp.unlink()
         except Exception:
@@ -288,7 +302,8 @@ def _parse_attachments(mail, tmpdir: Path, word_state: dict) -> tuple[str, list[
             continue
         texts.append(f'[{fn}]\n{text}')
         names.append(fn)
-    return '\n\n'.join(texts).strip()[:ATTACH_TEXT_CLIP], names
+    joined = '\n\n'.join(texts).strip()
+    return (joined if no_clip else joined[:ATTACH_TEXT_CLIP]), names
 
 
 def _sender_domain(mail) -> str:
@@ -340,7 +355,8 @@ def fetch_outlook_reports(days_back: int = 35) -> list[dict]:
                 broker = resolve_broker(domain, sender_name) or ''
                 received = m.ReceivedTime
                 date = f'{received.year:04d}-{received.month:02d}-{received.day:02d}'
-                body = clean_body(str(m.Body or ''))
+                no_clip = sender_name.strip() in ATTACH_NO_CLIP_SENDERS
+                body = clean_body(str(m.Body or ''), clip=None if no_clip else BODY_STORE_CLIP)
                 attach_names = []
                 for a in m.Attachments:
                     fn = str(a.FileName or '')
@@ -349,13 +365,16 @@ def fetch_outlook_reports(days_back: int = 35) -> list[dict]:
                 flags = []
                 if len(body) < 80:
                     flags.append('short_body')
-                # 커버노트형 발신자 → 첨부 본문으로 description 대체
+                # 첨부 파싱 대상 발신자 → mode 에 따라 description 대체/이어붙임
                 desc = body
                 attach_text, parsed = '', []
-                if attach_names and should_parse_attachments(sender_name, broker):
-                    attach_text, parsed = _parse_attachments(m, tmpdir, word_state)
+                mode = attach_parse_mode(sender_name, broker) if attach_names else None
+                if mode:
+                    attach_text, parsed = _parse_attachments(
+                        m, tmpdir, word_state, no_clip=no_clip)
                     if attach_text:
-                        desc = attach_text
+                        desc = (f'{body}\n\n{attach_text}' if mode == 'append'
+                                else attach_text)
                         flags.append('attach_parsed')
                     else:
                         flags.append('attach_parse_failed')
@@ -375,7 +394,7 @@ def fetch_outlook_reports(days_back: int = 35) -> list[dict]:
                     '_raw_received': str(received),
                     '_raw_attach_names': attach_names,
                     '_raw_broker': broker,
-                    '_raw_body': body if attach_text else '',
+                    '_raw_body': body if (attach_text and mode == 'replace') else '',
                     '_attach_parsed_files': parsed,
                     '_adapter_flags': flags,
                 })

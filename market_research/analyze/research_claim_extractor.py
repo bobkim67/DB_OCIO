@@ -94,14 +94,23 @@ RESEARCH_SYSTEM_PROMPT = (
 
 
 def _format_evidence_lines(evidence_items: list[dict], max_items: int,
-                           desc_chars: int = 300) -> str:
+                           desc_chars: int = 300,
+                           attach_desc_chars: int | None = None) -> str:
+    """evidence → prompt 라인. attach_desc_chars 지정 시 첨부 파싱된 건만 창을 넓힌다.
+
+    첨부 파싱본(리포트 PDF/docx 원문)은 메일 본문과 달리 앞부분에 실질 내용이 몰려
+    있어 800자로는 요약 한 문단에서 잘린다.
+    """
     lines: list[str] = []
     for i, e in enumerate(evidence_items[:max_items]):
         aid = e.get("_article_id") or e.get("article_id") or f"row_{i}"
         title = (e.get("title") or "").strip()[:120]
         source = e.get("source") or e.get("_raw_broker") or ""
         date = e.get("date") or ""
-        desc = (e.get("description") or "").strip().replace("\n", " ")[:desc_chars]
+        n = desc_chars
+        if attach_desc_chars and "attach_parsed" in (e.get("_adapter_flags") or []):
+            n = attach_desc_chars
+        desc = (e.get("description") or "").strip().replace("\n", " ")[:n]
         lines.append(f"- [{aid}] ({source} / {date}) {title} :: {desc}")
     return "\n".join(lines)
 
@@ -125,8 +134,11 @@ def build_research_extraction_prompt(
     # broker_mail 은 요약문이 아닌 메일 본문이라 앞 300자만으로는 논거가 잘림 → 800자.
     # naver/monygeek 은 기존 300자 유지 (운영 claim md5 불변).
     _desc_chars = 800 if source_type == "broker_mail" else 300
+    # 첨부 파싱본(리포트 원문)만 3000자 — 커버노트 메일의 실질 내용이 여기 있다.
+    _attach_chars = 3000 if source_type == "broker_mail" else None
     evidence_block = _format_evidence_lines(evidence_items, max_items,
-                                            desc_chars=_desc_chars)
+                                            desc_chars=_desc_chars,
+                                            attach_desc_chars=_attach_chars)
 
     user_prompt = (
         f"## Period: {period}  (source_type={source_type})\n\n"
