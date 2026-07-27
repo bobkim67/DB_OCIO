@@ -119,9 +119,21 @@ def _generate(fund: str, body: GenBodyDTO, suffix: str | None) -> WorkflowStageD
 
 # ── 전 펀드 요약 ──
 
-_OVERVIEW_TTL = 600.0                     # 대시보드 캐시 관례(600s)
-_overview_cache: dict = {}                # {as_of|None: (monotonic_ts, DTO)}
+# 이 스냅샷의 소스(기준가 DWPM10510 · 보유 DWPM10530)는 **익일 새벽 3시 적재** 라
+# 장중에 값이 바뀌지 않는다. 600s TTL 은 10분마다 20초 재계산(펀드당 ~2s x 11)을
+# 유발해 워밍업 선채움이 무의미했다 → **적재 시각 기준 '데이터 세대'** 로 무효화한다.
+# (고정 20h TTL 은 갱신 시점이 매일 4시간씩 당겨져 언젠가 03시 적재 **이전**에 캐시가
+#  채워지고, 그날 하루 종일 전일 데이터를 서빙하게 되므로 채택하지 않음.)
+_OVERVIEW_LOAD_HOUR = 3                   # DB 적재 시각(새벽 3시) = 세대 경계
+_OVERVIEW_TTL = 20 * 3600.0               # 상한 백스톱(세대가 안 바뀌는 이상상황 방어)
+_overview_cache: dict = {}                # {as_of|None: (monotonic_ts, generation, DTO)}
 _overview_lock = __import__('threading').Lock()
+
+
+def _overview_generation() -> str:
+    """현재 데이터 세대 키 — 03시 이전이면 전일 세대."""
+    from datetime import datetime, timedelta
+    return (datetime.now() - timedelta(hours=_OVERVIEW_LOAD_HOUR)).strftime('%Y-%m-%d')
 
 
 @router.get('/admin/funds-overview', response_model=AdminFundsOverviewDTO)
@@ -131,17 +143,20 @@ def get_admin_funds_overview(
     """전 펀드 스냅샷: 컴플라이언스 가이드(항목별) + 기간수익률 + 채권/펀드 듀레이션·YTM.
     as_of(YYYY-MM-DD) 미지정 시 최신 영업일 기준.
 
-    응답 TTL 캐시(600s) — 펀드당 ~2s x 11 재계산 방지. 서버 웜업이 선채움
-    (api/warmup._warm_admin_overview, 2026-07-14).
+    응답 캐시 — 펀드당 ~2s x 11 재계산 방지. 서버 웜업이 선채움
+    (api/warmup._warm_admin_overview, 2026-07-14). 소스가 새벽 3시 적재라
+    **데이터 세대(03시 경계 일단위)** 가 바뀔 때만 무효화 → 하루 1회 재계산.
     """
     import time as _time
+    gen = _overview_generation()
     with _overview_lock:
         hit = _overview_cache.get(as_of)
-        if hit and _time.monotonic() - hit[0] < _OVERVIEW_TTL:
-            return hit[1]
+        if (hit and hit[1] == gen
+                and _time.monotonic() - hit[0] < _OVERVIEW_TTL):
+            return hit[2]
     dto = _build_funds_overview(as_of)
     with _overview_lock:
-        _overview_cache[as_of] = (_time.monotonic(), dto)
+        _overview_cache[as_of] = (_time.monotonic(), gen, dto)
     return dto
 
 
