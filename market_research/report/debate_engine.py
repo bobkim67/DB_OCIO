@@ -716,10 +716,41 @@ def _extract_synth_claims(body: str, char_cap: int) -> str:
     return out[:char_cap].strip()
 
 
+def _consensus_trend_block(synth_dir, periods: list[str],
+                           asset_scope: list[str] | None) -> str:
+    """이전 월들의 자산군별 consensus stance 추이 (YTD 흐름용 압축 블록).
+
+    09 는 월별 스냅샷이라 종료월만 읽으면 '기간 중 컨센서스가 어떻게 변했는지'가
+    통째로 빠진다. 이전 월 본문을 다 넣으면 토큰이 폭증하므로(자산군 8 × 월 N ×
+    1,600자) frontmatter 의 stance/strength 만 뽑아 자산군당 1줄로 요약한다.
+    """
+    by_asset: dict[str, list[str]] = {}
+    for p in periods:
+        for fp in sorted(synth_dir.glob(f'{p}_*.md')):
+            asset = fp.stem.split('_', 1)[-1]
+            if asset_scope and asset not in asset_scope:
+                continue
+            try:
+                fm, _ = _parse_synth_page(fp.read_text(encoding='utf-8'))
+            except Exception:
+                continue
+            st = fm.get('consensus_stance') or '?'
+            sg = fm.get('consensus_strength')
+            by_asset.setdefault(asset, []).append(
+                f"{int(p[5:7])}월 {st}" + (f"({sg})" if sg else ""))
+    if not by_asset:
+        return ''
+    lines = ['### 기간 내 컨센서스 추이 (이전 월 요약)']
+    for asset, seq in by_asset.items():
+        lines.append(f'- {asset}: ' + ' → '.join(seq))
+    return '\n'.join(lines)
+
+
 def build_research_synthesis_context(year: int, month: int,
                                      policy: "DebateContextPolicy | None" = None,
                                      asset_scope: list[str] | None = None,
-                                     trace: dict | None = None) -> str:
+                                     trace: dict | None = None,
+                                     months: list[str] | None = None) -> str:
     """09_Research_Synthesis 정식 context builder (Phase 2 — 1급 소스 승격).
 
     naver_research 분해→재종합 결과를 debate 의 **primary synthesis** 로 주입한다.
@@ -728,10 +759,15 @@ def build_research_synthesis_context(year: int, month: int,
     누수 없음. 파일 없거나 비면 fail 하지 않고 trace 에 기록.
 
     asset_scope: 특정 자산군만 (None=전체). trace: 채워줄 dict(source/selected/chars).
+    months: 기간이 여러 달에 걸칠 때 'YYYY-MM' 목록(오름차순). 마지막 달을 상세로 싣고
+      이전 달은 컨센서스 추이 1줄로 압축한다(YTD/분기 보고의 흐름 확보).
+      None 이면 기존대로 (year, month) 단월 — 호출부 기본 동작 불변.
     """
     if policy is None:
         policy = LEGACY_POLICY
-    period = f'{year}-{month:02d}'
+    _periods = [p for p in (months or []) if p] or [f'{year}-{month:02d}']
+    period = _periods[-1]          # 상세 대상 = 종료월
+    _prior = _periods[:-1]
     try:
         from market_research.wiki.paths import RESEARCH_SYNTHESIS_DIR
         synth_dir = RESEARCH_SYNTHESIS_DIR
@@ -749,9 +785,16 @@ def build_research_synthesis_context(year: int, month: int,
         _log('research_synthesis_missing', period=period,
              dir=str(synth_dir), exists=synth_dir.exists())
         return ''
-    blocks = [f'## 09 Research Synthesis — naver_research 재종합 ({period})',
+    _scope_label = f'{_periods[0]}~{period}' if _prior else period
+    blocks = [f'## 09 Research Synthesis — naver_research 재종합 ({_scope_label})',
               '아래는 증권사 리서치 claim 을 자산군별로 재종합한 base view / 이견 / 리스크입니다 '
               '(news·graph 미포함, primary synthesis source).']
+    if _prior:
+        _trend = _consensus_trend_block(synth_dir, _prior, asset_scope)
+        if _trend:
+            blocks.append(_trend)
+            tr['prior_periods'] = _prior
+        blocks.append(f'### {period} 상세')
     for fp in pages[:policy.research_synthesis_max_assets]:
         try:
             fm, body = _parse_synth_page(fp.read_text(encoding='utf-8'))
@@ -1060,8 +1103,11 @@ def _build_shared_context(year: int, month: int, fund_code: str = None,
     # 09_Research_Synthesis — primary synthesis source (Phase 2 1급 승격).
     if policy.research_synthesis_enabled:
         _rs_trace: dict = {}
+        # 기간이 여러 달이면 그 달들을 전부 넘긴다 — 종료월 상세 + 이전 월 컨센서스 추이.
+        # (evidence 는 이미 _win_months 로 다월 로딩인데 09 만 단월이라 YTD 흐름이 빠졌다.)
+        _rs_months = (_months_in_range(window[0], window[1]) if window else None)
         context['research_synthesis_text'] = build_research_synthesis_context(
-            year, month, policy=policy, trace=_rs_trace)
+            year, month, policy=policy, trace=_rs_trace, months=_rs_months)
         context['_research_synthesis_trace'] = _rs_trace
 
     # indicators.csv — policy.macro_indicators_enabled
