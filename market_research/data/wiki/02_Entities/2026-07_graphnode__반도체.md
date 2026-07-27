@@ -4,20 +4,20 @@ status: base
 entity_id: graphnode__반도체
 label: "반도체"
 taxonomy_topic: 테크_AI_반도체
-node_importance: 7.3720
+node_importance: 4.2216
 importance_basis: edge_effective_score_sum
 support_count_sum: 18
 path_count: 1
 path_role_hit: false
-unique_article_count: 48
+unique_article_count: 445
 first_seen: 2026-07-01
-last_seen: 2026-07-02
+last_seen: 2026-07-27
 primary_articles: [a8968ba30781, 2b20956d6799, 4a1c719d342d, 8bf11d120ebb, e9a9852b22c3]
 graph_node_id: 반도체
 period: 2026-07
 has_graph_signal: true
 source_of_truth: pipeline_refine+graphrag
-updated_at: 2026-07-02T12:52:43
+updated_at: 2026-07-27T08:23:34
 ---
 
 # Entity — 반도체
@@ -27,23 +27,23 @@ updated_at: 2026-07-02T12:52:43
 
 ## Confirmed facts
 
-- Mention summary: 2026-07-01 ~ 2026-07-02 · 48 articles
-- Linked events: `event_829c2254d8`, `event_2c095cc8a7`, `event_99a413c072`, `event_8e201a2fd6`, `event_32484fa9c2`
+- Mention summary: 2026-07-01 ~ 2026-07-27 · 445 articles
+- Linked events: `event_829c2254d8`, `event_2c095cc8a7`, `event_99a413c072`, `event_8e201a2fd6`, `event_c0d26360e0`
 - Related asset classes (derived): `해외주식`
 
 ### Recent articles
-- [신흥국 전략] 인도 증시 단기 체크포인트 (ref:`a8968ba30781`)
-- Yuanta Morning Snapshot (2026.07.02) (ref:`2b20956d6799`)
-- 7/2 KB 리서치 모닝코멘트 (ref:`4a1c719d342d`)
-- 수출, 1조 달러는 가능한 목표 (ref:`8bf11d120ebb`)
-- 국내 주식 마감 시황 - 반도체 언와인딩으로 시작하는.. (ref:`e9a9852b22c3`)
-- [전략 COMMENT] 금리 하락은 쏠림 완화로 연결
-- 7/1 KB 리서치 장마감코멘트
-- [IBKS Daily] Start with IBKS(2026.07.02) 대형 순환..
+- 7/24 KB 리서치 장마감코멘트 (ref:`a8968ba30781`)
+- 신한 Market Review & Insight : 같은 MDD 30%, 다른 .. (ref:`2b20956d6799`)
+- 7/23 KB 리서치 장마감코멘트 (ref:`4a1c719d342d`)
+- 7/24 KB 리서치 모닝코멘트 (ref:`8bf11d120ebb`)
+- 마켓레이더 - 실적 후에 남는건 유가·금리·지정학 (.. (ref:`e9a9852b22c3`)
+- [주식시황 위클리] 주간:知 - 바닥 다지는 과정 (7월 ..
+- 연준 금리인상, 생각보다 쉽지 않은 문제
+- (매크로 따라잡기) AI, 반도체가 견인한 성장
 
 ## Graph provenance
 
-- `node_importance`: 7.3720 (edge_effective_score_sum)
+- `node_importance`: 4.2216 (edge_effective_score_sum)
 - `support_count_sum`: 18
 - `path_count`: 1
 - `path_role_hit`: false

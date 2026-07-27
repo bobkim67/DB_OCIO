@@ -4,20 +4,20 @@ status: base
 entity_id: graphnode__유가
 label: "유가"
 taxonomy_topic: 에너지_원자재
-node_importance: 1.9081
+node_importance: 1.0619
 importance_basis: edge_effective_score_sum
 support_count_sum: 4
 path_count: 1
 path_role_hit: true
-unique_article_count: 23
+unique_article_count: 250
 first_seen: 2026-07-01
-last_seen: 2026-07-02
-primary_articles: [a049af04a3b4, 8bf11d120ebb, e9a9852b22c3, 1373acf63068, 334e6c081c50]
+last_seen: 2026-07-27
+primary_articles: [a049af04a3b4, 8bf11d120ebb, e9a9852b22c3, cacab73b0c05, 6226e44b1de2]
 graph_node_id: 유가
 period: 2026-07
 has_graph_signal: true
 source_of_truth: pipeline_refine+graphrag
-updated_at: 2026-07-02T12:52:43
+updated_at: 2026-07-27T08:23:34
 ---
 
 # Entity — 유가
@@ -27,23 +27,23 @@ updated_at: 2026-07-02T12:52:43
 
 ## Confirmed facts
 
-- Mention summary: 2026-07-01 ~ 2026-07-02 · 23 articles
-- Linked events: `event_829c2254d8`, `event_99a413c072`, `event_8e201a2fd6`, `event_cc1ecacb50`, `event_df3d48ef14`
+- Mention summary: 2026-07-01 ~ 2026-07-27 · 250 articles
+- Linked events: `event_829c2254d8`, `event_99a413c072`, `event_8e201a2fd6`, `event_29fce50b4c`, `event_2d5bef0dab`
 - Related asset classes (derived): `원자재`
 
 ### Recent articles
-- 코스닥 전략노트7 (ref:`a049af04a3b4`)
-- [신흥국 전략] 인도 증시 단기 체크포인트 (ref:`8bf11d120ebb`)
-- [IBKS Bond Inside] 3루에서 시작한 홈런 재정으로 만.. (ref:`e9a9852b22c3`)
-- 7/2 KB 리서치 모닝코멘트 (ref:`1373acf63068`)
-- [전략 COMMENT] 금리 하락은 쏠림 완화로 연결 (ref:`334e6c081c50`)
-- Daily Morning Brief(2026.07.01)
-- 또 한번의 호실적에도 황당한 수준의 저평가
-- SK증권 Global Carbon Market Daily_260702
+- 기름뿜뿜 Weekly: 홍해 봉쇄 시나리오에서 정.. (ref:`a049af04a3b4`)
+- 07/24 달러, 유가 상승에 강세 (ref:`8bf11d120ebb`)
+- 07/24 Weekly Macro : FOMC와 국제유가 흐름에 주목 (ref:`e9a9852b22c3`)
+- Market Weekly Check ME up! (ref:`cacab73b0c05`)
+- 원유시장, 공급 불안 가중 (ref:`6226e44b1de2`)
+- 7/24 KB 리서치 모닝코멘트
+- 마켓레이더 - 실적 후에 남는건 유가·금리·지정학 (..
+- Daily Morning Brief(2026.07.24)
 
 ## Graph provenance
 
-- `node_importance`: 1.9081 (edge_effective_score_sum)
+- `node_importance`: 1.0619 (edge_effective_score_sum)
 - `support_count_sum`: 4
 - `path_count`: 1
 - `path_role_hit`: true
