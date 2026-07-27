@@ -502,6 +502,20 @@ def normalize_claim(raw: dict | None) -> dict:
             if m:
                 out["primary_asset"] = m
 
+    # primary_asset 오타 복구 — LLM 이 허용값 아닌 문자열을 넣는 경우가 있다
+    # (실측: '해외채bond' '해외채션' '국내채건' '해외채본' — 자산군명 뒤가 깨진 형태).
+    # validate_claim 은 warning 만 내고 값을 고치지 않아 그대로 저장돼 왔다.
+    # affected_assets 의 role=primary 가 정상값이면 그걸로 교정(관측된 4건 모두 정상).
+    # 정상값이면 no-op → 기존 claim 무변경. primary_asset 은 claim_id 입력이 아니라
+    # (위 Taxonomy v2 주석 참조) 교정해도 claim identity 는 불변.
+    _pa = out.get("primary_asset")
+    if _pa and _pa not in ALLOWED_ASSET_CLASSES:
+        for a in out.get("affected_assets") or []:
+            if (isinstance(a, dict) and a.get("role") == "primary"
+                    and a.get("asset_class") in ALLOWED_ASSET_CLASSES):
+                out["primary_asset"] = a["asset_class"]
+                break
+
     if not out.get("claim_id"):
         out["claim_id"] = compute_claim_id(
             out.get("period") or "unknown",
