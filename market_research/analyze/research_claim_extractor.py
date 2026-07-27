@@ -96,10 +96,11 @@ RESEARCH_SYSTEM_PROMPT = (
 def _format_evidence_lines(evidence_items: list[dict], max_items: int,
                            desc_chars: int = 300,
                            attach_desc_chars: int | None = None) -> str:
-    """evidence → prompt 라인. attach_desc_chars 지정 시 첨부 파싱된 건만 창을 넓힌다.
+    """evidence → prompt 라인.
 
-    첨부 파싱본(리포트 PDF/docx 원문)은 메일 본문과 달리 앞부분에 실질 내용이 몰려
-    있어 800자로는 요약 한 문단에서 잘린다.
+    evidence 가 `_desc_window` 를 지정하면 그 창을 쓴다(adapter 가 판단 — 첨부 원문·
+    시황 본문은 800자로는 한 문단에서 잘린다). 미지정이면 attach_desc_chars(첨부
+    파싱본) → desc_chars 순으로 fallback.
     """
     lines: list[str] = []
     for i, e in enumerate(evidence_items[:max_items]):
@@ -107,8 +108,9 @@ def _format_evidence_lines(evidence_items: list[dict], max_items: int,
         title = (e.get("title") or "").strip()[:120]
         source = e.get("source") or e.get("_raw_broker") or ""
         date = e.get("date") or ""
-        n = desc_chars
-        if attach_desc_chars and "attach_parsed" in (e.get("_adapter_flags") or []):
+        n = e.get("_desc_window") or desc_chars
+        if (not e.get("_desc_window") and attach_desc_chars
+                and "attach_parsed" in (e.get("_adapter_flags") or [])):
             n = attach_desc_chars
         desc = (e.get("description") or "").strip().replace("\n", " ")[:n]
         lines.append(f"- [{aid}] ({source} / {date}) {title} :: {desc}")

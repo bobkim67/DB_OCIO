@@ -62,12 +62,28 @@ _MIN_CONTAIN_LEN = 8     # containment 매칭 최소 정규화 길이
 # 덧붙이면 창 밖으로 밀려 무의미). 원본 본문은 _raw_body 로 보존.
 # sender → (broker, mode).
 #   mode='replace' : 커버노트형 — 본문은 인사말뿐이라 첨부 본문으로 대체(_raw_body 보존)
-#   mode='append'  : 본문 요약 + 첨부 원문 둘 다 유효 → 이어붙임
+#   mode='split'   : 본문과 첨부가 **서로 다른 내용** → 별도 evidence 2건으로 분리 발행.
+#                    (이어붙이면 prompt 창이 본문 안에서 끝나 첨부가 LLM 에 안 닿는다 —
+#                     홍석민 실측: 첨부 시작이 desc 5,318자 지점, 창은 3,000자.)
 ATTACH_PARSE_SENDERS = {
     '신성준': ('키움증권', 'replace'),      # 외사 리포트(MS/BofA/UBS) 전달 — 본문 190~400자 인사말
     '이정민': ('한국투자증권', 'replace'),   # 주간회의자료_매크로.docx(DRM) — 본문 531자 전부 서명
-    '홍석민': ('키움증권', 'append'),       # 일일 글로벌 시황 + 당사 리포트 첨부 (2026-07-27 사용자 지시)
+    '홍석민': ('키움증권', 'split'),        # 본문=글로벌 시황 / 첨부=당사 리포트 (별개 내용)
 }
+# claim 추출 prompt 가 evidence 당 읽는 desc 창(자). 미지정이면 extractor 기본값(800).
+DESC_WINDOW_WIDE = 3000
+
+# ── 본문 링크 리포트 (2026-07-27) ──
+# 키움 메일 본문 하단의 bbn.kiwoom.com/rfXXXX 는 인증 없이 application/pdf 를 직접
+# 반환하는 **당사 리포트** — 첨부(외사 리포트)와 내용이 겹치지 않는다. 링크 1개 =
+# 리포트 1편이라 evidence 도 링크별로 분리 발행한다.
+# (DB증권 whub 는 StreamDocs 뷰어라 파일을 못 받고, 한투/NH 링크는 로고·차트 이미지,
+#  UBS/MS 는 면책조항 URL — 전부 대상 외.)
+LINK_REPORT_PAT = re.compile(r'https?://bbn\.kiwoom\.com/[A-Za-z0-9]+')
+LINK_PARSE_SENDERS = {'홍석민', '신성준'}
+LINK_MAX_PER_MAIL = 8
+LINK_TIMEOUT_SEC = 25
+LINK_PDF_MAX_PAGES = 10
 # 상한 없이 전문 저장할 발신자 — 본문 clip·첨부 clip·페이지수·파일수 제한 전부 해제.
 ATTACH_NO_CLIP_SENDERS = {'홍석민'}
 ATTACH_MAX_FILES = 3          # 메일당 파싱 첨부 상한
@@ -306,6 +322,46 @@ def _parse_attachments(mail, tmpdir: Path, word_state: dict,
     return (joined if no_clip else joined[:ATTACH_TEXT_CLIP]), names
 
 
+def _fetch_link_reports(body: str, tmpdir: Path,
+                        session=None) -> list[tuple[str, str]]:
+    """본문 링크 리포트 PDF 다운로드 → [(url, text), ...]. 실패 링크는 skip.
+
+    사내망 SSL 인스펙션 때문에 인증서 검증은 끈다(내부망 전용 도구).
+    """
+    urls = list(dict.fromkeys(LINK_REPORT_PAT.findall(body or '')))[:LINK_MAX_PER_MAIL]
+    if not urls:
+        return []
+    try:
+        import requests
+        import urllib3
+        urllib3.disable_warnings()
+    except ImportError:
+        return []
+    s = session
+    if s is None:
+        s = requests.Session()
+        s.headers['User-Agent'] = 'Mozilla/5.0'
+        s.verify = False
+    out: list[tuple[str, str]] = []
+    for u in urls:
+        try:
+            r = s.get(u, timeout=LINK_TIMEOUT_SEC)
+            if r.status_code != 200 or r.content[:5] != b'%PDF-':
+                continue
+            fp = tmpdir / f'link_{u.rsplit("/", 1)[-1]}.pdf'
+            fp.write_bytes(r.content)
+            text = _squeeze_extracted(_pdf_text(fp, LINK_PDF_MAX_PAGES))
+            try:
+                fp.unlink()
+            except Exception:
+                pass
+            if text:
+                out.append((u, text))
+        except Exception:
+            continue  # 네트워크/파싱 실패는 skip — 수집 전체를 막지 않는다
+    return out
+
+
 def _sender_domain(mail) -> str:
     """발신 SMTP 도메인 (소문자). 없으면 ''.
 
@@ -342,6 +398,16 @@ def fetch_outlook_reports(days_back: int = 35) -> list[dict]:
     out: list[dict] = []
     tmpdir = Path(tempfile.mkdtemp(prefix='broker_mail_att_'))
     word_state: dict = {}
+    link_session = None
+    try:
+        import requests
+        import urllib3
+        urllib3.disable_warnings()
+        link_session = requests.Session()
+        link_session.headers['User-Agent'] = 'Mozilla/5.0'
+        link_session.verify = False
+    except ImportError:
+        pass
     try:
         for m in items:
             try:
@@ -365,7 +431,7 @@ def fetch_outlook_reports(days_back: int = 35) -> list[dict]:
                 flags = []
                 if len(body) < 80:
                     flags.append('short_body')
-                # 첨부 파싱 대상 발신자 → mode 에 따라 description 대체/이어붙임
+                # 첨부 파싱 대상 발신자 → mode 에 따라 대체 / 별도 evidence 분리
                 desc = body
                 attach_text, parsed = '', []
                 mode = attach_parse_mode(sender_name, broker) if attach_names else None
@@ -373,31 +439,65 @@ def fetch_outlook_reports(days_back: int = 35) -> list[dict]:
                     attach_text, parsed = _parse_attachments(
                         m, tmpdir, word_state, no_clip=no_clip)
                     if attach_text:
-                        desc = (f'{body}\n\n{attach_text}' if mode == 'append'
-                                else attach_text)
-                        flags.append('attach_parsed')
+                        if mode == 'replace':
+                            desc = attach_text
+                        flags.append('attach_parsed' if mode == 'replace'
+                                     else 'attach_split')
                     else:
                         flags.append('attach_parse_failed')
-                out.append({
-                    # 뉴스 article 스키마 호환 (naver/monygeek adapter 동일)
-                    'title': subject,
-                    'date': date,
-                    'source': broker,
-                    'url': '',
-                    'description': desc,
-                    'source_type': 'broker_mail',
-                    '_article_id': _article_id(broker, date, subject),
-                    # raw 보존
-                    '_raw_entry_id': str(m.EntryID or ''),
-                    '_raw_sender': sender_name,
-                    '_raw_sender_domain': domain,
-                    '_raw_received': str(received),
-                    '_raw_attach_names': attach_names,
-                    '_raw_broker': broker,
-                    '_raw_body': body if (attach_text and mode == 'replace') else '',
-                    '_attach_parsed_files': parsed,
-                    '_adapter_flags': flags,
-                })
+
+                def _rec(title, description, aid_key, rec_flags, *,
+                         attach_files=(), raw_body=''):
+                    return {
+                        # 뉴스 article 스키마 호환 (naver/monygeek adapter 동일)
+                        'title': title,
+                        'date': date,
+                        'source': broker,
+                        'url': '',
+                        'description': description,
+                        'source_type': 'broker_mail',
+                        '_article_id': _article_id(broker, date, aid_key),
+                        # raw 보존
+                        '_raw_entry_id': str(m.EntryID or ''),
+                        '_raw_sender': sender_name,
+                        '_raw_sender_domain': domain,
+                        '_raw_received': str(received),
+                        '_raw_attach_names': attach_names,
+                        '_raw_broker': broker,
+                        '_raw_body': raw_body,
+                        '_attach_parsed_files': list(attach_files),
+                        '_adapter_flags': rec_flags,
+                        # claim prompt 창 — 첨부/링크 원문·시황 본문은 800자로는 잘린다
+                        '_desc_window': (
+                            DESC_WINDOW_WIDE
+                            if (mode or {'attach_parsed', 'link_report'} & set(rec_flags))
+                            else None),
+                    }
+
+                if mode == 'split' and attach_text:
+                    # 본문(시황)과 첨부(리포트)는 별개 내용 → evidence 2건으로 분리.
+                    # 합치면 prompt 창이 본문에서 끝나 첨부가 LLM 에 닿지 못한다.
+                    out.append(_rec(subject, body, subject, flags))
+                    out.append(_rec(
+                        f'{subject} [첨부] {parsed[0] if parsed else ""}'.strip(),
+                        attach_text, f'{subject}#attach',
+                        flags + ['attach_parsed', 'attach_record'],
+                        attach_files=parsed))
+                else:
+                    out.append(_rec(
+                        subject, desc, subject, flags, attach_files=parsed,
+                        raw_body=body if (attach_text and mode == 'replace') else ''))
+
+                # 본문 링크 리포트 — 링크 1개 = 리포트 1편, 첨부와 별개 내용
+                if sender_name.strip() in LINK_PARSE_SENDERS:
+                    # 링크 레코드는 첨부와 무관 — 첨부 관련 flag 는 물려주지 않는다
+                    base_flags = [f for f in flags if not f.startswith('attach')]
+                    for url, ltext in _fetch_link_reports(
+                            str(m.Body or ''), tmpdir, link_session):
+                        head = ltext[:40].replace('\n', ' ').strip()
+                        out.append(_rec(
+                            f'{subject} [링크] {head}', ltext, f'{subject}#link:{url}',
+                            base_flags + ['link_report'], attach_files=[url]))
             except Exception:
                 continue  # 개별 메일 실패는 skip (COM 간헐 오류 방어)
     finally:
@@ -444,9 +544,9 @@ def load_broker_mail(month: str) -> list[dict]:
 def save_broker_mail(month: str, articles: list[dict]) -> tuple[Path, int]:
     """merge-on-save: 기존 파일과 _article_id union (신규만 append). → (path, n_new).
 
-    예외로 **첨부 파싱 업그레이드**는 기존 레코드에도 반영한다 — 첨부 파싱 도입
-    이전에 커버노트 본문(인사말)만 저장된 건을 재수집 시 본문으로 채우기 위함.
-    그 외 필드는 기존 값을 보존(재수집으로 인한 무의미한 변경 방지).
+    예외로 **첨부 파싱 대상 발신자(ATTACH_PARSE_SENDERS)** 의 기존 레코드는 재수집분으로
+    동기화한다 — 파싱 도입/모드 변경 전에 저장된 본문(인사말·합본)을 갱신하기 위함.
+    그 외 발신자는 기존 값을 보존(재수집으로 인한 무의미한 변경 방지).
     """
     BROKER_MAIL_DIR.mkdir(parents=True, exist_ok=True)
     p = broker_mail_path(month)
@@ -456,12 +556,11 @@ def save_broker_mail(month: str, articles: list[dict]) -> tuple[Path, int]:
         cur = incoming.get(old.get('_article_id'))
         if cur is None:
             continue
-        if ('attach_parsed' in (cur.get('_adapter_flags') or [])
-                and 'attach_parsed' not in (old.get('_adapter_flags') or [])):
-            old['description'] = cur['description']
-            old['_raw_body'] = cur.get('_raw_body', '')
-            old['_attach_parsed_files'] = cur.get('_attach_parsed_files', [])
-            old['_adapter_flags'] = cur.get('_adapter_flags') or []
+        if (old.get('_raw_sender') or '').strip() not in ATTACH_PARSE_SENDERS:
+            continue
+        for k in ('description', '_raw_body', '_attach_parsed_files',
+                  '_adapter_flags', '_desc_window', 'title'):
+            old[k] = cur.get(k)
     seen = {a.get('_article_id') for a in existing if a.get('_article_id')}
     new = [a for a in articles if a.get('_article_id') and a['_article_id'] not in seen]
     merged = existing + new
