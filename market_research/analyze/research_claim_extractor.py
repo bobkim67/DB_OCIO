@@ -48,6 +48,12 @@ MAX_TOKENS = 16384
 # 리서치 evidence 는 뉴스보다 밀도가 높아 50건 batch 는 출력이 MAX_TOKENS 에서
 # 잘린다(truncation → json_parse_failed). 25 로 축소 + salvage 파서로 견고화.
 MAX_INPUT_EVIDENCE = 25
+# 레인별 배치 상한. 병목은 입력 컨텍스트가 아니라 **배치당 출력 예산** — 한 호출이
+# 25개 문서의 claim 을 MAX_TOKENS 안에서 다 만들어야 해서 문서당 산출이 눌린다.
+# 통제 실험(동일 25건, 2026-07 broker_mail): 25×1 → 23 claim(문서당 0.92) /
+# 5×5 → 70 claim(문서당 2.80). 문서 내 유사중복 0%(과분할 아님), claim 1건당 비용은
+# 오히려 하락($0.0019 → $0.0013). 리포트 원문(첨부·링크)이 들어오는 broker_mail 만 축소.
+BATCH_SIZE_BY_SOURCE = {'broker_mail': 5}
 
 _OBJ_DECODER = json.JSONDecoder()
 _FENCE_HEAD_RE = _re.compile(r"^\s*```(?:json)?\s*", _re.IGNORECASE)
@@ -360,10 +366,11 @@ def run_research_extraction(
         for a in evid:
             if a.get("_article_id"):
                 new_ids.add(str(a["_article_id"]))
-        for start in range(0, len(evid), MAX_INPUT_EVIDENCE):
+        _bs = BATCH_SIZE_BY_SOURCE.get(st, MAX_INPUT_EVIDENCE)
+        for start in range(0, len(evid), _bs):
             if max_batches is not None and nb >= max_batches:
                 break
-            batch = evid[start:start + MAX_INPUT_EVIDENCE]
+            batch = evid[start:start + _bs]
             r = extract_research_claims(
                 month, batch, source_type=st, cost_cap_usd=cost_cap_usd,
                 llm_call=llm_call)
