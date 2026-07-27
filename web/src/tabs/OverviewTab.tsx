@@ -273,7 +273,7 @@ export default function OverviewTab({ fundCode }: Props) {
         {/* 변동성 (수익률과 동기화된 설정후/YTD 토글) */}
         <div className="ov-stat">
           <div className="ov-stat-top">
-            <span className="label">변동성</span>
+            <span className="label">변동성 <span className="ov-info" title="주간수익률 표준편차 × √52 (연환산). 설정후=설정일 이후 누적, YTD=연초 이후 — 위 수익률 토글과 연동. 아랫줄은 벤치마크 변동성과 차이(%p)">i</span></span>
             <div className="ov-ctoggle">
               <button type="button" className={retMode === "SI" ? "on" : ""} onClick={() => setRetMode("SI")}>설정후</button>
               <button type="button" className={retMode === "YTD" ? "on" : ""} onClick={() => setRetMode("YTD")}>YTD</button>
