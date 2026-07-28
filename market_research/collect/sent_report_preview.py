@@ -12,7 +12,7 @@ DRM 제약 실측:
   Word 도 Range.Copy → PPT PasteSpecial(EnhancedMetafile) 동일 경로. PDF 원본은 클린이라
   변환 불필요(브라우저 inline).
 
-출력: {rel_path}.preview/p01.png … + index preview_pages 갱신.
+출력: {rel_path}.preview/p01.webp … + index preview_pages 갱신.
 """
 from __future__ import annotations
 
@@ -25,28 +25,40 @@ from market_research.collect.sent_report_collector import INDEX_PATH, SENT_DIR
 
 MAX_SLIDES = 30
 MAX_SHEETS = 8
-EXPORT_WIDTH = 1600
+# 캡쳐가 client 가 보는 **유일한 경로**다(원본은 DRM 이라 사외에서 못 연다) → 해상도 우선.
+# 1600 → 3000px (2026-07-28). 저장은 WebP q90 — 같은 화질에서 PNG 대비 ~43% 용량이라
+# 해상도를 올리고도 총량이 준다(PNG 2400px 185MB → WebP 3000px 약 120MB).
+EXPORT_WIDTH = 3000
+WEBP_QUALITY = 90
 
 PNG_SIG = b'\x89PNG\r\n\x1a\n'
+PAGE_EXT = '.webp'
+
+
+def _page_path(out_dir: Path, i: int) -> Path:
+    return out_dir / f'p{i:02d}{PAGE_EXT}'
+
+
+def _is_clean_image(p: Path) -> bool:
+    """DRM 래핑(`<DOCUMENT SAFER ...`)이 아닌 진짜 이미지인가 — WebP/PNG 매직 검사."""
+    try:
+        with open(p, 'rb') as f:
+            head = f.read(16)
+    except OSError:
+        return False
+    if head[:8] == PNG_SIG:
+        return True
+    return head[:4] == b'RIFF' and head[8:12] == b'WEBP'
 
 
 def _clean_png_count(out_dir: Path, n: int) -> int:
-    """생성된 p01..pNN 중 **진짜 PNG** 인 것의 수.
+    """생성된 p01..pNN 중 **진짜 이미지** 인 것의 수.
 
     DRM 에이전트가 산출물을 재래핑하면(`<DOCUMENT SAFER ...`) 크기·개수는 정상인데
     브라우저가 렌더하지 못한다. 2026-07-28 저장분 174장이 전부 이 상태였고 서버는
     200 을 주고 있어 화면을 보기 전까지 아무도 몰랐다. → 생성 즉시 검증한다.
     """
-    ok = 0
-    for i in range(1, n + 1):
-        p = out_dir / f'p{i:02d}.png'
-        try:
-            with open(p, 'rb') as f:
-                if f.read(8) == PNG_SIG:
-                    ok += 1
-        except OSError:
-            pass
-    return ok
+    return sum(1 for i in range(1, n + 1) if _is_clean_image(_page_path(out_dir, i)))
 
 
 def _export_slide(slide, out_path: Path, w: int, h: int) -> None:
@@ -57,10 +69,13 @@ def _export_slide(slide, out_path: Path, w: int, h: int) -> None:
     (덮어쓰기 여부 무관). 같은 슬라이드를 %TEMP% 로 내보내면 클린이고, 그 파일을
     파이썬이 sent_reports 로 복사하면 클린이 유지된다. → 이 우회가 필수.
     """
+    from PIL import Image
     with tempfile.TemporaryDirectory() as td:
-        tmp = Path(td) / out_path.name
+        tmp = Path(td) / 'slide.png'
         slide.Export(str(tmp), 'PNG', w, h)
-        shutil.copyfile(tmp, out_path)
+        # 최종 write 는 파이썬(비-Office) — DRM 미후킹. 겸사겸사 WebP 로 줄인다.
+        with Image.open(tmp) as im:
+            im.convert('RGB').save(out_path, 'WEBP', quality=WEBP_QUALITY, method=4)
 
 
 def _export_ppt(papp, path: Path, out_dir: Path) -> int:
@@ -69,7 +84,7 @@ def _export_ppt(papp, path: Path, out_dir: Path) -> int:
         n = min(pres.Slides.Count, MAX_SLIDES)
         ratio = pres.PageSetup.SlideHeight / pres.PageSetup.SlideWidth
         for i in range(1, n + 1):
-            _export_slide(pres.Slides(i), out_dir / f'p{i:02d}.png',
+            _export_slide(pres.Slides(i), _page_path(out_dir, i),
                           EXPORT_WIDTH, int(EXPORT_WIDTH * ratio))
         return n
     finally:
@@ -91,7 +106,9 @@ def _paste_to_png(papp, out_path: Path, w: float, h: float, paste_fn) -> bool:
             shp.Top = 0
         except Exception:
             pass
-        scale = min(2.0, 4000.0 / w)
+        # Excel/Word 는 슬라이드 크기가 원본 range 크기(pt)라 배율로 해상도를 올린다.
+        # 2026-07-28: 2.0 → 3.0 (상한 6000px) — PPT EXPORT_WIDTH 2400 과 눈높이 맞춤.
+        scale = min(3.0, 6000.0 / w)
         _export_slide(slide, out_path, int(w * scale), int(h * scale))
         return out_path.exists()
     finally:
@@ -112,7 +129,7 @@ def _export_excel(xapp, papp, path: Path, out_dir: Path) -> int:
                 if rng is None or (rng.Rows.Count <= 1 and rng.Columns.Count <= 1):
                     continue
                 rng.CopyPicture(Appearance=1, Format=-4147)  # xlScreen, xlPicture
-                ok = _paste_to_png(papp, out_dir / f'p{n + 1:02d}.png',
+                ok = _paste_to_png(papp, _page_path(out_dir, n + 1),
                                    float(rng.Width), float(rng.Height),
                                    lambda s: s.Shapes.Paste())
                 if ok:
@@ -129,7 +146,7 @@ def _export_word(wapp, papp, path: Path, out_dir: Path) -> int:
     try:
         doc.Range().Copy()
         # A4 세로 비율 근사 (여러 페이지면 세로로 길어져 잘릴 수 있음 — 코멘트 문서 1~2p 용)
-        ok = _paste_to_png(papp, out_dir / 'p01.png', 595.0, 842.0,
+        ok = _paste_to_png(papp, _page_path(out_dir, 1), 595.0, 842.0,
                            lambda s: s.Shapes.PasteSpecial(DataType=2))  # EnhancedMetafile
         return 1 if ok else 0
     finally:
@@ -162,7 +179,7 @@ def build_previews(force: bool = False) -> dict:
                 continue
             out_dir.mkdir(exist_ok=True)
             # 페이지 수가 줄면 이전 실행의 p03.png 같은 고아가 남는다 → 매번 비우고 시작
-            for stale in out_dir.glob('p*.png'):
+            for stale in list(out_dir.glob('p*.png')) + list(out_dir.glob('p*.webp')):
                 stale.unlink(missing_ok=True)
             try:
                 if ext in ('.ppt', '.pptx'):

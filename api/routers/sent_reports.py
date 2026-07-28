@@ -39,6 +39,26 @@ class SentReportListDTO(BaseModel):
     periods: list[SentReportPeriodDTO]
 
 
+def _preview_page(fund: str, rel_path: str, page: int) -> tuple[_P, str]:
+    """캡쳐 페이지 경로 — WebP 우선, 구 PNG 산출물 fallback (2026-07-28 포맷 전환)."""
+    for ext, mime in (('.webp', 'image/webp'), ('.png', 'image/png')):
+        p = SENT_DIR / f'{rel_path}.preview/p{page:02d}{ext}'
+        if p.exists():
+            return _safe_resolve(fund, f'{rel_path}.preview/p{page:02d}{ext}'), mime
+    raise HTTPException(status_code=404, detail='preview not found')
+
+
+def _preview_rev(rel_path: str) -> int:
+    """캡쳐 세대(p01 mtime) — 재생성 시 프론트 img URL 이 바뀌어 캐시를 우회한다."""
+    for ext in ('.webp', '.png'):
+        p = SENT_DIR / f'{rel_path}.preview/p01{ext}'
+        try:
+            return int(p.stat().st_mtime)
+        except OSError:
+            continue
+    return 0
+
+
 def _safe_resolve(fund: str, rel_path: str) -> _P:
     """경로 traversal 방지 — fund 하위 + SENT_DIR 내부만 허용."""
     p = (SENT_DIR / rel_path).resolve()
@@ -56,13 +76,7 @@ def list_sent_reports(fund: str = Path(..., min_length=1, max_length=32)) -> Sen
     by_period: dict[str, list[SentReportFileDTO]] = {}
     for e in rows:
         txt = SENT_DIR / (e['rel_path'] + '.txt')
-        # 캡쳐 세대 — 재생성하면 mtime 이 바뀌고 프론트 img URL 도 바뀐다.
-        # (사내 프록시가 옛 PNG 를 계속 주던 사고 2026-07-28)
-        p01 = SENT_DIR / (e['rel_path'] + '.preview/p01.png')
-        try:
-            rev = int(p01.stat().st_mtime)
-        except OSError:
-            rev = 0
+        rev = _preview_rev(e['rel_path'])
         by_period.setdefault(e['period'], []).append(SentReportFileDTO(
             filename=e['filename'], rel_path=e['rel_path'], kind=e.get('kind', ''),
             mail_date=e.get('mail_date', ''), mail_subject=e.get('mail_subject', ''),
@@ -147,7 +161,7 @@ def get_sent_report_preview(
     no-cache: 캡쳐를 재생성해도 프록시/브라우저가 옛 바이트를 계속 주는 사고가 있었다
     (2026-07-28 DRM 래핑본 → 클린 교체 시). 파일은 그대로면 304 로 끝나니 비용은 없다.
     """
-    p = _safe_resolve(fund, f'{rel_path}.preview/p{page:02d}.png')
-    return FileResponse(str(p), media_type='image/png',
+    p, mime = _preview_page(fund, rel_path, page)
+    return FileResponse(str(p), media_type=mime,
                         content_disposition_type='inline',
                         headers={'Cache-Control': 'no-cache'})

@@ -156,11 +156,8 @@ export default function SentReportReader({
               );
             }}>HTML 저장</button>
           )}
-          {file && (
-            <a href={`/api/funds/${fundCode}/sent-reports/file?rel_path=${encodeURIComponent(file.rel_path)}`}>
-              <button type="button">원본 다운로드</button>
-            </a>
-          )}
+          {/* '원본 다운로드' 제거 (2026-07-28) — 원본은 DRM 이라 사외 client 는 열 수 없다.
+              열람 경로는 캡쳐 이미지로 단일화. 사내에서 원본이 필요하면 메일/파일서버로. */}
         </div>
 
         <div className="srr-body">
