@@ -1,0 +1,26 @@
+{
+ "_comment": [
+  "수동 포함 목록 — 메일 교차검증을 우회해 아카이브에 넣는 파일.",
+  "정리 폴더(OCIO_DB/운용보고서) 밖에 있거나 발송 기록이 없는 건만 여기에 적는다.",
+  "sent_report_import 가 --replace 여부와 무관하게 항상 병합한다.",
+  "필드: src(절대경로) fund period category(main|appendix) kind(월간|분기|비정기) note"
+ ],
+ "entries": [
+  {
+   "src": "C:/Users/user/Downloads/OCIO_DB/08N33(베이직)_넥스윈/202606/(한국투자신탁운용) LIG디펜스&에어로스페이스 운용보고_한국투자OCOIO알아서베이직 사모_20260630_YTD.pptx",
+   "fund": "08N33",
+   "period": "2026-06",
+   "category": "appendix",
+   "kind": "비정기",
+   "note": "LIG D&A 대면보고 YTD본. 발송 기록 없음(메일엔 20260615_v3 만) — 사용자 지정 2026-07-28"
+  },
+  {
+   "src": "C:/Users/user/Downloads/OCIO_DB/08K88(성장형)_SC제일은행/202603/교보생명_운용보고_20260313.pptx",
+   "fund": "08K88",
+   "period": "2026-03",
+   "category": "main",
+   "kind": "비정기",
+   "note": "교보생명(판매사) 대면 운용보고. 정리 폴더가 아닌 펀드별 폴더에 있음 — 사용자 지정 2026-07-28"
+  }
+ ]
+}

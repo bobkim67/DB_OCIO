@@ -26,6 +26,7 @@ from pathlib import Path
 from market_research.collect.sent_report_collector import PARSERS, SENT_DIR
 
 DEFAULT_ROOT = Path(r'C:\Users\user\Downloads\OCIO_DB\운용보고서')
+MANUAL_PATH = Path(__file__).with_name('sent_report_manual.json')
 DAYS_BACK = 400
 _DOC_EXT = ('.ppt', '.pptx', '.doc', '.docx', '.xls', '.xlsx', '.pdf')
 
@@ -37,6 +38,10 @@ MAIN_PAT = (
     '월간운용보고서', 'DB생명 글로벌Active', '신한라이프_운용보고서',
     'OCIO 운용 펀드 관련 코멘트', '자산운용보고서_DB생명', '코멘트_통합',
     '펀드운용보고서_한국투자퇴직연금', 'SCBK_모니터링',
+    # 08K88 은 모니터링 양식 + 성과분석 시트가 한 세트로 나간다(사용자 확정 2026-07-28,
+    # 2026-07 분도 동일 양식 예정). 타 펀드의 성과분석_* 는 PA 작업파일이라 제외 —
+    # 그쪽은 메일 첨부에도 없어 어차피 교차검증에서 걸러진다.
+    '성과분석_08K88',
 )
 MAIN_RE = re.compile(r'^07G04_\d{6}\.pptx?$', re.I)
 # 부속 = 본문과 함께/별도로 정기 발송되는 참고자료
@@ -70,6 +75,17 @@ def name_period(fn: str, dt: datetime):
         if r:
             return r
     return None
+
+
+def load_manual() -> list[dict]:
+    """수동 포함 목록 (sent_report_manual.json). 없으면 빈 목록."""
+    if not MANUAL_PATH.exists():
+        return []
+    try:
+        return json.loads(MANUAL_PATH.read_text(encoding='utf-8')).get('entries', [])
+    except Exception as exc:
+        print(f'  ⚠ 수동 포함 목록 파싱 실패: {exc}')
+        return []
 
 
 def load_mail_attachments(days_back: int = DAYS_BACK) -> dict[str, dict]:
@@ -156,6 +172,23 @@ def run(root: Path, replace: bool, dry_run: bool) -> dict:
                         'src': str(src), 'text_extracted': False, 'preview_pages': 0,
                     }
 
+    # 수동 포함 — 정리 폴더 밖이거나 발송 기록이 없어 교차검증을 통과 못 하는 건
+    for m in load_manual():
+        src = Path(m['src'])
+        if not src.exists():
+            print(f"  ⚠ 수동 포함 파일 없음: {m['src']}")
+            continue
+        key = (m['fund'], m['period'], src.name)
+        picked[key] = {
+            'fund': m['fund'], 'period': m['period'], 'filename': src.name,
+            'rel_path': f"{m['fund']}/{m['period']}/{src.name}",
+            'kind': m.get('kind', '비정기'), 'category': m.get('category', 'main'),
+            'mail_date': datetime.fromtimestamp(src.stat().st_mtime).strftime('%Y-%m-%d'),
+            'mail_subject': m.get('note', ''), 'mail_source': 'manual',
+            'src': str(src), 'text_extracted': False, 'preview_pages': 0,
+        }
+        print(f"  [manual] {m['fund']} {m['period']} {src.name[:56]}")
+
     print(f'[pick] 임포트 대상 {len(picked)}건 '
           f"(main {sum(1 for v in picked.values() if v['category']=='main')} / "
           f"appendix {sum(1 for v in picked.values() if v['category']=='appendix')})")
@@ -166,20 +199,50 @@ def run(root: Path, replace: bool, dry_run: bool) -> dict:
             print(f"  {v['category']:8s} {v['fund']} {v['period']}  {v['filename'][:60]}")
         return {'picked': len(picked), 'dry_run': True}
 
+    # 직전 아카이브의 산출물(.txt / .preview) — 파일이 그대로면 승계한다.
+    # 매월 재실행마다 캡쳐를 전량 재생성하면 Office COM 으로 10분이 날아간다.
+    old_by_key: dict[tuple[str, str, str], dict] = {}
+    bak: Path | None = None
     if replace and SENT_DIR.exists():
+        old_idx = SENT_DIR / 'index.json'
+        if old_idx.exists():
+            try:
+                for e in json.loads(old_idx.read_text(encoding='utf-8')).get('entries', []):
+                    old_by_key[(e['fund'], e['period'], e['filename'])] = e
+            except Exception:
+                pass
         bak = SENT_DIR.parent / f'sent_reports.bak_{datetime.now():%Y%m%d_%H%M%S}'
         shutil.move(str(SENT_DIR), str(bak))
         print(f'[backup] 기존 아카이브 → {bak.name}')
     SENT_DIR.mkdir(parents=True, exist_ok=True)
 
-    entries = []
+    entries, carried = [], 0
     for k in sorted(picked):
         v = dict(picked[k])
         src = Path(v.pop('src'))
         dst = SENT_DIR / v['rel_path']
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(src, dst)
+
+        old = old_by_key.get(k)
+        if bak and old:
+            old_src = bak / old['rel_path']
+            if old_src.exists() and old_src.stat().st_size == src.stat().st_size:
+                # 같은 파일 → 텍스트/캡쳐 재생성 불필요
+                old_txt = Path(str(old_src) + '.txt')
+                if old_txt.exists():
+                    shutil.copyfile(old_txt, Path(str(dst) + '.txt'))
+                    v['text_extracted'] = True
+                    v['text_chars'] = old.get('text_chars', 0)
+                old_pv = Path(str(old_src) + '.preview')
+                if old_pv.is_dir() and old.get('preview_pages'):
+                    shutil.copytree(old_pv, Path(str(dst) + '.preview'))
+                    v['preview_pages'] = old['preview_pages']
+                if v.get('preview_pages') or v.get('text_extracted'):
+                    carried += 1
         entries.append(v)
+    if carried:
+        print(f'[carry] 변경 없는 {carried}건은 기존 텍스트·캡쳐 승계 (재생성 불필요)')
 
     (SENT_DIR / 'index.json').write_text(
         json.dumps({'entries': entries, 'processed_entry_ids': []},
