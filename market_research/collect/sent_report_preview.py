@@ -25,6 +25,13 @@ from market_research.collect.sent_report_collector import INDEX_PATH, SENT_DIR
 
 MAX_SLIDES = 30
 MAX_SHEETS = 8
+# ★ 엑셀 시트 필터 (2026-07-28) — 보고서 뒤에 붙는 raw data 시트를 캡쳐에서 뺀다.
+# 실측: 07G07 FactSheet 0.43 / 4JM12 분기 0.74~0.89 (본문) vs 수정기준가 data 13.0 ·
+# BM data 8.0 · 2JM23 U보유내역Top10 18,671(UsedRange 가 1,048,545행으로 오염).
+# 초장문 시트는 _paste_to_png 의 4000pt 클램프에 걸려 빈 영역만 찍히기도 했다
+# (Appendix 썸네일이 하얗게 보이던 원인).
+MAX_SHEET_RATIO = 3.0     # 세로/가로 — 초과 시 데이터 시트로 보고 스킵
+MIN_SHEET_AREA = 20000    # pt² — 사실상 빈 시트(08N33 'Comment' 54x16) 스킵
 # 캡쳐가 client 가 보는 **유일한 경로**다(원본은 DRM 이라 사외에서 못 연다) → 해상도 우선.
 # 1600 → 3000px (2026-07-28). 저장은 WebP q90 — 같은 화질에서 PNG 대비 ~43% 용량이라
 # 해상도를 올리고도 총량이 준다(PNG 2400px 185MB → WebP 3000px 약 120MB).
@@ -128,9 +135,14 @@ def _export_excel(xapp, papp, path: Path, out_dir: Path) -> int:
                 rng = ws.UsedRange
                 if rng is None or (rng.Rows.Count <= 1 and rng.Columns.Count <= 1):
                     continue
+                w, h = float(rng.Width), float(rng.Height)
+                if w <= 0 or h <= 0 or w * h < MIN_SHEET_AREA:
+                    continue
+                if h / w > MAX_SHEET_RATIO:
+                    print(f'    skip sheet "{ws.Name}" (세로/가로 {h / w:.1f} — 데이터 시트)')
+                    continue
                 rng.CopyPicture(Appearance=1, Format=-4147)  # xlScreen, xlPicture
-                ok = _paste_to_png(papp, _page_path(out_dir, n + 1),
-                                   float(rng.Width), float(rng.Height),
+                ok = _paste_to_png(papp, _page_path(out_dir, n + 1), w, h,
                                    lambda s: s.Shapes.Paste())
                 if ok:
                     n += 1
@@ -141,14 +153,43 @@ def _export_excel(xapp, papp, path: Path, out_dir: Path) -> int:
         wb.Close(False)
 
 
+_WD_GOTO_PAGE = 1
+_WD_GOTO_ABSOLUTE = 1
+_WD_STAT_PAGES = 2
+
+
 def _export_word(wapp, papp, path: Path, out_dir: Path) -> int:
+    """Word → 페이지별 PNG.
+
+    ★ 2026-07-28 fix: 이전엔 `doc.Range()` 전체를 A4 한 장에 붙여넣고 무조건 1페이지로
+    잘랐다(07G07 KB 코멘트 docx 가 전부 1p 로만 올라와 있던 원인). 이제 GoTo(wdGoToPage)
+    로 페이지 경계를 잡아 페이지 단위로 복사한다. 용지 크기도 A4 가정 대신 문서 설정 사용.
+    """
     doc = wapp.Documents.Open(str(path.resolve()), ReadOnly=True)
     try:
-        doc.Range().Copy()
-        # A4 세로 비율 근사 (여러 페이지면 세로로 길어져 잘릴 수 있음 — 코멘트 문서 1~2p 용)
-        ok = _paste_to_png(papp, _page_path(out_dir, 1), 595.0, 842.0,
-                           lambda s: s.Shapes.PasteSpecial(DataType=2))  # EnhancedMetafile
-        return 1 if ok else 0
+        try:
+            n = int(doc.ComputeStatistics(_WD_STAT_PAGES))
+        except Exception:
+            n = 1
+        n = max(1, min(n, MAX_SLIDES))
+        ps = doc.PageSetup
+        w, h = float(ps.PageWidth), float(ps.PageHeight)
+
+        made = 0
+        for i in range(1, n + 1):
+            try:
+                start = doc.GoTo(_WD_GOTO_PAGE, _WD_GOTO_ABSOLUTE, i).Start
+                end = (doc.GoTo(_WD_GOTO_PAGE, _WD_GOTO_ABSOLUTE, i + 1).Start
+                       if i < n else doc.Content.End)
+                if end <= start:
+                    continue
+                doc.Range(start, end).Copy()
+            except Exception:
+                continue
+            if _paste_to_png(papp, _page_path(out_dir, made + 1), w, h,
+                             lambda s: s.Shapes.PasteSpecial(DataType=2)):  # EnhancedMetafile
+                made += 1
+        return made
     finally:
         doc.Close(False)
 
