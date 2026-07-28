@@ -17,6 +17,7 @@ export type FileRow = {
   text_chars: number;
   preview_pages: number;
   preview_rev: number;   // 캡쳐 세대 (mtime) — img URL 캐시 우회용
+  category: string;      // main=본문 / appendix=부속자료
 };
 export type PeriodRow = { period: string; files: FileRow[] };
 export type GeneratedRow = { period: string; comment: string; approved_at: string };

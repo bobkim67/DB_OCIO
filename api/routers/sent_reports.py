@@ -27,6 +27,7 @@ class SentReportFileDTO(BaseModel):
     text_chars: int = 0
     preview_pages: int = 0  # 원본 레이아웃 PNG 캡쳐 수 (sent_report_preview 산출)
     preview_rev: int = 0    # p01.png mtime — 캡쳐 재생성 시 URL 이 바뀌어 캐시를 우회
+    category: str = 'main'  # main=운용보고서 본문 / appendix=Factsheet·월별요약 등 부속자료
 
 
 class SentReportPeriodDTO(BaseModel):
@@ -82,6 +83,7 @@ def list_sent_reports(fund: str = Path(..., min_length=1, max_length=32)) -> Sen
             mail_date=e.get('mail_date', ''), mail_subject=e.get('mail_subject', ''),
             has_text=txt.exists(), text_chars=int(e.get('text_chars') or 0),
             preview_pages=int(e.get('preview_pages') or 0), preview_rev=rev,
+            category=str(e.get('category') or 'main'),
         ))
     periods = [SentReportPeriodDTO(period=p, files=sorted(fs, key=lambda f: f.filename))
                for p, fs in by_period.items()]

@@ -29,10 +29,12 @@ function extLabel(filename: string): string {
 }
 
 export default function ReportCardHome({
-  fundCode, beneficiary, onGoFundComment,
+  fundCode, beneficiary, category, onGoFundComment,
 }: {
   fundCode: string;
   beneficiary?: string | null;
+  /** 'main'=운용보고서 본문(월별 보고 탭) / 'appendix'=Factsheet·월별요약(Appendix 탭) */
+  category: "main" | "appendix";
   onGoFundComment: () => void;
 }) {
   const [periods, setPeriods] = useState<PeriodRow[] | null>(null);
@@ -46,9 +48,15 @@ export default function ReportCardHome({
     setPeriods(null); setErr(""); setOpenIdx(-1);
     fetch(`/api/funds/${fundCode}/sent-reports`)
       .then((r) => r.json())
-      .then((d) => setPeriods(d.periods ?? []))
+      .then((d: { periods?: PeriodRow[] }) => {
+        // 탭별로 category 필터 → 파일이 하나도 안 남는 기간은 카드에서 제외
+        const rows = (d.periods ?? [])
+          .map((p) => ({ ...p, files: p.files.filter((f) => f.category === category) }))
+          .filter((p) => p.files.length > 0);
+        setPeriods(rows);
+      })
       .catch((e) => setErr(String(e)));
-  }, [fundCode]);
+  }, [fundCode, category]);
 
   useEffect(() => {
     setGenerated([]);
@@ -75,12 +83,18 @@ export default function ReportCardHome({
   if (!periods.length)
     return (
       <div className="rch-none">
-        <div className="t">{fundCode}{beneficiary ? ` · ${beneficiary}` : ""} — 발송된 운용보고가 없습니다.</div>
-        <div className="d">
-          이 펀드는 고객사 개별 보고 대상이 아니거나, 취합 배치가 아직 실행되지 않았습니다.
-          승인된 펀드 코멘트는 아래에서 볼 수 있습니다.
+        <div className="t">
+          {fundCode}{beneficiary ? ` · ${beneficiary}` : ""} —{" "}
+          {category === "appendix" ? "부속자료가 없습니다." : "발송된 운용보고가 없습니다."}
         </div>
-        <button type="button" className="go" onClick={onGoFundComment}>펀드 코멘트 보기</button>
+        <div className="d">
+          {category === "appendix"
+            ? "이 펀드는 Factsheet·월별요약 같은 정기 부속자료를 발송하지 않습니다."
+            : "이 펀드는 고객사 개별 보고 대상이 아니거나, 취합 배치가 아직 실행되지 않았습니다. 승인된 펀드 코멘트는 아래에서 볼 수 있습니다."}
+        </div>
+        {category === "main" && (
+          <button type="button" className="go" onClick={onGoFundComment}>펀드 코멘트 보기</button>
+        )}
       </div>
     );
 

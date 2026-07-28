@@ -2850,6 +2850,11 @@ export interface components {
              * @default 0
              */
             preview_rev: number;
+            /**
+             * Category
+             * @default main
+             */
+            category: string;
         };
         /** SentReportListDTO */
         SentReportListDTO: {

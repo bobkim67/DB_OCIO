@@ -5,7 +5,7 @@ import FundReportPanel from "./FundReportPanel";
 import ReportCardHome from "./ReportCardHome";
 import "../styles/sentreports.css";
 
-type SubView = "cards" | "market" | "fund";
+type SubView = "cards" | "appendix" | "market" | "fund";
 
 /**
  * 운용보고 탭 — 기본 화면은 월별 카드 홈(고객사 발송 보고서).
@@ -27,7 +27,8 @@ export default function ReportTab({ fundCode }: { fundCode: string }) {
         </h2>
         {meta?.beneficiary && <span className="rch-client">{meta.beneficiary}</span>}
         <div className="rch-seg">
-          {([["cards", "월별 보고"], ["market", "시장 코멘트"], ["fund", "펀드 코멘트"]] as const)
+          {([["cards", "월별 보고"], ["appendix", "Appendix"],
+             ["market", "시장 코멘트"], ["fund", "펀드 코멘트"]] as const)
             .map(([k, label]) => (
               <button key={k} type="button" className={view === k ? "on" : ""}
                 onClick={() => setView(k)}>{label}</button>
@@ -35,10 +36,12 @@ export default function ReportTab({ fundCode }: { fundCode: string }) {
         </div>
       </div>
 
-      {view === "cards" && (
+      {(view === "cards" || view === "appendix") && (
         <ReportCardHome
+          key={view}                                   /* 탭 전환 시 상태 초기화 */
           fundCode={fundCode}
           beneficiary={meta?.beneficiary}
+          category={view === "cards" ? "main" : "appendix"}
           onGoFundComment={() => setView("fund")}
         />
       )}
