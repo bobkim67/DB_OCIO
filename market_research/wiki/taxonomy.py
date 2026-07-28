@@ -156,9 +156,12 @@ def _load_approved_alias() -> dict[str, str]:
     """Optional runtime merge of ``config/phrase_alias_approved.yaml``.
 
     Returns ``{}`` when:
-      - the file does not exist
-      - PyYAML is not installed
-      - the file fails to parse
+      - the file does not exist (정상 — overlay 는 선택사항이라 조용히 skip)
+      - PyYAML is not installed / the file fails to parse
+        → **설정 오류**. 파일이 있는데 못 읽는 것이므로 경고를 남긴다.
+          조용히 넘기면 승인 alias 가 통째로 빠진 채 taxonomy 태깅이 열화되는데
+          아무 신호가 없다 (2026-07-28: market_research 를 PyYAML 없는 api/.venv 로
+          돌려 alias 3건이 무음 실패, 원인 추적에 시간 소요).
 
     Only entries whose *value* is an exact TOPIC_TAXONOMY label are kept.
     Anything else is silently dropped here — the validator in
@@ -172,10 +175,20 @@ def _load_approved_alias() -> dict[str, str]:
     try:
         import yaml  # PyYAML
     except ImportError:
+        import warnings
+        warnings.warn(
+            f'PyYAML 미설치 → 승인 alias overlay({yaml_path.name}) 를 건너뜁니다. '
+            'taxonomy alias 가 builtin 만으로 동작해 태깅이 열화됩니다. '
+            'market_research 는 메인 .venv(PyYAML 포함)로 실행하세요.',
+            RuntimeWarning, stacklevel=2)
         return {}
     try:
         data = yaml.safe_load(yaml_path.read_text(encoding='utf-8')) or {}
-    except Exception:
+    except Exception as exc:
+        import warnings
+        warnings.warn(
+            f'승인 alias 파일 파싱 실패 ({yaml_path.name}): {exc}. overlay 를 건너뜁니다.',
+            RuntimeWarning, stacklevel=2)
         return {}
     approved = data.get('approved') if isinstance(data, dict) else None
     if not isinstance(approved, dict):
