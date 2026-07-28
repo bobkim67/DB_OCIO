@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { buildStandaloneHtml, downloadHtml, periodLabel, renderTextBlocks } from "../lib/reportText";
+import { periodLabel, renderTextBlocks } from "../lib/reportText";
 
 /**
  * 발송 운용보고 리더 (모달) — 카드 클릭 시 본문 열람.
@@ -41,6 +41,8 @@ export default function SentReportReader({
   const [textErr, setTextErr] = useState("");
   // 캡쳐 PNG 가 DRM 래핑되어 브라우저가 렌더하지 못하는 경우 안내로 대체
   const [previewBroken, setPreviewBroken] = useState(false);
+  // 캡쳐 확대 배율 — 1 = 모달 폭에 맞춤. 늘리면 컨테이너에서 가로 스크롤로 훑어본다.
+  const [zoom, setZoom] = useState(1);
 
   const file: FileRow | undefined = row?.files[fileIdx];
   const { big, small } = periodLabel(row?.period ?? "");
@@ -51,6 +53,7 @@ export default function SentReportReader({
     setText("");
     setTextErr("");
     setPreviewBroken(false);
+    setZoom(1);
   }, [index]);
 
   useEffect(() => {
@@ -142,20 +145,20 @@ export default function SentReportReader({
               onClick={() => setMode("gen")}>생성 코멘트</button>
           )}
           <span className="sp" />
+          {/* 캡쳐 확대 — 원문을 그대로 키워 보는 게 텍스트 변환보다 읽기 낫다(2026-07-28) */}
+          {mode === "preview" && !previewBroken && (file?.preview_pages ?? 0) > 0 && (
+            <span className="zoom">
+              <button type="button" onClick={() => setZoom((z) => Math.max(1, +(z - 0.25).toFixed(2)))}
+                disabled={zoom <= 1} title="축소">−</button>
+              <span className="lv">{Math.round(zoom * 100)}%</span>
+              <button type="button" onClick={() => setZoom((z) => Math.min(4, +(z + 0.25).toFixed(2)))}
+                disabled={zoom >= 4} title="확대">+</button>
+              <button type="button" onClick={() => setZoom(1)} disabled={zoom === 1}>맞춤</button>
+            </span>
+          )}
           {file && isPdf && (
             <a href={`/api/funds/${fundCode}/sent-reports/file?rel_path=${encodeURIComponent(file.rel_path)}&inline=true`}
               target="_blank" rel="noreferrer"><button type="button">새 탭에서 PDF</button></a>
-          )}
-          {file?.has_text && (
-            <button type="button" onClick={async () => {
-              const r = await fetch(`/api/funds/${fundCode}/sent-reports/text?rel_path=${encodeURIComponent(file.rel_path)}`);
-              const d = await r.json();
-              downloadHtml(
-                file.filename.replace(/\.[^.]+$/, "") + ".html",
-                buildStandaloneHtml(`${fundCode} 운용보고 — ${row.period}`,
-                  `${file.filename} · 발송 ${file.mail_date} · ${file.kind}`, d.text ?? ""),
-              );
-            }}>HTML 저장</button>
           )}
           {/* '원본 다운로드' 제거 (2026-07-28) — 원본은 DRM 이라 사외 client 는 열 수 없다.
               열람 경로는 캡쳐 이미지로 단일화. 사내에서 원본이 필요하면 메일/파일서버로. */}
@@ -163,9 +166,11 @@ export default function SentReportReader({
 
         <div className="srr-body">
           {mode === "preview" && file && file.preview_pages > 0 && !previewBroken && (
-            <div className="srr-pages">
+            <div className="srr-pages" style={{ "--z": zoom } as React.CSSProperties}>
               {Array.from({ length: file.preview_pages }, (_, i) => (
                 <img key={i} loading="lazy" alt={`${file.filename} p${i + 1}`}
+                  title="더블클릭: 확대 / 되돌리기"
+                  onDoubleClick={() => setZoom((z) => (z > 1 ? 1 : 2))}
                   onError={() => { if (i === 0) setPreviewBroken(true); }}
                   src={`/api/funds/${fundCode}/sent-reports/preview?rel_path=${encodeURIComponent(file.rel_path)}&page=${i + 1}&v=${file.preview_rev}`} />
               ))}
