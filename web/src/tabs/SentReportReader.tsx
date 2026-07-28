@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { periodLabel, renderTextBlocks } from "../lib/reportText";
 
 /**
@@ -73,6 +73,27 @@ export default function SentReportReader({
       .catch((e) => { if (alive) setTextErr(String(e)); });
     return () => { alive = false; };
   }, [mode, file, fundCode]);
+
+  // 캡쳐 클릭 = 25% 확대 / 더블클릭 = 맞춤 복귀.
+  // 더블클릭은 click 이 두 번 먼저 오므로, 단일 클릭을 잠깐 미뤘다가 취소한다.
+  const clickTimer = useRef<number | null>(null);
+  const zoomIn = useCallback(() => {
+    if (clickTimer.current !== null) return;
+    clickTimer.current = window.setTimeout(() => {
+      clickTimer.current = null;
+      setZoom((z) => Math.min(4, +(z + 0.25).toFixed(2)));
+    }, 220);
+  }, []);
+  const zoomReset = useCallback(() => {
+    if (clickTimer.current !== null) {
+      window.clearTimeout(clickTimer.current);
+      clickTimer.current = null;
+    }
+    setZoom(1);
+  }, []);
+  useEffect(() => () => {
+    if (clickTimer.current !== null) window.clearTimeout(clickTimer.current);
+  }, []);
 
   const go = useCallback((delta: number) => {
     const next = index + delta;
@@ -166,11 +187,13 @@ export default function SentReportReader({
 
         <div className="srr-body">
           {mode === "preview" && file && file.preview_pages > 0 && !previewBroken && (
-            <div className="srr-pages" style={{ "--z": zoom } as React.CSSProperties}>
+            <div className={`srr-pages${zoom >= 4 ? " max" : ""}`}
+              style={{ "--z": zoom } as React.CSSProperties}>
               {Array.from({ length: file.preview_pages }, (_, i) => (
                 <img key={i} loading="lazy" alt={`${file.filename} p${i + 1}`}
-                  title="더블클릭: 확대 / 되돌리기"
-                  onDoubleClick={() => setZoom((z) => (z > 1 ? 1 : 2))}
+                  title="클릭: 25% 확대 · 더블클릭: 맞춤으로"
+                  onClick={zoomIn}
+                  onDoubleClick={zoomReset}
                   onError={() => { if (i === 0) setPreviewBroken(true); }}
                   src={`/api/funds/${fundCode}/sent-reports/preview?rel_path=${encodeURIComponent(file.rel_path)}&page=${i + 1}&v=${file.preview_rev}`} />
               ))}

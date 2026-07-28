@@ -57,7 +57,9 @@
 .srr-body { flex: 1; overflow: auto; background: #f0f2f5; padding: 14px; }
 /* 확대 배율(--z): 1 = 모달 폭 맞춤. 키우면 컨테이너에서 가로 스크롤로 훑어본다 */
 .srr-pages { display: flex; flex-direction: column; gap: 12px; width: calc(100% * var(--z, 1)); }
+/* 클릭=25% 확대 / 더블클릭=맞춤 복귀 (최대 400%면 더 못 키우니 커서로 알림) */
 .srr-pages img { width: 100%; height: auto; background: #fff; border: 1px solid #dde3ec; border-radius: 3px; box-shadow: 0 1px 3px rgba(16, 24, 40, 0.08); cursor: zoom-in; }
+.srr-pages.max img { cursor: default; }
 .srr-bar .zoom { display: inline-flex; align-items: center; gap: 4px; margin-right: 4px; }
 .srr-bar .zoom .lv { font-size: 11px; font-weight: 700; color: var(--ace-ink-3); min-width: 38px; text-align: center; font-variant-numeric: tabular-nums; }
 .srr-bar .zoom button { padding: 3px 9px; min-width: 26px; }
