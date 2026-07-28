@@ -411,10 +411,14 @@ def _step_outlook_report() -> dict:
     broker_mail 레인 (2026-07-09): 증권사 리서치 메일(외사 리포트 전달 포함).
     신문기사/세미나류 제외 + naver_research 중복 제목 제외는 adapter 가 수행.
     Outlook 미실행이면 graceful skip — 기존 저장 파일은 추출 레인이 계속 사용.
+
+    days_back=60: adapter 가 **파싱 전에** 저장분을 걸러내므로(2026-07-28) 창을 넓혀도
+    일일 비용은 신규 메일분만 든다. 14일이던 창은 daily 를 2주 넘게 거르면 그 사이
+    메일이 영구 유실되는 구조였다.
     """
     try:
         from market_research.collect.outlook_report_adapter import run_fetch_and_save
-        stats = run_fetch_and_save(days_back=14)
+        stats = run_fetch_and_save(days_back=60)
         return {'status': 'ok', 'fetched': stats['fetched'], 'months': stats['months']}
     except Exception as exc:
         print(f'  outlook_report 수집 실패 (graceful skip): {exc}')

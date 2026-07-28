@@ -383,14 +383,39 @@ def _sender_domain(mail) -> str:
     return ''
 
 
-def fetch_outlook_reports(days_back: int = 35) -> list[dict]:
+def _known_article_ids(days_back: int) -> set[str]:
+    """수집창에 걸치는 월들의 이미 저장된 _article_id 집합."""
+    out: set[str] = set()
+    cur = datetime.now()
+    start = cur - timedelta(days=days_back)
+    y, m = start.year, start.month
+    while (y, m) <= (cur.year, cur.month):
+        for a in load_broker_mail(f'{y:04d}-{m:02d}'):
+            if a.get('_article_id'):
+                out.add(a['_article_id'])
+        m += 1
+        if m > 12:
+            y, m = y + 1, 1
+    return out
+
+
+def fetch_outlook_reports(days_back: int = 35, *, refresh: bool = False) -> list[dict]:
     """업무\\리포트 폴더에서 최근 days_back 일 메일 → article-like dict 리스트.
 
     화이트리스트/제외키워드 필터 적용. naver dedupe 는 여기서 하지 않음
     (run_fetch_and_save 에서 월별로 수행 — 필터 순서 명확화).
+
+    ★ 이미 저장된 메일은 **첨부/링크 파싱 전에** 건너뛴다. _article_id 는
+    (broker, date, subject) 로 파싱 없이 계산되므로 조기 판정이 가능하다.
+    이전에는 저장분 dedupe 가 save_broker_mail 에서만 일어나 매 실행마다 창 안의
+    PDF 를 전부 다시 내려받아 파싱했다(수집창을 넓히기 어려웠던 실제 이유).
+    refresh=True 면 기존 건도 다시 파싱(모드 변경 반영·손상 복구용).
     """
     import shutil
     import tempfile
+
+    known = set() if refresh else _known_article_ids(days_back)
+    skipped_known = 0
 
     folder = _open_report_folder()
     cut = (datetime.now() - timedelta(days=days_back)).strftime('%m/%d/%Y %H:%M')
@@ -421,6 +446,10 @@ def fetch_outlook_reports(days_back: int = 35) -> list[dict]:
                 broker = resolve_broker(domain, sender_name) or ''
                 received = m.ReceivedTime
                 date = f'{received.year:04d}-{received.month:02d}-{received.day:02d}'
+                # ★ 파싱 전 조기 dedupe — 첨부/링크 다운로드를 아예 하지 않는다
+                if _article_id(broker, date, subject) in known:
+                    skipped_known += 1
+                    continue
                 no_clip = sender_name.strip() in ATTACH_NO_CLIP_SENDERS
                 body = clean_body(str(m.Body or ''), clip=None if no_clip else BODY_STORE_CLIP)
                 attach_names = []
@@ -508,6 +537,9 @@ def fetch_outlook_reports(days_back: int = 35) -> list[dict]:
             except Exception:
                 pass
         shutil.rmtree(tmpdir, ignore_errors=True)
+    if skipped_known:
+        print(f'  [outlook] 기존 저장분 {skipped_known}건 파싱 skip '
+              f'(신규 {len(out)}건만 처리)')
     return out
 
 
@@ -574,9 +606,14 @@ def save_broker_mail(month: str, articles: list[dict]) -> tuple[Path, int]:
     return p, len(new)
 
 
-def run_fetch_and_save(days_back: int = 35, dry_run: bool = False) -> dict:
-    """fetch → 월별 그룹 → naver dedupe → merge 저장. 반환: 통계 dict."""
-    fetched = fetch_outlook_reports(days_back)
+def run_fetch_and_save(days_back: int = 35, dry_run: bool = False,
+                       refresh: bool = False) -> dict:
+    """fetch → 월별 그룹 → naver dedupe → merge 저장. 반환: 통계 dict.
+
+    refresh=False(기본): 이미 저장된 메일은 첨부/링크 파싱을 건너뛴다 →
+      수집창(days_back)을 넓혀도 일일 비용이 늘지 않는다.
+    """
+    fetched = fetch_outlook_reports(days_back, refresh=refresh)
     by_month: dict[str, list[dict]] = {}
     for a in fetched:
         by_month.setdefault(a['date'][:7], []).append(a)
@@ -607,8 +644,11 @@ def main() -> int:
     ap = argparse.ArgumentParser(description='Outlook 리포트 메일 adapter (broker_mail 레인)')
     ap.add_argument('--days-back', type=int, default=35)
     ap.add_argument('--dry-run', action='store_true', help='파일 저장 생략, 통계만')
+    ap.add_argument('--refresh', action='store_true',
+                    help='기존 저장분도 첨부/링크 재파싱 (모드 변경 반영용)')
     args = ap.parse_args()
-    stats = run_fetch_and_save(days_back=args.days_back, dry_run=args.dry_run)
+    stats = run_fetch_and_save(days_back=args.days_back, dry_run=args.dry_run,
+                               refresh=args.refresh)
     print(f"[outlook_report_adapter] fetched={stats['fetched']} (days_back={args.days_back})")
     for month, s in stats['months'].items():
         print(f"  {month}: in={s['in']} naver_dup={s['naver_dup']} "
