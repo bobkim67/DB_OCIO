@@ -103,7 +103,7 @@ export default function ReportCardHome({
                 {f && f.preview_pages > 0 && !brokenThumb[p.period] ? (
                   <img loading="lazy" alt={`${p.period} 표지`}
                     onError={() => setBrokenThumb((m) => ({ ...m, [p.period]: true }))}
-                    src={`/api/funds/${fundCode}/sent-reports/preview?rel_path=${encodeURIComponent(f.rel_path)}&page=1`} />
+                    src={`/api/funds/${fundCode}/sent-reports/preview?rel_path=${encodeURIComponent(f.rel_path)}&page=1&v=${f.preview_rev}`} />
                 ) : (
                   <div className="noimg">{f ? extLabel(f.filename) : "—"}</div>
                 )}

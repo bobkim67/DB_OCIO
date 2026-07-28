@@ -3,6 +3,10 @@
 
 DRM 제약 실측:
 - PowerPoint Slide.Export(PNG) = 클린 PNG (PPT 앱 파일출력은 DRM 미후킹)
+  ※ 2026-07-28 재실측에서도 보호(pptx) 원본 → 클린 PNG 확인. 다만 **저장분 174장이
+    전부 래핑돼 있던 사고**가 있었다(생성 시점 정책/상태 차이 추정) → 생성 즉시
+    시그니처 검증(_clean_png_count). 래핑되면 preview_pages=0 으로 두고 탭은
+    확장자 플레이스홀더로 폴백한다.
 - Excel ExportAsFixedFormat/Chart.Export = **DRM 재래핑** (사용 불가)
 → 우회: Excel Range.CopyPicture(클립보드) → PowerPoint 슬라이드 Paste → Slide.Export.
   Word 도 Range.Copy → PPT PasteSpecial(EnhancedMetafile) 동일 경로. PDF 원본은 클린이라
@@ -13,6 +17,8 @@ DRM 제약 실측:
 from __future__ import annotations
 
 import json
+import shutil
+import tempfile
 from pathlib import Path
 
 from market_research.collect.sent_report_collector import INDEX_PATH, SENT_DIR
@@ -21,6 +27,41 @@ MAX_SLIDES = 30
 MAX_SHEETS = 8
 EXPORT_WIDTH = 1600
 
+PNG_SIG = b'\x89PNG\r\n\x1a\n'
+
+
+def _clean_png_count(out_dir: Path, n: int) -> int:
+    """생성된 p01..pNN 중 **진짜 PNG** 인 것의 수.
+
+    DRM 에이전트가 산출물을 재래핑하면(`<DOCUMENT SAFER ...`) 크기·개수는 정상인데
+    브라우저가 렌더하지 못한다. 2026-07-28 저장분 174장이 전부 이 상태였고 서버는
+    200 을 주고 있어 화면을 보기 전까지 아무도 몰랐다. → 생성 즉시 검증한다.
+    """
+    ok = 0
+    for i in range(1, n + 1):
+        p = out_dir / f'p{i:02d}.png'
+        try:
+            with open(p, 'rb') as f:
+                if f.read(8) == PNG_SIG:
+                    ok += 1
+        except OSError:
+            pass
+    return ok
+
+
+def _export_slide(slide, out_path: Path, w: int, h: int) -> None:
+    """슬라이드 → PNG. **temp 로 export 후 파이썬이 복사**한다.
+
+    ★ 2026-07-28 실측: DRM 후킹은 '쓰는 프로세스' 기준이라 PowerPoint 가
+    data/sent_reports 아래에 직접 쓰면 신규 파일도 `<DOCUMENT SAFER ...` 로 래핑된다
+    (덮어쓰기 여부 무관). 같은 슬라이드를 %TEMP% 로 내보내면 클린이고, 그 파일을
+    파이썬이 sent_reports 로 복사하면 클린이 유지된다. → 이 우회가 필수.
+    """
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td) / out_path.name
+        slide.Export(str(tmp), 'PNG', w, h)
+        shutil.copyfile(tmp, out_path)
+
 
 def _export_ppt(papp, path: Path, out_dir: Path) -> int:
     pres = papp.Presentations.Open(str(path.resolve()), ReadOnly=True, WithWindow=False)
@@ -28,8 +69,8 @@ def _export_ppt(papp, path: Path, out_dir: Path) -> int:
         n = min(pres.Slides.Count, MAX_SLIDES)
         ratio = pres.PageSetup.SlideHeight / pres.PageSetup.SlideWidth
         for i in range(1, n + 1):
-            pres.Slides(i).Export(str(out_dir / f'p{i:02d}.png'), 'PNG',
-                                  EXPORT_WIDTH, int(EXPORT_WIDTH * ratio))
+            _export_slide(pres.Slides(i), out_dir / f'p{i:02d}.png',
+                          EXPORT_WIDTH, int(EXPORT_WIDTH * ratio))
         return n
     finally:
         pres.Close()
@@ -51,7 +92,7 @@ def _paste_to_png(papp, out_path: Path, w: float, h: float, paste_fn) -> bool:
         except Exception:
             pass
         scale = min(2.0, 4000.0 / w)
-        slide.Export(str(out_path), 'PNG', int(w * scale), int(h * scale))
+        _export_slide(slide, out_path, int(w * scale), int(h * scale))
         return out_path.exists()
     finally:
         pres.Close()
@@ -107,7 +148,7 @@ def build_previews(force: bool = False) -> dict:
 
     papp = win32com.client.DispatchEx('PowerPoint.Application')
     xapp = wapp = None
-    ok = fail = skip = 0
+    ok = fail = skip = drm = 0
     try:
         for e in entries:
             src = SENT_DIR / e['rel_path']
@@ -120,6 +161,9 @@ def build_previews(force: bool = False) -> dict:
                 skip += 1
                 continue
             out_dir.mkdir(exist_ok=True)
+            # 페이지 수가 줄면 이전 실행의 p03.png 같은 고아가 남는다 → 매번 비우고 시작
+            for stale in out_dir.glob('p*.png'):
+                stale.unlink(missing_ok=True)
             try:
                 if ext in ('.ppt', '.pptx'):
                     n = _export_ppt(papp, src, out_dir)
@@ -135,6 +179,13 @@ def build_previews(force: bool = False) -> dict:
                         wapp.Visible = False
                         wapp.DisplayAlerts = False
                     n = _export_word(wapp, papp, src, out_dir)
+                clean = _clean_png_count(out_dir, n)
+                if n and clean < n:
+                    # 래핑본을 남기면 화면에 깨진 이미지가 뜬다 → 0 으로 두고 폴백시킨다
+                    e['preview_pages'] = 0
+                    drm += 1
+                    print(f"  DRM {e['rel_path']} ({clean}/{n}p 만 클린 — 캡쳐 비활성)")
+                    continue
                 e['preview_pages'] = n
                 ok += 1
                 print(f"  ok {e['rel_path']} ({n}p)")
@@ -151,7 +202,7 @@ def build_previews(force: bool = False) -> dict:
         pythoncom.CoUninitialize()
 
     INDEX_PATH.write_text(json.dumps(index, ensure_ascii=False, indent=1), encoding='utf-8')
-    return {'ok': ok, 'fail': fail, 'skip': skip}
+    return {'ok': ok, 'fail': fail, 'skip': skip, 'drm': drm}
 
 
 def main() -> int:

@@ -16,6 +16,7 @@ export type FileRow = {
   has_text: boolean;
   text_chars: number;
   preview_pages: number;
+  preview_rev: number;   // 캡쳐 세대 (mtime) — img URL 캐시 우회용
 };
 export type PeriodRow = { period: string; files: FileRow[] };
 export type GeneratedRow = { period: string; comment: string; approved_at: string };
@@ -168,7 +169,7 @@ export default function SentReportReader({
               {Array.from({ length: file.preview_pages }, (_, i) => (
                 <img key={i} loading="lazy" alt={`${file.filename} p${i + 1}`}
                   onError={() => { if (i === 0) setPreviewBroken(true); }}
-                  src={`/api/funds/${fundCode}/sent-reports/preview?rel_path=${encodeURIComponent(file.rel_path)}&page=${i + 1}`} />
+                  src={`/api/funds/${fundCode}/sent-reports/preview?rel_path=${encodeURIComponent(file.rel_path)}&page=${i + 1}&v=${file.preview_rev}`} />
               ))}
             </div>
           )}

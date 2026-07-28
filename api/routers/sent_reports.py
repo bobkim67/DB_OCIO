@@ -26,6 +26,7 @@ class SentReportFileDTO(BaseModel):
     has_text: bool
     text_chars: int = 0
     preview_pages: int = 0  # 원본 레이아웃 PNG 캡쳐 수 (sent_report_preview 산출)
+    preview_rev: int = 0    # p01.png mtime — 캡쳐 재생성 시 URL 이 바뀌어 캐시를 우회
 
 
 class SentReportPeriodDTO(BaseModel):
@@ -55,11 +56,18 @@ def list_sent_reports(fund: str = Path(..., min_length=1, max_length=32)) -> Sen
     by_period: dict[str, list[SentReportFileDTO]] = {}
     for e in rows:
         txt = SENT_DIR / (e['rel_path'] + '.txt')
+        # 캡쳐 세대 — 재생성하면 mtime 이 바뀌고 프론트 img URL 도 바뀐다.
+        # (사내 프록시가 옛 PNG 를 계속 주던 사고 2026-07-28)
+        p01 = SENT_DIR / (e['rel_path'] + '.preview/p01.png')
+        try:
+            rev = int(p01.stat().st_mtime)
+        except OSError:
+            rev = 0
         by_period.setdefault(e['period'], []).append(SentReportFileDTO(
             filename=e['filename'], rel_path=e['rel_path'], kind=e.get('kind', ''),
             mail_date=e.get('mail_date', ''), mail_subject=e.get('mail_subject', ''),
             has_text=txt.exists(), text_chars=int(e.get('text_chars') or 0),
-            preview_pages=int(e.get('preview_pages') or 0),
+            preview_pages=int(e.get('preview_pages') or 0), preview_rev=rev,
         ))
     periods = [SentReportPeriodDTO(period=p, files=sorted(fs, key=lambda f: f.filename))
                for p, fs in by_period.items()]
@@ -134,7 +142,12 @@ def get_sent_report_preview(
     rel_path: str = Query(..., max_length=300),
     page: int = Query(1, ge=1, le=99),
 ):
-    """원본 레이아웃 PNG 캡쳐 페이지 (Office COM 렌더 — DRM 미래핑 경로)."""
+    """원본 레이아웃 PNG 캡쳐 페이지 (Office COM 렌더 — DRM 미래핑 경로).
+
+    no-cache: 캡쳐를 재생성해도 프록시/브라우저가 옛 바이트를 계속 주는 사고가 있었다
+    (2026-07-28 DRM 래핑본 → 클린 교체 시). 파일은 그대로면 304 로 끝나니 비용은 없다.
+    """
     p = _safe_resolve(fund, f'{rel_path}.preview/p{page:02d}.png')
     return FileResponse(str(p), media_type='image/png',
-                        content_disposition_type='inline')
+                        content_disposition_type='inline',
+                        headers={'Cache-Control': 'no-cache'})

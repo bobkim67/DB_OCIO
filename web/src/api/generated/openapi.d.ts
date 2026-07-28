@@ -785,6 +785,9 @@ export interface paths {
         /**
          * Get Sent Report Preview
          * @description 원본 레이아웃 PNG 캡쳐 페이지 (Office COM 렌더 — DRM 미래핑 경로).
+         *
+         *     no-cache: 캡쳐를 재생성해도 프록시/브라우저가 옛 바이트를 계속 주는 사고가 있었다
+         *     (2026-07-28 DRM 래핑본 → 클린 교체 시). 파일은 그대로면 304 로 끝나니 비용은 없다.
          */
         get: operations["get_sent_report_preview_api_funds__fund__sent_reports_preview_get"];
         put?: never;
@@ -2842,6 +2845,11 @@ export interface components {
              * @default 0
              */
             preview_pages: number;
+            /**
+             * Preview Rev
+             * @default 0
+             */
+            preview_rev: number;
         };
         /** SentReportListDTO */
         SentReportListDTO: {
