@@ -26,6 +26,13 @@ market_research/data/naver_research/
 market_research/output/
 market_research/devlog/
 
+# ★ 고객 발송 문서 — 절대 커밋 금지 (DRM 원본 + 캡쳐, 100MB+).
+# 원격은 GitHub 이라 한 번 올라가면 회수하기 어렵다. 재생성 경로는
+# sent_report_import → _text → _preview (정리 폴더 + Outlook 이 원천).
+market_research/data/sent_reports/
+market_research/data/sent_reports.bak_*/
+market_research/data/broker_mail/
+
 # market_research — daily_update 매일 갱신 데이터 (재생성 가능)
 market_research/data/news/
 market_research/data/monygeek/
