@@ -322,6 +322,150 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/funds-overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Admin Funds Overview
+         * @description 전 펀드 스냅샷: 컴플라이언스 가이드(항목별) + 기간수익률 + 채권/펀드 듀레이션·YTM.
+         *     as_of(YYYY-MM-DD) 미지정 시 최신 영업일 기준.
+         *
+         *     응답 캐시 — 펀드당 ~2s x 11 재계산 방지. 서버 웜업이 선채움
+         *     (api/warmup._warm_admin_overview, 2026-07-14). 소스가 새벽 3시 적재라
+         *     **데이터 세대(03시 경계 일단위)** 가 바뀔 때만 무효화 → 하루 1회 재계산.
+         */
+        get: operations["get_admin_funds_overview_api_admin_funds_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/funds/{fund}/workflow": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Fund Workflow */
+        get: operations["get_fund_workflow_api_admin_funds__fund__workflow_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/funds/{fund}/comment/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate Comment */
+        post: operations["generate_comment_api_admin_funds__fund__comment_generate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/funds/{fund}/comment/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Edit Comment */
+        put: operations["edit_comment_api_admin_funds__fund__comment_draft_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/funds/{fund}/comment/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Comment */
+        post: operations["approve_comment_api_admin_funds__fund__comment_approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/funds/{fund}/report/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate Report */
+        post: operations["generate_report_api_admin_funds__fund__report_generate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/funds/{fund}/report/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Edit Report */
+        put: operations["edit_report_api_admin_funds__fund__report_draft_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/funds/{fund}/report/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Report */
+        post: operations["approve_report_api_admin_funds__fund__report_approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/market-report": {
         parameters: {
             query?: never;
@@ -390,6 +534,267 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/report-ppt/build": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Build Ppt */
+        post: operations["build_ppt_api_admin_report_ppt_build_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/report-ppt/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Ppt Comments */
+        get: operations["get_ppt_comments_api_admin_report_ppt_comments_get"];
+        /** Save Ppt Comments */
+        put: operations["save_ppt_comments_api_admin_report_ppt_comments_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/report-ppt/comments/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Ppt Comments
+         * @description s4/s6 코멘트 LLM 생성 (기존 캐시 삭제 후 재생성) — 빌드와 분리된 전용 경로.
+         */
+        post: operations["generate_ppt_comments_api_admin_report_ppt_comments_generate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/report-ppt/comments/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Comment Archive */
+        get: operations["list_comment_archive_api_admin_report_ppt_comments_archive_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/report-ppt/comments/archive/{file}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Comment Archive */
+        get: operations["get_comment_archive_api_admin_report_ppt_comments_archive__file__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/report-ppt/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Ppt Files
+         * @description 생성된 pptx 목록 (최신순) — 재빌드 없이 기존 산출물 다운로드용.
+         */
+        get: operations["list_ppt_files_api_admin_report_ppt_files_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/report-ppt/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Ppt */
+        get: operations["download_ppt_api_admin_report_ppt_download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/memos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Memos */
+        get: operations["list_memos_api_admin_memos_get"];
+        put?: never;
+        /** Create Memo */
+        post: operations["create_memo_api_admin_memos_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/memos/{memo_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Memo */
+        put: operations["update_memo_api_admin_memos__memo_id__put"];
+        post?: never;
+        /** Delete Memo */
+        delete: operations["delete_memo_api_admin_memos__memo_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/funds/{fund}/sent-reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Sent Reports */
+        get: operations["list_sent_reports_api_funds__fund__sent_reports_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/funds/{fund}/sent-reports/text": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Sent Report Text */
+        get: operations["get_sent_report_text_api_funds__fund__sent_reports_text_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/funds/{fund}/sent-reports/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Sent Report
+         * @description 발송 원본 파일 (DRM 래핑 그대로 — 사내 PC 에서만 열림, 사용자 확정).
+         *
+         *     inline=true 는 클린 PDF(비정기 대면보고) 브라우저 내장 뷰어 표시용.
+         */
+        get: operations["download_sent_report_api_funds__fund__sent_reports_file_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/funds/{fund}/sent-reports/generated": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Generated Reports
+         * @description 승인된 생성 보고서(client 노출) — Admin 워크플로우(sentrep) 승인본만.
+         *
+         *     생성/편집/승인은 Admin 탭 (2026-07-09 사용자 프로세스: 코멘트 승인 → 보고서
+         *     생성 → 보고서 승인 → client 노출).
+         */
+        get: operations["list_generated_reports_api_funds__fund__sent_reports_generated_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/funds/{fund}/sent-reports/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Sent Report Preview
+         * @description 원본 레이아웃 PNG 캡쳐 페이지 (Office COM 렌더 — DRM 미래핑 경로).
+         */
+        get: operations["get_sent_report_preview_api_funds__fund__sent_reports_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/funds/{code}/brinson": {
         parameters: {
             query?: never;
@@ -419,6 +824,26 @@ export interface paths {
          * @description 기간별(1M/3M/6M/1Y/YTD/SI) Brinson 효과 — 성과분석 하단 토글 테이블.
          */
         get: operations["get_brinson_periods_api_funds__code__brinson_periods_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/funds/{code}/brinson/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Brinson Export
+         * @description 성과분석 엑셀 스냅샷 내려받기 — 화면 조회조건 그대로 xlsx 생성.
+         */
+        get: operations["get_brinson_export_api_funds__code__brinson_export_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -680,6 +1105,70 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** AdminFundRowDTO */
+        AdminFundRowDTO: {
+            /** Fund Code */
+            fund_code: string;
+            /** Fund Name */
+            fund_name: string;
+            /** Beneficiary */
+            beneficiary?: string | null;
+            /** Compliance Status */
+            compliance_status: string;
+            /**
+             * Compliance Breaches
+             * @default []
+             */
+            compliance_breaches: string[];
+            /**
+             * Compliance
+             * @default []
+             */
+            compliance: components["schemas"]["ComplianceItemDTO"][];
+            /**
+             * Returns
+             * @default {}
+             */
+            returns: {
+                [key: string]: number;
+            };
+            /**
+             * Bm Returns
+             * @default {}
+             */
+            bm_returns: {
+                [key: string]: number;
+            };
+            /**
+             * Benchmark Kind
+             * @default none
+             */
+            benchmark_kind: string;
+            /** Duration Bond */
+            duration_bond?: number | null;
+            /** Ytm Bond */
+            ytm_bond?: number | null;
+            /** Duration Overall */
+            duration_overall?: number | null;
+            /** Ytm Overall */
+            ytm_overall?: number | null;
+        };
+        /** AdminFundWorkflowDTO */
+        AdminFundWorkflowDTO: {
+            /** Fund Code */
+            fund_code: string;
+            /** Period */
+            period: string;
+            comment: components["schemas"]["WorkflowStageDTO"];
+            report: components["schemas"]["WorkflowStageDTO"];
+        };
+        /** AdminFundsOverviewDTO */
+        AdminFundsOverviewDTO: {
+            /** As Of Date */
+            as_of_date?: string | null;
+            /** Rows */
+            rows: components["schemas"]["AdminFundRowDTO"][];
+        };
         /**
          * AdminReportEnrichmentResponseDTO
          * @description admin/debug 전용 enrichment 진단 응답.
@@ -841,6 +1330,10 @@ export interface components {
              * @default false
              */
             hedged: boolean;
+            /** Contrib */
+            contrib?: number | null;
+            /** Ret */
+            ret?: number | null;
         };
         /**
          * BrinsonDailyClassDTO
@@ -1247,6 +1740,13 @@ export interface components {
             /** Breakdown */
             breakdown?: string | null;
         };
+        /** EditBodyDTO */
+        EditBodyDTO: {
+            /** Period */
+            period: string;
+            /** Text */
+            text: string;
+        };
         /** EquityFocusDTO */
         EquityFocusDTO: {
             /**
@@ -1447,6 +1947,8 @@ export interface components {
             bm_configured: boolean;
             /** Default Mapping Method */
             default_mapping_method: string;
+            /** Beneficiary */
+            beneficiary?: string | null;
         };
         /** FxForeignWeightPointDTO */
         FxForeignWeightPointDTO: {
@@ -1506,6 +2008,32 @@ export interface components {
             date: string;
             /** Rate */
             rate: number;
+        };
+        /** GenBodyDTO */
+        GenBodyDTO: {
+            /** Kind */
+            kind: string;
+            /** Period */
+            period: string;
+        };
+        /** GeneratedReportDTO */
+        GeneratedReportDTO: {
+            /** Period */
+            period: string;
+            /** Comment */
+            comment: string;
+            /**
+             * Approved At
+             * @default
+             */
+            approved_at: string;
+        };
+        /** GeneratedReportsDTO */
+        GeneratedReportsDTO: {
+            /** Fund Code */
+            fund_code: string;
+            /** Reports */
+            reports: components["schemas"]["GeneratedReportDTO"][];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1818,6 +2346,37 @@ export interface components {
             /** Source Consistency Note */
             source_consistency_note?: string | null;
         };
+        /** MemoBodyDTO */
+        MemoBodyDTO: {
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+            /**
+             * Content
+             * @default
+             */
+            content: string;
+        };
+        /** MemoDTO */
+        MemoDTO: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /** Content */
+            content: string;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** MemoListDTO */
+        MemoListDTO: {
+            /** Memos */
+            memos: components["schemas"]["MemoDTO"][];
+        };
         /** MetricCardDTO */
         MetricCardDTO: {
             /** Key */
@@ -1901,6 +2460,11 @@ export interface components {
             /** Bm Equity Weight */
             bm_equity_weight?: number | null;
         };
+        /** PeriodBodyDTO */
+        PeriodBodyDTO: {
+            /** Period */
+            period: string;
+        };
         /**
          * PeriodReturnsResponseDTO
          * @description 기간별 수익률 표 전용 — 조회 종료일(end_date) 앵커 트레일링 기간수익률.
@@ -1966,6 +2530,84 @@ export interface components {
              * @default 0
              */
             cash_amount: number;
+        };
+        /** PptArchiveEntryDTO */
+        PptArchiveEntryDTO: {
+            /** File */
+            file: string;
+            /** Saved At */
+            saved_at: string;
+            /** Fund Code */
+            fund_code: string;
+            /** End Date */
+            end_date: string;
+            /** Start Date */
+            start_date?: string | null;
+        };
+        /** PptArchiveListDTO */
+        PptArchiveListDTO: {
+            /** Entries */
+            entries: components["schemas"]["PptArchiveEntryDTO"][];
+        };
+        /** PptBuildBodyDTO */
+        PptBuildBodyDTO: {
+            /** Fund Code */
+            fund_code: string;
+            /** End Date */
+            end_date: string;
+            /** Start Date */
+            start_date?: string | null;
+            /**
+             * Regen Comments
+             * @default false
+             */
+            regen_comments: boolean;
+        };
+        /** PptBuildResponseDTO */
+        PptBuildResponseDTO: {
+            /** Pptx File */
+            pptx_file: string;
+            /** Elapsed Sec */
+            elapsed_sec: number;
+            comments: components["schemas"]["PptCommentsDTO"];
+        };
+        /** PptCommentsDTO */
+        PptCommentsDTO: {
+            /** S4 File */
+            s4_file: string;
+            s4?: components["schemas"]["S4CommentDTO"] | null;
+            /** S6 File */
+            s6_file: string;
+            s6?: components["schemas"]["S6CommentDTO"] | null;
+        };
+        /** PptCommentsSaveBodyDTO */
+        PptCommentsSaveBodyDTO: {
+            /** S4 File */
+            s4_file?: string | null;
+            s4?: components["schemas"]["S4CommentDTO"] | null;
+            /** S6 File */
+            s6_file?: string | null;
+            s6?: components["schemas"]["S6CommentDTO"] | null;
+            /** Fund Code */
+            fund_code?: string | null;
+            /** End Date */
+            end_date?: string | null;
+            /** Start Date */
+            start_date?: string | null;
+        };
+        /** PptFileDTO */
+        PptFileDTO: {
+            /** File */
+            file: string;
+            /** Size Kb */
+            size_kb: number;
+            /** Mtime */
+            mtime: string;
+        };
+        /** PptFileListDTO */
+        PptFileListDTO: {
+            /** Files */
+            files: components["schemas"]["PptFileDTO"][];
         };
         /**
          * RelatedNewsDTO
@@ -2078,6 +2720,27 @@ export interface components {
             meta: components["schemas"]["BaseMeta"];
             data: components["schemas"]["ReportFinalDTO"];
         };
+        /** S4BlockDTO */
+        S4BlockDTO: {
+            /** Label */
+            label: string;
+            /** Lines */
+            lines: string[];
+        };
+        /** S4CommentDTO */
+        S4CommentDTO: {
+            /** Headline */
+            headline: string;
+            /** Comments */
+            comments: components["schemas"]["S4BlockDTO"][];
+        };
+        /** S6CommentDTO */
+        S6CommentDTO: {
+            /** Bullets */
+            bullets: string[];
+            /** Digest */
+            digest?: string | null;
+        };
         /** SecuritiesResponseDTO */
         SecuritiesResponseDTO: {
             meta: components["schemas"]["BaseMeta"];
@@ -2155,6 +2818,52 @@ export interface components {
             /** Weight */
             weight: number;
         };
+        /** SentReportFileDTO */
+        SentReportFileDTO: {
+            /** Filename */
+            filename: string;
+            /** Rel Path */
+            rel_path: string;
+            /** Kind */
+            kind: string;
+            /** Mail Date */
+            mail_date: string;
+            /** Mail Subject */
+            mail_subject: string;
+            /** Has Text */
+            has_text: boolean;
+            /**
+             * Text Chars
+             * @default 0
+             */
+            text_chars: number;
+            /**
+             * Preview Pages
+             * @default 0
+             */
+            preview_pages: number;
+        };
+        /** SentReportListDTO */
+        SentReportListDTO: {
+            /** Fund Code */
+            fund_code: string;
+            /** Periods */
+            periods: components["schemas"]["SentReportPeriodDTO"][];
+        };
+        /** SentReportPeriodDTO */
+        SentReportPeriodDTO: {
+            /** Period */
+            period: string;
+            /** Files */
+            files: components["schemas"]["SentReportFileDTO"][];
+        };
+        /** SentReportTextDTO */
+        SentReportTextDTO: {
+            /** Rel Path */
+            rel_path: string;
+            /** Text */
+            text: string;
+        };
         /** SourceBreakdown */
         SourceBreakdown: {
             /** Component */
@@ -2222,10 +2931,6 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
-            /** Input */
-            input?: unknown;
-            /** Context */
-            ctx?: Record<string, never>;
         };
         /**
          * ValidationSummaryDTO
@@ -2540,6 +3245,26 @@ export interface components {
             body: string;
             /** Byte Size */
             byte_size: number;
+        };
+        /** WorkflowStageDTO */
+        WorkflowStageDTO: {
+            /** Status */
+            status: string;
+            /**
+             * Text
+             * @default
+             */
+            text: string;
+            /**
+             * Approved At
+             * @default
+             */
+            approved_at: string;
+            /**
+             * Generated At
+             * @default
+             */
+            generated_at: string;
         };
     };
     responses: never;
@@ -3064,6 +3789,280 @@ export interface operations {
             };
         };
     };
+    get_admin_funds_overview_api_admin_funds_overview_get: {
+        parameters: {
+            query?: {
+                as_of?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminFundsOverviewDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_fund_workflow_api_admin_funds__fund__workflow_get: {
+        parameters: {
+            query: {
+                period: string;
+            };
+            header?: never;
+            path: {
+                fund: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminFundWorkflowDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_comment_api_admin_funds__fund__comment_generate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fund: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenBodyDTO"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowStageDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_comment_api_admin_funds__fund__comment_draft_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fund: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditBodyDTO"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowStageDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_comment_api_admin_funds__fund__comment_approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fund: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeriodBodyDTO"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowStageDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_report_api_admin_funds__fund__report_generate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fund: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenBodyDTO"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowStageDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_report_api_admin_funds__fund__report_draft_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fund: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditBodyDTO"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowStageDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_report_api_admin_funds__fund__report_approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fund: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeriodBodyDTO"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowStageDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_market_report_api_market_report_get: {
         parameters: {
             query: {
@@ -3179,6 +4178,538 @@ export interface operations {
             };
         };
     };
+    build_ppt_api_admin_report_ppt_build_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PptBuildBodyDTO"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PptBuildResponseDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ppt_comments_api_admin_report_ppt_comments_get: {
+        parameters: {
+            query: {
+                fund: string;
+                end: string;
+                start?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PptCommentsDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_ppt_comments_api_admin_report_ppt_comments_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PptCommentsSaveBodyDTO"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PptCommentsSaveBodyDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_ppt_comments_api_admin_report_ppt_comments_generate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PptBuildBodyDTO"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PptCommentsDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_comment_archive_api_admin_report_ppt_comments_archive_get: {
+        parameters: {
+            query?: {
+                fund?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PptArchiveListDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_comment_archive_api_admin_report_ppt_comments_archive__file__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_ppt_files_api_admin_report_ppt_files_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PptFileListDTO"];
+                };
+            };
+        };
+    };
+    download_ppt_api_admin_report_ppt_download_get: {
+        parameters: {
+            query: {
+                file: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_memos_api_admin_memos_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoListDTO"];
+                };
+            };
+        };
+    };
+    create_memo_api_admin_memos_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemoBodyDTO"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_memo_api_admin_memos__memo_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemoBodyDTO"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_memo_api_admin_memos__memo_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_sent_reports_api_funds__fund__sent_reports_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fund: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SentReportListDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_sent_report_text_api_funds__fund__sent_reports_text_get: {
+        parameters: {
+            query: {
+                rel_path: string;
+            };
+            header?: never;
+            path: {
+                fund: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SentReportTextDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_sent_report_api_funds__fund__sent_reports_file_get: {
+        parameters: {
+            query: {
+                rel_path: string;
+                inline?: boolean;
+            };
+            header?: never;
+            path: {
+                fund: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_generated_reports_api_funds__fund__sent_reports_generated_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fund: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeneratedReportsDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_sent_report_preview_api_funds__fund__sent_reports_preview_get: {
+        parameters: {
+            query: {
+                rel_path: string;
+                page?: number;
+            };
+            header?: never;
+            path: {
+                fund: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_brinson_api_funds__code__brinson_get: {
         parameters: {
             query?: {
@@ -3255,6 +4786,44 @@ export interface operations {
             };
         };
     };
+    get_brinson_export_api_funds__code__brinson_export_get: {
+        parameters: {
+            query?: {
+                start_date?: string | null;
+                end_date?: string | null;
+                mapping_method?: string | null;
+                pa_method?: string;
+                fx_split?: boolean;
+                saa_mode?: string;
+            };
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_transactions_api_funds__code__transactions_get: {
         parameters: {
             query: {
@@ -3298,6 +4867,8 @@ export interface operations {
                 start: string;
                 /** @description security | asset */
                 level?: string;
+                /** @description 조회 종료일 YYYY-MM-DD (미지정 시 최근일) */
+                end?: string | null;
             };
             header?: never;
             path: {
@@ -3332,6 +4903,8 @@ export interface operations {
             query: {
                 /** @description 조회 시작일 YYYY-MM-DD */
                 start: string;
+                /** @description 조회 종료일 YYYY-MM-DD (미지정 시 최근일) */
+                end?: string | null;
             };
             header?: never;
             path: {

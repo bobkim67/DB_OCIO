@@ -10,5 +10,6 @@ class FundMetaDTO(BaseModel):
     inception: date
     bm_configured: bool
     default_mapping_method: str
+    beneficiary: str | None = None   # 수익자/고객사 (FUND_BENEFICIARY, 없으면 None)
     # aum 필드 없음 — 목록 조회에서 9펀드 NAV 로딩(N+1) 방지.
     # AUM은 /funds/{code}/overview의 nav_series[].aum에서 제공.

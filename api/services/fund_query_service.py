@@ -2,6 +2,7 @@ from datetime import date
 
 from config.funds import (
     DEFAULT_MAPPING_METHOD,
+    FUND_BENEFICIARY,
     FUND_BM,
     FUND_DEFAULT_MAPPING_METHOD,
     FUND_GROUPS,
@@ -37,5 +38,6 @@ def list_funds() -> list[FundMetaDTO]:
             default_mapping_method=FUND_DEFAULT_MAPPING_METHOD.get(
                 code, DEFAULT_MAPPING_METHOD
             ),
+            beneficiary=FUND_BENEFICIARY.get(code),
         ))
     return out

@@ -1,69 +1,49 @@
-import { useState, type CSSProperties } from "react";
+import { useEffect, useState } from "react";
+import { useFunds } from "../hooks/useFunds";
 import MarketReportPanel from "./MarketReportPanel";
 import FundReportPanel from "./FundReportPanel";
-import SentReportArchive from "./SentReportArchive";
+import ReportCardHome from "./ReportCardHome";
+import "../styles/sentreports.css";
 
-type SubView = "market" | "fund" | "archive";
-
-const TAB_BTN_BASE: CSSProperties = {
-  padding: "6px 14px",
-  fontSize: 13,
-  border: "1px solid #d1d5db",
-  background: "#fff",
-  cursor: "pointer",
-  borderRadius: 4,
-};
-
-const TAB_BTN_ACTIVE: CSSProperties = {
-  ...TAB_BTN_BASE,
-  background: "#1f2937",
-  color: "#fff",
-  borderColor: "#1f2937",
-};
+type SubView = "cards" | "market" | "fund";
 
 /**
- * 운용보고 탭 — approved final.json 노출 (client-facing).
- *
- * 시장 코멘트는 펀드 독립 매크로 산출물, 펀드 코멘트는 fund-scoped 산출물.
- * URL 분리에 맞춰 sub-view 토글로 제공.
+ * 운용보고 탭 — 기본 화면은 월별 카드 홈(고객사 발송 보고서).
+ * 시장/펀드 코멘트(승인본)는 상단 전환으로 유지. (2026-07-28 카드뉴스 개편)
  */
 export default function ReportTab({ fundCode }: { fundCode: string }) {
-  const [view, setView] = useState<SubView>("market");
+  const [view, setView] = useState<SubView>("cards");
+  const funds = useFunds();
+  const meta = funds.data?.data?.find((f) => f.code === fundCode);
+
+  // 펀드 변경 시 카드 홈으로 복귀 (다른 펀드의 코멘트 화면에 남지 않도록)
+  useEffect(() => { setView("cards"); }, [fundCode]);
 
   return (
-    <section>
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          marginBottom: 16,
-          borderBottom: "1px solid #e5e7eb",
-          paddingBottom: 12,
-        }}
-      >
-        <button
-          style={view === "market" ? TAB_BTN_ACTIVE : TAB_BTN_BASE}
-          onClick={() => setView("market")}
-        >
-          시장 코멘트
-        </button>
-        <button
-          style={view === "fund" ? TAB_BTN_ACTIVE : TAB_BTN_BASE}
-          onClick={() => setView("fund")}
-        >
-          펀드 코멘트
-        </button>
-        <button
-          style={view === "archive" ? TAB_BTN_ACTIVE : TAB_BTN_BASE}
-          onClick={() => setView("archive")}
-        >
-          발송 보고서
-        </button>
+    <section className="rch-root">
+      <div className="rch-top">
+        <h2 className="fund-title">
+          운용보고 <span className="code">{fundCode}</span>
+        </h2>
+        {meta?.beneficiary && <span className="rch-client">{meta.beneficiary}</span>}
+        <div className="rch-seg">
+          {([["cards", "월별 보고"], ["market", "시장 코멘트"], ["fund", "펀드 코멘트"]] as const)
+            .map(([k, label]) => (
+              <button key={k} type="button" className={view === k ? "on" : ""}
+                onClick={() => setView(k)}>{label}</button>
+            ))}
+        </div>
       </div>
 
+      {view === "cards" && (
+        <ReportCardHome
+          fundCode={fundCode}
+          beneficiary={meta?.beneficiary}
+          onGoFundComment={() => setView("fund")}
+        />
+      )}
       {view === "market" && <MarketReportPanel />}
       {view === "fund" && <FundReportPanel fundCode={fundCode} />}
-      {view === "archive" && <SentReportArchive fundCode={fundCode} />}
     </section>
   );
 }
