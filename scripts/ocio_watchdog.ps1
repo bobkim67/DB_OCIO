@@ -6,6 +6,9 @@
 # - launch_dashboard.bat 이 빌드/재시작 중일 때는 .cache\launcher_active.flag
 #   가 있으면(15분 이내) 재기동을 건너뜀 — 런처와 포트 충돌 방지.
 # - 기록: logs\watchdog.log (감시견 이벤트), logs\server.log (uvicorn 파일 로그).
+# - 종료 흔적: logs\watchdog.heartbeat 를 15초마다 갱신. 정상 종료·중지 스크립트는
+#   이 파일을 지우므로, 남아 있으면 강제 종료/로그오프/크래시다. 파일의 갱신 시각이
+#   곧 사망 시각이고, 다음 기동 때 그 사실이 watchdog.log 에 한 줄로 남는다.
 # - 단일 인스턴스: 이미 실행 중이면 즉시 종료.
 #
 # 수동 실행:  powershell -NoProfile -ExecutionPolicy Bypass -File scripts\ocio_watchdog.ps1
@@ -17,6 +20,7 @@ $Port = 8020
 $LogDir = Join-Path $Root "logs"
 if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir | Out-Null }
 $Log = Join-Path $LogDir "watchdog.log"
+$Beat = Join-Path $LogDir "watchdog.heartbeat"
 $Flag = Join-Path $Root ".cache\launcher_active.flag"
 
 function WLog([string]$msg) {
@@ -40,9 +44,27 @@ function LauncherActive {
     return $true
 }
 
+# ---- 직전 인스턴스가 어떻게 끝났는지 기록 ----
+# 정상 종료(아래 Exiting 핸들러)·중지 스크립트는 heartbeat 를 지운다.
+# 그래도 남아 있으면 강제 종료/로그오프/크래시 — 마지막 생존 시각을 로그에 남긴다.
+if (Test-Path $Beat) {
+    $lastBeat = (Get-Item $Beat).LastWriteTime
+    $prevInfo = (Get-Content $Beat -TotalCount 1)
+    $gapMin = [int]((Get-Date) - $lastBeat).TotalMinutes
+    WLog "previous instance ended WITHOUT shutdown record - last alive $($lastBeat.ToString('yyyy-MM-dd HH:mm:ss')) ($gapMin min ago, $prevInfo) - taskkill/logoff/crash?"
+    Remove-Item $Beat -Force
+}
+
+# ---- 정상 종료 흔적 (Ctrl+C·창닫기·exit. 강제 종료는 못 잡음 → heartbeat 담당) ----
+Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action ([scriptblock]::Create(@"
+    "`$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') | watchdog stopping (pid `$PID) - graceful exit" | Add-Content -Path '$Log' -Encoding UTF8
+    Remove-Item '$Beat' -Force -ErrorAction SilentlyContinue
+"@)) | Out-Null
+
 WLog "watchdog started (pid $PID, port $Port, interval 15s)"
 
 while ($true) {
+    "pid $PID" | Set-Content -Path $Beat -Encoding UTF8   # 생존 신호 (15s 주기)
     if (-not (PortUp)) {
         if (LauncherActive) {
             WLog "port $Port down but launcher_active.flag present - skip (launcher restarting)"
