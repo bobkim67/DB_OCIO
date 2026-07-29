@@ -1932,8 +1932,18 @@ def _load_bm_daily_returns_by_class(bm_info: dict, start_date: str, end_date: st
             else:
                 continue
         elif comp['name'] in _kr_comp_prices:
-            # 국내: 그대로
-            daily_ret = _kr_comp_prices[comp['name']].pct_change()
+            # 국내: **영업일 그리드에 ffill 정렬 후** 일수익률 (2026-07-29 fix).
+            # 이전에는 원 시계열 인덱스에서 pct_change 한 뒤 영업일로 걸러냈다 → 캘린더 행을
+            # 가진 지수(KIS 종합채권 TR 279/40·AA- 188/33, KAP Call 301/41)의 **주말·연휴
+            # 이자 accrual 이 유실**됐다(그 날의 수익률 행이 버려짐).
+            # 실측(2026 YTD, Overview composite 대비): 06X08 -0.3365%p, 08N33 -0.4258%p.
+            # 2026-02-19(설연휴 직후) 국내채권 -0.1118% vs 정상 -0.0686%.
+            # 영업일 행만 있는 지수(KIS KTB10Y 209/33, KAP All 257/9)는 영향 없음 —
+            # 그래서 07G04 는 원래부터 전산과 맞았다.
+            _kp = _kr_comp_prices[comp['name']]
+            if _kr_dates is not None and len(_kr_dates) >= 2:
+                _kp = _kp.reindex(_kr_dates).ffill()
+            daily_ret = _kp.pct_change()
         else:
             df = load_bm_component_prices(comp['dataset_id'], comp['dataseries_id'],
                                            start_date, comp.get('currency'), end_date)
