@@ -1530,6 +1530,25 @@ def load_composite_bm_prices(components: list, start_date: str = None,
     for cs in comp_series.values():
         composite_ret += cs['returns'].reindex(all_dates).fillna(0) * cs['weight']
 
+    # 잔차 레그 역산 (방안 B) — 구성지수를 우리 DB 로 재현할 수 없는 펀드(_BM_RESIDUAL_LEG)는
+    # 전산 BM 총계에 맞춘다. composite 는 **총계만** 출력하므로 δ 보정 결과는
+    # '전산 BM 일수익률을 그대로 쓰는 것'과 수학적으로 동일하다(레그 분해가 없어서).
+    # Brinson 경로(_load_bm_daily_returns_by_class)는 레그별 δ 로 자산군 분해까지 보존한다.
+    # 4JM12: 전산 채권 레그 'KBP-동부생명7'(0.55)이 DB생명 전용 맞춤지수 + 캘린더 이자
+    #        accrual 이라 KAP All/MMI Call 프록시로는 -0.2382%p 벌어졌다(1/1~7/28).
+    if fund_code and fund_code in _BM_RESIDUAL_LEG:
+        try:
+            _dtb = load_dt_bm_prices(fund_code, start_date)
+            if _dtb is not None and len(_dtb) >= 2:
+                _ds = _dtb.set_index('기준일자')['value'].sort_index()
+                _ds = _ds[~_ds.index.duplicated(keep='last')]
+                _dr = _ds.reindex(composite_ret.index).ffill().pct_change()
+                composite_ret = _dr.where(_dr.notna(), composite_ret).astype(float)
+                logger.info("composite BM 잔차 역산(%s): 전산 BM 총계 추종", fund_code)
+        except Exception as exc:
+            logger.warning("composite BM 잔차 역산 실패(%s): %s",
+                           fund_code, type(exc).__name__)
+
     # BM cost(-34bp/yr) — 08K88 만 (R 프로덕션·compute_brinson_attribution_v2 와 동일 상수).
     # ★ 캘린더 전일 기준 accrual. 전산 08K88 BM 구성표의 'BM추가수익률 -34bp' 열이
     #   주말·공휴일에도 매일 -0.0009%(=34bp/365) 붙는다 — 2026-05-01~07-28 누적 -0.0829%
