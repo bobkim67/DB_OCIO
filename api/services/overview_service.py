@@ -350,14 +350,14 @@ def _bm_source_notes(
         rows = bm_component_source_status(comps, as_of)
     except Exception:
         return []
-    out: list[str] = []
-    for r in rows:
-        if r["status"] == "substituted":
-            tag = "추정" if r.get("synthetic") else "동일값 검증"
-            out.append(f"{r['note']} ({tag}, 원본 {r['primary_last']})")
-        else:
-            out.append(f"{r['name']} 미적재 — 마지막 값 유지 ({r['primary_last']})")
-    return out
+    # Overview 는 전산 BM 이 있으면 그 값을 그대로 쓰므로(bm_src=='dt' → 위에서 조기 반환)
+    # 여기에 오는 건 전산 BM 미등록 펀드뿐이다 — 대조 검증이 불가하니 한 줄로만 알린다.
+    # (2026-07-29 사용자 지시: 전산과 실제로 다를 때만 표기, 나머지는 침묵)
+    names = [r["name"] for r in rows if r["status"] in ("substituted", "stale")]
+    if not names:
+        return []
+    return [f"전산 BM 미등록 펀드 — 구성지수 {len(names)}건 대체/미적재"
+            f"({', '.join(names)}), 대조 검증 불가"]
 
 
 def _returns_window(

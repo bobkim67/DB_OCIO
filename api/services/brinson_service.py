@@ -313,13 +313,48 @@ def _rf_period_pct(start_yyyymmdd: str, end_yyyymmdd: str) -> float | None:
         return None
 
 
-def _bm_freshness_warnings(fund_code: str, end_date) -> list[str]:
+_BM_DEVIATION_TOL = 0.05        # %p — 전산 BM 과 이 이내면 '같다'고 보고 경고 침묵
+
+
+def _dt_bm_period_return(fund_code: str, start_date, end_date) -> float | None:
+    """전산 BM(dt.DWPM1004x) 기간수익률(%) — 시작 직전 영업일 값 대비. 없으면 None."""
+    try:
+        from modules.data_loader import load_dt_bm_prices
+        d = load_dt_bm_prices(fund_code, "20200101")
+        if d is None or len(d) < 2:
+            return None
+        s = d.sort_values("기준일자").set_index("기준일자")["value"]
+        s = s[~s.index.duplicated(keep="last")]
+        sd, ed = pd.Timestamp(start_date), pd.Timestamp(end_date)
+        base = s[s.index < sd]
+        tail = s[s.index <= ed]
+        if base.empty or tail.empty or float(base.iloc[-1]) == 0:
+            return None
+        return (float(tail.iloc[-1]) / float(base.iloc[-1]) - 1.0) * 100.0
+    except Exception:
+        return None
+
+
+def _bm_freshness_warnings(fund_code: str, end_date, start_date=None,
+                           our_bm_return: float | None = None) -> list[str]:
     """BM/SAA 구성지수 소스 신선도 경고 문구.
 
     Bloomberg 피드 정지(2026-07-20~) 대응 — 검증된 대체 소스로 메운 지수와, 대체가
     없어 마지막 값이 ffill 되는 지수(Gold Spot·NASDAQ100 TR·KOSPI TR·KAP 10y-20y)를
     구분해 알린다. 캐시 히트 여부와 무관하게 DB 상태로 판정.
+
+    ★ 노출 조건(2026-07-29 사용자 지시): 전산 BM(dt.DWPM1004x)이 있는 펀드는
+    **|우리 BM − 전산 BM| > _BM_DEVIATION_TOL 일 때만** 경고를 낸다. 대체 소스를 썼어도
+    결과가 전산과 같으면 알릴 이유가 없다. 전산 BM 이 없는 펀드(06X08·SAA 4펀드)는
+    대조 대상이 없어 검증 불가 → 경고를 유지하고 그 사실을 문구에 명시한다.
     """
+    _dev = None
+    if start_date is not None and our_bm_return is not None:
+        _dt = _dt_bm_period_return(fund_code, start_date, end_date)
+        if _dt is not None:
+            _dev = our_bm_return - _dt
+            if abs(_dev) <= _BM_DEVIATION_TOL:
+                return []          # 전산과 사실상 동일 → 침묵
     try:
         from config.funds import FUND_BM
         from modules.data_loader import bm_component_source_status
@@ -347,7 +382,16 @@ def _bm_freshness_warnings(fund_code: str, end_date) -> list[str]:
             "BM 구성지수 미적재(대체 소스 없음, 마지막 값 유지): "
             + ", ".join(f"{r['name']}({r['primary_last']})" for r in _stale),
         )
-    return out
+    if not out:
+        return out
+    if _dev is not None:
+        # 전산과 실제로 벌어진 경우만 — 편차를 앞세워 상세 사유를 붙인다
+        out.insert(0, f"전산 BM 대비 {_dev:+.2f}%p 차이")
+        return out
+    # 전산 BM 미등록(06X08·SAA 4펀드) — 대조 불가라 한 줄로만 알린다
+    _names = [r["name"] for r in rows if r["status"] in ("substituted", "stale")]
+    return ["전산 BM 미등록 펀드 — 구성지수 "
+            f"{len(_names)}건 대체/미적재({', '.join(_names)}), 대조 검증 불가"]
 
 
 def _build_bm_meta(fund_code: str, method: str, as_of=None,
@@ -577,8 +621,13 @@ def build_brinson(
     sources.append(SourceBreakdown(component="pa", kind="db", note="dt.MA000410"))
 
     # BM 구성지수 신선도 — Bloomberg 피드 정지(2026-07-20~, 월 데이터 리밋) 대응.
-    # 디스크 캐시 히트여도 정확히 나오도록 **DB 상태만 보고** 판정 (사용자 승인 2026-07-29).
-    for _w in _bm_freshness_warnings(fund_code, end_date):
+    # ★ 2026-07-29 사용자 지시: **전산 BM 과 실제로 다를 때만** 노출한다.
+    # 대체 소스를 썼어도 결과가 전산과 같으면(07G04 -0.0001%p, 4JM12 0.0000%p) 침묵.
+    for _w in _bm_freshness_warnings(
+        fund_code, end_date,
+        start_date=start_date,
+        our_bm_return=float(raw.get("period_bm_return", 0.0) or 0.0),
+    ):
         warnings.append(_w)
 
     # BM 컴포넌트(지수)별 기간 기여/수익률 주입 (compute 산출, 구캐시엔 없음 → None 유지)
