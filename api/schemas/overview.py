@@ -54,6 +54,10 @@ class PeriodReturnsResponseDTO(BaseModel):
     benchmark_label: str | None = None
     period_returns: PeriodReturnsDTO = Field(default_factory=dict)
     bm_period_returns: PeriodReturnsDTO = Field(default_factory=dict)
+    # 벤치마크 미적재 시 end_date 는 BM 최종일로 당겨진다(펀드/BM 기간 정합).
+    # fund_as_of = 펀드 기준가 최신일 — 둘이 다르면 UI 에 기준일 분리 표기.
+    fund_as_of: date | None = None
+    bm_as_of: date | None = None
 
 
 class OverviewResponseDTO(BaseModel):
@@ -76,3 +80,10 @@ class OverviewResponseDTO(BaseModel):
     bm_volatility_ytd: float | None = None      # 벤치마크 YTD 연환산 변동성
     equity_weight: float | None = None          # 포트 주식비중(국내+해외, look-through), fraction
     bm_equity_weight: float | None = None       # 벤치마크 주식비중(컴포넌트 매핑), fraction
+    # --- 기간 정합 / 소스 신선도 (2026-07-29) ---
+    # returns_as_of: 수익률 계열(카드·기간수익률) 앵커일 = 벤치마크 최종일.
+    # meta.as_of_date(기준가·AUM·차트 최신일) 와 다르면 UI 에 분리 표기.
+    returns_as_of: date | None = None
+    bm_as_of: date | None = None
+    # BM 구성지수 대체 소스 발동 목록 (Bloomberg 피드 정지 대응)
+    bm_source_notes: list[str] = Field(default_factory=list)

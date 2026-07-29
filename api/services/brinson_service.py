@@ -313,6 +313,43 @@ def _rf_period_pct(start_yyyymmdd: str, end_yyyymmdd: str) -> float | None:
         return None
 
 
+def _bm_freshness_warnings(fund_code: str, end_date) -> list[str]:
+    """BM/SAA 구성지수 소스 신선도 경고 문구.
+
+    Bloomberg 피드 정지(2026-07-20~) 대응 — 검증된 대체 소스로 메운 지수와, 대체가
+    없어 마지막 값이 ffill 되는 지수(Gold Spot·NASDAQ100 TR·KOSPI TR·KAP 10y-20y)를
+    구분해 알린다. 캐시 히트 여부와 무관하게 DB 상태로 판정.
+    """
+    try:
+        from config.funds import FUND_BM
+        from modules.data_loader import bm_component_source_status
+
+        comps = (FUND_BM.get(fund_code) or {}).get("components")
+        if not comps:
+            from modules.data_loader import load_saa_components
+            info = load_saa_components(
+                fund_code, pd.Timestamp(end_date).strftime("%Y%m%d"))
+            comps = (info or {}).get("components")
+        rows = bm_component_source_status(comps, end_date)
+    except Exception:
+        return []
+    out: list[str] = []
+    for r in rows:
+        if r["status"] == "substituted":
+            tag = "추정" if r.get("synthetic") else "동일값 검증"
+            out.append(
+                f"BM 구성지수 대체({tag}): {r['note']} — 원본 최신 "
+                f"{r['primary_last']}, 대체 최신 {r['source_last']}",
+            )
+    _stale = [r for r in rows if r["status"] == "stale"]
+    if _stale:
+        out.append(
+            "BM 구성지수 미적재(대체 소스 없음, 마지막 값 유지): "
+            + ", ".join(f"{r['name']}({r['primary_last']})" for r in _stale),
+        )
+    return out
+
+
 def _build_bm_meta(fund_code: str, method: str, as_of=None,
                    saa_mode: str = "auto", start_yyyymmdd=None):
     """item4/5: BM(FUND_BM) / SAA 벤치마크(DB 인덱스) / proxy / SAA(MP 목표비중) 구성.
@@ -538,6 +575,11 @@ def build_brinson(
         )
 
     sources.append(SourceBreakdown(component="pa", kind="db", note="dt.MA000410"))
+
+    # BM 구성지수 신선도 — Bloomberg 피드 정지(2026-07-20~, 월 데이터 리밋) 대응.
+    # 디스크 캐시 히트여도 정확히 나오도록 **DB 상태만 보고** 판정 (사용자 승인 2026-07-29).
+    for _w in _bm_freshness_warnings(fund_code, end_date):
+        warnings.append(_w)
 
     # BM 컴포넌트(지수)별 기간 기여/수익률 주입 (compute 산출, 구캐시엔 없음 → None 유지)
     _cstats = {s["name"]: s for s in (raw.get("bm_component_stats") or [])}

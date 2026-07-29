@@ -808,6 +808,18 @@ export default function BrinsonTab({ fundCode }: Props) {
         </div>
       )}
 
+      {/* BM 구성지수 소스 신선도 (Bloomberg 피드 정지 대응) — 계산은 정상이므로 fallback 과 별도 */}
+      {!isFallback && data.meta.warnings.length > 0 && (
+        <div className="bn-warn" style={{ background: "#fffbeb", color: "#92400e" }}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>BM 데이터 소스 안내</div>
+          <ul style={{ margin: 0, paddingLeft: 18 }}>
+            {data.meta.warnings.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* 벤치마크(BM)구성 | 자산군별 기여수익률 — side-by-side (전폭) */}
       <div className="bn-cols">
           {/* 표 0: BM/SAA 구성 vs AP 실제 */}

@@ -5,12 +5,12 @@
   "end_date": "2026-03-12",
   "totals": {
     "period_ap_return": -1.6255881356604163,
-    "period_bm_return": -0.5682940261578895,
-    "total_alloc": 1.6606,
-    "total_select": -0.8999999999999999,
-    "total_cross": -1.8178,
-    "total_excess": -1.0572941095025268,
-    "total_excess_relative": -1.063336990095165,
+    "period_bm_return": -0.50056947243724,
+    "total_alloc": 1.6595,
+    "total_select": -0.9608000000000001,
+    "total_cross": -1.8237999999999999,
+    "total_excess": -1.1250186632231762,
+    "total_excess_relative": -1.130678494598547,
     "fx_contrib": 0.02998583818697296,
     "residual": 0.0
   },
@@ -20,10 +20,10 @@
       "ap_weight": 47.51,
       "bm_weight": 49.5,
       "ap_return": -1.78,
-      "bm_return": -1.28,
-      "alloc_effect": 0.0345,
-      "select_effect": -0.243,
-      "cross_effect": 0.011,
+      "bm_return": -1.15,
+      "alloc_effect": 0.0308,
+      "select_effect": -0.3083,
+      "cross_effect": 0.0147,
       "contrib_return": -0.8349
     },
     {
@@ -32,9 +32,9 @@
       "bm_weight": 45.0,
       "ap_return": -1.64,
       "bm_return": -1.21,
-      "alloc_effect": -0.0384,
-      "select_effect": -0.1265,
-      "cross_effect": -0.051,
+      "alloc_effect": -0.0346,
+      "select_effect": -0.1225,
+      "cross_effect": -0.055,
       "contrib_return": -0.7428
     },
     {
@@ -42,10 +42,10 @@
       "ap_weight": -4.6,
       "bm_weight": 22.5,
       "ap_return": 0.17,
-      "bm_return": 2.36,
-      "alloc_effect": 1.6645,
-      "select_effect": -0.5305,
-      "cross_effect": -1.6757,
+      "bm_return": 2.35,
+      "alloc_effect": 1.6633,
+      "select_effect": -0.53,
+      "cross_effect": -1.6742,
       "contrib_return": 0.03
     },
     {
@@ -53,10 +53,10 @@
       "ap_weight": 0.0,
       "bm_weight": 5.5,
       "ap_return": 0.0,
-      "bm_return": 0.45,
+      "bm_return": 0.58,
       "alloc_effect": 0.0,
       "select_effect": 0.0,
-      "cross_effect": -0.1021,
+      "cross_effect": -0.1093,
       "contrib_return": -0.0779
     }
   ],

@@ -87,6 +87,9 @@ export default function OverviewTab({ fundCode }: Props) {
   const tpr = prq.data?.period_returns ?? pr;
   const tbmpr = prq.data?.bm_period_returns ?? bmpr;
   const tEnd = prq.data?.end_date ?? asof;
+  // 벤치마크 적재 지연 여부 — 지연 시 백엔드가 수익률 앵커를 BM 최종일로 당긴다.
+  const returnsAsOf = data.returns_as_of ?? asof;
+  const bmLag = !!(returnsAsOf && asof && returnsAsOf < asof);
 
   // 목표 누적수익률 (기간별 일수 환산). anchor 미지정 시 최신 as_of, 표는 조회 종료일 앵커.
   const TARGET_DAYS: Record<string, number> = { "1W": 7, "1M": 30.44, "3M": 91.31, "6M": 182.62, "1Y": 365.25 };
@@ -390,6 +393,17 @@ export default function OverviewTab({ fundCode }: Props) {
             기간별 수익률{annualize ? " (연환산)" : ""}{tEnd ? <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 6 }}>(기준 {tEnd})</span> : null}
             {prq.isFetching && <span className="bn-tag recalc" style={{ marginLeft: 8 }}>● 계산 중…</span>}
           </div>
+          {/* 벤치마크 미적재일 — 펀드/BM 기간을 BM 최종일로 맞춰 계산(초과수익 왜곡 방지) */}
+          {bmLag && (
+            <div style={{ fontSize: 11, color: "#b45309", marginBottom: 6 }}>
+              ⚠ 벤치마크 미적재 — 수익률은 BM 최종일({returnsAsOf}) 기준, 기준가·AUM 은 최신({asof}) 기준
+            </div>
+          )}
+          {(data.bm_source_notes ?? []).length > 0 && (
+            <div style={{ fontSize: 11, color: "#b45309", marginBottom: 6 }}>
+              ⚠ BM 구성지수 소스: {(data.bm_source_notes ?? []).join(" · ")}
+            </div>
+          )}
           <table className="ov-tbl">
             <thead>
               <tr>

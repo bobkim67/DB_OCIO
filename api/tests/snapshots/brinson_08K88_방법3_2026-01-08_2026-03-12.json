@@ -5,12 +5,12 @@
   "end_date": "2026-03-12",
   "totals": {
     "period_ap_return": 5.223587805234575,
-    "period_bm_return": 5.543408946113515,
-    "total_alloc": 1.2433,
-    "total_select": -1.2631999999999999,
-    "total_cross": -0.2999,
-    "total_excess": -0.31982114087893976,
-    "total_excess_relative": -0.3030233190991827,
+    "period_bm_return": 5.542251417814592,
+    "total_alloc": 1.2546000000000002,
+    "total_select": -1.2597,
+    "total_cross": -0.3136,
+    "total_excess": -0.31866361258001685,
+    "total_excess_relative": -0.30192989849961993,
     "fx_contrib": 1.4194333700942399,
     "residual": 0.0
   },
@@ -21,9 +21,9 @@
       "bm_weight": 21.6,
       "ap_return": 24.21,
       "bm_return": 22.68,
-      "alloc_effect": 0.8582,
-      "select_effect": 0.2958,
-      "cross_effect": -0.0439,
+      "alloc_effect": 0.8555,
+      "select_effect": 0.2954,
+      "cross_effect": -0.044,
       "contrib_return": 6.0655
     },
     {
@@ -33,8 +33,8 @@
       "ap_return": -0.81,
       "bm_return": -1.28,
       "alloc_effect": 0.0228,
-      "select_effect": 0.0489,
-      "cross_effect": -0.0136,
+      "select_effect": 0.0491,
+      "cross_effect": -0.0137,
       "contrib_return": -0.0765
     },
     {
@@ -43,9 +43,9 @@
       "bm_weight": 50.4,
       "ap_return": -3.76,
       "bm_return": -1.21,
-      "alloc_effect": 0.0833,
+      "alloc_effect": 0.0964,
       "select_effect": -1.3632,
-      "cross_effect": -0.1545,
+      "cross_effect": -0.1681,
       "contrib_return": -2.0769
     },
     {
@@ -54,9 +54,9 @@
       "bm_weight": 10.0,
       "ap_return": -0.42,
       "bm_return": 0.08,
-      "alloc_effect": -0.0042,
-      "select_effect": -0.055,
-      "cross_effect": 0.015,
+      "alloc_effect": -0.0033,
+      "select_effect": -0.0554,
+      "cross_effect": 0.0142,
       "contrib_return": -0.0382
     },
     {
@@ -64,10 +64,10 @@
       "ap_weight": 60.63,
       "bm_weight": 50.4,
       "ap_return": 2.0,
-      "bm_return": 2.36,
+      "bm_return": 2.35,
       "alloc_effect": 0.2832,
-      "select_effect": -0.1897,
-      "cross_effect": -0.0566,
+      "select_effect": -0.1856,
+      "cross_effect": -0.0557,
       "contrib_return": 1.4194
     },
     {

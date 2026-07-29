@@ -424,6 +424,320 @@ def load_scip_bm_prices(dataset_id: int, dataseries_id: int,
 
 
 # ============================================================
+# BM 구성지수 대체 소스 (Bloomberg 피드 정지 대응)
+# ============================================================
+# 배경: SCIP 의 Bloomberg 계열(dataseries_id=9/48)은 2026-07-20~21 이후 적재가 멈췄다.
+# 적재 스크립트(C:\JUPYTER_SERVER\Daily_DB_update_just_click.py)가 50개 티커를
+# 1999-12-31~당일 전량 재요청(하루 ~345,000 포인트)하는 구조라 **월 데이터 리밋** 에 걸렸다.
+# FactSet(6/15/39/44) · KIS(33/40) · KAP(41) 계열은 정상.
+#
+# 정책(2026-07-29 사용자 확정): **Bloomberg 원본 우선**, 원본이 요청 종료일을 못 덮을 때만
+# 대체 소스를 그 창(window) 전체에 적용. 과거 창(골든 등)은 원본이 덮으므로 발동하지 않고,
+# 리밋 복구 후 원본이 다시 들어오면 자동 원복된다.
+#
+# 값 일치 검증 (2026-07-29, 일수익률 기준):
+#   (57,9) →(35,39)   MSCI ACWI Gross TR → FactSet FG TR(Unhedged)   max 0.0004%p
+#                     ※ 전산 BM 표의 ACWI 값과 소수 4자리 일치 (전산도 동일 계열)
+#   (255,9)→(301,41)  KAP MMI Call  → KAP Call 총수익지수(KAP 직접)   380/380일 일치
+#   (146,9)→(298,41)  KAP MMI 종합  → KAP MMI종합 총수익지수          378/378일 일치
+#   (401,9)→(307,39)  Bloomberg US HY TR → FactSet US Corp HY TR      상관 1.000000
+#   (257,9)→BMJISU KM000000  KAP Korea Bond All (dt DB)               132/132일 차이 0.000000
+#   (256,9)→(58,44)+캐리     Global Agg TR H KRW ← H USD + 원-달러 단기금리차
+#                     ※ H-USD × 환율은 '환노출 원화평가'라 정의가 다름(오차 0.35~0.84%).
+#                       금리차(캐리) 방식은 전산 실제값 대비 오차 ≤3bp 로 실측 검증.
+# 대체 불가(원본 ffill 유지): 408/48 Gold Spot · 272/9 NASDAQ100 TR · 253/9 KOSPI TR
+#                            · 225/9 KOSPI200 TR · 322/9 KAP All 10y-20y
+_BM_FALLBACK = {
+    (57, 9): {'kind': 'scip', 'to': (35, 39),
+              'note': 'MSCI ACWI Gross TR → FactSet FG TR(Unhedged)'},
+    (255, 9): {'kind': 'scip', 'to': (301, 41),
+               'note': 'KAP MMI Call → KAP Call 총수익지수(KAP 직접)'},
+    (146, 9): {'kind': 'scip', 'to': (298, 41),
+               'note': 'KAP MMI 종합 → KAP MMI종합 총수익지수(KAP 직접)'},
+    (401, 9): {'kind': 'scip', 'to': (307, 39),
+               'note': 'Bloomberg US HY TR → FactSet US Corporate HY TR'},
+    (257, 9): {'kind': 'bmjisu', 'to': 'KM000000',
+               'note': 'KAP Korea Bond All → dt.BMJISU KM000000'},
+    (256, 9): {'kind': 'hedge_carry', 'to': (58, 44),
+               'note': 'Global Agg TR H KRW → H USD + 원-달러 캐리(추정)'},
+    # 아래 3건은 정의가 완전히 같지 않아 결측 구간만 접합(drift 는 캐리로 흡수).
+    # 검증(2026-07-29, 갭 5영업일 누적차이 RMS / BM 비중 반영 오차):
+    #   253/9 KOSPI TR → 253/15 FG Price   1.20%p → 08N33 4.9% 기준 0.06%p
+    #   225/9 KOSPI200 TR → 225/15 FG Price 1.18%p → 2JM23 1.45% 기준 0.02%p
+    #   408/48 Gold Spot(XAU) → 95/15 GC00-USA(NYM 연결선물) 1.39%p → 2JM23 26.5% 기준 0.37%p
+    #     ※ 277/15 LBMA PM 은 0.97%p 로 더 촘촘했으나 사용자가 GC00-USA 지정(2026-07-29).
+    (253, 9): {'kind': 'hedge_carry', 'to': (253, 15),
+               'note': 'KOSPI TR → KOSPI FG Price + 배당캐리(추정)'},
+    (225, 9): {'kind': 'hedge_carry', 'to': (225, 15),
+               'note': 'KOSPI200 TR → KOSPI200 FG Price + 배당캐리(추정)'},
+    (408, 48): {'kind': 'hedge_carry', 'to': (95, 15),
+                'note': 'Gold Spot(XAU) → GC00-USA NYM 연결선물(추정)'},
+    # NASDAQ100 TR(XNDX) → FactSet `NDX`(가격지수) + 배당캐리. SCIP 에 없어 API+로컬캐시 경유.
+    # 검증(2026-07-29): 상관 0.99999, 일차이 std 0.0045%p, mean +0.0028%p/일(=연 0.71%p 배당),
+    # 5영업일 누적차이 RMS 0.0176%p → 캐리 보정 후 0.0104%p (2JM23 31.1% 반영 시 0.003%p).
+    (272, 9): {'kind': 'factset', 'to': 'NDX',
+               'note': 'NASDAQ100 TR → FactSet NDX + 배당캐리(추정)'},
+}
+
+# 대체가 실제로 발동한 기록 — UI 신선도 경고용. {(ds,dsr): {...}}
+_BM_FALLBACK_USED: dict = {}
+
+# 캐리 추정에 쓰는 겹침 구간 길이(영업일)
+_HEDGE_CARRY_WINDOW = 20
+
+
+def get_bm_fallback_notes() -> list:
+    """이 프로세스에서 발동한 BM 대체 소스 기록 (로깅/디버그용).
+
+    ⚠ UI 경고에는 쓰지 말 것 — 프로세스 전역 누적이라 펀드 간 오염되고, 결과가
+    디스크 캐시에서 오면(로드 미발생) 비어 있다. UI 는 데이터 상태를 직접 보는
+    bm_component_source_status() 를 사용한다.
+    """
+    return sorted(_BM_FALLBACK_USED.values(), key=lambda d: d['note'])
+
+
+def bm_component_source_status(components: list, end_date=None) -> list:
+    """BM/SAA 구성지수별 소스 신선도 — 캐시 여부와 무관하게 DB 상태만 보고 판정.
+
+    Returns: [{'name', 'primary_last', 'status', 'note', 'source_last'}, ...]
+      status: 'ok'          원본이 목표일까지 적재됨
+              'substituted' 원본 정지 + 검증된 대체 소스 사용 (_BM_FALLBACK)
+              'stale'       원본 정지 + 대체 소스 없음 → 마지막 값 ffill
+    'ok' 는 반환하지 않는다(경고 목적).
+    """
+    if not components:
+        return []
+    target = (pd.Timestamp(end_date).normalize() if end_date
+              else pd.Timestamp.today().normalize())
+    out = []
+    for comp in components:
+        try:
+            key = (int(comp['dataset_id']), int(comp['dataseries_id']))
+        except (KeyError, TypeError, ValueError):
+            continue
+        # 해외 지수는 BM 규약상 T-1 참조(해외 종가 시차)라 목표일-1영업일까지 정상.
+        # 이 허용이 없으면 정상 상태의 FactSet 해외 계열이 매일 오탐으로 잡힌다.
+        _need = target
+        if comp.get('region') == 'ex_KR':
+            _need = target - pd.tseries.offsets.BDay(1)
+        p_last = _scip_series_max_date(*key)
+        if p_last is None or p_last >= _need:
+            continue
+        fb = _BM_FALLBACK.get(key)
+        name = str(comp.get('name', key))
+        if fb is None:
+            out.append({'name': name, 'primary_last': p_last.date().isoformat(),
+                        'status': 'stale', 'note': None, 'source_last': None})
+            continue
+        if fb['kind'] == 'bmjisu':
+            _d = _load_bmjisu_prices(fb['to'], '20260101')
+            s_last = (pd.Timestamp(_d['기준일자'].max()).normalize()
+                      if not _d.empty else None)
+        elif fb['kind'] == 'factset':
+            try:
+                from modules.factset_prices import factset_series_max_date
+                s_last = factset_series_max_date(fb['to'])
+            except Exception:
+                s_last = None
+        else:
+            s_last = _scip_series_max_date(*fb['to'])
+        if s_last is None or s_last <= p_last:
+            out.append({'name': name, 'primary_last': p_last.date().isoformat(),
+                        'status': 'stale', 'note': None, 'source_last': None})
+        else:
+            out.append({'name': name, 'primary_last': p_last.date().isoformat(),
+                        'status': 'substituted', 'note': fb['note'],
+                        'source_last': s_last.date().isoformat(),
+                        'synthetic': fb['kind'] in ('hedge_carry', 'factset')})
+    return out
+
+
+def _scip_series_max_date(dataset_id: int, dataseries_id: int):
+    """(dataset_id, dataseries_id) 최신 관측일 — 전체 시계열 로드 없이 MAX만."""
+    conn = get_pandas_connection('SCIP')
+    try:
+        df = pd.read_sql(
+            "SELECT MAX(timestamp_observation) AS mx FROM back_datapoint "
+            "WHERE dataset_id = %s AND dataseries_id = %s",
+            conn, params=[dataset_id, dataseries_id],
+        )
+        if df.empty or pd.isna(df['mx'].iloc[0]):
+            return None
+        return pd.Timestamp(df['mx'].iloc[0]).normalize()
+    finally:
+        conn.close()
+
+
+def _load_bmjisu_prices(index_cd: str, start_date: str = None) -> pd.DataFrame:
+    """dt.BMJISU 채권지수 시계열 (KAP/KIS 원장 직접). load_scip_bm_prices 동일 포맷."""
+    conn = get_pandas_connection('dt')
+    try:
+        params = [index_cd]
+        where_date = ""
+        if start_date:
+            # d_tr_ymd 는 varchar(8) — 반드시 문자열 (int 면 인덱스 미사용)
+            where_date = " AND d_tr_ymd >= %s"
+            params.append(str(start_date).replace('-', '')[:8])
+        df = pd.read_sql(
+            f"SELECT d_tr_ymd, f_bond_index FROM BMJISU "
+            f"WHERE i_index_cd = %s {where_date} ORDER BY d_tr_ymd",
+            conn, params=params,
+        )
+        if df.empty:
+            return pd.DataFrame(columns=['기준일자', 'value'])
+        out = pd.DataFrame({
+            '기준일자': pd.to_datetime(df['d_tr_ymd'].astype(str), format='%Y%m%d'),
+            'value': df['f_bond_index'].astype(float),
+        })
+        return out[out['value'] > 0].reset_index(drop=True)
+    finally:
+        conn.close()
+
+
+@functools.lru_cache(maxsize=64)
+def _kr_business_days(start_date: str, end_date: str) -> tuple:
+    """DWCI10220 영업일 (R selectable_dates 동일). 캐시 — BM 경로에서 반복 호출."""
+    conn = get_pandas_connection('dt')
+    try:
+        df = pd.read_sql(
+            "SELECT std_dt FROM DWCI10220 WHERE hldy_yn='N' AND day_ds_cd IN (2,3,4,5,6) "
+            "AND std_dt BETWEEN %s AND %s ORDER BY std_dt",
+            conn, params=[str(start_date).replace('-', '')[:8],
+                          str(end_date).replace('-', '')[:8]])
+        if df.empty:
+            return tuple()
+        return tuple(pd.to_datetime(df['std_dt'].astype(str)))
+    except Exception:
+        return tuple()
+    finally:
+        conn.close()
+
+
+def _foreign_t1_on_kr(ser: pd.Series, kr_dates) -> pd.Series:
+    """해외 지수의 T-1 값을 한국 영업일 그리드에 정렬 — **전산 규약**.
+
+    캘린더 ffill → 1캘린더일 전 → 한국 영업일만 추출. 한국 휴장일에 해외가 열린 날
+    (2026-07-17 금 등)의 움직임이 누락되지 않는다.
+
+    구 규약(한국 영업일 그리드에서 shift(1))은 그 날을 건너뛰어 07G04 BM 이 2026-07-20
+    하루에 0.38%p 어긋났다(전산 -0.7814 vs 구 -0.4007). 2026-07-29 사용자 확정으로
+    전산 규약을 채택 — R 골든 스냅샷은 이 변경에 맞춰 갱신했다.
+    """
+    if ser is None or len(ser) == 0 or kr_dates is None or len(kr_dates) == 0:
+        return pd.Series(dtype=float)
+    idx = pd.DatetimeIndex(kr_dates)
+    cal = pd.date_range(min(ser.index.min(), idx.min()), idx.max(), freq='D')
+    return ser.reindex(cal).ffill().shift(1).reindex(idx)
+
+
+def _splice_with_carry(primary: pd.DataFrame, donor: pd.DataFrame) -> pd.DataFrame:
+    """primary 끝 이후를 donor 일수익률 + 캐리로 연장 (헤지통화 차이 보정).
+
+    KRW헤지 지수를 USD헤지 지수로 잇는 경우, 두 지수의 일수익률 차이는 원-달러
+    단기금리차(헤지캐리)다. 겹침 구간 마지막 _HEDGE_CARRY_WINDOW 영업일의 실측
+    평균 차이를 캐리로 추정해 donor 수익률에 더한다.
+    """
+    if primary.empty or donor.empty:
+        return primary
+    p = primary.set_index('기준일자')['value'].sort_index()
+    d = donor.set_index('기준일자')['value'].sort_index()
+    p, d = p[~p.index.duplicated(keep='last')], d[~d.index.duplicated(keep='last')]
+    last = p.index[-1]
+    tail = d[d.index > last]
+    if tail.empty or last not in d.index:
+        return primary
+    # 캐리 = 겹침 구간 일수익률 차이의 최근 평균
+    ov = pd.DataFrame({'p': p, 'd': d}).dropna()
+    carry = 0.0
+    if len(ov) > 2:
+        rr = ov.pct_change().dropna()
+        carry = float((rr['p'] - rr['d']).tail(_HEDGE_CARRY_WINDOW).mean())
+        if not np.isfinite(carry):
+            carry = 0.0
+    lvl = float(p.iloc[-1])
+    prev = float(d.loc[last])
+    rows = []
+    for dt_, v in tail.items():
+        if prev and np.isfinite(v):
+            lvl *= (1.0 + (float(v) / prev - 1.0) + carry)
+            rows.append({'기준일자': dt_, 'value': lvl})
+        prev = float(v)
+    if not rows:
+        return primary
+    return pd.concat([primary, pd.DataFrame(rows)], ignore_index=True)
+
+
+def load_bm_component_prices(dataset_id: int, dataseries_id: int,
+                             start_date: str = None, currency: str = None,
+                             end_date: str = None) -> pd.DataFrame:
+    """BM 구성지수 시계열 — 원본 우선, 요청 종료일을 못 덮으면 대체 소스 사용.
+
+    end_date=None 이면 '오늘'을 목표로 본다(최신 조회). 자세한 정책·검증치는
+    위 _BM_FALLBACK 주석 참조.
+    """
+    primary = load_scip_bm_prices(dataset_id, dataseries_id, start_date, currency)
+    fb = _BM_FALLBACK.get((dataset_id, dataseries_id))
+    if fb is None:
+        return primary
+
+    target = pd.Timestamp(end_date).normalize() if end_date else pd.Timestamp.today().normalize()
+    p_last = pd.Timestamp(primary['기준일자'].max()).normalize() if not primary.empty else None
+
+    if fb['kind'] == 'bmjisu':
+        donor_last_df = _load_bmjisu_prices(fb['to'], '20260101')
+        s_last = (pd.Timestamp(donor_last_df['기준일자'].max()).normalize()
+                  if not donor_last_df.empty else None)
+    elif fb['kind'] == 'factset':
+        try:
+            from modules.factset_prices import factset_series_max_date
+            s_last = factset_series_max_date(fb['to'])
+        except Exception:
+            s_last = None
+    else:
+        s_last = _scip_series_max_date(*fb['to'])
+    if s_last is None:
+        return primary
+    # 원본이 목표일(또는 대체 소스 최신일)까지 덮으면 원본 그대로 — 골든 창 불변
+    need = min(target, s_last)
+    if p_last is not None and p_last >= need:
+        return primary
+
+    if fb['kind'] == 'bmjisu':
+        sub = _load_bmjisu_prices(fb['to'], start_date)
+    elif fb['kind'] == 'factset':
+        try:
+            from modules.factset_prices import load_factset_price_series
+            sub = load_factset_price_series(fb['to'], start_date)
+        except Exception:
+            sub = pd.DataFrame(columns=['기준일자', 'value'])
+    else:
+        sub = load_scip_bm_prices(fb['to'][0], fb['to'][1], start_date, currency)
+    if sub.empty or len(sub) < 2:
+        return primary
+
+    if fb['kind'] in ('hedge_carry', 'factset'):
+        # 정의가 다른 지수(H-KRW vs H-USD) — 창 전체 교체 불가, 결측 구간만 캐리 접합
+        out = _splice_with_carry(primary, sub)
+        synthetic = True
+    else:
+        # 값이 동일 검증된 대체 — 창 전체를 대체 소스로 교체(사용자 확정 방식)
+        out = sub
+        synthetic = False
+
+    _BM_FALLBACK_USED[(dataset_id, dataseries_id)] = {
+        'note': fb['note'],
+        'primary_last': p_last.date().isoformat() if p_last is not None else None,
+        'source_last': s_last.date().isoformat(),
+        'synthetic': synthetic,
+    }
+    logger.warning(
+        "BM 대체 소스 사용: %s (원본 최신 %s < 목표 %s)",
+        fb['note'], p_last.date() if p_last is not None else None, need.date(),
+    )
+    return out
+
+
+# ============================================================
 # DT BM 지수 (DWPM10041 서브BM / DWPM10040 기본BM)
 # ============================================================
 
@@ -1094,12 +1408,23 @@ def load_fund_meta(fund_code: str) -> dict:
 # 여러 지수의 가중합으로 구성된 벤치마크
 # ============================================================
 
-def load_composite_bm_prices(components: list, start_date: str = None) -> pd.DataFrame:
+def load_composite_bm_prices(components: list, start_date: str = None,
+                             end_date: str = None,
+                             fund_code: str = None) -> pd.DataFrame:
     """
     복합 BM 시계열 생성.
     각 component의 SCIP 시계열 → 일별 수익률 → 가중합 → 복합지수 복원.
 
     components: [{'dataset_id', 'dataseries_id', 'weight', 'name', 'currency'}, ...]
+    end_date: 구성지수 대체 소스 판정 목표일 (None=오늘). load_bm_component_prices 참조.
+    fund_code: BM cost(-34bp/yr) 적용 판정용 (_BM_COST_FUNDS = 08K88, R 프로덕션 동일).
+               2026-07-29 검증: 08K88 전산 BM 대비 오차 +0.1381%p → cost 적용 시 -0.0111%p.
+
+    ★ 2026-07-29 fix: **국내 구성지수도 DWCI10220 영업일 그리드에 ffill 정렬**한다.
+    이전에는 국내 지수만 원 시계열 그대로 두고 교집합을 취해, 지수별 관측일 차이가
+    누적오차로 남았다(07G04 전산 대비 -0.4221%p → 정렬 후 -0.0507%p).
+    Brinson 경로(_load_bm_daily_returns_by_class)는 원래 이 그리드를 쓴다(R 동일).
+
     Returns: DataFrame(기준일자, value) — load_scip_bm_prices와 동일 포맷
     """
     if not components:
@@ -1109,12 +1434,28 @@ def load_composite_bm_prices(components: list, start_date: str = None) -> pd.Dat
     # Brinson BM 경로(_load_bm_daily_returns_by_class)와 동일 관례 — unhedged 는
     # 외화가격(T-1) × USDKRW(T), hedged 는 T-1 shift 만. 미반영 시 unhedged 외화 비중만큼
     # SAA/BM 수익률이 과소 계상 (2026-07-03 08N33: SAA YTD +1.29% vs Brinson +4.07% 확인).
+    # ★ 그리드 = DWCI10220 영업일 (2026-07-29 fix). 이전에는 FX 관측일(SCIP 31/6)을
+    # 그리드로 썼는데, SCIP FX 에는 한국 평일 휴장일 관측이 섞여 있어(2026년 10건 —
+    # 1/1·2/16~18·3/2·5/1·5/5·5/25·6/3·7/17) T-1 정렬이 어긋났다.
+    # 07G04 7월 누적: 구 -2.6386% vs 전산 -2.8297% → 수정 후 -2.8375%.
+    # Brinson 경로(_load_bm_daily_returns_by_class)는 원래 DWCI10220 을 쓴다(R 동일).
+    # 공통 영업일 그리드 (국내·해외 컴포넌트 모두 여기에 정렬)
+    _bd = _kr_business_days(
+        start_date or '20000101',
+        (end_date or pd.Timestamp.today().strftime('%Y%m%d')))
+    _grid = pd.DatetimeIndex(_bd) if _bd else None
+
     _fx = None
     if any(c.get('region') == 'ex_KR' for c in components):
         _fx_df = load_scip_bm_prices(31, 6, start_date, 'USD')
         if not _fx_df.empty and len(_fx_df) >= 2:
             _fx_s = _fx_df.set_index('기준일자').sort_index()
-            _fx = _fx_s[~_fx_s.index.duplicated(keep='last')]['value']
+            _fx_s = _fx_s[~_fx_s.index.duplicated(keep='last')]['value']
+            if _grid is not None:
+                _grid = _grid[_grid <= _fx_s.index.max()]
+                _fx = _fx_s.reindex(_grid).ffill()
+            else:
+                _fx = _fx_s      # 캘린더 조회 실패 시 구 동작(FX 관측일)
 
     # 각 component 시계열 로드
     comp_series = {}
@@ -1122,9 +1463,9 @@ def load_composite_bm_prices(components: list, start_date: str = None) -> pd.Dat
         _is_ex_kr = comp.get('region') == 'ex_KR' and _fx is not None
         _hedged = bool(comp.get('hedged', False))
         _cur = 'USD' if (_is_ex_kr and not _hedged) else comp.get('currency')
-        df = load_scip_bm_prices(
+        df = load_bm_component_prices(
             comp['dataset_id'], comp['dataseries_id'],
-            start_date, _cur
+            start_date, _cur, end_date
         )
         if df.empty or len(df) < 2:
             logger.warning(f"복합BM component 데이터 부족: {comp.get('name', comp['dataset_id'])}")
@@ -1134,14 +1475,20 @@ def load_composite_bm_prices(components: list, start_date: str = None) -> pd.Dat
         df = df[~df.index.duplicated(keep='last')]
         ser = df['value']
         if _is_ex_kr:
-            # 한국 영업일(USDKRW 관측일) 캘린더 정렬 + T-1 shift(해외 종가 시차),
+            # 한국 영업일 그리드 + T-1(해외 종가 시차, 캘린더 전일 = 전산 규약),
             # unhedged 는 당일 환율 곱해 KRW 환산
-            ser = ser.reindex(_fx.index).ffill().shift(1)
+            ser = _foreign_t1_on_kr(ser, _fx.index)
             if not _hedged:
                 ser = ser * _fx
             ser = ser.dropna()
             if len(ser) < 2:
                 logger.warning(f"복합BM component 환산 후 데이터 부족: {comp.get('name', comp['dataset_id'])}")
+                continue
+        elif _grid is not None:
+            # 국내 지수도 영업일 그리드 정렬 (2026-07-29 fix — 함수 docstring 참조)
+            ser = ser.reindex(_grid).ffill().dropna()
+            if len(ser) < 2:
+                logger.warning(f"복합BM component 그리드 정렬 후 데이터 부족: {comp.get('name', comp['dataset_id'])}")
                 continue
         comp_series[comp['name']] = {'returns': ser.pct_change(), 'weight': comp['weight']}
 
@@ -1163,6 +1510,11 @@ def load_composite_bm_prices(components: list, start_date: str = None) -> pd.Dat
     composite_ret = pd.Series(0.0, index=all_dates)
     for cs in comp_series.values():
         composite_ret += cs['returns'].reindex(all_dates).fillna(0) * cs['weight']
+
+    # BM cost(-34bp/yr) — 08K88 만 (R 프로덕션 동일, compute_brinson_attribution_v2 와 동일 상수).
+    # 2026-07-29 전산 대조: 미적용 +0.1381%p → 적용 -0.0111%p (1/1~7/28 YTD)
+    if fund_code and fund_code in {'08K88'}:
+        composite_ret = composite_ret - (34 / 10000 / 365)
 
     # 복합지수 복원 (base=1000)
     composite_idx = (1 + composite_ret).cumprod() * 1000
@@ -1378,10 +1730,20 @@ def _map_bm_component_to_asset_class(comp_name: str, method: str = '방법3') ->
     return _collapse_asset_class(base, method)
 
 
+# 구성지수를 재현할 수 없어 DT(전산) BM 총계로 역산할 잔차 레그 (방안 B).
+# 값: FUND_BM components 의 name 들 — 이 레그들의 일수익률에 공통 δ 를 더한다.
+# 4JM12 만 적용 — 07G04(-0.05%p)·08K88(-0.01%p)는 구성지수로 이미 충분히 맞고,
+# 07G02·07G03 은 사용자 지시로 현행 유지(구성 정의 자체가 미확인).
+_BM_RESIDUAL_LEG = {
+    '4JM12': ('KAP Korea Bond All', 'KAP MMI Call'),
+}
+
+
 def _load_bm_daily_returns_by_class(bm_info: dict, start_date: str, end_date: str,
                                      asset_classes_8: list,
                                      mapping_method: str = '방법3',
-                                     fx_split: bool = True) -> tuple:
+                                     fx_split: bool = True,
+                                     fund_code: str = None) -> tuple:
     """
     BM 컴포넌트 일별 수익률 → 자산군별 집계.
 
@@ -1443,8 +1805,8 @@ def _load_bm_daily_returns_by_class(bm_info: dict, start_date: str, end_date: st
     for comp in components:
         if comp.get('region') == 'ex_KR':
             continue
-        df = load_scip_bm_prices(comp['dataset_id'], comp['dataseries_id'],
-                                  start_date, comp.get('currency'))
+        df = load_bm_component_prices(comp['dataset_id'], comp['dataseries_id'],
+                                       start_date, comp.get('currency'), end_date)
         if df.empty or len(df) < 2:
             continue
         df = df.set_index('기준일자').sort_index()
@@ -1477,25 +1839,25 @@ def _load_bm_daily_returns_by_class(bm_info: dict, start_date: str, end_date: st
         if comp.get('region') == 'ex_KR' and _kr_dates is not None:
             if comp.get('hedged'):
                 # Hedged KRW: KRW 가격 T-1 shift만 (FX 변환 불필요)
-                df_h = load_scip_bm_prices(comp['dataset_id'], comp['dataseries_id'],
-                                            start_date, comp.get('currency'))
+                df_h = load_bm_component_prices(comp['dataset_id'], comp['dataseries_id'],
+                                                 start_date, comp.get('currency'), end_date)
                 if df_h.empty or len(df_h) < 2:
                     continue
                 df_h = df_h.set_index('기준일자').sort_index()
                 df_h = df_h[~df_h.index.duplicated(keep='last')]
-                val_on_kr = df_h['value'].reindex(_kr_dates).ffill()
-                val_t1 = val_on_kr.shift(1)  # T-1 (한국BD 기준)
+                # T-1 = 캘린더 전일(전산 규약, _foreign_t1_on_kr 주석 참조)
+                val_t1 = _foreign_t1_on_kr(df_h['value'], _kr_dates)
                 daily_ret = val_t1.pct_change().fillna(0)
             elif _usdkrw_series is not None:
                 # Unhedged: USD가격(T-1, 한국BD) × USDKRW(T) → KRW → 수익률
-                df_usd = load_scip_bm_prices(comp['dataset_id'], comp['dataseries_id'],
-                                              start_date, 'USD')
+                df_usd = load_bm_component_prices(comp['dataset_id'], comp['dataseries_id'],
+                                                   start_date, 'USD', end_date)
                 if df_usd.empty or len(df_usd) < 2:
                     continue
                 df_usd = df_usd.set_index('기준일자').sort_index()
                 df_usd = df_usd[~df_usd.index.duplicated(keep='last')]
-                usd_on_kr = df_usd['value'].reindex(_kr_dates).ffill()
-                usd_t1 = usd_on_kr.shift(1)  # T-1 (한국BD 기준)
+                # T-1 = 캘린더 전일(전산 규약, _foreign_t1_on_kr 주석 참조)
+                usd_t1 = _foreign_t1_on_kr(df_usd['value'], _kr_dates)
                 fx_on_kr = _usdkrw_series.reindex(_kr_dates).ffill()
                 krw_price = usd_t1 * fx_on_kr
                 daily_ret = krw_price.pct_change().fillna(0)
@@ -1508,8 +1870,8 @@ def _load_bm_daily_returns_by_class(bm_info: dict, start_date: str, end_date: st
             # 국내: 그대로
             daily_ret = _kr_comp_prices[comp['name']].pct_change()
         else:
-            df = load_scip_bm_prices(comp['dataset_id'], comp['dataseries_id'],
-                                      start_date, comp.get('currency'))
+            df = load_bm_component_prices(comp['dataset_id'], comp['dataseries_id'],
+                                           start_date, comp.get('currency'), end_date)
             if df.empty or len(df) < 2:
                 continue
             df = df.set_index('기준일자').sort_index()
@@ -1524,6 +1886,43 @@ def _load_bm_daily_returns_by_class(bm_info: dict, start_date: str, end_date: st
 
     if not comp_returns:
         return bm_weights, pd.DataFrame(), None, None
+
+    # ── 잔차 레그 보정 (DT BM 역산, 2026-07-29 사용자 확정 '방안 B') ─────────────
+    # 구성지수를 우리 DB 로 재현할 수 없는 펀드에서, **전산 BM 총계와 정의상 일치**시킨다.
+    #   δ = (전산 BM 일수익률 − 우리 구성지수 가중합) / 잔차레그 비중합
+    # 잔차 레그들의 일수익률에 δ 를 더하므로 Σw×r 이 전산 BM 과 같아지고,
+    # 레그 간 상대차이·자산군 비중은 보존된다(단일 레그로 합치지 않음).
+    #
+    # 4JM12: 전산 BM = 0.225 ACWI Std(t-1)(USDKRW) + 0.225 ACWI Std(t-1) + **0.55 KBP-동부생명7**.
+    #   주식 2레그는 SCIP 35/15 와 소수 4자리까지 일치하지만, 채권 레그는 DB생명 전용
+    #   **맞춤지수**로 SCIP·dt.BMJISU 어디에도 없다. 게다가 이 지수는 **캘린더 매일 이자를
+    #   accrual**(주말·공휴일 +0.0094~0.0106%/일)하는데 KAP All/MMI Call 은 영업일만 있어
+    #   그만큼 누락됐다(5/1~7/28 오차 -0.1271%p ≈ 비영업일 31일×0.010%×0.55).
+    #   → 채권 2레그를 잔차로 지정해 δ 로 흡수.
+    _res_names = _BM_RESIDUAL_LEG.get(str(fund_code or '').strip())
+    if _res_names and _kr_dates is not None and len(_kr_dates) >= 2:
+        _res = [n for n in _res_names if n in comp_returns]
+        _res_w = sum(comp_returns[n]['weight'] for n in _res)
+        if _res and _res_w > 0:
+            try:
+                _dt_bm = load_dt_bm_prices(fund_code, start_date)
+                if _dt_bm is not None and len(_dt_bm) >= 2:
+                    _s = _dt_bm.set_index('기준일자')['value'].sort_index()
+                    _s = _s[~_s.index.duplicated(keep='last')]
+                    _dt_ret = _s.reindex(_kr_dates).ffill().pct_change()
+                    _ours = pd.Series(0.0, index=_kr_dates)
+                    for _cr in comp_returns.values():
+                        _ours += _cr['daily_ret'].reindex(_kr_dates).fillna(0) * _cr['weight']
+                    _delta = ((_dt_ret - _ours) / _res_w).reindex(_kr_dates)
+                    _delta = _delta.replace([np.inf, -np.inf], np.nan).fillna(0)
+                    for n in _res:
+                        _r = comp_returns[n]['daily_ret'].reindex(_kr_dates).fillna(0)
+                        comp_returns[n]['daily_ret'] = _r + _delta
+                    logger.info(
+                        "BM 잔차 레그 보정(%s): %s, 비중합 %.3f, 일평균 δ %.6f%%",
+                        fund_code, ','.join(_res), _res_w, float(_delta.mean()) * 100)
+            except Exception as exc:
+                logger.warning("BM 잔차 레그 보정 실패(%s): %s", fund_code, type(exc).__name__)
 
     # 영업일 캘린더 기준 (R 동일: intersection 아닌 union, 누락일=0 수익률)
     # _kr_dates가 있으면 사용 (ex_KR 컴포넌트도 이미 _kr_dates 기준으로 계산됨)
@@ -1838,7 +2237,7 @@ def compute_brinson_attribution_v2(fund_code: str,
         _bm_warmup_start = (_sd_dt - timedelta(days=45)).strftime('%Y%m%d')
         bm_weights_raw, bm_daily_df, _, _bm_comp = _load_bm_daily_returns_by_class(
             bm_info, _bm_warmup_start, end_date, _BM_ASSET_CLASSES, mapping_method,
-            fx_split=fx_split)
+            fx_split=fx_split, fund_code=fund_code)
 
     # BM '유동성' → '유동성및기타'로 매핑
     bm_weights = {}

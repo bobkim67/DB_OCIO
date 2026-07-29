@@ -72,7 +72,8 @@ def _load_bm_series(
         return None, None
     try:
         from modules.data_loader import load_composite_bm_prices
-        comp = load_composite_bm_prices(bm_cfg["components"], start_date)
+        comp = load_composite_bm_prices(bm_cfg["components"], start_date,
+                                        fund_code=fund_code)
         if comp is not None and len(comp) > 0:
             return comp, "scip"
     except Exception:
@@ -149,7 +150,8 @@ def _load_saa_series(
     except Exception:
         warm = start_yyyymmdd
     try:
-        comp = load_composite_bm_prices(info["components"], warm)
+        comp = load_composite_bm_prices(info["components"], warm,
+                                        fund_code=fund_code)
         if comp is not None and len(comp) > 0:
             return comp
     except Exception:
@@ -318,6 +320,69 @@ def _compute_bm_period_returns(
         out[key] = float(end_v) / float(ref_v) - 1.0
     out["SI"] = float(end_v) / (float(si_base) if si_base else float(b0)) - 1.0
     return out
+
+
+def _bm_source_notes(
+    fund_code: str, kind: str, bm_src: str | None, as_of: date | None,
+    start_yyyymmdd: str,
+) -> list[str]:
+    """BM 구성지수 소스 대체/정지 안내 (Bloomberg 피드 정지 대응).
+
+    DT BM(원장 지수)을 쓰는 펀드는 SCIP 구성지수를 타지 않으므로 해당 없음 —
+    SCIP composite(BM fallback) 와 SAA 경로에서만 판정한다.
+    """
+    if bm_src == "dt":
+        return []
+    try:
+        from modules.data_loader import bm_component_source_status
+        if kind == "BM":
+            comps = (FUND_BM.get(fund_code) or {}).get("components")
+        else:
+            from modules.data_loader import (
+                _build_proxy_bm_info,
+                load_saa_components,
+            )
+            info = load_saa_components(
+                fund_code, as_of.strftime("%Y%m%d") if as_of else None)
+            if not info or not info.get("components"):
+                info = _build_proxy_bm_info(fund_code, start_yyyymmdd)
+            comps = (info or {}).get("components")
+        rows = bm_component_source_status(comps, as_of)
+    except Exception:
+        return []
+    out: list[str] = []
+    for r in rows:
+        if r["status"] == "substituted":
+            tag = "추정" if r.get("synthetic") else "동일값 검증"
+            out.append(f"{r['note']} ({tag}, 원본 {r['primary_last']})")
+        else:
+            out.append(f"{r['name']} 미적재 — 마지막 값 유지 ({r['primary_last']})")
+    return out
+
+
+def _returns_window(
+    nav_df: pd.DataFrame, bm_df: "pd.DataFrame | None",
+) -> tuple[pd.DataFrame, date | None, date | None]:
+    """기간수익률 기준일을 벤치마크 최종일에 맞춘다 (2026-07-29 사용자 확정).
+
+    BM 적재가 펀드보다 늦는 날(예: DWPM10041 이 아직 T일을 안 받은 상태)에 펀드 T일 vs
+    BM T-1일을 비교하면 초과수익이 그 하루만큼 왜곡된다. 그래서 **기간수익률(펀드·BM·초과)
+    은 벤치마크 최종일까지만** 계산한다. 기준가·AUM 카드와 NAV 차트는 최신일 유지.
+
+    Returns: (기간수익률용 nav_df, returns_as_of, bm_as_of)
+    """
+    nav_last = pd.Timestamp(nav_df["기준일자"].iloc[-1]).normalize()
+    if bm_df is None or len(bm_df) == 0 or "기준일자" not in bm_df.columns:
+        return nav_df, nav_last.date(), None
+    bm_last = pd.Timestamp(bm_df["기준일자"].max()).normalize()
+    if bm_last >= nav_last:
+        return nav_df, nav_last.date(), bm_last.date()
+    trunc = nav_df[pd.to_datetime(nav_df["기준일자"]) <= bm_last]
+    if len(trunc) == 0:
+        return nav_df, nav_last.date(), bm_last.date()
+    trunc = trunc.reset_index(drop=True)
+    ref = pd.Timestamp(trunc["기준일자"].iloc[-1]).normalize()
+    return trunc, ref.date(), bm_last.date()
 
 
 def _compute_mdd_from_nav(nav_series: pd.Series) -> float | None:
@@ -491,13 +556,22 @@ def build_overview(
         ))
 
     # --- 4) cards ---
+    # 수익률 계열(설정후·YTD·변동성·기간수익률)은 벤치마크 최종일 앵커 — 펀드/BM 기간 정합.
+    # 기준가·AUM·NAV 차트·MDD 는 최신일 유지 (_returns_window 주석 참조).
+    ret_nav_df, returns_as_of, bm_as_of = _returns_window(nav_df, bm_df)
+    ret_last_nav = float(ret_nav_df["MOD_STPR"].iloc[-1])
+    if returns_as_of is not None and as_of is not None and returns_as_of < as_of:
+        warnings.append(
+            f"벤치마크 미적재 — 기간수익률은 BM 최종일({returns_as_of}) 기준, "
+            f"기준가/AUM 은 최신({as_of}) 기준",
+        )
     # 4-1) since_inception: 분모=base(1000/승계 override) — stats '누적'(ref=1000)·DT 전산 정합
     cards.append(MetricCardDTO(
         key="since_inception", label="설정후",
-        value=last_nav / base - 1.0, unit="pct",
+        value=ret_last_nav / base - 1.0, unit="pct",
     ))
     # 4-2) YTD / vol: compute_full_performance_stats 재사용
-    stats = _try_compute_stats(fund_code, as_of)
+    stats = _try_compute_stats(fund_code, returns_as_of or as_of)
     if stats is None:
         warnings.append("성과 통계 계산 실패 — YTD/변동성 생략")
     else:
@@ -522,12 +596,18 @@ def build_overview(
     period_returns = _period_returns_from_stats(stats)
     # SI는 base 규약(1000/승계/편입 override)과 정합 — stats '누적'(ref=1000 고정)은
     # 4JM12(1970.76)·07G07(1019.50) 등 override 펀드에서 어긋난다.
-    period_returns["SI"] = last_nav / base - 1.0
+    period_returns["SI"] = ret_last_nav / base - 1.0
 
     # --- 5-bis) bm_period_returns (BM 설정 + 정렬 성공 시) ---
     if bm_aligned is not None and bm_first_val is not None:
+        # BM 최종일 이후 ffill 구간은 잘라 펀드와 동일 앵커로 계산
+        _bm_for_ret = bm_aligned
+        if bm_as_of is not None:
+            _bm_for_ret = bm_aligned[bm_aligned.index <= pd.Timestamp(bm_as_of)]
+        if len(_bm_for_ret) == 0:
+            _bm_for_ret = bm_aligned
         bm_period_returns = _compute_bm_period_returns(
-            bm_aligned, si_base=bm_first_val,
+            _bm_for_ret, si_base=bm_first_val,
         )
 
     # --- 5-ter) 펀드 기본정보 (메타바) + 운용수익 ---
@@ -633,6 +713,11 @@ def build_overview(
         bm_volatility_ytd=bm_vol_ytd,
         equity_weight=equity_weight,
         bm_equity_weight=bm_equity_weight,
+        returns_as_of=returns_as_of,
+        bm_as_of=bm_as_of,
+        bm_source_notes=_bm_source_notes(
+            fund_code, benchmark_kind, bm_src, as_of, _start,
+        ),
     )
 
 
@@ -672,18 +757,9 @@ def _period_returns_cached(
 
     as_of_raw = nav_df["기준일자"].iloc[-1]
     as_of = as_of_raw.date() if hasattr(as_of_raw, "date") else as_of_raw
+    fund_as_of = as_of
 
-    # 포트 기간수익률 (앵커=as_of, R 파이프라인 재사용 — Overview 표와 동일 규약)
-    stats = _try_compute_stats(fund_code, as_of)
-    period_returns = _period_returns_from_stats(stats)
-    # SI는 base 규약 정합 (build_overview 와 동일 — 승계/편입 override 반영)
-    try:
-        _last_nav = float(nav_df["MOD_STPR"].iloc[-1])
-        period_returns["SI"] = _last_nav / _inception_base(fund_code) - 1.0
-    except Exception:
-        pass
-
-    # 벤치(BM/SAA) 기간수익률 — build_overview 와 동일 로드 경로, NAV(≤end) 날짜에 정렬
+    # 벤치(BM/SAA) 로드 — build_overview 와 동일 경로
     benchmark_kind: str = "none"
     benchmark_label: str | None = None
     bm_period_returns: PeriodReturnsDTO = {}
@@ -695,6 +771,22 @@ def _period_returns_cached(
         bm_df = _load_saa_series(fund_code, inc_str, as_of)
         if bm_df is not None and len(bm_df) > 0:
             benchmark_kind, benchmark_label = "SAA", "SAA"
+
+    # 기간수익률 앵커 = 벤치마크 최종일 (BM 미적재 시 펀드도 같이 당김 — _returns_window 참조)
+    nav_df, _ret_as_of, bm_as_of = _returns_window(nav_df, bm_df)
+    if _ret_as_of is not None:
+        as_of = _ret_as_of
+
+    # 포트 기간수익률 (앵커=as_of, R 파이프라인 재사용 — Overview 표와 동일 규약)
+    stats = _try_compute_stats(fund_code, as_of)
+    period_returns = _period_returns_from_stats(stats)
+    # SI는 base 규약 정합 (build_overview 와 동일 — 승계/편입 override 반영)
+    try:
+        _last_nav = float(nav_df["MOD_STPR"].iloc[-1])
+        period_returns["SI"] = _last_nav / _inception_base(fund_code) - 1.0
+    except Exception:
+        pass
+
     if bm_df is not None and len(bm_df) > 0 and "value" in bm_df.columns:
         bm_df = bm_df.sort_values("기준일자").reset_index(drop=True)
         bm_series = pd.Series(
@@ -718,6 +810,8 @@ def _period_returns_cached(
         benchmark_label=benchmark_label,
         period_returns=period_returns,
         bm_period_returns=bm_period_returns,
+        fund_as_of=fund_as_of,
+        bm_as_of=bm_as_of,
     )
 
 
