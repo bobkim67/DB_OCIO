@@ -668,8 +668,10 @@ export default function BrinsonTab({ fundCode }: Props) {
             <option value="split">FX 분리</option>
           </select>
         </label>
-        {/* 소스: 등록 SAA ↔ proxy (SAA 펀드만). 비중: 고정(constant-mix) ↔ drift(buy-and-hold, 전체) */}
-        {data.bm_source !== "BM" && (
+        {/* 소스: 등록 SAA ↔ proxy (SAA 펀드만). 비중: 고정(constant-mix) ↔ drift(buy-and-hold, 전체)
+            ★ bm_source==="none"(벤치마크 없는 2JM23)은 둘 다 무의미 — "!== BM" 이 아니라
+              "=== SAA" 로 판정해야 한다 (2026-07-29) */}
+        {data.bm_source === "SAA" && (
           <label className="bn-field">
             소스
             <select
@@ -685,20 +687,22 @@ export default function BrinsonTab({ fundCode }: Props) {
             </select>
           </label>
         )}
-        <label className="bn-field">
-          비중
-          <select
-            value={weightMode}
-            onChange={(e) => setWeightMode(e.target.value as "fixed" | "drift")}
-            disabled={isFetching}
-            title={
-              "고정(constant-mix): 매일 목표비중 리밸런싱\ndrift(buy-and-hold): 리밸 target에서 인덱스 수익률대로 비중 표류"
-            }
-          >
-            <option value="fixed">고정</option>
-            <option value="drift">drift</option>
-          </select>
-        </label>
+        {hasBm && (
+          <label className="bn-field">
+            비중
+            <select
+              value={weightMode}
+              onChange={(e) => setWeightMode(e.target.value as "fixed" | "drift")}
+              disabled={isFetching}
+              title={
+                "고정(constant-mix): 매일 목표비중 리밸런싱\ndrift(buy-and-hold): 리밸 target에서 인덱스 수익률대로 비중 표류"
+              }
+            >
+              <option value="fixed">고정</option>
+              <option value="drift">drift</option>
+            </select>
+          </label>
+        )}
         <button type="button" className="bn-apply" onClick={onApply} disabled={!isDirty || isFetching}>
           {isFetching ? "조회 중…" : "조회"}
         </button>

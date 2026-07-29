@@ -214,7 +214,7 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
     ? `자산배분효과 = Σ (AP−${BM} 비중차)ₜ × ${BM}일별수익ₜ (경로적분). 우축 라인=${BM}지수 누적수익률, 좌축 영역=AP−${BM} 비중차 (0점 동기화).`
     : mode === "select"
       ? `종목선택효과 = Σ ${BM}비중ₜ × (AP−${BM} 자산군수익)ₜ (경로적분). 좌: ${effSel} AP·${BM} 누적기여 + 초과(영역).`
-      : `AP·${BM} 누적수익 + 초과(영역)`;
+      : hasBm ? `AP·${BM} 누적수익 + 초과(영역)` : (effSel ? `${effSel} AP 누적기여` : "AP 누적수익");
 
   const radio = (m: Mode, label: string) => (
     <button
@@ -247,11 +247,14 @@ export default function BrinsonTrendPanel({ daily, dailyClass, bmSource, bmCompo
             ))}
           </select>
         )}
-        <div style={{ display: "inline-flex", border: "1px solid #d1d5db", borderRadius: 4, overflow: "hidden" }}>
-          {radio("all", "전체")}
-          {radio("alloc", "자산배분효과")}
-          {radio("select", "종목선택효과")}
-        </div>
+        {/* 벤치마크 없는 펀드(2JM23)는 자산배분/종목선택 효과가 정의되지 않는다 (2026-07-29) */}
+        {hasBm && (
+          <div style={{ display: "inline-flex", border: "1px solid #d1d5db", borderRadius: 4, overflow: "hidden" }}>
+            {radio("all", "전체")}
+            {radio("alloc", "자산배분효과")}
+            {radio("select", "종목선택효과")}
+          </div>
+        )}
       </div>
       <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 6 }}>{hint}</div>
 
