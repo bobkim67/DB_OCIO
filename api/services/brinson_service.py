@@ -410,10 +410,17 @@ def _build_bm_meta(fund_code: str, method: str, as_of=None,
       - components: list[BrinsonBmComponentDTO]
       - saa_dict: 구 weight-only SAA 면 {자산군: 목표비중%} (BM비중 주입용). 그 외 None.
     """
-    from config.funds import FUND_BM, FUND_MP_DIRECT, FUND_MP_MAPPING
+    from config.funds import (
+        FUND_BM, FUND_MP_DIRECT, FUND_MP_MAPPING, FUND_NO_BENCHMARK,
+    )
     from modules.data_loader import (
         _build_proxy_bm_info, _map_bm_component_to_asset_class, load_saa_components,
     )
+
+    # 벤치마크 미표시 펀드(2JM23) — proxy/SAA/MP목표비중 fallback 전부 건너뛴다.
+    # (2JM23 은 FUND_MP_DIRECT 에도 있어 여기서 막지 않으면 MP 비중이 SAA 로 표시된다)
+    if fund_code in FUND_NO_BENCHMARK:
+        return "none", [], None
 
     if saa_mode in ("proxy", "proxy_drift"):
         # proxy: 안전자산→KIS 종합채권 / 나머지→MSCI ACWI (구성 동일, drift 는 비중만 일별 변동)

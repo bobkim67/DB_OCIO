@@ -58,6 +58,10 @@ def _load_bm_series(
     소스 구분이 필요한 이유: DT BM 은 base 1000 절대지수라 설정후 분모=1000,
     SCIP composite 는 임의 리베이스라 첫 관측값 분모 유지.
     """
+    # 벤치마크 미표시 펀드(2JM23) — DT BM 조회도 하지 않는다(AP 단독 표시).
+    from config.funds import FUND_NO_BENCHMARK
+    if fund_code in FUND_NO_BENCHMARK:
+        return None, None
     # 1) DT BM
     try:
         from modules.data_loader import load_dt_bm_prices
@@ -72,7 +76,17 @@ def _load_bm_series(
         return None, None
     try:
         from modules.data_loader import load_composite_bm_prices
-        comp = load_composite_bm_prices(bm_cfg["components"], start_date,
+        # 워밍업: 복합지수는 pct_change 로 첫날을 잃고, ex_KR 레그는 T-1 정렬로 하루 더
+        # 잃는다 → 설정일부터 요청하면 BM 이 2~3영업일 늦게 시작한다(2JM23 실측:
+        # AP 2016-03-23 vs BM 2016-03-28). _load_saa_series 와 동일하게 30일 앞에서
+        # 로드해 설정일을 덮는다(서비스단 재rebase 라 절대레벨 무관).
+        try:
+            warm = (
+                datetime.strptime(str(start_date), "%Y%m%d") - timedelta(days=30)
+            ).strftime("%Y%m%d")
+        except Exception:
+            warm = start_date
+        comp = load_composite_bm_prices(bm_cfg["components"], warm,
                                         fund_code=fund_code)
         if comp is not None and len(comp) > 0:
             return comp, "scip"
@@ -119,6 +133,9 @@ def _load_saa_series(
 
     load_composite_bm_prices 와 동일 포맷(기준일자, value) 반환 → BM 정렬 로직 재사용.
     """
+    from config.funds import FUND_NO_BENCHMARK
+    if fund_code in FUND_NO_BENCHMARK:
+        return None
     try:
         from modules.data_loader import (
             _build_proxy_bm_info,

@@ -477,6 +477,17 @@ _BM_FALLBACK = {
     # 5영업일 누적차이 RMS 0.0176%p → 캐리 보정 후 0.0104%p (2JM23 31.1% 반영 시 0.003%p).
     (272, 9): {'kind': 'factset', 'to': 'NDX',
                'note': 'NASDAQ100 TR → FactSet NDX + 배당캐리(추정)'},
+    # ── 'head': True — 뒤(tail)가 아니라 **앞구간 결측**을 소급 접합 ────────────────
+    # 188/33 은 SCIP 첫 관측이 2019-03-29 라, 이 지수를 쓰는 벤치마크는 그 이전 구간이
+    # 교집합에서 잘려 펀드 설정일부터 그려지지 않는다.
+    # 실사용처: **2JM23 BM**(0.8×MSCI ACWI + 0.2×188/33, 설정 2016-03-24) — 이 접합이
+    # 없으면 BM 이 2019-04-01 부터만 존재해 설정후 차트의 AP/BM 출발점이 어긋난다.
+    # 대체 소스 279/40(KIS 종합채권 TR, 2001-01-01~)로 앞구간만 채운다.
+    # 검증(2026-07-29, 겹침 2019-03-29~2026-07-28 n=2,663): 일수익률 상관 0.999917,
+    #   연율 0.71% vs 0.86%(0.15%p), 일별차이 평균 -0.0377bp / σ 1.03bp / |최대| 0.095%.
+    # 정의가 다른 지수(AA-이상 vs 종합)라 창 전체 교체는 하지 않고 결측 구간만 접합한다.
+    (188, 33): {'kind': 'hedge_carry', 'to': (279, 40), 'head': True,
+                'note': 'KIS 종합채권 AA-이상 → KIS 종합채권 TR(결측 구간 접합)'},
 }
 
 # 대체가 실제로 발동한 기록 — UI 신선도 경고용. {(ds,dsr): {...}}
@@ -667,6 +678,69 @@ def _splice_with_carry(primary: pd.DataFrame, donor: pd.DataFrame) -> pd.DataFra
     return pd.concat([primary, pd.DataFrame(rows)], ignore_index=True)
 
 
+def _splice_head(primary: pd.DataFrame, donor: pd.DataFrame) -> pd.DataFrame:
+    """primary 시작 **이전** 결측 구간을 donor 일수익률 + 캐리로 소급 생성.
+
+    `_splice_with_carry` 의 역방향. 레벨은 primary 첫값에 고정하고 그 이전만 역산하므로
+    **원본 구간의 값은 한 점도 바뀌지 않는다**(원본 우선 정책).
+
+    ★ 캐리는 **겹침 구간 전체 평균**을 쓴다(tail 의 최근 _HEDGE_CARRY_WINDOW 와 다름).
+    head 는 수백~수천일을 소급하므로 짧은 창의 표본잡음이 그대로 누적된다 —
+    188/33↔279/40 실측에서 초기 20일 평균은 -0.11bp/일(1,100일 누적 -1.2%)인 반면
+    전체 평균은 -0.038bp/일(누적 -0.41%)로, 후자가 두 지수의 실제 정의 차이
+    (연 0.15%p)와 일치한다. tail 은 며칠 연장이라 창 길이 영향이 없다.
+    """
+    if primary.empty or donor.empty:
+        return primary
+    p = primary.set_index('기준일자')['value'].sort_index()
+    d = donor.set_index('기준일자')['value'].sort_index()
+    p, d = p[~p.index.duplicated(keep='last')], d[~d.index.duplicated(keep='last')]
+    first = p.index[0]
+    head = d[d.index < first]
+    if head.empty:
+        return primary
+    anchor = d.asof(first)          # first 시점(또는 직전) donor 레벨
+    if not np.isfinite(anchor) or anchor == 0:
+        return primary
+    # 캐리 = 겹침 구간 **전체** 일수익률 차이의 평균 (docstring 참조)
+    ov = pd.DataFrame({'p': p, 'd': d}).dropna()
+    carry = 0.0
+    if len(ov) > 2:
+        rr = ov.pct_change().dropna()
+        carry = float((rr['p'] - rr['d']).mean())
+        if not np.isfinite(carry):
+            carry = 0.0
+    lvl = float(p.iloc[0])
+    nxt = float(anchor)
+    rows = []
+    for dt_ in head.index[::-1]:
+        v = float(head.loc[dt_])
+        if v and np.isfinite(v) and np.isfinite(nxt):
+            r = (nxt / v - 1.0) + carry     # dt_ → 다음 관측일 수익률
+            if r > -1.0:
+                lvl = lvl / (1.0 + r)
+                rows.append({'기준일자': dt_, 'value': lvl})
+        nxt = v
+    if not rows:
+        return primary
+    rows.reverse()
+    return pd.concat([pd.DataFrame(rows), primary], ignore_index=True)
+
+
+def _load_fallback_donor(fb: dict, start_date: str = None,
+                         currency: str = None) -> pd.DataFrame:
+    """_BM_FALLBACK 항목의 대체 소스 시계열 로드 (kind 별 분기)."""
+    if fb['kind'] == 'bmjisu':
+        return _load_bmjisu_prices(fb['to'], start_date)
+    if fb['kind'] == 'factset':
+        try:
+            from modules.factset_prices import load_factset_price_series
+            return load_factset_price_series(fb['to'], start_date)
+        except Exception:
+            return pd.DataFrame(columns=['기준일자', 'value'])
+    return load_scip_bm_prices(fb['to'][0], fb['to'][1], start_date, currency)
+
+
 def load_bm_component_prices(dataset_id: int, dataseries_id: int,
                              start_date: str = None, currency: str = None,
                              end_date: str = None) -> pd.DataFrame:
@@ -679,6 +753,30 @@ def load_bm_component_prices(dataset_id: int, dataseries_id: int,
     fb = _BM_FALLBACK.get((dataset_id, dataseries_id))
     if fb is None:
         return primary
+
+    # ── 앞구간 결측 소급 (opt-in: fb['head']) ─────────────────────────────────
+    # 원본이 요청 시작일보다 늦게 시작하는 지수 — 그 앞구간만 대체 소스로 채운다.
+    # 원본이 요청 창을 덮으면 DB 조회 없이 그대로 통과(골든 창 불변).
+    if fb.get('head') and start_date and not primary.empty:
+        _req = pd.Timestamp(str(start_date).replace('-', '')[:8])
+        _p_first = pd.Timestamp(primary['기준일자'].min()).normalize()
+        if _req < _p_first:
+            _donor = _load_fallback_donor(fb, start_date, currency)
+            if len(_donor) >= 2:
+                _spliced = _splice_head(primary, _donor)
+                if len(_spliced) > len(primary):
+                    _BM_FALLBACK_USED[(dataset_id, dataseries_id, 'head')] = {
+                        'note': fb['note'] + ' [앞구간]',
+                        'primary_last': _p_first.date().isoformat(),
+                        'source_last': pd.Timestamp(
+                            _spliced['기준일자'].min()).date().isoformat(),
+                        'synthetic': True,
+                    }
+                    logger.warning(
+                        "BM 앞구간 대체 소스 사용: %s (원본 시작 %s > 요청 시작 %s)",
+                        fb['note'], _p_first.date(), _req.date(),
+                    )
+                    primary = _spliced
 
     target = pd.Timestamp(end_date).normalize() if end_date else pd.Timestamp.today().normalize()
     p_last = pd.Timestamp(primary['기준일자'].max()).normalize() if not primary.empty else None
@@ -702,16 +800,7 @@ def load_bm_component_prices(dataset_id: int, dataseries_id: int,
     if p_last is not None and p_last >= need:
         return primary
 
-    if fb['kind'] == 'bmjisu':
-        sub = _load_bmjisu_prices(fb['to'], start_date)
-    elif fb['kind'] == 'factset':
-        try:
-            from modules.factset_prices import load_factset_price_series
-            sub = load_factset_price_series(fb['to'], start_date)
-        except Exception:
-            sub = pd.DataFrame(columns=['기준일자', 'value'])
-    else:
-        sub = load_scip_bm_prices(fb['to'][0], fb['to'][1], start_date, currency)
+    sub = _load_fallback_donor(fb, start_date, currency)
     if sub.empty or len(sub) < 2:
         return primary
 
@@ -2109,6 +2198,13 @@ def load_saa_components(fund_code: str, as_of_date=None) -> dict:
              — FUND_BM 와 동일 구조라 compute 의 bm_info 로 그대로 사용. 없으면 None.
     """
     import datetime as _dt
+    # 벤치마크 미표시 펀드(2JM23) — DB 행은 남기되 여기서 차단해 SAA 경로 전체를 끈다.
+    try:
+        from config.funds import FUND_NO_BENCHMARK
+        if str(fund_code or '').strip() in FUND_NO_BENCHMARK:
+            return None
+    except Exception:
+        pass
     aod = None
     if as_of_date is not None:
         s = str(as_of_date).replace('-', '')
@@ -2172,6 +2268,13 @@ def _build_proxy_bm_info(fund_code: str, start_yyyymmdd: str) -> dict:
     (188/33, 2026-06-23 지시)에서 재변경 (R 프로덕션 08P22_BM 기준 일치).
     MSCI ACWI 는 ex_KR(T-1×USDKRW, biz_day_adj=-1) — BM 경로가 자동 처리.
     """
+    # 벤치마크 미표시 펀드(2JM23) — proxy 생성도 막는다(load_saa_components 와 동일 정책).
+    try:
+        from config.funds import FUND_NO_BENCHMARK
+        if str(fund_code or '').strip() in FUND_NO_BENCHMARK:
+            return None
+    except Exception:
+        pass
     sw = None
     # 1순위: 등록 SAA 리밸 비중 → 주식/채권 고정 비중
     try:

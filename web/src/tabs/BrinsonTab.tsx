@@ -727,24 +727,30 @@ export default function BrinsonTab({ fundCode }: Props) {
             {metrics.valid ? <>연환산 <span className="num">{fmtPct(metrics.apAnnRet)}</span></> : <span className="num">{" "}</span>}
           </div>
         </div>
-        <div className="bn-kpi">
-          <div className="bn-kpi-top">
-            <span className="k">BM 수익률</span>
-            <span className={`v num ${rc(data.period_bm_return)}`}>{fmtPct(data.period_bm_return)}</span>
+        {/* 벤치마크 없는 펀드(2JM23)는 BM·초과 카드를 띄우지 않는다 — BM=0 이라
+            초과가 AP 전액으로 표시돼 오해를 준다 (2026-07-29) */}
+        {hasBm && (
+          <div className="bn-kpi">
+            <div className="bn-kpi-top">
+              <span className="k">BM 수익률</span>
+              <span className={`v num ${rc(data.period_bm_return)}`}>{fmtPct(data.period_bm_return)}</span>
+            </div>
+            <div className="cmp">
+              {metrics.valid ? <>연환산 <span className="num">{fmtPct(metrics.bmAnnRet)}</span></> : <span className="num">{" "}</span>}
+            </div>
           </div>
-          <div className="cmp">
-            {metrics.valid && hasBm ? <>연환산 <span className="num">{fmtPct(metrics.bmAnnRet)}</span></> : <span className="num">{" "}</span>}
+        )}
+        {hasBm && (
+          <div className="bn-kpi">
+            <div className="bn-kpi-top">
+              <span className="k">초과수익률</span>
+              <span className={`v num ${ec(data.total_excess)}`}>{fmtPct(data.total_excess)}</span>
+            </div>
+            <div className="cmp">
+              {metrics.valid ? <>연환산 <span className="num">{fmtPct(metrics.annExcess)}</span></> : <span className="num">{" "}</span>}
+            </div>
           </div>
-        </div>
-        <div className="bn-kpi">
-          <div className="bn-kpi-top">
-            <span className="k">초과수익률</span>
-            <span className={`v num ${ec(data.total_excess)}`}>{fmtPct(data.total_excess)}</span>
-          </div>
-          <div className="cmp">
-            {metrics.valid && hasBm ? <>연환산 <span className="num">{fmtPct(metrics.annExcess)}</span></> : <span className="num">{" "}</span>}
-          </div>
-        </div>
+        )}
         {/* 스냅샷 3카드 — 종료일 기준값 + 시작일 대비 변동 (2026-07-07 사용자 지정) */}
         <div className="bn-kpi">
           <div className="bn-kpi-top">
@@ -983,6 +989,7 @@ export default function BrinsonTab({ fundCode }: Props) {
             </div>
             {/* 좌=BM / 우=AP 분리 테이블 (사용자 지정 2026-07-02) */}
             <div className="bn-split">
+              {hasBm && (
               <table className="bn-tbl">
                 <colgroup>
                   <col />
@@ -1028,11 +1035,12 @@ export default function BrinsonTab({ fundCode }: Props) {
                   )}
                 </tbody>
               </table>
+              )}
               <table className="bn-tbl">
                 <colgroup>
                   <col />
                   <col style={{ width: tbl1Metric === "norm" ? 134 : 112 }} />
-                  {tbl1Metric !== "norm" && <col style={{ width: 84 }} />}
+                  {hasBm && tbl1Metric !== "norm" && <col style={{ width: 84 }} />}
                 </colgroup>
                 <thead>
                   <tr>
@@ -1044,18 +1052,19 @@ export default function BrinsonTab({ fundCode }: Props) {
                       {tbl1Metric === "norm" ? "AP수익률(Norm.)" : "AP수익률"}
                       <span className="muted" style={{ fontWeight: 400, marginLeft: 3 }}>ⓘ</span>
                     </th>
-                    {tbl1Metric !== "norm" && <th className="r">초과기여</th>}
+                    {hasBm && tbl1Metric !== "norm" && <th className="r">초과기여</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {enrichedRows.flatMap((r) => {
                     const isNorm = tbl1Metric === "norm";
+                    const showExcess = hasBm && !isNorm;   // BM 없으면 초과 개념 없음
                     const apVal = isNorm ? r.ap_return : r.contrib_return;
                     const rows: ReactNode[] = [
                       <tr key={r.asset_class} className="clsrow">
                         <td>{r.asset_class}</td>
                         <td className={`r b ${rc(apVal)}`}>{fmtPct(apVal)}</td>
-                        {!isNorm && (
+                        {showExcess && (
                           <td className={`r b ${xc(r.excess_contrib)}`}>{fmtPct(r.excess_contrib)}</td>
                         )}
                       </tr>,
@@ -1069,7 +1078,7 @@ export default function BrinsonTab({ fundCode }: Props) {
                           <tr key={`${r.asset_class}-sec-${i}`}>
                             <td className="ind" title={secs[i].item_nm}>{secs[i].item_nm}</td>
                             <td className={`r ${rc(secVal)}`}>{fmtPct(secVal)}</td>
-                            {!isNorm && <td className="r" />}
+                            {showExcess && <td className="r" />}
                           </tr>,
                         );
                       }
@@ -1084,14 +1093,14 @@ export default function BrinsonTab({ fundCode }: Props) {
                             <tr key={`${r.asset_class}-resid`}>
                               <td className="resid">기타(잔차)</td>
                               <td className={`r ${rc(resid)}`}>{fmtPct(resid)}</td>
-                              <td className="r" />
+                              {showExcess && <td className="r" />}
                             </tr>,
                           );
                         }
                       }
                       // 좌측(BM 지수 행)이 더 많으면 빈 행 패딩 → 자산군 라인 좌우 일치
                       rows.push(...padRows(`${r.asset_class}-ap1`,
-                        (detailShared.get(r.asset_class) ?? 0) - (rows.length - 1), isNorm ? 2 : 3));
+                        (detailShared.get(r.asset_class) ?? 0) - (rows.length - 1), showExcess ? 3 : 2));
                     }
                     return rows;
                   })}
@@ -1099,7 +1108,9 @@ export default function BrinsonTab({ fundCode }: Props) {
                     <tr className="tot">
                       <td>합계</td>
                       <td className={`r ${rc(sumApContrib)}`}>{fmtPct(sumApContrib)}</td>
-                      <td className={`r ${xc(sumExcessContrib)}`}>{fmtPct(sumExcessContrib)}</td>
+                      {hasBm && (
+                        <td className={`r ${xc(sumExcessContrib)}`}>{fmtPct(sumExcessContrib)}</td>
+                      )}
                     </tr>
                   )}
                 </tbody>
@@ -1110,7 +1121,10 @@ export default function BrinsonTab({ fundCode }: Props) {
 
       {/* 본문 2×2 그리드: [좌상 분석표+워터폴 | 우상 수익률분석] / [좌하 요인추이 | 우하 종목표] */}
       <div className="bn-grid">
-        {/* ── 좌상: Brinson 분석표 + 워터폴 ── */}
+        {/* ── 좌상: Brinson 분석표 + 워터폴 ──
+            벤치마크 없는 펀드(2JM23)는 Alloc/Select/Cross·초과 분해가 정의되지 않는다
+            (BM비중 0 → 전액 Cross). AP 기여만 남기고 통째로 감춘다 (2026-07-29) */}
+        {hasBm && (
         <div className="bn-stack">
           {/* Brinson 분석 (자산군별 Alloc/Select/Cross) */}
           <div className="bn-card bn-sec">
@@ -1165,6 +1179,7 @@ export default function BrinsonTab({ fundCode }: Props) {
             />
           </div>
         </div>
+        )}
 
         {/* ── 우상: 수익률 분석 + 기간별 수익률 표 ── */}
           <div className="bn-card bn-sec">
@@ -1193,6 +1208,7 @@ export default function BrinsonTab({ fundCode }: Props) {
                     {!factorToggle && prq.isFetching && (
                       <span className="bn-tag recalc">● 계산 중…</span>
                     )}
+                    {hasBm && (
                     <span style={{ marginLeft: "auto", display: "inline-flex", border: "1px solid #d1d5db", borderRadius: 4, overflow: "hidden" }}>
                       {([["수익률", false], ["요인효과", true]] as const).map(([lbl, on]) => (
                         <button key={lbl} onClick={() => setFactorToggle(on)}
@@ -1202,8 +1218,9 @@ export default function BrinsonTab({ fundCode }: Props) {
                         </button>
                       ))}
                     </span>
+                    )}
                   </div>
-                  {!factorToggle ? (
+                  {!factorToggle || !hasBm ? (
                     <table className="bn-tbl">
                       <thead>
                         <tr><th>구분</th>{PERIOD_COLS.map(([k, label]) => <th key={k} className="r">{label}</th>)}</tr>
@@ -1213,14 +1230,18 @@ export default function BrinsonTab({ fundCode }: Props) {
                           <td>AP 수익률</td>
                           {PERIOD_COLS.map(([k]) => { const v = pr[k]; return <td key={k} className={`r ${v != null ? rc(v) : ""}`}>{v != null ? fmtPct(v * 100) : (prq.isFetching ? "…" : "—")}</td>; })}
                         </tr>
+                        {hasBm && (
                         <tr>
                           <td>{BM_LBL} 수익률</td>
                           {PERIOD_COLS.map(([k]) => { const v = bmpr[k]; return <td key={k} className={`r ${v != null ? rc(v) : ""}`}>{v != null ? fmtPct(v * 100) : (prq.isFetching ? "…" : "—")}</td>; })}
                         </tr>
+                        )}
+                        {hasBm && (
                         <tr>
                           <td>초과</td>
                           {PERIOD_COLS.map(([k]) => { const a = pr[k]; const b = bmpr[k]; const ex = a != null && b != null ? (a - b) * 100 : null; return <td key={k} className={`r b ${ex != null ? (ex < 0 ? "brw" : "ok") : ""}`}>{ex != null ? fmtPct(ex) : (prq.isFetching ? "…" : "—")}</td>; })}
                         </tr>
+                        )}
                       </tbody>
                     </table>
                   ) : (

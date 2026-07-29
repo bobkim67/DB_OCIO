@@ -23,7 +23,7 @@ daily_update Step 1·2·2.5·2.6·2.7 news 산출물). 신규 작업에서 news 
 - **펀드 11개** (`config/funds.py FUND_LIST`): **06X08**(신규 — 퇴직연금 알아서RSP, 설정 2022-02-14, 수익자 한국투자증권) + 07G02·07G03·07G04·07G07·08K88·08N33·08N81·08P22·2JM23·4JM12.
 - **최상위 탭**: Overview / 편입종목(PDF) / 거래내역 / 성과분석 / 운용보고 / Admin. **Admin은 관리자 전용** (role-gate: `web/src/lib/auth.ts` `useIsAdmin()` 스텁, `?role=client`로 클라이언트 화면 미리보기 — 실인증 추후).
 - **Admin 서브탭 3개**: `펀드 운용`(전 펀드 스냅샷 — 거래내역식 날짜패널 + 조회기간/기간수익률 + BM펀드 BM초과 병기 + 채권Dur(펀드)·YTM + 컴플 미니게이지) / `코멘트 생성·관리`(코멘트→보고서 2단계 승인 워크플로우) / `운용보고 PPT`(2026-07-14 — 펀드·기간 → `reporting.builder` 빌드·pptx 다운로드 + s4/s6 코멘트 캐시 검수·수정, `/api/admin/report-ppt/*`). 구 5개 패널(Evidence Quality~Wiki Context Pack) 제거.
-- **BM(FUND_BM) 설정**: 07G04(=07G07 공유)·08K88·4JM12 + **06X08**(0.5×MSCI ACWI Gross TR 57/9 + 0.5×KIS 종합채권 TR 279/40) + **07G02**(0.2×MSCI ACWI + 0.8×KIS 종합채권 TR)·**07G03**(0.4×MSCI ACWI + 0.6×KIS 종합채권 TR — 둘 다 57/9 + 279/40, 2026-07-13 추가). 08N33/81/22·2JM23은 SAA/proxy.
+- **BM(FUND_BM) 설정**: 07G04(=07G07 공유)·08K88·4JM12 + **06X08**(0.5×MSCI ACWI Gross TR 57/9 + 0.5×KIS 종합채권 TR 279/40) + **07G02**(0.2×MSCI ACWI + 0.8×KIS 종합채권 TR)·**07G03**(0.4×MSCI ACWI + 0.6×KIS 종합채권 TR — 둘 다 57/9 + 279/40, 2026-07-13 추가). 08N33/81/22는 SAA/proxy. **2JM23은 벤치마크 없음(AP 단독)** — `FUND_NO_BENCHMARK`, 2026-07-29.
 - **컴플 가이드**(`holdings_service._build_compliance`): 07G02=ISP(주식≤20/위험≤20)·07G03/06X08=RSP(주식≤55/위험≤70)·07G04/07G07=07G04 내 서브펀드(07G02/03) 비중 가중평균 2행·08K88=자산군밴드·2JM23/4JM12=위험자산한도·SAA펀드(08N33/81/22)=SAA대비.
 - ⚠️ **BM/설정 변경 시 `.cache/brinson/{fund}_*.pkl` 삭제 + 서버 재시작**(LRU) 필요 (DEPLOY.md §운영주의). 07G07 듀레이션은 `build_holdings` NAST를 `_portfolio_fund`(07G07→07G04)로 정규화해야 정상(2026-07-10 fix).
 
@@ -227,7 +227,11 @@ _FUND_INCEPTION_BASE = {'4JM12': 1970.76}
 - `users.yaml`에 사용자 비밀번호 포함 — 커밋 시 주의.
 - Streamlit의 Pandas Styler 지원이 제한적: `.bar()` 등 일부 기능 미지원.
 - `pd.read_sql`에 DictCursor 사용하면 컬럼명이 값으로 들어가는 버그 → 반드시 `get_pandas_connection()` 사용.
-- BM 매핑: DT BM 우선 (5개 펀드 `_DT_BM_CONFIG`: 07G02, 07G03, 07G04, 08K88, 4JM12), SCIP fallback (`FUND_BM`: 07G04, 08K88, 4JM12 — 3개 설정). BM 미설정: 07G02, 07G03, 08N33, 08N81, 08P22, 2JM23.
+- BM 매핑: DT BM 우선 (5개 펀드 `_DT_BM_CONFIG`: 07G02, 07G03, 07G04, 08K88, 4JM12), SCIP composite fallback (`FUND_BM` 7개: 07G04·07G07·08K88·4JM12·06X08·07G02·07G03 — 이 중 **06X08 만 실제로 composite 경로**를 탄다). BM 미설정: 08N33, 08N81, 08P22(SAA) · 2JM23(벤치마크 없음).
+  - ★ composite 경로는 `overview_service._load_bm_series` 에서 **30일 워밍업**을 두고 로드한다
+    (2026-07-29). 복합지수는 pct_change 로 첫날을, ex_KR 레그는 T-1 정렬로 하루 더 잃어 설정일부터
+    요청하면 BM 이 2~3영업일 늦게 시작했다(**06X08 설정후 BM 49.74 → 50.47%**, 설정일 2022-02-16
+    → 2022-02-14 로 교정). SAA 경로(`_load_saa_series`)에는 원래 있던 워밍업이라 동일하게 맞춘 것.
 - NAV 로딩 시작일: `FUND_META[fund]['inception']` 사용 (이전 하드코딩 '20240101' 제거)
 - 기간수익률: `relativedelta` 달력월 기준 (DT DWPM10040 완벽 일치). `python-dateutil` 의존성 추가.
 - MP 비중: DB 연동 완료 (`sol_MP_released_inform` + `FUND_MP_DIRECT`). 2026-04-21 12펀드 제거 후 FUND_MP_MAPPING 3개(07G02/03/04) + FUND_MP_DIRECT 6개(08K88, 08N33, 08N81, 08P22, 2JM23, 4JM12).
@@ -645,7 +649,20 @@ R Shiny UI의 `classification_method` 드롭다운을 Python에 이식. `solutio
 ## 도메인 노트 (모펀드 분류 / BM 미설정 / PA 디버그)
 
 - **모펀드 분류**: `ITEM_CD.startswith('0322800')` — 자사 모투자신탁만 분류 (`ITEM_NM` '모펀드/모투자' 매칭은 "사모투자신탁" 오분류 유발). 영향: 08P22 월넛은행채플러스일반사모투자신탁 → 국내채권으로 정정.
-- **BM 미설정 펀드 4개**: 08N33, 08N81, 08P22, 2JM23 → NAV만 표시, BM/초과수익 빈칸. (07G02/07G03은 2026-07-13 FUND_BM 추가됨.)
+- **BM 미설정 펀드 3개**: 08N33, 08N81, 08P22 → SAA 비교. (07G02/07G03은 2026-07-13 FUND_BM 추가됨.)
+- **★ 2JM23 = 벤치마크 없음 (AP 단독, 2026-07-29 사용자 확정)**
+  - 배경: `saa_bm_components` 에 2JM23 SAA 가 **2버전**(2016-03-24 / 2025-12-30) 있는데 버전 선택이
+    '기간말 기준 단일 셋'이라 설정후 분석이 2025 구성을 2016 년까지 소급했다
+    (SAA +356.83% vs AP +148.76%, 초과 **-208%p**). 사모 OCIO 는 정기 리밸런싱이 없고 SAA 구성이
+    사후 부여된 참조선이라 장기 비교가 성립하지 않아 **벤치마크를 두지 않기로** 했다.
+  - 구현: `config/funds.py FUND_NO_BENCHMARK = {'2JM23'}` 가 **전 경로 차단** —
+    `load_saa_components` / `_build_proxy_bm_info`(data_loader) + `_build_bm_meta`(brinson_service) +
+    `_load_bm_series`/`_load_saa_series`(overview_service). ⚠ 2JM23 은 `FUND_MP_DIRECT` 에도 있어
+    brinson 쪽을 막지 않으면 **MP 목표비중이 SAA 로 표시**된다.
+  - DB 행(`saa_bm_components`)·`FUND_MP_DIRECT` 항목은 **이력 보존용으로 남긴다**(삭제 금지).
+  - 프론트(`BrinsonTab.tsx`): `hasBm = bm_source !== "none"` 로 BM수익률·초과 KPI 카드, 표1 BM 열/
+    초과기여 열, Brinson 요인표(Alloc/Select/Cross), 워터폴, 기간별 BM·초과 행, 요인효과 토글을
+    모두 감춘다. BM 이 없으면 BM비중 0 → 초과=AP 전액·전부 Cross 로 계산돼 오해를 준다.
 - **debug/ 파일 인덱스** (R/Python PA 검증용):
   - `debug_pa_original.R` — R 원본 PA_from_MOS 핵심 파이프라인 (파생 그룹핑, Shiny 제거)
   - `debug_pa_full.R` — R 간소화 PA (DB 직접 조회)
