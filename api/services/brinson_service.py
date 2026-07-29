@@ -315,6 +315,11 @@ def _rf_period_pct(start_yyyymmdd: str, end_yyyymmdd: str) -> float | None:
 
 _BM_DEVIATION_TOL = 0.05        # %p — 전산 BM 과 이 이내면 '같다'고 보고 경고 침묵
 
+# 경고 면제 — 전산과 BM 구성 정의 자체가 다른 것이 확인·수용된 펀드 (2026-07-29 사용자 지시).
+# 07G02·07G03: FUND_BM(0.2/0.4 ACWI + 0.8/0.6 KIS 종합채권)이 전산 서브BM1 정의와 달라
+# YTD -9.7 / -3.9%p 벌어지지만, 성과분석 BM 분해는 현행 유지로 결정됨 → 매번 알리지 않는다.
+_BM_WARN_EXEMPT = {'07G02', '07G03'}
+
 
 def _dt_bm_period_return(fund_code: str, start_date, end_date) -> float | None:
     """전산 BM(dt.DWPM1004x) 기간수익률(%) — 시작 직전 영업일 값 대비. 없으면 None."""
@@ -348,6 +353,8 @@ def _bm_freshness_warnings(fund_code: str, end_date, start_date=None,
     결과가 전산과 같으면 알릴 이유가 없다. 전산 BM 이 없는 펀드(06X08·SAA 4펀드)는
     대조 대상이 없어 검증 불가 → 경고를 유지하고 그 사실을 문구에 명시한다.
     """
+    if str(fund_code or '').strip() in _BM_WARN_EXEMPT:
+        return []
     _dev = None
     if start_date is not None and our_bm_return is not None:
         _dt = _dt_bm_period_return(fund_code, start_date, end_date)
