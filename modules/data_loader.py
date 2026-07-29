@@ -1445,12 +1445,31 @@ def load_composite_bm_prices(components: list, start_date: str = None,
         (end_date or pd.Timestamp.today().strftime('%Y%m%d')))
     _grid = pd.DatetimeIndex(_bd) if _bd else None
 
+    # ★ FX 소스 = 원장 매매기준율(DWCI10260 TR_STD_RT) 우선, SCIP 31/6 fallback.
+    # 전산 BM 이 원장 환율을 쓴다 — SCIP FX(FactSet)는 매일 0.01~0.03%p 어긋나 누적된다.
+    # 2026-07-29 실측(1/1~7/28 YTD, 전산 대비): 07G04 -0.0507→-0.0001%p,
+    #                                          08K88 -0.0863→-0.0003%p.
+    # (Brinson 경로는 원래 ECOS(≈원장) 우선이라 이미 정합 — composite 만 어긋나 있었다.)
     _fx = None
     if any(c.get('region') == 'ex_KR' for c in components):
-        _fx_df = load_scip_bm_prices(31, 6, start_date, 'USD')
-        if not _fx_df.empty and len(_fx_df) >= 2:
-            _fx_s = _fx_df.set_index('기준일자').sort_index()
-            _fx_s = _fx_s[~_fx_s.index.duplicated(keep='last')]['value']
+        _fx_s = None
+        try:
+            _led = _load_usdkrw_from_db(start_date, end_date)
+            if _led is not None and not _led.empty:
+                _col = next((c for c in ('USD_KRW', 'TR_STD_RT')
+                             if c in _led.columns), None)
+                if _col is None:
+                    raise KeyError('USDKRW 컬럼 없음')
+                _t = _led.set_index('기준일자')[_col].sort_index()
+                _fx_s = _t[~_t.index.duplicated(keep='last')].astype(float)
+        except Exception:
+            _fx_s = None
+        if _fx_s is None or len(_fx_s) < 2:
+            _fx_df = load_scip_bm_prices(31, 6, start_date, 'USD')
+            if not _fx_df.empty and len(_fx_df) >= 2:
+                _t = _fx_df.set_index('기준일자').sort_index()
+                _fx_s = _t[~_t.index.duplicated(keep='last')]['value']
+        if _fx_s is not None and len(_fx_s) >= 2:
             if _grid is not None:
                 _grid = _grid[_grid <= _fx_s.index.max()]
                 _fx = _fx_s.reindex(_grid).ffill()
@@ -1511,10 +1530,15 @@ def load_composite_bm_prices(components: list, start_date: str = None,
     for cs in comp_series.values():
         composite_ret += cs['returns'].reindex(all_dates).fillna(0) * cs['weight']
 
-    # BM cost(-34bp/yr) — 08K88 만 (R 프로덕션 동일, compute_brinson_attribution_v2 와 동일 상수).
-    # 2026-07-29 전산 대조: 미적용 +0.1381%p → 적용 -0.0111%p (1/1~7/28 YTD)
+    # BM cost(-34bp/yr) — 08K88 만 (R 프로덕션·compute_brinson_attribution_v2 와 동일 상수).
+    # ★ 캘린더 전일 기준 accrual. 전산 08K88 BM 구성표의 'BM추가수익률 -34bp' 열이
+    #   주말·공휴일에도 매일 -0.0009%(=34bp/365) 붙는다 — 2026-05-01~07-28 누적 -0.0829%
+    #   = 34bp/365 × 89 캘린더일 (영업일 58일 기준 -0.0540% 는 불일치). 2026-07-29 실측 확인.
+    #   composite 는 영업일 시계열이므로 직전 행과의 **경과 캘린더일수**만큼 차감한다.
     if fund_code and fund_code in {'08K88'}:
-        composite_ret = composite_ret - (34 / 10000 / 365)
+        _gap = pd.Series(composite_ret.index, index=composite_ret.index).diff().dt.days
+        _gap = _gap.fillna(1.0).clip(lower=0)
+        composite_ret = composite_ret - (34 / 10000 / 365) * _gap
 
     # 복합지수 복원 (base=1000)
     composite_idx = (1 + composite_ret).cumprod() * 1000
