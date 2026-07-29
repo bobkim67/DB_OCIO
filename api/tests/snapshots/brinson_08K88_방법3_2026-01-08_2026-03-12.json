@@ -5,12 +5,12 @@
   "end_date": "2026-03-12",
   "totals": {
     "period_ap_return": 5.223587805234575,
-    "period_bm_return": 5.542251417814592,
-    "total_alloc": 1.2546000000000002,
-    "total_select": -1.2597,
-    "total_cross": -0.3136,
-    "total_excess": -0.31866361258001685,
-    "total_excess_relative": -0.30192989849961993,
+    "period_bm_return": 5.542430467441739,
+    "total_alloc": 1.2491999999999999,
+    "total_select": -1.2025000000000001,
+    "total_cross": -0.3656,
+    "total_excess": -0.31884266220716384,
+    "total_excess_relative": -0.30209903334140753,
     "fx_contrib": 1.4194333700942399,
     "residual": 0.0
   },
@@ -20,10 +20,10 @@
       "ap_weight": 30.77,
       "bm_weight": 21.6,
       "ap_return": 24.21,
-      "bm_return": 22.68,
-      "alloc_effect": 0.8555,
-      "select_effect": 0.2954,
-      "cross_effect": -0.044,
+      "bm_return": 22.61,
+      "alloc_effect": 0.8523,
+      "select_effect": 0.3088,
+      "cross_effect": -0.0408,
       "contrib_return": 6.0655
     },
     {
@@ -31,10 +31,10 @@
       "ap_weight": 8.6,
       "bm_weight": 10.0,
       "ap_return": -0.81,
-      "bm_return": -1.28,
-      "alloc_effect": 0.0228,
-      "select_effect": 0.0491,
-      "cross_effect": -0.0137,
+      "bm_return": -1.34,
+      "alloc_effect": 0.0236,
+      "select_effect": 0.0553,
+      "cross_effect": -0.0144,
       "contrib_return": -0.0765
     },
     {
@@ -42,10 +42,10 @@
       "ap_weight": 52.1,
       "bm_weight": 50.4,
       "ap_return": -3.76,
-      "bm_return": -1.21,
-      "alloc_effect": 0.0964,
-      "select_effect": -1.3632,
-      "cross_effect": -0.1681,
+      "bm_return": -1.27,
+      "alloc_effect": 0.0923,
+      "select_effect": -1.3319,
+      "cross_effect": -0.164,
       "contrib_return": -2.0769
     },
     {
@@ -53,10 +53,10 @@
       "ap_weight": 8.48,
       "bm_weight": 10.0,
       "ap_return": -0.42,
-      "bm_return": 0.08,
-      "alloc_effect": -0.0033,
-      "select_effect": -0.0554,
-      "cross_effect": 0.0142,
+      "bm_return": 0.03,
+      "alloc_effect": -0.0022,
+      "select_effect": -0.0491,
+      "cross_effect": 0.013,
       "contrib_return": -0.0382
     },
     {
@@ -67,7 +67,7 @@
       "bm_return": 2.35,
       "alloc_effect": 0.2832,
       "select_effect": -0.1856,
-      "cross_effect": -0.0557,
+      "cross_effect": -0.0556,
       "contrib_return": 1.4194
     },
     {
@@ -75,10 +75,10 @@
       "ap_weight": 0.0,
       "bm_weight": 8.0,
       "ap_return": 0.0,
-      "bm_return": 0.45,
+      "bm_return": 0.39,
       "alloc_effect": 0.0,
       "select_effect": 0.0,
-      "cross_effect": -0.0463,
+      "cross_effect": -0.1038,
       "contrib_return": -0.0696
     }
   ],

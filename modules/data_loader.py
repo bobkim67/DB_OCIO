@@ -1554,10 +1554,12 @@ def load_composite_bm_prices(components: list, start_date: str = None,
     #   주말·공휴일에도 매일 -0.0009%(=34bp/365) 붙는다 — 2026-05-01~07-28 누적 -0.0829%
     #   = 34bp/365 × 89 캘린더일 (영업일 58일 기준 -0.0540% 는 불일치). 2026-07-29 실측 확인.
     #   composite 는 영업일 시계열이므로 직전 행과의 **경과 캘린더일수**만큼 차감한다.
-    if fund_code and fund_code in {'08K88'}:
+    #   ⚠ 잔차 역산 펀드는 전산 BM 총계를 그대로 따르므로 cost 추가 차감 금지(이중계상).
+    if (fund_code and fund_code in _BM_COST_FUNDS
+            and fund_code not in _BM_RESIDUAL_LEG):
         _gap = pd.Series(composite_ret.index, index=composite_ret.index).diff().dt.days
         _gap = _gap.fillna(1.0).clip(lower=0)
-        composite_ret = composite_ret - (34 / 10000 / 365) * _gap
+        composite_ret = composite_ret - _BM_COST_DAILY * _gap
 
     # 복합지수 복원 (base=1000)
     composite_idx = (1 + composite_ret).cumprod() * 1000
@@ -1773,12 +1775,25 @@ def _map_bm_component_to_asset_class(comp_name: str, method: str = '방법3') ->
     return _collapse_asset_class(base, method)
 
 
+# BM cost(-34bp/yr) — R 프로덕션 동일, 08K88 만. 캘린더 전일 accrual
+# (전산 08K88 BM 구성표 'BM추가수익률 -34bp' 열로 확인: 34bp/365 × 89캘린더일 = -0.0829%).
+_BM_COST_DAILY = 34 / 10000 / 365
+_BM_COST_FUNDS = {'08K88'}
+
 # 구성지수를 재현할 수 없어 DT(전산) BM 총계로 역산할 잔차 레그 (방안 B).
 # 값: FUND_BM components 의 name 들 — 이 레그들의 일수익률에 공통 δ 를 더한다.
-# 4JM12 만 적용 — 07G04(-0.05%p)·08K88(-0.01%p)는 구성지수로 이미 충분히 맞고,
+# ⚠ 이 dict 에 든 펀드는 **cost 를 별도로 차감하지 않는다** — 전산 BM 에 이미 반영돼 있어
+#   δ 가 그대로 흡수하므로, 추가 차감하면 이중계상(-0.195%p/yr)이 된다.
+#   4JM12: 채권 레그 'KBP-동부생명7'(0.55) = DB생명 전용 맞춤지수(캘린더 이자 accrual),
+#          우리 DB 에 없어 KAP All/MMI Call 프록시로는 -0.24%p 벌어짐.
+#   08K88: 구성지수·비중·cost 는 전산과 모두 일치 확인됐지만(composite 오차 -0.0003%p),
+#          Brinson 경로 고유의 FX 가산분해·유동성잔차·보정인자에서 -0.12%p 남아 전 레그를
+#          잔차로 지정(비중합 1.0) → δ 가 전 레그에 균등 분산돼 자산군별 왜곡이 최소.
 # 07G02·07G03 은 사용자 지시로 현행 유지(구성 정의 자체가 미확인).
 _BM_RESIDUAL_LEG = {
     '4JM12': ('KAP Korea Bond All', 'KAP MMI Call'),
+    '08K88': ('KOSPI Index', 'MSCI ACWI Index', 'Bloomberg AGG Hedged KRW',
+              'KAP Korea Bond All', 'KAP MMI Call'),
 }
 
 
@@ -1816,8 +1831,15 @@ def _load_bm_daily_returns_by_class(bm_info: dict, start_date: str, end_date: st
             bm_weights[ac] = 0.0
         bm_weights[ac] += comp['weight'] * 100
         comp_class_map[comp['name']] = ac
-        # ex_KR unhedged만 FX 오버레이 기여
-        if ac == _stock_class_unhedged and not comp.get('hedged', False) and comp.get('region') == 'ex_KR':
+        # FX 오버레이 기여 = **ex_KR unhedged 전 컴포넌트** (자산군 무관).
+        # ★ 2026-07-29 fix: 이전에는 '해외주식'만 세었는데, 각 컴포넌트의 KRW 총수익에서
+        # 환효과는 자산군 상관없이 분리되므로(unhedged ex_KR 전부), 해외주식이 아닌
+        # ex_KR unhedged 자산군(SAA 펀드의 Gold=대체, US HY=해외채권)의 환효과가
+        # 어디에도 더해지지 않고 **유실**됐다.
+        # 실측(2JM23, 2026 YTD): Gold 단위수익률 Brinson -7.27% = composite -5.75% − FX 1.63%
+        # → 대체 26.45%×1.63 + 해외채권 1.96%×1.63 ≈ 0.46%p 누락 (총 차이 0.56%p).
+        # BM 펀드(08K88·4JM12·07G04)는 ex_KR unhedged 가 주식뿐이라 값 불변 → 골든 무영향.
+        if not comp.get('hedged', False) and comp.get('region') == 'ex_KR':
             _bm_fx_weight += comp['weight'] * 100
 
     # USDKRW 로드 (ex_KR 컴포넌트의 T-1×FX 변환에 사용)
@@ -2322,14 +2344,15 @@ def compute_brinson_attribution_v2(fund_code: str,
             bm_w_daily['FX'] = bm_w_daily[_eq] * _ratio
 
     # ── 4) BM 복합 일별 수익률 (RAW + 펀드별 cost) ──
-    # R 프로덕션: -34bp/yr cost는 08K88에만 적용
-    _BM_COST_DAILY = 34 / 10000 / 365
-    _BM_COST_FUNDS = {'08K88'}
+    # cost 상수는 모듈 레벨 _BM_COST_DAILY/_BM_COST_FUNDS (composite 경로와 공유).
+    # ⚠ 잔차 역산 펀드(_BM_RESIDUAL_LEG)는 δ 가 전산 BM 총계를 그대로 따라가고 전산 BM 에
+    #   이미 cost 가 반영돼 있으므로 **추가 차감하면 이중계상**된다 → 제외.
     bm_composite_daily = pd.Series(0.0, index=dates_idx)
     for ac in asset_classes:
         if ac in bm_daily_df.columns:
             bm_composite_daily += bm_daily_df[ac] * bm_w_daily[ac]
-    if bm_available and fund_code in _BM_COST_FUNDS:
+    if (bm_available and fund_code in _BM_COST_FUNDS
+            and fund_code not in _BM_RESIDUAL_LEG):
         bm_composite_daily -= _BM_COST_DAILY
 
     # ── 4-bis) BM 컴포넌트(지수)별 경로의존 기여 (표1 펼침용, 2026-07-07) ──

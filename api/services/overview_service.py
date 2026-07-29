@@ -309,7 +309,22 @@ def _compute_bm_period_returns(
     idx = bm_aligned.index
     arr = bm_aligned.to_numpy(dtype=float)
     out: PeriodReturnsDTO = {}
+    # ★ 기준일은 **영업일**로 스냅 (2026-07-29 fix). NAV 시계열이 캘린더 일자를 포함하는
+    # 펀드(4JM12 등 승계펀드)에서는 target 이 휴일이면 그 휴일 행이 선택돼, 채권성 BM 의
+    # 하루치 이자 accrual 이 기준가에 섞인다 — 4JM12 YTD ref 가 2026-01-01(1318.1250)로
+    # 밀려 전산(2025-12-31 1318.0645) 대비 -0.0047%p 어긋났다.
+    _bd_set = _kr_business_day_set(
+        (min(targets.values()) - pd.Timedelta(days=10)).strftime("%Y%m%d"),
+        end_dt.strftime("%Y%m%d"),
+    )
     for key, target in targets.items():
+        if _bd_set:
+            _t = pd.Timestamp(target).normalize()
+            for _ in range(10):          # 연휴 최대 10일까지 후퇴
+                if _t in _bd_set:
+                    break
+                _t -= pd.Timedelta(days=1)
+            target = _t
         mask = idx <= target
         if not mask.any():
             continue
@@ -320,6 +335,16 @@ def _compute_bm_period_returns(
         out[key] = float(end_v) / float(ref_v) - 1.0
     out["SI"] = float(end_v) / (float(si_base) if si_base else float(b0)) - 1.0
     return out
+
+
+@lru_cache(maxsize=32)
+def _kr_business_day_set(start_yyyymmdd: str, end_yyyymmdd: str) -> frozenset:
+    """DWCI10220 영업일 집합 (기준일 스냅용). 실패 시 빈 집합 → 스냅 생략."""
+    try:
+        from modules.data_loader import _kr_business_days
+        return frozenset(_kr_business_days(start_yyyymmdd, end_yyyymmdd))
+    except Exception:
+        return frozenset()
 
 
 def _bm_source_notes(
