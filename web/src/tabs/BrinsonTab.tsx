@@ -86,9 +86,10 @@ function ytdStartFor(inception: string | null | undefined): string {
   return norm > ytd ? norm : ytd;
 }
 function yesterday(): string {
+  // 로컬 기준 전일 (2026-07-31 fix) — toISOString(UTC)은 KST 오전 9시 전에 이틀 전이 나온다
   const d = new Date();
   d.setDate(d.getDate() - 1);
-  return d.toISOString().slice(0, 10);
+  return fmtLocal(d);
 }
 // 로컬 타임존 기준 YYYY-MM-DD (toISOString UTC 보정 회피)
 function fmtLocal(d: Date): string {
