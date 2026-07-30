@@ -322,7 +322,16 @@ _BM_WARN_EXEMPT = {'07G02', '07G03'}
 
 
 def _dt_bm_period_return(fund_code: str, start_date, end_date) -> float | None:
-    """전산 BM(dt.DWPM1004x) 기간수익률(%) — 시작 직전 영업일 값 대비. 없으면 None."""
+    """전산 BM(dt.DWPM1004x) 기간수익률(%) — 시작 직전 영업일 값 대비. 없으면 None.
+
+    ★ 설정후(시작일 ≤ DT BM 첫 관측일)는 **분모 = base 1000** (2026-07-30 fix).
+    DT BM 시계열은 설정일부터 시작하고 그 첫 관측값은 이미 1일차 수익이 반영된 값이라
+    (08K88 992.9579, 07G02 1000.7479 …) '시작 직전 값'이 존재하지 않는다. 이전에는
+    base 가 비어 None 을 반환 → 설정후에서 전산 대조가 아예 불가능했고, 그 결과
+    "전산 BM 미등록 펀드" 경고가 08K88·07G04·4JM12 에 잘못 떴다.
+    첫 관측값을 분모로 쓰면 1일차 수익이 누락된다(08K88 -1.07%p 어긋남) — base 1000 이
+    AP·DT BM 공통 규약. 08K88 설정후 실측: base1000 대비 -0.0243%p(임계 내), 첫관측 대비 -1.0686%p.
+    """
     try:
         from modules.data_loader import load_dt_bm_prices
         d = load_dt_bm_prices(fund_code, "20200101")
@@ -333,9 +342,18 @@ def _dt_bm_period_return(fund_code: str, start_date, end_date) -> float | None:
         sd, ed = pd.Timestamp(start_date), pd.Timestamp(end_date)
         base = s[s.index < sd]
         tail = s[s.index <= ed]
-        if base.empty or tail.empty or float(base.iloc[-1]) == 0:
+        if tail.empty:
             return None
-        return (float(tail.iloc[-1]) / float(base.iloc[-1]) - 1.0) * 100.0
+        if base.empty:
+            # 설정후 — 시작일이 시계열 시작 이전/같음이면 base 1000, 그 외(데이터 공백)는 대조 불가
+            if sd > s.index[0]:
+                return None
+            base_val = 1000.0
+        else:
+            base_val = float(base.iloc[-1])
+        if base_val == 0:
+            return None
+        return (float(tail.iloc[-1]) / base_val - 1.0) * 100.0
     except Exception:
         return None
 
@@ -395,9 +413,17 @@ def _bm_freshness_warnings(fund_code: str, end_date, start_date=None,
         # 전산과 실제로 벌어진 경우만 — 편차를 앞세워 상세 사유를 붙인다
         out.insert(0, f"전산 BM 대비 {_dev:+.2f}%p 차이")
         return out
-    # 전산 BM 미등록(06X08·SAA 4펀드) — 대조 불가라 한 줄로만 알린다
+    # 대조 불가 — 한 줄로만 알린다. 전산 BM 자체가 없는 펀드(06X08·SAA)와, 등록돼 있으나
+    # 해당 기간을 못 덮는 경우(데이터 공백)를 구분해 문구를 맞춘다 (2026-07-30 fix:
+    # 후자를 "미등록 펀드"라고 잘못 표기하고 있었다).
     _names = [r["name"] for r in rows if r["status"] in ("substituted", "stale")]
-    return ["전산 BM 미등록 펀드 — 구성지수 "
+    try:
+        from modules.data_loader import _DT_BM_CONFIG
+        _registered = str(fund_code or "").strip() in _DT_BM_CONFIG
+    except Exception:
+        _registered = False
+    _head = ("전산 BM 이 이 기간을 덮지 않음" if _registered else "전산 BM 미등록 펀드")
+    return [f"{_head} — 구성지수 "
             f"{len(_names)}건 대체/미적재({', '.join(_names)}), 대조 검증 불가"]
 
 
