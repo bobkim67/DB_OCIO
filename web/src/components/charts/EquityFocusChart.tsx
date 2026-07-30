@@ -70,6 +70,13 @@ export default function EquityFocusChart({ focus, instanceKey }: Props) {
 
   const sidePos = (per: number) => (per > PER_MAX - 8 ? "middle left" : "middle right");
 
+  // ── x축 범위: 경계 버블 잘림 방지 (2026-07-30) ──
+  // 버블 반지름(px)을 PER 단위로 근사(≈15px/단위)해, 경계에 걸치는 점이 있으면 그만큼 확장.
+  const padOf = (p: Pt) => (p.ref ? 13 : sizeOf(p.w)) / 30 + 0.3;
+  const allPts = [...heldPts, ...refPts];
+  const perLo = Math.min(PER_MIN, ...allPts.map((p) => p.per - padOf(p)));
+  const perHi = Math.max(PER_MAX, ...allPts.map((p) => p.per + padOf(p)));
+
   // 동일 좌표 겹침 분리(jitter) + trace 생성. axis='y'(하단) | 'y2'(상단 outlier)
   const scatter = (pts: Pt[], color: string, axis: "y" | "y2", ref: boolean): Plotly.Data | null => {
     if (!pts.length) return null;
@@ -121,12 +128,12 @@ export default function EquityFocusChart({ focus, instanceKey }: Props) {
   });
 
   const shapes: Partial<Plotly.Shape>[] = [
-    rect(PER_MIN, PER_MID, GR_MID, normalTop, "rgba(46,125,82,0.07)"),
-    rect(PER_MID, PER_MAX, GR_MID, normalTop, "rgba(85,126,170,0.045)"),
-    rect(PER_MIN, PER_MID, Y_FLOOR, GR_MID, "rgba(0,0,0,0.012)"),
-    rect(PER_MID, PER_MAX, Y_FLOOR, GR_MID, "rgba(192,57,43,0.045)"),
+    rect(perLo, PER_MID, GR_MID, normalTop, "rgba(46,125,82,0.07)"),
+    rect(PER_MID, perHi, GR_MID, normalTop, "rgba(85,126,170,0.045)"),
+    rect(perLo, PER_MID, Y_FLOOR, GR_MID, "rgba(0,0,0,0.012)"),
+    rect(PER_MID, perHi, Y_FLOOR, GR_MID, "rgba(192,57,43,0.045)"),
     { type: "line", xref: "x", yref: "y", x0: PER_MID, x1: PER_MID, y0: Y_FLOOR, y1: normalTop, line: { color: "#E3E6EB", width: 1 }, layer: "below" },
-    { type: "line", xref: "x", yref: "y", x0: PER_MIN, x1: PER_MAX, y0: GR_MID, y1: GR_MID, line: { color: "#E3E6EB", width: 1 }, layer: "below" },
+    { type: "line", xref: "x", yref: "y", x0: perLo, x1: perHi, y0: GR_MID, y1: GR_MID, line: { color: "#E3E6EB", width: 1 }, layer: "below" },
   ];
   if (hasOutlier) {
     // 절단 gap: 음영 없이 빈칸 + 전폭 물결 점선 2개(상·하 경계)
@@ -141,7 +148,7 @@ export default function EquityFocusChart({ focus, instanceKey }: Props) {
   const layout: any = {
     autosize: true, height: 460,
     margin: { t: 12, r: 30, b: 40, l: 50 },
-    xaxis: { title: { text: "PER (저평가 ← → 고평가)", font: { size: 12 } }, range: [PER_MIN, PER_MAX], anchor: "y", zeroline: false, gridcolor: "#F0F2F5", tickfont: { size: 11 } },
+    xaxis: { title: { text: "PER (저평가 ← → 고평가)", font: { size: 12 } }, range: [perLo, perHi], anchor: "y", zeroline: false, gridcolor: "#F0F2F5", tickfont: { size: 11 } },
     yaxis: {
       title: { text: "EPS 성장 (YoY)", font: { size: 12 } }, ticksuffix: "%",
       domain: hasOutlier ? [0, D_LO_TOP] : [0, 1], range: [Y_FLOOR, normalTop],
