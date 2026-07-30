@@ -41,14 +41,19 @@ WEBP_QUALITY = 90
 PNG_SIG = b'\x89PNG\r\n\x1a\n'
 PAGE_EXT = '.webp'
 
-# ★ 멀티펀드 통합 엑셀 요약 카드 (2026-07-30 사용자 지시) — 신한라이프 변액처럼 전 라인업이
-# 한 표에 들어 있는 엑셀은 시트 캡쳐 대신 **해당 펀드 행만 추출해 깔끔한 카드 이미지로 재구성**.
+# ★ 엑셀 요약 카드 (2026-07-30 사용자 지시) — 통합/양식 엑셀은 시트 캡쳐 대신
+# **핵심 내용만 추출해 깔끔한 카드 이미지로 재구성**.
 # (행 숨김 캡쳐는 병합셀 때문에 타 펀드(구조화혼합형 등)가 새어 나와 폐기.)
-# - 월간(월별요약보고서): 'U코멘트관리' 시트 → 기준일자·펀드코드·운용사·펀드명·코멘트
-# - 분기(코멘트_통합): '작성요청' 시트 → 펀드코드·운용사·펀드명·지난분기·다음분기 코멘트
+# kind='shinhan' (신한라이프 변액 — 전 라인업이 한 표, 해당 펀드 행만 추출):
+#   - 월간(월별요약보고서): 'U코멘트관리' 시트 → 기준일자·펀드코드·운용사·펀드명·코멘트
+#   - 분기(코멘트_통합): '작성요청' 시트 → 펀드코드·운용사·펀드명·지난분기·다음분기 코멘트
+# kind='dblife' (DB생명 변액 분기 — 단일 펀드 파일, 2026-07-31 추가):
+#   - '운용경과 및 수익률 현황' 시트 → ▶ 운용경과 / ▶ 향후 운용방침 두 섹션
 # 추출 실패 시 기존 시트 캡쳐로 폴백. 엑셀은 ReadOnly — 원본 불변.
 EXCEL_SUMMARY = {
-    '2JM23': {'fund_name_kw': '자산배분B형'},     # 신한라이프 U80002
+    '2JM23': {'kind': 'shinhan', 'fund_name_kw': '자산배분B형'},     # 신한라이프 U80002
+    '4JM12': {'kind': 'dblife', 'name': '글로벌Active자산배분혼합형',
+              'mgr': '한국투자신탁운용'},
 }
 
 
@@ -174,6 +179,42 @@ def _extract_summary_monthly(vals, kw: str) -> dict | None:
     return None
 
 
+def _extract_summary_dblife(vals) -> dict | None:
+    """DB생명 분기 '운용경과 및 수익률 현황' 시트 → ▶ 운용경과 / ▶ 향후 운용방침 본문.
+
+    행 단위로 비어있지 않은 셀을 이어붙여 텍스트 라인으로 만들고, ▶ 마커 사이를 본문으로.
+    '[글로벌Active자산배분혼합형]' 식 대괄호 헤더 행은 제목 후보로만 쓰고 본문에선 제외.
+    """
+    lines = []
+    for row in vals:
+        cs = [c.strip() for c in _cells(row) if c and c.strip()]
+        # 셀 안 개행([펀드명]\n본문이 한 셀) → 논리 라인으로 분리 (대괄호 헤더 skip 이 먹히도록)
+        lines.extend(' '.join(cs).replace('\r', '').split('\n'))
+    i_p = next((i for i, l in enumerate(lines) if '▶' in l and '운용경과' in l), None)
+    i_n = next((i for i, l in enumerate(lines) if '▶' in l and '운용방침' in l), None)
+    if i_p is None or i_n is None or i_n <= i_p:
+        return None
+    bracket_name = ''
+
+    def body(a: int, b: int) -> str:
+        nonlocal bracket_name
+        out = []
+        for l in lines[a:b]:
+            s = l.strip()
+            if not s:
+                continue
+            if s.startswith('[') and s.endswith(']'):
+                bracket_name = bracket_name or s.strip('[]').strip()
+                continue
+            out.append(s)
+        return '\n'.join(out)
+
+    prev, nxt = body(i_p + 1, i_n), body(i_n + 1, len(lines))
+    if not (prev or nxt):
+        return None
+    return {'type': 'dblife_q', 'name': bracket_name, 'prev': prev, 'next': nxt}
+
+
 def _extract_summary_quarterly(vals, kw: str) -> dict | None:
     """'작성요청' 시트 → {펀드코드, 운용사, 펀드명, 지난분기, 다음분기}. 헤더가 2행에 걸쳐 있어
     상위 8행 전체에서 컬럼별 첫 매칭을 취한다."""
@@ -279,8 +320,9 @@ def _render_summary_card(out_path: Path, head_meta: list[str], title: str,
     return True
 
 
-def _export_excel_summary(xapp, path: Path, out_dir: Path, kw: str) -> int:
-    """EXCEL_SUMMARY 펀드 — 해당 펀드 행 추출 → 카드 이미지 1장. 실패 시 0 (폴백은 호출부)."""
+def _export_excel_summary(xapp, path: Path, out_dir: Path, cfg: dict, fund: str) -> int:
+    """EXCEL_SUMMARY 펀드 — 핵심 내용 추출 → 카드 이미지 1장. 실패 시 0 (폴백은 호출부)."""
+    kind = cfg.get('kind', 'shinhan')
     wb = xapp.Workbooks.Open(str(path.resolve()), ReadOnly=True)
     try:
         info = None
@@ -289,13 +331,22 @@ def _export_excel_summary(xapp, path: Path, out_dir: Path, kw: str) -> int:
                 if ws.Visible != -1:
                     continue
                 nm = str(ws.Name)
-                if nm not in ('U코멘트관리', '작성요청'):
-                    continue
-                vals = ws.UsedRange.Value
-                if not isinstance(vals, tuple):
-                    continue
-                info = (_extract_summary_monthly(vals, kw) if nm == 'U코멘트관리'
-                        else _extract_summary_quarterly(vals, kw))
+                if kind == 'shinhan':
+                    if nm not in ('U코멘트관리', '작성요청'):
+                        continue
+                    vals = ws.UsedRange.Value
+                    if not isinstance(vals, tuple):
+                        continue
+                    kw = cfg['fund_name_kw']
+                    info = (_extract_summary_monthly(vals, kw) if nm == 'U코멘트관리'
+                            else _extract_summary_quarterly(vals, kw))
+                else:  # dblife
+                    if '운용경과' not in nm:
+                        continue
+                    vals = ws.UsedRange.Value
+                    if not isinstance(vals, tuple):
+                        continue
+                    info = _extract_summary_dblife(vals)
                 if info:
                     break
             except Exception:
@@ -304,16 +355,24 @@ def _export_excel_summary(xapp, path: Path, out_dir: Path, kw: str) -> int:
         wb.Close(False)
     if not info:
         return 0
-    meta = [info.get('mgr', ''), info.get('code', ''),
-            f"기준일 {info['date']}" if info.get('date') else '']
-    if info['type'] == 'monthly':
+    if info['type'] == 'dblife_q':
+        title = info.get('name') or cfg.get('name', '')
+        meta = [cfg.get('mgr', ''), fund]
+        sections = [('운용경과', info.get('prev', '')),
+                    ('향후 운용방침', info.get('next', ''))]
+    elif info['type'] == 'monthly':
+        title = info.get('name', '')
+        meta = [info.get('mgr', ''), info.get('code', ''),
+                f"기준일 {info['date']}" if info.get('date') else '']
         sections = [('운용 코멘트', info.get('comment', ''))]
     else:
+        title = info.get('name', '')
+        meta = [info.get('mgr', ''), info.get('code', '')]
         sections = [('지난 분기 시장과 펀드 성과', info.get('prev', '')),
                     ('다음 분기 시장 전망 및 펀드 운용 계획', info.get('next', ''))]
-    ok = _render_summary_card(_page_path(out_dir, 1), meta, info.get('name', ''), sections)
+    ok = _render_summary_card(_page_path(out_dir, 1), meta, title, sections)
     if ok:
-        print(f'    summary card: {info["name"]} ({info["type"]})')
+        print(f'    summary card: {title} ({info["type"]})')
     return 1 if ok else 0
 
 
@@ -322,7 +381,7 @@ def _export_excel(xapp, papp, path: Path, out_dir: Path, fund: str = '') -> int:
     summ = EXCEL_SUMMARY.get(fund)
     if summ:
         try:
-            n = _export_excel_summary(xapp, path, out_dir, summ['fund_name_kw'])
+            n = _export_excel_summary(xapp, path, out_dir, summ, fund)
             if n:
                 return n
             print(f'    summary 추출 실패 → 시트 캡쳐 폴백: {path.name}')
