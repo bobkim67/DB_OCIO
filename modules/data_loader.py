@@ -1844,7 +1844,9 @@ def _map_bm_component_to_asset_class(comp_name: str, method: str = '방법3') ->
         base = '국내주식'
     elif ('KIS' in nm or 'KAP' in nm) and ('CALL' in nm or 'MONEY' in nm):
         base = '유동성'
-    elif 'KIS' in nm or 'KAP' in nm:
+    elif 'KIS' in nm or 'KAP' in nm or 'KTB' in nm:
+        # 'KTB' 추가(2026-07-30): 07G04 구 BM 의 'KTBTR Index'(67.5%)가 어느 패턴에도
+        # 안 걸려 else→해외주식으로 잘못 잡혔다. KTB=Korea Treasury Bond.
         base = '국내채권'
     elif 'KOREA' in nm and 'BOND' not in nm:
         # MSCI Korea 계열(KODEX MSCI Korea TR 등) — 'MSCI' 패턴보다 먼저 국내주식 판정
@@ -1852,6 +1854,10 @@ def _map_bm_component_to_asset_class(comp_name: str, method: str = '방법3') ->
     elif 'BLOOMBERG' in nm or 'AGG' in nm:
         base = '해외채권'
     elif 'GOLD' in nm:
+        base = '대체'
+    elif 'REIT' in nm or 'COMMODITY' in nm:
+        # 'MSCI' 판정보다 **앞**이어야 한다 — 'MSCI US REITs Index' 가 해외주식으로 샌다.
+        # 07G04 구 BM: MSCI US REITs 0.75% · SummerHaven Dynamic Commodity 0.75%.
         base = '대체'
     elif 'HIGH YIELD' in nm or 'HIGH-YIELD' in nm:
         base = '해외채권'
@@ -2189,6 +2195,120 @@ def _load_bm_daily_returns_by_class(bm_info: dict, start_date: str, end_date: st
     return bm_weights, bm_daily, _fx_daily_for_ap, {'daily': comp_daily, 'weights': comp_target_w}
 
 
+# ── BM 구성 버전 체인 (2026-07-30) ────────────────────────────────────────────
+# 전산 BM 은 구성이 바뀐다. 07G04 실측(원본 `C:\Users\user\Downloads\python\07G04BM`):
+#   2021-09-27~2023-12-29  KTBTR 67.5 / KOSPI200 11 / ACWI 10 / US REITs 0.75 /
+#                          SummerHaven 0.75 / BBG Agg(H) 10        ... 6개 지수
+#   2023-12-30~2025-12-31  KIS 10Y KTB 56.1 / ACWI Gross 33.9 / BBG Agg(H) 10
+#   2026-01-01~            KIS 10Y KTB 41 / ACWI Gross 34 / BBG Agg H(KRW) 25  ← 현행
+# 기존처럼 '기간말 버전 하나'를 전 기간에 적용하면 설정후 BM 이 전산 대비 +2.03%p 어긋난다
+# (2JM23 SAA 의 -208%p 도 같은 원인). rebal_date 를 **유효 시작일**로 보고 구간마다 해당
+# 버전으로 일별 수익률을 계산해 이어붙인다. 첫 버전은 그 이전 구간(설정일~)도 커버한다.
+_BM_VERSION_ALIAS = {'07G07': '07G04'}   # 07G07 은 07G04 BM 공유
+
+
+@_ttl_cache()
+def _saa_rebal_dates(fund_code: str) -> tuple:
+    """saa_bm_components 의 rebal_date 목록(오름차순). 없으면 빈 tuple."""
+    try:
+        conn = get_pandas_connection('solution')
+        try:
+            df = pd.read_sql(
+                "SELECT DISTINCT rebal_date FROM saa_bm_components WHERE fund_cd=%s "
+                "ORDER BY rebal_date", conn, params=[fund_code])
+        finally:
+            conn.close()
+    except Exception:
+        return tuple()
+    if df.empty:
+        return tuple()
+    return tuple(pd.to_datetime(df['rebal_date']))
+
+
+def load_bm_versions(fund_code: str) -> list:
+    """[(유효시작일|None, bm_info), ...] 시간순.
+
+    saa_bm_components 에 행이 있으면 버전 체인, 없으면 FUND_BM 단일 [(None, info)].
+    둘 다 없으면 [] (벤치마크 없음 — FUND_NO_BENCHMARK 펀드 포함).
+    """
+    from config.funds import FUND_BM        # 모듈 전역에 없음 — 호출부와 동일하게 지역 import
+    key = _BM_VERSION_ALIAS.get(str(fund_code or '').strip(), str(fund_code or '').strip())
+    out = []
+    for rb in _saa_rebal_dates(key):
+        info = load_saa_components(key, rb.strftime('%Y%m%d'))
+        if info and info.get('components'):
+            out.append((rb, info))
+    if out:
+        return out
+    info = FUND_BM.get(fund_code)
+    return [(None, info)] if info else []
+
+
+def _load_bm_daily_returns_versioned(versions, start_date, end_date, asset_classes,
+                                     mapping_method='방법3', fx_split=True,
+                                     fund_code=None):
+    """버전 구간별 계산 → 이어붙이기. 단일 버전이면 기존 경로와 동일(수치 불변).
+
+    Returns: (bm_weights, bm_daily, fx_daily, bm_comp, **w_seg_daily**) 5-tuple.
+      bm_weights / bm_comp 는 **기간말 버전** 기준 — 표0 '목표 셋팅' 표시용이라
+      구간 평균이 아니라 현재 셋팅을 보여주는 게 맞다.
+      ★ w_seg_daily(DataFrame, index=날짜, col=자산군, fraction)가 핵심이다.
+        호출부는 자산군 수익률에 비중을 곱해 복합 BM 을 만드는데(bm_composite_daily),
+        비중을 기간말 하나로 고정하면 구 구성 구간이 통째로 잘못 가중된다
+        (07G04 실측: 구간별로는 ±0.006%p 인데 체인 전체가 +0.955%p 이탈).
+      단일 버전이면 w_seg_daily=None (기존 동작).
+    """
+    if not versions:
+        return {ac: 0.0 for ac in asset_classes}, pd.DataFrame(), None, None, None
+    _sd = pd.Timestamp(f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:8]}")
+    _ed = pd.Timestamp(f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:8]}")
+    segs = []
+    for i, (eff, info) in enumerate(versions):
+        # 첫 버전은 유효일 이전(설정일~)도 커버 — 전산도 그렇게 계산한다
+        s = _sd if (eff is None or i == 0) else max(_sd, eff)
+        e = _ed if i == len(versions) - 1 else min(_ed, versions[i + 1][0] - pd.Timedelta(days=1))
+        if s > e:
+            continue
+        segs.append((s, e, info))
+
+    if len(segs) <= 1:
+        info = segs[0][2] if segs else versions[-1][1]
+        _warm = (_sd - timedelta(days=45)).strftime('%Y%m%d')
+        return _load_bm_daily_returns_by_class(
+            info, _warm, end_date, asset_classes, mapping_method, fx_split, fund_code) + (None,)
+
+    frames, wframes, last = [], [], None
+    for s, e, info in segs:
+        _warm = (s - timedelta(days=45)).strftime('%Y%m%d')
+        w, df, _fxd, comp = _load_bm_daily_returns_by_class(
+            info, _warm, e.strftime('%Y%m%d'), asset_classes, mapping_method,
+            fx_split, fund_code)
+        last = (w, comp)
+        if df is None or len(df) == 0:
+            continue
+        d = df.set_index('기준일자') if '기준일자' in df.columns else df
+        d = d[(d.index >= s) & (d.index <= e)]
+        if len(d):
+            frames.append(d)
+            # 이 구간의 실제 목표비중(fraction)을 구간 날짜에 broadcast
+            wframes.append(pd.DataFrame(
+                {ac: float(w.get(ac, 0.0)) / 100.0 for ac in asset_classes},
+                index=d.index))
+    if not frames:
+        return ({ac: 0.0 for ac in asset_classes}, pd.DataFrame(), None,
+                last[1] if last else None, None)
+    out = pd.concat(frames).sort_index()
+    out = out[~out.index.duplicated(keep='last')]
+    out.index.name = None
+    out = out.reset_index().rename(columns={'index': '기준일자'})
+    wseg = pd.concat(wframes).sort_index()
+    wseg = wseg[~wseg.index.duplicated(keep='last')]
+    logger.info("BM 버전 체인 %s: %d구간 %s", fund_code, len(segs),
+                ' | '.join(f"{s.date()}~{e.date()}({len(i['components'])}지수)"
+                           for s, e, i in segs))
+    return last[0], out, None, last[1], wseg
+
+
 @_ttl_cache()
 def load_saa_components(fund_code: str, as_of_date=None) -> dict:
     """solution.saa_bm_components 에서 SAA 벤치마크 컴포넌트 로드 (리밸 날짜 버전형).
@@ -2397,12 +2517,12 @@ def compute_brinson_attribution_v2(fund_code: str,
     if saa_mode in ('proxy', 'proxy_drift'):
         # SAA proxy(안전자산→KIS 종합채권 / 나머지→MSCI ACWI). proxy_drift 는 비중만 일별 변동.
         bm_info = _build_proxy_bm_info(fund_code, start_date)
+        _bm_versions = [(None, bm_info)] if bm_info else []
     else:
-        bm_info = FUND_BM.get(fund_code)
-        if bm_info is None:
-            # BM 미설정 펀드 → SAA 벤치마크(solution.saa_bm_components) 시도.
-            # 컴포넌트가 있으면 BM 과 동일 경로로 SAA 수익률/기여 분해.
-            bm_info = load_saa_components(fund_code, end_date)
+        # BM 구성 버전 체인 — saa_bm_components 우선(구성 변경 이력 보유),
+        # 없으면 FUND_BM 단일. 07G04 는 3버전, 08N33 은 2버전 (2026-07-30).
+        _bm_versions = load_bm_versions(fund_code)
+        bm_info = _bm_versions[-1][1] if _bm_versions else None
 
     _BM_ASSET_CLASSES = BRINSON_METHOD_BM_CLASSES.get(mapping_method,
         ['국내주식', '해외주식', '국내채권', '해외채권', 'FX', '유동성'])
@@ -2410,11 +2530,11 @@ def compute_brinson_attribution_v2(fund_code: str,
     bm_daily_df = pd.DataFrame()
     _bm_comp = None
 
+    _bm_w_seg = None
     if bm_info:
-        _sd_dt = pd.Timestamp(f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:8]}")
-        _bm_warmup_start = (_sd_dt - timedelta(days=45)).strftime('%Y%m%d')
-        bm_weights_raw, bm_daily_df, _, _bm_comp = _load_bm_daily_returns_by_class(
-            bm_info, _bm_warmup_start, end_date, _BM_ASSET_CLASSES, mapping_method,
+        # 버전이 1개면 내부에서 기존 경로를 그대로 탄다(수치 불변 — 골든 안전)
+        bm_weights_raw, bm_daily_df, _, _bm_comp, _bm_w_seg = _load_bm_daily_returns_versioned(
+            _bm_versions, start_date, end_date, _BM_ASSET_CLASSES, mapping_method,
             fx_split=fx_split, fund_code=fund_code)
 
     # BM '유동성' → '유동성및기타'로 매핑
@@ -2437,6 +2557,14 @@ def compute_brinson_attribution_v2(fund_code: str,
     # drift=buy-and-hold: 리밸 target 에서 각 인덱스 누적수익률대로 비중 표류.
     bm_w_daily = {ac: pd.Series(bm_weights.get(ac, 0) / 100.0, index=dates_idx)
                   for ac in asset_classes}
+    # 버전 체인이면 구간별 실제 목표비중으로 교체 (기간말 비중 고정 시 구 구성 구간이
+    # 통째로 잘못 가중된다 — _load_bm_daily_returns_versioned docstring 참조)
+    if _bm_w_seg is not None and not _bm_w_seg.empty:
+        _ws = _bm_w_seg.rename(columns={'유동성': '유동성및기타'})
+        for ac in asset_classes:
+            if ac in _ws.columns:
+                bm_w_daily[ac] = (_ws[ac].reindex(dates_idx).ffill().bfill()
+                                  .fillna(bm_weights.get(ac, 0) / 100.0))
     if saa_mode.endswith('_drift') and bm_available:
         _cum_prev = {}
         for ac in bm_daily_df.columns:

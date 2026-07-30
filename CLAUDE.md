@@ -227,6 +227,23 @@ _FUND_INCEPTION_BASE = {'4JM12': 1970.76}
 - `users.yaml`에 사용자 비밀번호 포함 — 커밋 시 주의.
 - Streamlit의 Pandas Styler 지원이 제한적: `.bar()` 등 일부 기능 미지원.
 - `pd.read_sql`에 DictCursor 사용하면 컬럼명이 값으로 들어가는 버그 → 반드시 `get_pandas_connection()` 사용.
+- ★ **BM 구성 버전 체인 (2026-07-30)** — 전산 BM 은 구성이 바뀐다. `saa_bm_components.rebal_date`
+  를 **유효 시작일**로 보고 구간마다 해당 버전으로 일별 수익률을 계산해 이어붙인다
+  (`load_bm_versions` + `_load_bm_daily_returns_versioned`). 버전 1개면 기존 경로 그대로(골든 불변).
+  - **07G04 실측 구성 이력**(원본 `C:\Users\user\Downloads\python\07G04BM`, 사용자 제공 표):
+    | 구간 | 구성 |
+    |---|---|
+    | ~2023-12-29 | KTBTR 67.5 · KOSPI200 11 · MSCI ACWI 10 · **US REITs 0.75** · **SummerHaven 0.75** · BBG Agg(H) 10 |
+    | 2023-12-30~2025-12-31 | KIS 10Y KTB 56.1 · ACWI Gross 33.9 · BBG Agg(H) 10 |
+    | 2026-01-01~ | KIS 10Y KTB 41 · ACWI Gross 34 · BBG Agg **H(KRW)** 25 (=현행 `FUND_BM`) |
+    2026-01-01 의 지수 점프(501.83→232.23)는 리베이스가 아니라 **비헤지→원화헤지 교체**.
+  - ★ **비중도 구간별이어야 한다** — `bm_composite_daily = Σ bm_daily_df[ac] × bm_w_daily[ac]` 라
+    비중을 기간말 하나로 고정하면 구 구성 구간이 통째로 잘못 가중된다. 실측: 구간별로는 ±0.006%p
+    인데 체인 전체가 **+0.955%p** 이탈 → `_bm_w_seg`(구간별 목표비중 일별 DataFrame)로 해결.
+  - 검증(설정후 2021-09-27~2026-07-28): 전산 25.4522% vs Brinson **25.4553%(+0.0030%p)**.
+    수정 전 +2.03%p. 자산군 분해에 국내주식(-1.1094)·대체(+0.2779)가 정상 출현.
+  - `_map_bm_component_to_asset_class` 패턴 보강: **'KTB'→국내채권**(KTBTR Index 가 else→해외주식으로
+    새던 것, 비중 67.5%), **'REIT'/'COMMODITY'→대체**(MSCI 판정보다 **앞**에 둘 것 — 'MSCI US REITs').
 - BM 매핑: DT BM 우선 (5개 펀드 `_DT_BM_CONFIG`: 07G02, 07G03, 07G04, 08K88, 4JM12), SCIP composite fallback (`FUND_BM` 7개: 07G04·07G07·08K88·4JM12·06X08·07G02·07G03 — 이 중 **06X08 만 실제로 composite 경로**를 탄다). BM 미설정: 08N33, 08N81, 08P22(SAA) · 2JM23(벤치마크 없음).
   - ★ composite 경로는 `overview_service._load_bm_series` 에서 **30일 워밍업**을 두고 로드한다
     (2026-07-29). 복합지수는 pct_change 로 첫날을, ex_KR 레그는 T-1 정렬로 하루 더 잃어 설정일부터
