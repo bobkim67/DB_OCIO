@@ -1627,11 +1627,16 @@ def load_composite_bm_prices(components: list, start_date: str = None,
     #        accrual 이라 KAP All/MMI Call 프록시로는 -0.2382%p 벌어졌다(1/1~7/28).
     if fund_code and fund_code in _BM_RESIDUAL_LEG:
         try:
-            _dtb = load_dt_bm_prices(fund_code, start_date)
+            # 전체 이력 로드 + 설정일 행 = first/1000 - 1 (Brinson δ 블록과 동일 규약,
+            # 2026-07-30 fix — pct_change 첫 관측일 NaN 이 proxy 수익률로 남던 문제)
+            _dtb = load_dt_bm_prices(fund_code, _DT_BM_HEAD_PROBE)
             if _dtb is not None and len(_dtb) >= 2:
                 _ds = _dtb.set_index('기준일자')['value'].sort_index()
                 _ds = _ds[~_ds.index.duplicated(keep='last')]
                 _dr = _ds.reindex(composite_ret.index).ffill().pct_change()
+                if (_ds.index[0] > pd.Timestamp(_DT_BM_HEAD_PROBE) + pd.Timedelta(days=10)
+                        and _ds.index[0] in _dr.index):
+                    _dr.loc[_ds.index[0]] = float(_ds.iloc[0]) / 1000.0 - 1.0
                 composite_ret = _dr.where(_dr.notna(), composite_ret).astype(float)
                 logger.info("composite BM 잔차 역산(%s): 전산 BM 총계 추종", fund_code)
         except Exception as exc:
@@ -1891,6 +1896,10 @@ _BM_RESIDUAL_LEG = {
               'KAP Korea Bond All', 'KAP MMI Call'),
 }
 
+# 잔차 역산용 DT BM 로드 시작일 — 시계열 머리(설정일) 판별을 위해 항상 여기서부터 로드.
+# 대상 펀드 설정일(4JM12 2022-03-18, 08K88 2024-09-30)보다 충분히 이전이면 된다.
+_DT_BM_HEAD_PROBE = '20200101'
+
 
 def _load_bm_daily_returns_by_class(bm_info: dict, start_date: str, end_date: str,
                                      asset_classes_8: list,
@@ -2075,11 +2084,22 @@ def _load_bm_daily_returns_by_class(bm_info: dict, start_date: str, end_date: st
         _res_w = sum(comp_returns[n]['weight'] for n in _res)
         if _res and _res_w > 0:
             try:
-                _dt_bm = load_dt_bm_prices(fund_code, start_date)
+                # 전체 이력 로드 — 설정일(시계열 머리) 판별 + 그리드 첫 행 pct_change 확보.
+                # start_date(웜업 포함)로 자르면 머리가 조회 시작일인지 진짜 설정일인지 알 수 없다.
+                _dt_bm = load_dt_bm_prices(fund_code, _DT_BM_HEAD_PROBE)
                 if _dt_bm is not None and len(_dt_bm) >= 2:
                     _s = _dt_bm.set_index('기준일자')['value'].sort_index()
                     _s = _s[~_s.index.duplicated(keep='last')]
                     _dt_ret = _s.reindex(_kr_dates).ffill().pct_change()
+                    # ★ 설정일 행 (2026-07-30 fix — 4JM12 설정후 +0.8271%p 의 전부):
+                    # pct_change 는 첫 관측일이 NaN → δ=0 → 그날 proxy 수익률이 그대로 남는다.
+                    # 전산 규약은 설정일 지수 = base 1000 이므로 설정일 수익률 = first/1000 - 1
+                    # (4JM12 first=1000.0000 → 0.0000%, 우리 proxy 는 +0.6111% 였다).
+                    # 시계열이 조회 시작일 직후부터 있으면(=2020 이전부터 존재) 머리가 설정일이
+                    # 아니므로 적용하지 않는다.
+                    if (_s.index[0] > pd.Timestamp(_DT_BM_HEAD_PROBE) + pd.Timedelta(days=10)
+                            and _s.index[0] in _dt_ret.index):
+                        _dt_ret.loc[_s.index[0]] = float(_s.iloc[0]) / 1000.0 - 1.0
                     _ours = pd.Series(0.0, index=_kr_dates)
                     for _cr in comp_returns.values():
                         _ours += _cr['daily_ret'].reindex(_kr_dates).fillna(0) * _cr['weight']
