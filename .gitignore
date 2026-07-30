@@ -127,3 +127,5 @@ dist_package/
 
 # 메모 탭 사용자 데이터 (서버 저장, 2026-07-14)
 data/memos.json
+
+output/
