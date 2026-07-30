@@ -34,7 +34,7 @@ const todayStr = () => {
 export default function HoldingsTab({ fundCode }: Props) {
   const [lookthrough, setLookthrough] = useState(true);
   const [focus, setFocus] = useState<"eq" | "bd" | "sec">("eq");
-  const [expandTable, setExpandTable] = useState(false);
+  const [expandTable, setExpandTable] = useState(true);   // 편입현황 기본 펼침 (2026-07-30 사용자 지시)
   const [sel, setSel] = useState<HoldSel | null>(null);
   const [tip, setTip] = useState<Tip>(null);
   // 기준일자 스냅샷 — "" = 최신. 지정 시 해당일(이전 최근 영업일) 보유 스냅샷 조회.
