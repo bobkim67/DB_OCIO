@@ -3,7 +3,7 @@ import { periodLabel, renderTextBlocks } from "../lib/reportText";
 
 /**
  * 발송 운용보고 리더 (모달) — 카드 클릭 시 본문 열람.
- * 기본 = 원본 캡쳐 PNG(발송된 디자인 그대로), 캡쳐 없으면 추출 텍스트.
+ * 원본 캡쳐 이미지(발송된 디자인 그대로) 단일 경로 — 텍스트 뷰 제거 (2026-07-30 사용자 지시).
  * ←/→ 이전·다음 기간, ESC 닫기, 배경 클릭 닫기.
  */
 
@@ -22,7 +22,7 @@ export type FileRow = {
 export type PeriodRow = { period: string; files: FileRow[] };
 export type GeneratedRow = { period: string; comment: string; approved_at: string };
 
-type Mode = "preview" | "text" | "gen";
+type Mode = "preview" | "gen";
 
 export default function SentReportReader({
   fundCode, periods, index, generated, onNav, onClose,
@@ -37,8 +37,6 @@ export default function SentReportReader({
   const row = periods[index];
   const [fileIdx, setFileIdx] = useState(0);
   const [mode, setMode] = useState<Mode>("preview");
-  const [text, setText] = useState("");
-  const [textErr, setTextErr] = useState("");
   // 캡쳐 PNG 가 DRM 래핑되어 브라우저가 렌더하지 못하는 경우 안내로 대체
   const [previewBroken, setPreviewBroken] = useState(false);
   // 캡쳐 확대 배율 — 1 = 모달 폭에 맞춤. 늘리면 컨테이너에서 가로 스크롤로 훑어본다.
@@ -47,32 +45,17 @@ export default function SentReportReader({
   const file: FileRow | undefined = row?.files[fileIdx];
   const { big, small } = periodLabel(row?.period ?? "");
 
-  // 기간 이동 시 파일 선택 초기화 + 표시 모드 재결정 (캡쳐 없으면 텍스트)
+  // 기간 이동 시 파일 선택 초기화
   useEffect(() => {
     setFileIdx(0);
-    setText("");
-    setTextErr("");
     setPreviewBroken(false);
     setZoom(1);
   }, [index]);
 
   useEffect(() => {
     if (!file) return;
-    setMode(file.preview_pages > 0 ? "preview" : file.has_text ? "text" : "preview");
+    setMode("preview");
   }, [file]);
-
-  // 텍스트 모드 진입 시 지연 로드
-  useEffect(() => {
-    if (mode !== "text" || !file || !file.has_text) return;
-    let alive = true;
-    setText("");
-    setTextErr("");
-    fetch(`/api/funds/${fundCode}/sent-reports/text?rel_path=${encodeURIComponent(file.rel_path)}`)
-      .then((r) => r.json())
-      .then((d) => { if (alive) setText(d.text ?? ""); })
-      .catch((e) => { if (alive) setTextErr(String(e)); });
-    return () => { alive = false; };
-  }, [mode, file, fundCode]);
 
   // 캡쳐 클릭 = 25% 확대 / 더블클릭 = 맞춤 복귀.
   // 더블클릭은 click 이 두 번 먼저 오므로, 단일 클릭을 잠깐 미뤘다가 취소한다.
@@ -157,10 +140,6 @@ export default function SentReportReader({
             <button type="button" className={mode === "preview" ? "on" : ""}
               onClick={() => setMode("preview")}>원본 ({file.preview_pages}p)</button>
           )}
-          {file?.has_text && (
-            <button type="button" className={mode === "text" ? "on" : ""}
-              onClick={() => setMode("text")}>텍스트</button>
-          )}
           {generated && (
             <button type="button" className={mode === "gen" ? "on" : ""}
               onClick={() => setMode("gen")}>생성 코멘트</button>
@@ -181,8 +160,13 @@ export default function SentReportReader({
             <a href={`/api/funds/${fundCode}/sent-reports/file?rel_path=${encodeURIComponent(file.rel_path)}&inline=true`}
               target="_blank" rel="noreferrer"><button type="button">새 탭에서 PDF</button></a>
           )}
-          {/* '원본 다운로드' 제거 (2026-07-28) — 원본은 DRM 이라 사외 client 는 열 수 없다.
-              열람 경로는 캡쳐 이미지로 단일화. 사내에서 원본이 필요하면 메일/파일서버로. */}
+          {/* 원본 다운로드 (2026-07-30 복원) — DRM 원본이라 사내 PC 에서만 열리지만,
+              사내 직원 사용을 위해 제공. TODO: 로그인 도입 시 특정 계정(role)에만 노출. */}
+          {file && (
+            <a href={`/api/funds/${fundCode}/sent-reports/file?rel_path=${encodeURIComponent(file.rel_path)}`}>
+              <button type="button">원본 다운로드</button>
+            </a>
+          )}
         </div>
 
         <div className="srr-body">
@@ -202,20 +186,14 @@ export default function SentReportReader({
           {mode === "preview" && previewBroken && (
             <div className="srr-empty">
               원본 캡쳐 이미지가 문서보안(DRM)으로 래핑돼 브라우저에서 표시할 수 없습니다.
-              {file?.has_text && " 텍스트 탭을 이용하거나,"} 원본을 다운로드해 열어보세요.
+              원본을 다운로드해 열어보세요 (사내 PC 전용).
               <div className="sub">(해결: PC 에서 캡쳐 재생성 — 클립보드 경유 저장 필요)</div>
             </div>
           )}
           {mode === "preview" && file && file.preview_pages === 0 && (
             <div className="srr-empty">
-              원본 캡쳐가 없습니다{isPdf ? " — 위 '새 탭에서 PDF' 로 열람하세요." : "."}
-              {file.has_text && " 텍스트 탭을 이용하세요."}
+              원본 캡쳐가 없습니다{isPdf ? " — 위 '새 탭에서 PDF' 로 열람하세요." : " — 원본을 다운로드해 열어보세요 (사내 PC 전용)."}
             </div>
-          )}
-          {mode === "text" && (
-            textErr ? <div className="srr-empty">텍스트 로드 실패: {textErr}</div>
-              : text ? <div className="srr-doc">{renderTextBlocks(text)}</div>
-                : <div className="srr-empty">불러오는 중…</div>
           )}
           {mode === "gen" && generated && (
             <div className="srr-doc">

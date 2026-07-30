@@ -41,6 +41,16 @@ WEBP_QUALITY = 90
 PNG_SIG = b'\x89PNG\r\n\x1a\n'
 PAGE_EXT = '.webp'
 
+# ★ 멀티펀드 통합 엑셀 요약 카드 (2026-07-30 사용자 지시) — 신한라이프 변액처럼 전 라인업이
+# 한 표에 들어 있는 엑셀은 시트 캡쳐 대신 **해당 펀드 행만 추출해 깔끔한 카드 이미지로 재구성**.
+# (행 숨김 캡쳐는 병합셀 때문에 타 펀드(구조화혼합형 등)가 새어 나와 폐기.)
+# - 월간(월별요약보고서): 'U코멘트관리' 시트 → 기준일자·펀드코드·운용사·펀드명·코멘트
+# - 분기(코멘트_통합): '작성요청' 시트 → 펀드코드·운용사·펀드명·지난분기·다음분기 코멘트
+# 추출 실패 시 기존 시트 캡쳐로 폴백. 엑셀은 ReadOnly — 원본 불변.
+EXCEL_SUMMARY = {
+    '2JM23': {'fund_name_kw': '자산배분B형'},     # 신한라이프 U80002
+}
+
 
 def _page_path(out_dir: Path, i: int) -> Path:
     return out_dir / f'p{i:02d}{PAGE_EXT}'
@@ -122,7 +132,202 @@ def _paste_to_png(papp, out_path: Path, w: float, h: float, paste_fn) -> bool:
         pres.Close()
 
 
-def _export_excel(xapp, papp, path: Path, out_dir: Path) -> int:
+# ── 요약 카드: 추출 ─────────────────────────────────────────────
+
+def _cells(row) -> list[str]:
+    t = row if isinstance(row, tuple) else (row,)
+    return ['' if c is None else str(c) for c in t]
+
+
+def _fmt_ymd(v: str) -> str:
+    """'20260531.0' / '20260531' → '2026-05-31'. 못 읽으면 원문."""
+    s = v.split('.')[0].strip()
+    if len(s) == 8 and s.isdigit():
+        return f'{s[:4]}-{s[4:6]}-{s[6:8]}'
+    return v
+
+
+def _extract_summary_monthly(vals, kw: str) -> dict | None:
+    """'U코멘트관리' 시트 → {기준일자, 펀드코드, 운용사, 펀드명, 코멘트}."""
+    hdr_i, hdr = None, None
+    for i, row in enumerate(vals[:8]):
+        cs = _cells(row)
+        if any('펀드코드' in c for c in cs) and any('코멘트' in c for c in cs):
+            hdr_i, hdr = i, cs
+            break
+    if hdr is None:
+        return None
+    col = lambda sub: next((j for j, c in enumerate(hdr) if sub in c), None)
+    c_date = col('적용일자')
+    if c_date is None:      # ⚠ '적용일자' 는 0번 컬럼 — `or` 쓰면 falsy 0 이 폴백에 먹힌다
+        c_date = col('기준일자')
+    c_code = col('펀드코드')
+    c_mgr, c_name, c_cmt = col('운용사'), col('펀드명'), col('코멘트')
+    if None in (c_code, c_name, c_cmt):
+        return None
+    for row in vals[hdr_i + 1:]:
+        cs = _cells(row)
+        if c_name < len(cs) and kw in cs[c_name]:
+            g = lambda j: cs[j].strip() if j is not None and j < len(cs) else ''
+            return {'type': 'monthly', 'date': _fmt_ymd(g(c_date)), 'code': g(c_code),
+                    'mgr': g(c_mgr), 'name': g(c_name), 'comment': g(c_cmt)}
+    return None
+
+
+def _extract_summary_quarterly(vals, kw: str) -> dict | None:
+    """'작성요청' 시트 → {펀드코드, 운용사, 펀드명, 지난분기, 다음분기}. 헤더가 2행에 걸쳐 있어
+    상위 8행 전체에서 컬럼별 첫 매칭을 취한다."""
+    cols: dict[str, int] = {}
+    for row in vals[:8]:
+        cs = _cells(row)
+        for key, sub in (('code', '펀드코드'), ('mgr', '운용사'), ('name', '펀드명'),
+                         ('prev', '지난 분기'), ('next', '다음 분기')):
+            if key not in cols:
+                j = next((j for j, c in enumerate(cs) if sub in c), None)
+                if j is not None:
+                    cols[key] = j
+    if not all(k in cols for k in ('code', 'name', 'prev', 'next')):
+        return None
+    for row in vals:
+        cs = _cells(row)
+        if cols['name'] < len(cs) and kw in cs[cols['name']]:
+            g = lambda k: cs[cols[k]].strip() if k in cols and cols[k] < len(cs) else ''
+            return {'type': 'quarterly', 'code': g('code'), 'mgr': g('mgr'),
+                    'name': g('name'), 'prev': g('prev'), 'next': g('next')}
+    return None
+
+
+# ── 요약 카드: 렌더 (PIL — Office 미경유라 DRM 재래핑 없음) ─────────
+
+_CARD_W = 2200
+_CARD_M = 120
+_INK, _MUTED, _ACCENT, _RULE = '#1f2430', '#69707d', '#E8473B', '#e5e8ee'
+
+
+def _font(size: int, bold: bool = False):
+    from PIL import ImageFont
+    name = 'malgunbd.ttf' if bold else 'malgun.ttf'
+    return ImageFont.truetype(rf'C:\Windows\Fonts\{name}', size)
+
+
+def _wrap(draw, text: str, font, width: float) -> list[str]:
+    """단어 단위 + 초장단어 문자 단위 폴백 줄바꿈. 원문 개행 유지."""
+    out: list[str] = []
+    for para in text.replace('\r', '').split('\n'):
+        if not para.strip():
+            out.append('')
+            continue
+        line = ''
+        for word in para.split(' '):
+            cand = f'{line} {word}'.strip()
+            if draw.textlength(cand, font=font) <= width:
+                line = cand
+                continue
+            if line:
+                out.append(line)
+            # 단어 자체가 폭 초과 → 문자 단위 분할
+            while draw.textlength(word, font=font) > width:
+                k = len(word)
+                while k > 1 and draw.textlength(word[:k], font=font) > width:
+                    k -= 1
+                out.append(word[:k])
+                word = word[k:]
+            line = word
+        out.append(line)
+    while out and not out[-1]:
+        out.pop()
+    return out
+
+
+def _render_summary_card(out_path: Path, head_meta: list[str], title: str,
+                         sections: list[tuple[str, str]]) -> bool:
+    """깔끔한 보고 카드 — 제목(펀드명) + 메타 한 줄 + 섹션(소제목/본문)들."""
+    from PIL import Image, ImageDraw
+    f_title, f_meta = _font(72, True), _font(40)
+    f_h, f_b = _font(46, True), _font(42)
+    lh_b = 66
+    body_w = _CARD_W - _CARD_M * 2
+
+    probe = ImageDraw.Draw(Image.new('RGB', (8, 8)))
+    wrapped = [(h, _wrap(probe, body, f_b, body_w)) for h, body in sections if body.strip()]
+    if not wrapped:
+        return False
+    H = _CARD_M + 96 + 64 + 40   # 제목 + 메타 + 구분선 여백
+    for _h, lines in wrapped:
+        H += 60 + 46 + 28 + len(lines) * lh_b + 40
+    H += _CARD_M - 40
+
+    im = Image.new('RGB', (_CARD_W, H), 'white')
+    d = ImageDraw.Draw(im)
+    y = _CARD_M
+    d.text((_CARD_M, y), title, font=f_title, fill=_INK)
+    y += 96
+    d.text((_CARD_M, y), '  ·  '.join(m for m in head_meta if m), font=f_meta, fill=_MUTED)
+    y += 64
+    d.rectangle([_CARD_M, y, _CARD_W - _CARD_M, y + 3], fill=_RULE)
+    y += 40
+    for h, lines in wrapped:
+        y += 60
+        d.rectangle([_CARD_M, y + 6, _CARD_M + 10, y + 44], fill=_ACCENT)
+        d.text((_CARD_M + 34, y), h, font=f_h, fill=_INK)
+        y += 46 + 28
+        for ln in lines:
+            d.text((_CARD_M, y), ln, font=f_b, fill=_INK)
+            y += lh_b
+        y += 40
+    im.save(out_path, 'WEBP', quality=WEBP_QUALITY, method=4)
+    return True
+
+
+def _export_excel_summary(xapp, path: Path, out_dir: Path, kw: str) -> int:
+    """EXCEL_SUMMARY 펀드 — 해당 펀드 행 추출 → 카드 이미지 1장. 실패 시 0 (폴백은 호출부)."""
+    wb = xapp.Workbooks.Open(str(path.resolve()), ReadOnly=True)
+    try:
+        info = None
+        for ws in wb.Worksheets:
+            try:
+                if ws.Visible != -1:
+                    continue
+                nm = str(ws.Name)
+                if nm not in ('U코멘트관리', '작성요청'):
+                    continue
+                vals = ws.UsedRange.Value
+                if not isinstance(vals, tuple):
+                    continue
+                info = (_extract_summary_monthly(vals, kw) if nm == 'U코멘트관리'
+                        else _extract_summary_quarterly(vals, kw))
+                if info:
+                    break
+            except Exception:
+                continue
+    finally:
+        wb.Close(False)
+    if not info:
+        return 0
+    meta = [info.get('mgr', ''), info.get('code', ''),
+            f"기준일 {info['date']}" if info.get('date') else '']
+    if info['type'] == 'monthly':
+        sections = [('운용 코멘트', info.get('comment', ''))]
+    else:
+        sections = [('지난 분기 시장과 펀드 성과', info.get('prev', '')),
+                    ('다음 분기 시장 전망 및 펀드 운용 계획', info.get('next', ''))]
+    ok = _render_summary_card(_page_path(out_dir, 1), meta, info.get('name', ''), sections)
+    if ok:
+        print(f'    summary card: {info["name"]} ({info["type"]})')
+    return 1 if ok else 0
+
+
+def _export_excel(xapp, papp, path: Path, out_dir: Path, fund: str = '') -> int:
+    # 멀티펀드 통합 엑셀 → 요약 카드 (실패 시 아래 일반 캡쳐로 폴백)
+    summ = EXCEL_SUMMARY.get(fund)
+    if summ:
+        try:
+            n = _export_excel_summary(xapp, path, out_dir, summ['fund_name_kw'])
+            if n:
+                return n
+            print(f'    summary 추출 실패 → 시트 캡쳐 폴백: {path.name}')
+        except Exception as exc:
+            print(f'    summary 실패({type(exc).__name__}) → 시트 캡쳐 폴백: {path.name}')
     wb = xapp.Workbooks.Open(str(path.resolve()), ReadOnly=True)
     try:
         n = 0
@@ -230,7 +435,7 @@ def build_previews(force: bool = False) -> dict:
                         xapp = win32com.client.DispatchEx('Excel.Application')
                         xapp.Visible = False
                         xapp.DisplayAlerts = False
-                    n = _export_excel(xapp, papp, src, out_dir)
+                    n = _export_excel(xapp, papp, src, out_dir, fund=str(e.get('fund') or ''))
                 else:
                     if wapp is None:
                         wapp = win32com.client.DispatchEx('Word.Application')
