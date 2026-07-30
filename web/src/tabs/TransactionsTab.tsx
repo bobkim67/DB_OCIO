@@ -66,7 +66,11 @@ const ASSET_ORDER: Record<string, number> = {
 };
 
 export default function TransactionsTab({ fundCode }: Props) {
-  const today = fmtLocal(new Date());
+  // 종료일 디폴트 = 전일 (다른 탭과 동일, 2026-07-31 사용자 지시). 로컬 타임존 기준 —
+  // Brinson 의 toISOString 방식은 KST 오전(<09:00)에 이틀 전이 나오는 UTC 함정이 있어 fmtLocal.
+  // 전일이 비영업일이어도 그대로 둔다 — 서버가 영업일 데이터만 반환해(비중이력 DWCI10220 필터,
+  // 가격·거래는 관측일만 존재) 화면은 마지막 영업일에서 끝난다 (비영업일 ffill 행 없음).
+  const endDefault = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return fmtLocal(d); })();
 
   // 설정일(inception)·펀드명 — 펀드 목록(useFunds)에서 해당 펀드 메타로 조회.
   const fundsQ = useFunds();
@@ -80,27 +84,27 @@ export default function TransactionsTab({ fundCode }: Props) {
   // ---- 거래내역 기간 ----
   const [preset, setPreset] = useState<TxnPreset>("1M");
   const [customStart, setCustomStart] = useState<string>(fmtLocal(startOfMonth()));
-  const [customEnd, setCustomEnd] = useState<string>(today);
+  const [customEnd, setCustomEnd] = useState<string>(endDefault);
 
   const { txnStart, txnEnd } = useMemo(() => {
     switch (preset) {
       case "MTD":
-        return { txnStart: fmtLocal(startOfMonth()), txnEnd: today };
+        return { txnStart: fmtLocal(startOfMonth()), txnEnd: endDefault };
       case "1M":
-        return { txnStart: fmtLocal(monthsAgo(1)), txnEnd: today };
+        return { txnStart: fmtLocal(monthsAgo(1)), txnEnd: endDefault };
       case "3M":
-        return { txnStart: fmtLocal(monthsAgo(3)), txnEnd: today };
+        return { txnStart: fmtLocal(monthsAgo(3)), txnEnd: endDefault };
       case "6M":
-        return { txnStart: fmtLocal(monthsAgo(6)), txnEnd: today };
+        return { txnStart: fmtLocal(monthsAgo(6)), txnEnd: endDefault };
       case "YTD":
-        return { txnStart: fmtLocal(startOfYear()), txnEnd: today };
+        return { txnStart: fmtLocal(startOfYear()), txnEnd: endDefault };
       case "since":
         // 설정일~현재. inception 미로드 시 매우 이른 날짜로 fallback(전체 포함).
-        return { txnStart: inceptionDate ?? "2000-01-01", txnEnd: today };
+        return { txnStart: inceptionDate ?? "2000-01-01", txnEnd: endDefault };
       case "custom":
         return { txnStart: customStart, txnEnd: customEnd };
     }
-  }, [preset, customStart, customEnd, today, inceptionDate]);
+  }, [preset, customStart, customEnd, endDefault, inceptionDate]);
 
   const txnQ = useTransactions(fundCode, txnStart, txnEnd);
 
@@ -322,7 +326,7 @@ export default function TransactionsTab({ fundCode }: Props) {
             />
             ~
             <input
-              type="date" value={txnEnd} min={txnStart} max={today}
+              type="date" value={txnEnd} min={txnStart} max={endDefault}
               onChange={(e) => { setCustomEnd(e.target.value); setCustomStart(txnStart); setPreset("custom"); }}
             />
           </span>
