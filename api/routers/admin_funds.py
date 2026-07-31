@@ -49,6 +49,7 @@ class WorkflowStageDTO(BaseModel):
     text: str = ''
     approved_at: str = ''
     generated_at: str = ''
+    excel_ready: bool = False   # 4JM12 월간: DB생명 월간보고 엑셀 생성 여부
 
 
 class AdminFundWorkflowDTO(BaseModel):
@@ -84,6 +85,20 @@ def _parse_period(kind: str, period: str) -> tuple[str, int, int]:
     raise HTTPException(status_code=400, detail='kind/period 조합 오류 (월간=YYYY-MM, 분기=YYYY-QN)')
 
 
+# ── 4JM12 DB생명 월간보고 엑셀 (2026-07-31 사용자 지시) ──
+# 보고서 생성(2단계, 코멘트 승인 게이트 뒤)이 실행되면 tools.dblife_monthly_excel 로
+# 데이터 엑셀을 함께 생성한다. s6 코멘트 = 1단계 승인 코멘트(final.json)가 자동 인용됨.
+_EXCEL_FUND, _EXCEL_KIND = '4JM12', '월간'
+
+
+def _excel_path(fund: str, period: str):
+    from pathlib import Path as _P
+    if fund != _EXCEL_FUND or not re.fullmatch(r'\d{4}-(0[1-9]|1[0-2])', period or ''):
+        return None
+    base = _P(__file__).resolve().parent.parent.parent
+    return base / 'output' / f'DB생명_월간보고_데이터_{period.replace("-", "")}.xlsx'
+
+
 def _stage(period: str, fund: str, suffix: str | None) -> WorkflowStageDTO:
     from market_research.report.report_store import get_status, load_draft, load_final
     status = get_status(period, fund, target_suffix=suffix)
@@ -94,10 +109,12 @@ def _stage(period: str, fund: str, suffix: str | None) -> WorkflowStageDTO:
         text = str(final.get('final_comment') or '')
     elif draft:
         text = str(draft.get('draft_comment') or '')
+    xp = _excel_path(fund, period) if suffix == REPORT_SUFFIX else None
     return WorkflowStageDTO(
         status=status, text=text,
         approved_at=str((final or {}).get('approved_at') or ''),
         generated_at=str((draft or {}).get('generated_at') or ''),
+        excel_ready=bool(xp and xp.exists()),
     )
 
 
@@ -265,7 +282,30 @@ def generate_report(body: GenBodyDTO, fund: str = Path(..., max_length=32)) -> W
     if not (cf and cf.get('approved')):
         raise HTTPException(status_code=409,
                             detail='펀드코멘트가 먼저 승인돼야 보고서 생성 가능')
-    return _generate(fund, body, REPORT_SUFFIX)
+    stage = _generate(fund, body, REPORT_SUFFIX)
+    # 4JM12 월간: DB생명 월간보고 데이터 엑셀 동시 생성 (s6 = 승인 코멘트 자동 인용)
+    xp = _excel_path(fund, body.period) if body.kind == _EXCEL_KIND else None
+    if xp is not None:
+        try:
+            from tools.dblife_monthly_excel import build as build_dblife_excel
+            build_dblife_excel(body.period, xp)
+            stage.excel_ready = True
+        except Exception as exc:
+            # 텍스트 보고서 draft 는 이미 저장됨 — 엑셀 실패만 명확히 알린다
+            raise HTTPException(status_code=500,
+                                detail=f'보고서 텍스트는 생성됨. DB생명 엑셀 생성 실패: {exc}')
+    return stage
+
+
+@router.get('/admin/funds/{fund}/report/excel')
+def download_report_excel(fund: str = Path(..., max_length=32),
+                          period: str = Query(..., max_length=10)):
+    """4JM12 월간 DB생명 데이터 엑셀 다운로드 (보고서 생성 시 산출)."""
+    from fastapi.responses import FileResponse
+    xp = _excel_path(fund, period)
+    if xp is None or not xp.exists():
+        raise HTTPException(status_code=404, detail='엑셀 없음 — 보고서 생성 먼저')
+    return FileResponse(str(xp), filename=xp.name)
 
 
 @router.put('/admin/funds/{fund}/report/draft', response_model=WorkflowStageDTO)

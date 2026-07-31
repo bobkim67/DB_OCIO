@@ -8,7 +8,10 @@ import { useFunds } from "../hooks/useFunds";
  *   ① 펀드코멘트 생성→편집→승인 → (승인 게이트) → ② 보고서 생성→편집→승인 → client 노출.
  * (기존 AdminFundsPanel 확장 행에 묻혀 있던 워크플로우를 별도 서브탭으로 분리)
  */
-type Stage = { status: string; text: string; approved_at: string; generated_at: string };
+type Stage = {
+  status: string; text: string; approved_at: string; generated_at: string;
+  excel_ready?: boolean;   // 4JM12 월간: DB생명 데이터 엑셀 생성 여부
+};
 
 const ST_LABEL: Record<string, string> = {
   not_generated: "미생성", draft_generated: "초안", edited: "수정됨", approved: "승인",
@@ -129,6 +132,15 @@ export default function AdminCommentWorkflowPanel() {
                   onClick={() => act("report/draft", { period, text: editRpt }, "보고서 수정 저장")}>수정 저장</button>
                 <button type="button" className="approve" disabled={!!busy || wf.report.status === "not_generated"}
                   onClick={() => act("report/approve", { period }, "보고서 승인")}>승인</button>
+                {/* 4JM12 월간: 보고서 생성 시 DB생명 데이터 엑셀 동시 산출 (s6=승인 코멘트) */}
+                {wf.report.excel_ready && (
+                  <a href={`/api/admin/funds/${fund}/report/excel?period=${period}`}>
+                    <button type="button">DB생명 엑셀 다운로드</button>
+                  </a>
+                )}
+                {fund === "4JM12" && kind === "월간" && !wf.report.excel_ready && (
+                  <span className="ref">보고서 생성 시 DB생명 월간보고 엑셀이 함께 생성됩니다</span>
+                )}
               </div>
               <textarea value={editRpt} onChange={(e) => setEditRpt(e.target.value)}
                 placeholder="① 승인 후 생성 → 편집" rows={10} />
