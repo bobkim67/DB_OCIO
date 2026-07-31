@@ -22,7 +22,7 @@ daily_update Step 1·2·2.5·2.6·2.7 news 산출물). 신규 작업에서 news 
 
 - **펀드 11개** (`config/funds.py FUND_LIST`): **06X08**(신규 — 퇴직연금 알아서RSP, 설정 2022-02-14, 수익자 한국투자증권) + 07G02·07G03·07G04·07G07·08K88·08N33·08N81·08P22·2JM23·4JM12.
 - **최상위 탭**: Overview / 편입종목(PDF) / 거래내역 / 성과분석 / 운용보고 / Admin. **Admin은 관리자 전용** (role-gate: `web/src/lib/auth.ts` `useIsAdmin()` 스텁, `?role=client`로 클라이언트 화면 미리보기 — 실인증 추후).
-- **Admin 서브탭 3개**: `펀드 운용`(전 펀드 스냅샷 — 거래내역식 날짜패널 + 조회기간/기간수익률 + BM펀드 BM초과 병기 + 채권Dur(펀드)·YTM + 컴플 미니게이지) / `코멘트 생성·관리`(코멘트→보고서 2단계 승인 워크플로우. ★보고서 생성=①승인본 **시드 복사**(LLM 재생성 폐지, 2026-07-31 사용자 확정 — 편집·승인 사이클만 유지). ★4JM12 월간은 보고서 생성 시 `tools.dblife_monthly_excel`로 DB생명 데이터 엑셀 동시 산출 → `output/`, 다운로드 버튼. s6=승인 코멘트 자동 인용, 2026-07-31) / `운용보고 PPT`(2026-07-14 — 펀드·기간 → `reporting.builder` 빌드·pptx 다운로드 + s4/s6 코멘트 캐시 검수·수정, `/api/admin/report-ppt/*`). 구 5개 패널(Evidence Quality~Wiki Context Pack) 제거.
+- **Admin 서브탭 3개**: `펀드 운용`(전 펀드 스냅샷 — 거래내역식 날짜패널 + 조회기간/기간수익률 + BM펀드 BM초과 병기 + 채권Dur(펀드)·YTM + 컴플 미니게이지) / `코멘트 생성·관리`(코멘트→보고서 2단계 승인 워크플로우. ★보고서 생성=①승인본 **시드 복사**(LLM 재생성 폐지, 2026-07-31 사용자 확정 — 편집·승인 사이클만 유지). ★4JM12 월간은 보고서 생성 시 `tools.dblife_monthly_excel`로 DB생명 데이터 엑셀 동시 산출 → `output/`, 다운로드 버튼. s6=승인 코멘트 자동 인용, 2026-07-31. ★기간 유형 5종=월간/분기/**QTD·HTD·YTD**(2026-07-31, 아래 §기간 유형) ) / `운용보고 PPT`(2026-07-14 — 펀드·기간 → `reporting.builder` 빌드·pptx 다운로드 + s4/s6 코멘트 캐시 검수·수정, `/api/admin/report-ppt/*`). 구 5개 패널(Evidence Quality~Wiki Context Pack) 제거.
 - **BM(FUND_BM) 설정**: 07G04(=07G07 공유)·08K88·4JM12 + **06X08**(0.5×MSCI ACWI Gross TR 57/9 + 0.5×KIS 종합채권 TR 279/40) + **07G02**(0.2×MSCI ACWI + 0.8×KIS 종합채권 TR)·**07G03**(0.4×MSCI ACWI + 0.6×KIS 종합채권 TR — 둘 다 57/9 + 279/40, 2026-07-13 추가). 08N33/81/22는 SAA/proxy. **2JM23은 벤치마크 없음(AP 단독)** — `FUND_NO_BENCHMARK`, 2026-07-29.
 - **컴플 가이드**(`holdings_service._build_compliance`): 07G02=ISP(주식≤20/위험≤20)·07G03/06X08=RSP(주식≤55/위험≤70)·07G04/07G07=07G04 내 서브펀드(07G02/03) 비중 가중평균 2행·08K88=자산군밴드·2JM23/4JM12=위험자산한도·SAA펀드(08N33/81/22)=SAA대비.
 - ⚠️ **BM/설정 변경 시 `.cache/brinson/{fund}_*.pkl` 삭제 + 서버 재시작**(LRU) 필요 (DEPLOY.md §운영주의). 07G07 듀레이션은 `build_holdings` NAST를 `_portfolio_fund`(07G07→07G04)로 정규화해야 정상(2026-07-10 fix).
@@ -850,3 +850,60 @@ DashboardPage 신규 탭 "거래내역" — 거래내역 조회 + 일별 비중 
 - drift 안전자산은 국내채권 일별비중 기준(현 SAA 펀드 해외채권=HY/EM 제외 대상이라 일치).
   투자등급 해외채권 보유 펀드 생기면 일별 종목식별 확장 필요.
 - BM(FUND_BM) 은 하드코딩 유지(테이블 미이전, 골든 안전). 필요 시 테이블 통합 가능.
+
+## 코멘트 기간 유형 5종 — 월간/분기/QTD/HTD/YTD (2026-07-31 사용자 지시)
+
+Admin `코멘트 생성·관리` 의 기간 선택이 **유형 select + 기간 select** 2단으로 바뀌었다.
+종전 드롭다운은 직전월부터 6개월(당월 제외)이라 **월중에 당월을 고를 수 없었다**.
+
+### period 키 규약 (저장 폴더명 = `report_output/{period}/`)
+
+| 유형 | period 키 | 범위 | 목록 |
+|---|---|---|---|
+| 월간 | `2026-07` | 전월말 ~ 월말 (진행 중이면 **MTD**) | 당월 포함 7개 |
+| 분기 | `2026-Q2` | 전분기말 ~ 분기말 | 마감된 직전 4개 |
+| QTD | `2026-Q3.QTD` | 직전 분기말 ~ 최신 적재일 | 당분기 1개 |
+| HTD | `2026-H2.HTD` | 직전 반기말 ~ 최신 적재일 | 당반기 1개 |
+| YTD | `2026-YTD` | 전년말 ~ 최신 적재일 | 당해 1개 |
+
+TD 계열은 확정 기간 키(`2026-Q3`)와 **폴더가 분리**돼 마감 산출물을 덮지 않는다.
+같은 분기 안에서 재생성하면 같은 키를 갱신 = 항상 최신 TD 1본.
+
+### 종료일 clamp (MTD 의 핵심)
+
+⚠️ `DWCI10220` 영업일 캘린더에는 **미래 영업일도 등록**돼 있다(2026-12-31 까지).
+clamp 없이 당월을 넣으면 종료일이 미래 월말로 잡혀 데이터 없는 날짜를 참조한다.
+→ `comment_engine.load_latest_data_date()`(= `DWPM10510` MAX(STD_DT), 통상 T-1)로
+`_resolve_dates` 가 종료일을 clamp. 마감된 과거 기간은 기간말 < 최신적재일이라
+**clamp 무영향 = 기존 산출물 불변**(2026-06 은 20260529~20260630 그대로).
+시작일 ≥ 종료일이면(아직 시작 안 한 기간) `None` 반환.
+
+### 시장 코멘트(`_market`) 게이트 — TD 는 승인본 재사용
+
+펀드 코멘트 생성은 같은 기간 `_market` 승인본을 요구하는데(없으면 409), TD 기간으로는
+시장 debate 를 돌리지 않는다(사용자 확정). `_resolve_market_payload` 가:
+1. 같은 키 승인본 → 있으면 그대로 (기존 경로 100% 불변)
+2. TD 면 기간 전체를 덮는 상위 키(`2026-Q3` / `2026-H2`) 승인본 → 있으면 단독 사용
+3. 없으면 기간 내 **월간** 승인본을 시간순으로 병합
+
+병합 시 본문은 `[2026-01]` 식 기간 라벨을 붙여 잇고, **`[ref:N]` 은 제거**한다 —
+기간마다 독립 번호라 합치면 충돌하고 병합본 기준 evidence 가 없어 복원 불가.
+전망성 항목(consensus/tail_risks/disagreements/asset_movement_*)은 **최근 기간 것**.
+
+### 구현 위치
+
+- `market_research/report/comment_engine.py` — `load_latest_data_date()` 신설
+- `market_research/report/fund_comment_service.py` — `_resolve_dates` 5-mode + clamp, `_month_last_bday`
+- `api/routers/admin_funds.py` — `_PERIOD_PATTERNS` / `PERIOD_RE` / `_market_source_periods` /
+  `_merge_market_payloads` / `_resolve_market_payload`
+- `api/routers/report.py` — 펀드 보고서 조회 pattern 에 TD 추가 (client 노출용).
+  시장 코멘트 조회(`/market-report`)는 TD 생성이 없으므로 **그대로**
+- `web/src/tabs/AdminCommentWorkflowPanel.tsx` — `KINDS` / `buildPeriodOpts`
+
+### 검증 (2026-07-31)
+
+- `_resolve_dates` 7케이스: MTD 6/30~7/30 · 2026-06 골든 불변 · Q2 골든 불변 ·
+  QTD/HTD 6/30~7/30 · YTD 2025-12-31~7/30 · 미래 월 None
+- YTD 병합 실측: 2026-01~06 6건 → 12,822자, `[ref:N]` 0건
+- api 219 / mr 842 PASS (기존과 동일), `tsc --noEmit` 클린
+- ⚠️ YTD 병합 본문이 길다(≈12.8K자) → 프롬프트 비대. 실사용 후 조정 여지.

@@ -46,6 +46,23 @@ def _parse_blob(blob, blob_key=None):
     return _parse_blob_core(blob, blob_key)
 
 
+def load_latest_data_date():
+    """기준가(DWPM10510) 최신 적재일 (int YYYYMMDD).
+
+    DWCI10220 영업일 캘린더에는 **미래 영업일도 등록**돼 있어서, 미마감 기간의
+    종료일을 캘린더 월말로 잡으면 데이터 없는 날짜를 참조한다. MTD/QTD/HTD/YTD
+    처럼 진행 중인 기간은 이 값으로 종료일을 clamp 한다.
+    (기준가·보유는 익일 새벽 3시 적재 → 통상 T-1)
+    """
+    conn = _get_conn('dt')
+    cur = conn.cursor()
+    cur.execute('SELECT MAX(STD_DT) AS d FROM DWPM10510')
+    row = cur.fetchone()
+    conn.close()
+    d = row['d'] if isinstance(row, dict) else (row[0] if row else None)
+    return int(d) if d else None
+
+
 def load_business_days(year, month):
     """영업일 조회 — 해당월 첫/마지막, 전월 마지막"""
     conn = _get_conn('dt')

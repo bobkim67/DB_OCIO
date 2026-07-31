@@ -28,6 +28,53 @@ function StBadge({ s }: { s: string }) {
   return <span className="afp-badge" style={{ background: c.bg, color: c.fg }}>{ST_LABEL[s] ?? s}</span>;
 }
 
+/** 기간 유형. TD 계열은 "직전 기간말 ~ 최신 적재일" 누계 (2026-07-31 사용자 지시). */
+const KINDS = ["월간", "분기", "QTD", "HTD", "YTD"] as const;
+type Kind = (typeof KINDS)[number];
+
+const KIND_HINT: Record<Kind, string> = {
+  월간: "해당 월 (진행 중이면 MTD — 최신 적재일까지)",
+  분기: "마감된 분기",
+  QTD: "직전 분기말 ~ 최신 적재일",
+  HTD: "직전 반기말 ~ 최신 적재일",
+  YTD: "전년말 ~ 최신 적재일",
+};
+
+type PeriodOpt = { value: string; label: string };
+
+/** 유형별 기간 목록. period 값은 백엔드 저장 키 규약과 1:1
+ *  (월간=YYYY-MM · 분기=YYYY-QN · QTD=YYYY-QN.QTD · HTD=YYYY-HN.HTD · YTD=YYYY-YTD). */
+function buildPeriodOpts(kind: Kind): PeriodOpt[] {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth() + 1;
+  const q = Math.floor((m - 1) / 3) + 1;
+  const h = m <= 6 ? 1 : 2;
+
+  if (kind === "QTD") return [{ value: `${y}-Q${q}.QTD`, label: `${y}-Q${q} 분기누계 (${(q - 1) * 3 + 1}/1~최신)` }];
+  if (kind === "HTD") return [{ value: `${y}-H${h}.HTD`, label: `${y}-H${h} 반기누계 (${h === 1 ? 1 : 7}/1~최신)` }];
+  if (kind === "YTD") return [{ value: `${y}-YTD`, label: `${y} 연초누계 (1/1~최신)` }];
+
+  const out: PeriodOpt[] = [];
+  if (kind === "분기") {
+    // 당분기는 QTD 가 담당 → 마감된 직전 4개 분기만
+    let qy = y, qq = q;
+    for (let i = 0; i < 4; i++) {
+      qq -= 1; if (qq === 0) { qq = 4; qy -= 1; }
+      out.push({ value: `${qy}-Q${qq}`, label: `${qy}-Q${qq}` });
+    }
+    return out;
+  }
+  // 월간 — 당월(MTD) 포함 7개
+  let my = y, mm = m;
+  for (let i = 0; i < 7; i++) {
+    const key = `${my}-${String(mm).padStart(2, "0")}`;
+    out.push({ value: key, label: i === 0 ? `${key} (진행 중 · MTD)` : key });
+    mm -= 1; if (mm === 0) { mm = 12; my -= 1; }
+  }
+  return out;
+}
+
 export default function AdminCommentWorkflowPanel() {
   const { data: fundsResp } = useFunds();
   const fundList = useMemo(
@@ -35,17 +82,13 @@ export default function AdminCommentWorkflowPanel() {
     [fundsResp],
   );
 
-  const now = new Date();
-  const periodOpts = useMemo(() => {
-    const out: string[] = [];
-    let y = now.getFullYear(), m = now.getMonth() + 1;
-    for (let i = 0; i < 6; i++) { m -= 1; if (m === 0) { m = 12; y -= 1; } out.push(`${y}-${String(m).padStart(2, "0")}`); }
-    let qy = now.getFullYear(), q = Math.floor(now.getMonth() / 3) + 1;
-    for (let i = 0; i < 3; i++) { q -= 1; if (q === 0) { q = 4; qy -= 1; } out.push(`${qy}-Q${q}`); }
-    return out;
-  }, []);
-  const [period, setPeriod] = useState(periodOpts[0]);
-  const kind = period.includes("Q") ? "분기" : "월간";
+  const [kind, setKind] = useState<Kind>("월간");
+  const periodOpts = useMemo(() => buildPeriodOpts(kind), [kind]);
+  const [period, setPeriod] = useState(() => buildPeriodOpts("월간")[0].value);
+  // 유형이 바뀌면 해당 유형의 첫 기간으로 이동 (이전 유형 키가 남지 않게)
+  useEffect(() => {
+    if (!periodOpts.some((o) => o.value === period)) setPeriod(periodOpts[0].value);
+  }, [periodOpts, period]);
 
   const [fund, setFund] = useState("");
   useEffect(() => { if (!fund && fundList.length) setFund(fundList[0].code); }, [fundList, fund]);
@@ -88,15 +131,19 @@ export default function AdminCommentWorkflowPanel() {
         <select value={fund} onChange={(e) => setFund(e.target.value)}>
           {fundList.map((f) => <option key={f.code} value={f.code}>{f.code} — {f.name}</option>)}
         </select>
-        <select value={period} onChange={(e) => setPeriod(e.target.value)}>
-          {periodOpts.map((p) => <option key={p} value={p}>{p}</option>)}
+        <select value={kind} onChange={(e) => setKind(e.target.value as Kind)} title="기간 유형">
+          {KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
         </select>
-        <span className="hint">프로세스: 펀드코멘트 생성→승인 → 보고서 생성→승인 → client 노출 (운용보고/발송 보고서 뷰)</span>
+        <select value={period} onChange={(e) => setPeriod(e.target.value)}
+          disabled={periodOpts.length <= 1} title={KIND_HINT[kind]}>
+          {periodOpts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        <span className="hint">{KIND_HINT[kind]} · 프로세스: 펀드코멘트 생성→승인 → 보고서 생성→승인 → client 노출</span>
         {err && <span className="err">{err}</span>}
       </div>
 
       <div className="sra-genout">
-        <div className="gh">{fund} · {period} 워크플로우 {busy && <span className="ref">⏳ {busy} 진행 중…</span>} {msg && <span className="ref">{msg}</span>}</div>
+        <div className="gh">{fund} · {kind} {period} 워크플로우 {busy &&<span className="ref">⏳ {busy} 진행 중…</span>} {msg && <span className="ref">{msg}</span>}</div>
         {!wf ? <div className="sra-empty">로드 중…</div> : (
           <div className="afp-wf">
             {/* 1단계 — 펀드코멘트 */}

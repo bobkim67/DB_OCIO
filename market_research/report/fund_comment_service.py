@@ -364,14 +364,44 @@ def _load_sent_report_reference(fund_code: str, period_key: str) -> dict | None:
 # 펀드 코멘트 생성 + 저장
 # ══════════════════════════════════════════
 
+def _month_last_bday(year: int, month: int):
+    """해당 월 마지막 영업일 (캘린더 미등록이면 None)."""
+    from market_research.report.comment_engine import load_business_days
+    try:
+        return (load_business_days(year, month) or {}).get('cur_month_last')
+    except Exception:
+        return None
+
+
 def _resolve_dates(mode: str, year: int, period_num: int):
-    """기간 유형에 따른 영업일 범위 계산."""
+    """기간 유형에 따른 영업일 범위 계산.
+
+    mode : '월별' | '분기' | 'QTD' | 'HTD' | 'YTD'
+      - QTD/HTD/YTD : 직전 분기말/반기말/연말부터 **현재까지**(to-date)
+      - period_num  : 월(1~12) / 분기(1~4) / 반기(1~2) / YTD 는 미사용(0)
+
+    진행 중인 기간(당월 MTD 포함)은 종료일을 최신 적재일로 clamp 한다 —
+    영업일 캘린더(DWCI10220)에는 미래 영업일도 있어서 clamp 없이는 데이터
+    없는 날짜를 종료일로 잡는다. 이미 마감된 과거 기간은 기간말 < 최신적재일
+    이라 clamp 가 무영향(기존 산출물 불변).
+    """
     from market_research.report.comment_engine import (
-        load_business_days, load_business_days_quarter,
+        load_business_days, load_business_days_quarter, load_latest_data_date,
     )
-    if mode == '분기':
+    if mode in ('분기', 'QTD'):
         bdays = load_business_days_quarter(year, period_num)
         quarter = period_num
+    elif mode == 'HTD':
+        # H1 = 전년말~6월말 / H2 = 6월말~12월말
+        prev_last_ = (_month_last_bday(year - 1, 12) if period_num == 1
+                      else _month_last_bday(year, 6))
+        bdays = {'prev_month_last': prev_last_,
+                 'cur_month_last': _month_last_bday(year, 6 if period_num == 1 else 12)}
+        quarter = 2 if period_num == 1 else 4
+    elif mode == 'YTD':
+        bdays = {'prev_month_last': _month_last_bday(year - 1, 12),
+                 'cur_month_last': _month_last_bday(year, 12)}
+        quarter = 4
     else:
         bdays = load_business_days(year, period_num)
         quarter = (period_num - 1) // 3 + 1
@@ -388,7 +418,15 @@ def _resolve_dates(mode: str, year: int, period_num: int):
         cur_last = bdays[-1]
         prev_last = bdays[0]
 
+    # 진행 중인 기간 → 종료일을 최신 적재일로 clamp (MTD/QTD/HTD/YTD)
+    latest = load_latest_data_date()
+    if latest and (not cur_last or latest < cur_last):
+        cur_last = latest
+
     if not prev_last or not cur_last:
+        return None, None, None, None, quarter
+    if int(cur_last) <= int(prev_last):
+        # 아직 시작 안 한 기간 (적재 데이터가 기간 시작 이전)
         return None, None, None, None, quarter
 
     def _int_to_date(d):

@@ -9,6 +9,7 @@ client 노출 = 운용보고 탭(코멘트 final) / 발송 보고서 뷰(sentrep
 """
 from __future__ import annotations
 
+import json
 import re
 
 from fastapi import APIRouter, HTTPException, Path, Query
@@ -60,7 +61,7 @@ class AdminFundWorkflowDTO(BaseModel):
 
 
 class GenBodyDTO(BaseModel):
-    kind: str    # '월간' | '분기'
+    kind: str    # '월간' | '분기' | 'QTD' | 'HTD' | 'YTD'
     period: str
 
 
@@ -75,14 +76,109 @@ class PeriodBodyDTO(BaseModel):
 
 # ── 내부 헬퍼 ──
 
+# 기간 유형 ↔ period 키 규약 (2026-07-31 사용자 확정)
+#   월간 = YYYY-MM        분기 = YYYY-QN
+#   QTD  = YYYY-QN.QTD    HTD  = YYYY-HN.HTD    YTD = YYYY-YTD
+# TD 계열은 확정 기간 키(YYYY-QN 등)와 폴더가 분리돼 마감 산출물을 덮지 않는다.
+_PERIOD_PATTERNS = {
+    '월간': (r'(\d{4})-(0[1-9]|1[0-2])', '월별'),
+    '분기': (r'(\d{4})-Q([1-4])', '분기'),
+    'QTD': (r'(\d{4})-Q([1-4])\.QTD', 'QTD'),
+    'HTD': (r'(\d{4})-H([1-2])\.HTD', 'HTD'),
+    'YTD': (r'(\d{4})-YTD', 'YTD'),
+}
+
+# workflow/조회 엔드포인트가 받는 period 문자열 (위 5종 전부)
+PERIOD_RE = (r'^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4]|H[1-2]|Q[1-4]\.QTD|H[1-2]\.HTD|YTD)$')
+
+
 def _parse_period(kind: str, period: str) -> tuple[str, int, int]:
-    m = re.fullmatch(r'(\d{4})-(0[1-9]|1[0-2])', period)
-    q = re.fullmatch(r'(\d{4})-Q([1-4])', period)
-    if kind == '월간' and m:
-        return '월별', int(m.group(1)), int(m.group(2))
-    if kind == '분기' and q:
-        return '분기', int(q.group(1)), int(q.group(2))
-    raise HTTPException(status_code=400, detail='kind/period 조합 오류 (월간=YYYY-MM, 분기=YYYY-QN)')
+    spec = _PERIOD_PATTERNS.get(kind)
+    if spec:
+        pat, mode = spec
+        mt = re.fullmatch(pat, period or '')
+        if mt:
+            num = int(mt.group(2)) if mt.lastindex and mt.lastindex >= 2 else 0
+            return mode, int(mt.group(1)), num
+    raise HTTPException(
+        status_code=400,
+        detail='kind/period 조합 오류 (월간=YYYY-MM, 분기=YYYY-QN, '
+               'QTD=YYYY-QN.QTD, HTD=YYYY-HN.HTD, YTD=YYYY-YTD)')
+
+
+def _market_source_periods(mode: str, year: int, num: int) -> tuple[str | None, list[str]]:
+    """TD 기간의 시장 코멘트 소스 — (기간 전체를 덮는 상위 키, 기간 내 월간 키들).
+
+    TD 기간 자체로는 시장 debate 를 돌리지 않으므로(사용자 확정, 2026-07-31)
+    이미 승인된 시장 코멘트를 재사용한다. 상위 키(분기/반기) 승인본이 있으면
+    그것 단독, 없으면 기간 내 월간 승인본을 시간순으로 묶는다.
+    """
+    if mode == 'QTD':
+        return f'{year}-Q{num}', [f'{year}-{(num - 1) * 3 + 1 + i:02d}' for i in range(3)]
+    if mode == 'HTD':
+        base = 1 if num == 1 else 7
+        return f'{year}-H{num}', [f'{year}-{base + i:02d}' for i in range(6)]
+    if mode == 'YTD':
+        return None, [f'{year}-{m:02d}' for m in range(1, 13)]
+    return None, []
+
+
+def _merge_market_payloads(items: list[tuple[str, dict]]) -> dict | None:
+    """여러 기간 시장 코멘트 → 단일 payload.
+
+    본문은 기간 라벨을 붙여 시간순으로 잇는다. [ref:N] 은 기간마다 독립 번호라
+    합치면 충돌하고 병합본 기준 evidence 도 없어 복원이 불가능하므로 제거한다.
+    전망성 항목(합의/쟁점/테일리스크/자산군 코멘트)은 가장 최근 기간 것을 쓴다.
+    """
+    if not items:
+        return None
+    if len(items) == 1:
+        return items[0][1]
+
+    from market_research.report.evidence_trace import strip_refs
+    parts, claims, seen = [], [], set()
+    for label, p in items:
+        body = (p.get('final_comment') or p.get('draft_comment')
+                or p.get('customer_comment') or '').strip()
+        if body:
+            parts.append(f'[{label}]\n{strip_refs(body)}')
+        for cl in (p.get('claims') or []):
+            try:
+                key = json.dumps(cl, sort_keys=True, ensure_ascii=False)
+            except TypeError:
+                key = str(cl)
+            if key not in seen:
+                seen.add(key)
+                claims.append(cl)
+
+    last = items[-1][1]
+    merged = {
+        'final_comment': '\n\n'.join(parts),
+        'claims': claims,
+        'merged_from': [label for label, _ in items],
+    }
+    for k in ('consensus_points', 'tail_risks', 'disagreements',
+              'asset_movement_commentary', 'asset_movement_anchors'):
+        if last.get(k):
+            merged[k] = last[k]
+    return merged
+
+
+def _resolve_market_payload(period: str, mode: str, year: int, num: int) -> dict | None:
+    """생성에 쓸 시장 코멘트 payload — 같은 기간 승인본 우선, TD 는 재사용 병합."""
+    from market_research.report.report_store import load_final
+    exact = load_final(period, '_market')
+    if exact:
+        return exact
+    if mode not in ('QTD', 'HTD', 'YTD'):
+        return None
+    umbrella, months = _market_source_periods(mode, year, num)
+    if umbrella:
+        up = load_final(umbrella, '_market')
+        if up:
+            return up
+    items = [(mp, load_final(mp, '_market')) for mp in months]
+    return _merge_market_payloads([(mp, p) for mp, p in items if p])
 
 
 # ── 4JM12 DB생명 월간보고 엑셀 (2026-07-31 사용자 지시) ──
@@ -120,8 +216,7 @@ def _stage(period: str, fund: str, suffix: str | None) -> WorkflowStageDTO:
 
 def _generate(fund: str, body: GenBodyDTO, suffix: str | None) -> WorkflowStageDTO:
     mode, year, num = _parse_period(body.kind, body.period)
-    from market_research.report.report_store import load_final
-    market = load_final(body.period, '_market')
+    market = _resolve_market_payload(body.period, mode, year, num)
     if not market:
         raise HTTPException(status_code=409,
                             detail=f'{body.period} 시장 코멘트 승인본 없음 — 시장 debate 승인 먼저')
@@ -241,7 +336,7 @@ def _build_funds_overview(as_of: str | None) -> AdminFundsOverviewDTO:
 @router.get('/admin/funds/{fund}/workflow', response_model=AdminFundWorkflowDTO)
 def get_fund_workflow(
     fund: str = Path(..., min_length=1, max_length=32),
-    period: str = Query(..., pattern=r'^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4])$'),
+    period: str = Query(..., pattern=PERIOD_RE),
 ) -> AdminFundWorkflowDTO:
     return AdminFundWorkflowDTO(
         fund_code=fund, period=period,

@@ -52,7 +52,12 @@ def list_market_approved_periods() -> ReportApprovedPeriodsResponseDTO:
 )
 def get_fund_report(
     fund: str = Path(..., min_length=1, max_length=32),
-    period: str = Query(..., pattern=r"^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4]|H[1-2])$"),
+    # TD 계열(QTD/HTD/YTD) 포함 — admin_funds.PERIOD_RE 와 동기 유지.
+    # 시장 코멘트(_market)는 TD 로 생성하지 않으므로 위 market-report 는 그대로.
+    period: str = Query(
+        ...,
+        pattern=r"^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4]|H[1-2]|Q[1-4]\.QTD|H[1-2]\.HTD|YTD)$",
+    ),
 ) -> ReportFinalResponseDTO:
     return build_fund_report(period=period, fund_code=fund)
 
