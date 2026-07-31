@@ -346,12 +346,10 @@ def build(month: str, out_path: Path) -> dict:
                   + h.loc[h['bucket'] == '외화현금', 'w'].sum())
     r = section(ws, r, '해외자산 환헤지 비율')
     put(ws, r, 1, 'BM 기준(헤지/45%)', bold=True, fill=H_FILL)
-    put(ws, r, 2, '=', border=False)
-    put(ws, r, 3, round(hedge_w / 45.0 * 100, 1), fmt='0.0', align=R)
+    put(ws, r, 2, round(hedge_w / 45.0 * 100, 1), fmt='0.0', align=R)
     r += 1
     put(ws, r, 1, 'USD Exposure 기준(헤지/해외자산)', bold=True, fill=H_FILL)
-    put(ws, r, 2, '=', border=False)
-    put(ws, r, 3, round(hedge_w / ovs_w * 100, 1) if ovs_w else None, fmt='0.0', align=R)
+    put(ws, r, 2, round(hedge_w / ovs_w * 100, 1) if ovs_w else None, fmt='0.0', align=R)
     r += 2
     r = section(ws, r, '환헤지 포지션 | 해외자산 비율')
     put(ws, r, 1, '헤지 포지션/순자산(%)', bold=True, fill=H_FILL)
@@ -506,16 +504,19 @@ def build(month: str, out_path: Path) -> dict:
     # ── s6 운용경과·운용계획 ──
     ws = sheet('6.운용경과_계획')
     r = title(ws, 1, 'II. 운용경과 및 운용계획', 4)
+    WRAP = Alignment(wrap_text=True, vertical='top')   # 코멘트 셀 자동 줄바꿈
     if comment:
         r = section(ws, r, f'승인 코멘트 (report_output/{month}/{FUND}.final.json)')
         for para in comment.split('\n'):
-            ws.cell(row=r, column=1, value=para)
+            c = ws.cell(row=r, column=1, value=para)
+            c.alignment = WRAP
             r += 1
     else:
         r = section(ws, r, '승인 코멘트 없음 — 아래 항목 수기 작성')
         for item in ('운용경과 - 시장 동향 :', '운용경과 - 운용 경과 :', '운용경과 - 펀드 성과 :',
                      '운용계획 - 매크로 :', '운용계획 - 운용계획 :', '운용계획 - 환헤지 비율 :'):
             put(ws, r, 1, item, bold=True, fill=H_FILL, border=False)
+            ws.cell(row=r + 1, column=1).alignment = WRAP   # 작성 셀도 자동 줄바꿈
             r += 2
     ws.column_dimensions['A'].width = 120
 
