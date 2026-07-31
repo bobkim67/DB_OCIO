@@ -520,6 +520,9 @@ def build(month: str, out_path: Path) -> dict:
             r += 2
     ws.column_dimensions['A'].width = 120
 
+    for _ws in wb.worksheets:            # 눈금선 보기 끔 (2026-07-31 사용자 지시)
+        _ws.sheet_view.showGridLines = False
+
     out_path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(out_path)
 
