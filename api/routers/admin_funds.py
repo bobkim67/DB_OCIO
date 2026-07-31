@@ -178,7 +178,33 @@ def _resolve_market_payload(period: str, mode: str, year: int, num: int) -> dict
         if up:
             return up
     items = [(mp, load_final(mp, '_market')) for mp in months]
-    return _merge_market_payloads([(mp, p) for mp, p in items if p])
+    merged = _merge_market_payloads([(mp, p) for mp, p in items if p])
+    return _compact_market_payload(merged)
+
+
+def _compact_market_payload(merged: dict | None) -> dict | None:
+    """병합 본문이 길면 기간 내러티브 1본으로 압축 (2026-07-31 사용자 지시).
+
+    월별 나열을 그대로 넘기면 6~12개월치가 1.3~2.6만자라 펀드 코멘트 프롬프트를
+    압도한다. 임계 미만이거나 압축 실패면 원문 병합본을 그대로 쓴다(기능 무중단).
+    """
+    if not merged or not merged.get('merged_from'):
+        return merged
+    from market_research.report.market_digest import build_market_digest
+    body = merged.get('final_comment') or ''
+    digest = build_market_digest(body, merged['merged_from'])
+    if not digest:
+        return merged
+    out = dict(merged)
+    out['final_comment'] = digest['text']
+    out['market_digest'] = {
+        'model': digest['model'],
+        'source_chars': digest['source_chars'],
+        'digest_chars': len(digest['text']),
+        'source_periods': digest.get('source_periods') or merged['merged_from'],
+        'cached': digest.get('cached', False),
+    }
+    return out
 
 
 # ── 4JM12 DB생명 월간보고 엑셀 (2026-07-31 사용자 지시) ──

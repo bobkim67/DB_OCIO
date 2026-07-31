@@ -890,6 +890,22 @@ clamp 없이 당월을 넣으면 종료일이 미래 월말로 잡혀 데이터 
 기간마다 독립 번호라 합치면 충돌하고 병합본 기준 evidence 가 없어 복원 불가.
 전망성 항목(consensus/tail_risks/disagreements/asset_movement_*)은 **최근 기간 것**.
 
+### 병합본 압축 — 기간 내러티브 재구성 (`market_digest.py`)
+
+월별 나열을 그대로 넘기면 6~12개월치가 1.3~2.6만자라 펀드 코멘트 프롬프트를
+압도한다. **8,000자 초과 시** Sonnet(`claude-sonnet-4-6`)이 월별 나열을
+**기간 전체를 관통하는 시장 내러티브 1본**으로 재구성한다 (본문 생성은 Opus 4.8
+유지 — [[reference_llm_model_config]]).
+
+- 임계 8,000자 = 월간 1건 ≈ 2,100자 기준 **QTD(3개월 ≈ 6.4천자)까지는 원문 그대로**,
+  HTD/YTD 부터 압축.
+- 캐시 `.cache/market_digest/{sha}.json` — 키가 기간이 아니라 **원문 해시**라
+  전 펀드가 공유하고(TD 1기간당 LLM 1회), 시장 코멘트 재승인 시 자동 무효화.
+- ⚠️ `stop_reason == 'max_tokens'` 면 **채택도 캐시도 하지 않고** 원문 병합본을 쓴다.
+  실측에서 cap 2,500 이 목표 3,000자보다 작아 마지막 문장이 잘렸다
+  ([[reference_debate_token_cap]] 의 cap 잘림 오염과 같은 함정) → cap 4,000.
+- LLM 실패·임계 미만은 전부 `None` → 원문 유지. 압축은 **기능 무중단 부가 단계**.
+
 ### 구현 위치
 
 - `market_research/report/comment_engine.py` — `load_latest_data_date()` 신설
@@ -905,5 +921,5 @@ clamp 없이 당월을 넣으면 종료일이 미래 월말로 잡혀 데이터 
 - `_resolve_dates` 7케이스: MTD 6/30~7/30 · 2026-06 골든 불변 · Q2 골든 불변 ·
   QTD/HTD 6/30~7/30 · YTD 2025-12-31~7/30 · 미래 월 None
 - YTD 병합 실측: 2026-01~06 6건 → 12,822자, `[ref:N]` 0건
-- api 219 / mr 842 PASS (기존과 동일), `tsc --noEmit` 클린
-- ⚠️ YTD 병합 본문이 길다(≈12.8K자) → 프롬프트 비대. 실사용 후 조정 여지.
+  → 압축 후 **2,556자(20%)·4문단**, 소요 54s / 캐시 2회차 0.01s
+- api 219 / mr 842 = **1,061 PASS** (기존과 동일), `tsc --noEmit` 클린
