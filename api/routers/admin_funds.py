@@ -277,12 +277,32 @@ def approve_comment(body: PeriodBodyDTO, fund: str = Path(..., max_length=32)) -
 
 @router.post('/admin/funds/{fund}/report/generate', response_model=WorkflowStageDTO)
 def generate_report(body: GenBodyDTO, fund: str = Path(..., max_length=32)) -> WorkflowStageDTO:
-    from market_research.report.report_store import load_final
+    """보고서(발송용) 생성 = **① 승인 코멘트 시드 복사** (2026-07-31 사용자 확정).
+
+    종전에는 ①과 동일한 LLM 파이프라인을 재실행했는데(도입 시점의 Phase 2 자리),
+    ① 생성이 발송본 서식 잇기를 이미 수행해 재생성은 비용·문구 불일치만 남았다.
+    → ①의 final_comment 를 draft 로 복사하고 편집→승인 사이클만 유지한다.
+    """
+    _parse_period(body.kind, body.period)   # kind/period 검증
+    import time as _time
+    from market_research.report.report_store import STATUS_DRAFT, load_final, save_draft
     cf = load_final(body.period, fund)
     if not (cf and cf.get('approved')):
         raise HTTPException(status_code=409,
                             detail='펀드코멘트가 먼저 승인돼야 보고서 생성 가능')
-    stage = _generate(fund, body, REPORT_SUFFIX)
+    save_draft(body.period, fund, {
+        'report_type': 'fund',
+        'status': STATUS_DRAFT,
+        'draft_comment': str(cf.get('final_comment') or ''),
+        'generated_at': _time.strftime('%Y-%m-%dT%H:%M:%S'),
+        'model': 'seed-copy(comment.final)',
+        'cost_usd': 0,
+        'seeded_from': 'comment.final',
+        'seeded_comment_approved_at': str(cf.get('approved_at') or ''),
+        'debate_run_id': cf.get('approved_debate_run_id'),   # lineage 승계
+        'edit_history': [],
+    }, target_suffix=REPORT_SUFFIX)
+    stage = _stage(body.period, fund, REPORT_SUFFIX)
     # 4JM12 월간: DB생명 월간보고 데이터 엑셀 동시 생성 (s6 = 승인 코멘트 자동 인용)
     xp = _excel_path(fund, body.period) if body.kind == _EXCEL_KIND else None
     if xp is not None:

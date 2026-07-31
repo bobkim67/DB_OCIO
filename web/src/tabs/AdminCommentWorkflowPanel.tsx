@@ -124,8 +124,8 @@ export default function AdminCommentWorkflowPanel() {
               </div>
               <div className="btns">
                 <button type="button" disabled={!!busy || wf.comment.status !== "approved"}
-                  title={wf.comment.status !== "approved" ? "펀드코멘트 승인 후 생성 가능" : ""}
-                  onClick={() => act("report/generate", { kind, period }, "보고서 생성 (1~2분)")}>
+                  title={wf.comment.status !== "approved" ? "펀드코멘트 승인 후 생성 가능" : "① 승인본을 복사해 발송용 초안 생성"}
+                  onClick={() => act("report/generate", { kind, period }, "보고서 생성 (①승인본 복사)")}>
                   {wf.report.status === "not_generated" ? "생성" : "재생성"}
                 </button>
                 <button type="button" disabled={!!busy || wf.report.status === "not_generated"}
