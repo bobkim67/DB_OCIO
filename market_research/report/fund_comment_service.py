@@ -438,6 +438,74 @@ def _resolve_dates(mode: str, year: int, period_num: int):
     return int(prev_last), int(cur_last), start_dt, end_dt, quarter
 
 
+def _brinson_factor_block(fund_code: str, start_dt, end_dt) -> str | None:
+    """자산군별 비중(OW/UW)·자산배분효과·종목선택효과 표 — 프롬프트 주입용.
+
+    기준: 방법3 · **FX 포함**(fx_split=False) — 코멘트 자산군 분해와 같은 기준
+    (2026-08-04 사용자 확정). BM 없는 펀드는 None.
+    """
+    from api.services.brinson_service import build_brinson
+    b = build_brinson(fund_code, start_date=start_dt, end_date=end_dt,
+                      fx_split=False, mapping_method='방법3')
+    if not b or getattr(b, 'bm_source', 'none') == 'none' or not b.asset_rows:
+        return None
+    lines, ta, ts = [], 0.0, 0.0
+    for a in b.asset_rows:
+        d = a.ap_weight - a.bm_weight
+        if abs(a.ap_weight) < 1e-9 and abs(a.bm_weight) < 1e-9:
+            continue
+        ta += a.alloc_effect
+        ts += a.select_effect
+        lines.append(
+            f'- {a.asset_class}: AP {a.ap_weight:.2f}% vs BM {a.bm_weight:.2f}% '
+            f'({"OW" if d >= 0 else "UW"} {d:+.2f}%p) · '
+            f'자산배분 {a.alloc_effect:+.2f}%p({"긍정" if a.alloc_effect >= 0 else "부정"}) · '
+            f'종목선택 {a.select_effect:+.2f}%p({"긍정" if a.select_effect >= 0 else "부정"})')
+    return (
+        f'[BM 대비 요인분해 — {start_dt}~{end_dt} · 방법3 · FX 포함 (사실 — 반드시 준수)]\n'
+        + '\n'.join(lines)
+        + f'\n- 합계: 자산배분 {ta:+.2f}%p · 종목선택 {ts:+.2f}%p · '
+          f'초과수익 {b.total_excess:+.2f}%p (펀드 {b.period_ap_return:+.2f}% / '
+          f'BM {b.period_bm_return:+.2f}%)\n'
+          '(주의: 자산배분·종목선택의 **부호(긍정/부정)와 OW/UW 는 위 표대로만** 서술한다. '
+          '다른 기간(연초이후·분기 등)의 값을 이 기간 서술에 쓰지 말 것. '
+          'BM 에 없는 자산군(BM비중 0)은 자산배분효과가 0.00 으로 계산되지만 OW 로 묶어 '
+          '서술해도 무방하다 — 다만 그 0.00 수치를 인용하지는 말 것.)')
+
+
+def _sub_portfolio_returns(fund_code: str, start_dt, end_dt) -> dict | None:
+    """모펀드의 서브 포트폴리오 기간수익률(%) — 기준가 기준. 없으면 None."""
+    from market_research.core.constants import FUND_CONFIGS
+    subs = (FUND_CONFIGS.get(fund_code) or {}).get('sub_portfolios') or {}
+    if not subs:
+        return None
+    import pandas as pd
+    from modules.data_loader import get_pandas_connection
+    codes = list(subs.values())
+    ph = ','.join(repr(c) for c in codes)
+    conn = get_pandas_connection('dt')
+    try:
+        df = pd.read_sql(
+            f"SELECT FUND_CD, STD_DT, MOD_STPR FROM DWPM10510 WHERE FUND_CD IN ({ph}) "
+            "AND STD_DT IN (%s, %s)", conn,
+            params=[(start_dt - timedelta(days=1)).strftime('%Y%m%d'),
+                    end_dt.strftime('%Y%m%d')])
+    finally:
+        conn.close()
+    if df.empty:
+        return None
+    df['STD_DT'] = df['STD_DT'].astype(str)
+    piv = df.pivot(index='FUND_CD', columns='STD_DT', values='MOD_STPR')
+    if piv.shape[1] < 2:
+        return None
+    c0, c1 = sorted(piv.columns)[0], sorted(piv.columns)[-1]
+    out = {}
+    for label, code in subs.items():
+        if code in piv.index and piv.loc[code, c0]:
+            out[label] = float(piv.loc[code, c1] / piv.loc[code, c0] - 1) * 100.0
+    return out or None
+
+
 def generate_fund_comment_and_save(
     mode: str, year: int, period_num: int,
     fund_code: str, period_key: str,
@@ -598,6 +666,32 @@ def generate_fund_comment_and_save(
               '표현·어투·분량을 그대로 잇는다. 이번 기간의 수치·이벤트·포지션 변화로 내용만 '
               '교체하고, 새로 필요한 서술은 최소한으로 덧붙인다. 발송본의 과거 수치 재인용 금지. '
               '발송본에 없는 형식(헤더/불릿 스타일 변경 등) 도입 금지.)')
+
+    # Brinson 요인분해 — 자산배분/종목선택 효과의 **부호를 사실로 고정** (2026-08-05).
+    #   배경: 2026-07 KB(07G07) 코멘트에 해외주식 자산배분효과가 -1.52% 로 들어갔는데,
+    #   이는 R 산출물 중 **YTD(2026-01-01~) 파일** 값이었다. 해당 월(7월) 실제값은 +0.03%
+    #   으로 부호가 반대. 기간·방법·FX 옵션 3축으로 파일이 갈려 있어 사람이 헷갈리기 쉽다.
+    #   → 기간에 맞는 값을 표로 주입하고, 이 표 밖의 부호 서술을 금지한다.
+    if start_dt and end_dt:
+        try:
+            blk = _brinson_factor_block(fund_code, start_dt, end_dt)
+            if blk:
+                additional_parts.append(blk)
+        except Exception as e:
+            data_warnings.append(f'Brinson 요인 블록 생성 실패: {e}')
+
+    # 모펀드 서브 포트폴리오 수익률 (07G04/07G07 — "인컴추구 …%, 수익추구 …%" 문장용)
+    if start_dt and end_dt:
+        try:
+            subs = _sub_portfolio_returns(fund_code, start_dt, end_dt)
+            if subs:
+                fund_ret = dict(fund_ret or {})
+                fund_ret['sub_returns'] = subs
+                additional_parts.append(
+                    '[서브 포트폴리오 기간수익률 (사실 — 이 값만 인용)]\n'
+                    + '\n'.join(f'- {k} 포트폴리오 {v:+.2f}%' for k, v in subs.items()))
+        except Exception as e:
+            data_warnings.append(f'서브 포트폴리오 수익률 실패: {e}')
 
     # (편입 제한은 market_view 상단에서 이미 처리됨)
 

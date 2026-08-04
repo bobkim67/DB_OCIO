@@ -90,6 +90,26 @@ FUND_CONFIGS = {
         'sub_portfolios': {'인컴추구': '07G02', '수익추구': '07G03'},
         'sub_ratio': '1:1',
     },
+    # 07G07 = 07G04 의 C-F클래스(KB국민은행 투자풀). 포트폴리오·BM 은 07G04 와 동일하고
+    # 발송 서식만 다르다 → format 'K'(KB FactSheet 3불릿/2불릿).
+    # ⚠ 종전엔 FUND_CONFIGS 에 항목이 없어 `cfg.get('format','C')` 폴백으로 07G04 포맷이
+    #   나갔다(2026-08-04 확인). 실제 발송본과 구조가 달라 복사·붙여넣기가 불가능했다.
+    '07G07': {
+        'format': 'K', 'target_return': None, 'name': '07G07',
+        'philosophy': (
+            '인컴추구(07G02)와 수익추구(07G03) 서브펀드로 구성된 모펀드(07G04)의 C-F클래스이며 '
+            'KB국민은행 투자풀에 제공됩니다. 포트폴리오와 벤치마크는 07G04 와 동일합니다. '
+            'BM은 MSCI ACWI Gross(34%) + Bloomberg AGG Hedged KRW(25%) + KIS 국고채10년(41%) 복합지수입니다. '
+            '경기국면모델(팽창/회복/둔화/침체) 기반 TAA 전략으로 운용하며, '
+            '국면별 목표변동성에 맞춘 MVO로 자산군 비중을 설정합니다. '
+            '주식은 MSCI ACWI 대비 미국 성장주 오버웨이트, 가치주 언더웨이트 포지션을 기본으로 유지합니다. '
+            '채권은 TMF 만기형, 장기채(30년 스트립, 30년 Enhanced), 중기채(10년 국고)를 혼합한 '
+            '바벨 전략을 채택하고 있습니다.'
+        ),
+        'position_constraints': _COMMON_CONSTRAINTS,
+        'sub_portfolios': {'인컴추구': '07G02', '수익추구': '07G03'},
+        'sub_ratio': '48:52',
+    },
     '07G02': {
         'format': 'A', 'target_return': None, 'name': '07G02',
         'philosophy': (

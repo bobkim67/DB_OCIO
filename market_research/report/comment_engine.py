@@ -1982,6 +1982,38 @@ def format_C(fund_code, common_market, fund_perf, outlook, holdings, month, fund
     return text
 
 
+def format_K(fund_code, common_market, fund_perf, outlook, holdings, month, fund_ret=None):
+    """포맷 K: 07G07 (KB국민은행 투자풀 FactSheet 서식).
+
+    B29 운용성과 리뷰 = 3불릿(시장동향 / 기간 중 매매 / 수익률·요인·비중),
+    B33 시장전망·향후 운용계획 = 2불릿(전망 / 운용계획). 불릿은 '- ' 로 시작한다.
+    """
+    filtered_market = _filter_by_holdings(common_market, holdings)
+    cfg = FUND_CONFIGS.get(fund_code, {})
+    next_m = month + 1 if month < 12 else 1
+
+    sub_line = ''
+    if fund_ret and fund_ret.get('sub_returns'):
+        labels = list(fund_ret['sub_returns'])
+        vals = [f'{v:+.2f}%' for v in fund_ret['sub_returns'].values()]
+        # 발송본 문형 그대로 — 수익률 문장은 '인컴추구 포트폴리오'(띄어쓰기),
+        # 비중 문장은 '인컴추구포트폴리오'(붙여쓰기).
+        sub_line = ('- {m}월 중 {who}의 수익률은 각각 {v}를 기록하였습니다.'.format(
+            m=month, who='와 '.join(f'{l} 포트폴리오' for l in labels), v=', '.join(vals)))
+        if cfg.get('sub_ratio'):
+            sub_line += ('\n{who}의 비중은 {r} 수준으로 유지하였습니다.'.format(
+                who='와 '.join(f'{l}포트폴리오' for l in labels), r=cfg['sub_ratio']))
+
+    return f"""### {fund_code}
+- {filtered_market}
+- {fund_perf}
+{sub_line}
+
+- {outlook}
+- 현재의 포트폴리오를 기본적으로 유지하되, 시장 변동성 확대로 실제 포트폴리오와 목표 포트폴리오 간 괴리가 과도하게 확대될 경우에는 리밸런싱을 통해 재조정할 예정입니다.
+"""
+
+
 def format_D(fund_code, common_market, fund_perf_detailed, outlook, holdings, month):
     """포맷 D: 2JM23"""
     filtered_market = _filter_by_holdings(common_market, holdings)
@@ -2050,6 +2082,18 @@ _SAMPLE_REPORTS = {
 
 2. 포지션
  현재의 미국 성장주 위주의 주식 비중 확대 포지션과 채권내 바벨 포지션을 유지할 계획입니다. 시장 변동성의 확대로 실제 포트폴리오와 목표 포트폴리오 간 괴리가 과도하게 발생할 경우에는 리밸런싱을 통해 포트폴리오를 재조정할 계획입니다.""",
+
+    # 포맷 K = KB국민은행 투자풀(07G07) FactSheet 서식.
+    # 아래 샘플은 **2026-07 실제 발송본**(B29 운용성과 리뷰 / B33 시장전망·향후 운용계획)
+    # 원문이다 — 구조·톤·분량의 정본. 세 번째 불릿(자펀드 수익률 → 자산배분/종목선택 →
+    # 자펀드 비중 → BM 대비)의 순서와 문형을 그대로 따라야 FactSheet 에 바로 붙는다.
+    'K': """- 7월 금융시장은 중동 지정학 리스크 재점화와 반도체 투자 수익성 우려가 맞물리며 극단적인 변동성을 보였습니다. 미군의 이란 공습과 호르무즈 해협 재봉쇄로 유가가 전쟁 이전을 크게 상회하면서 인플레이션 우려와 위험회피 심리가 확산되었습니다. 국내 증시는 반도체 쏠림 구조가 변동성 증폭기로 작용하며 KOSPI가 장중 5,200포인트 선까지 밀리는 등 극단적 변동성이 교차하였으나, 월말 미국 기술주 반등과 삼성전자의 호실적에 힘입어 낙폭을 일부 되돌렸습니다. 미국 장기금리가 FOMC 동결에도 인상 소수의견이 나오면서 장기물 중심으로 상승이 나타났고, 국내 금리도 한은의 25bp 인상과 유가발 물가 부담으로 장기물 상승 압력이 확대된 반면, 주가 급락에 따른 안전자산 수요로 국내채권은 상대적으로 선방하였습니다. 외환시장에서는 달러 약세 속에서 수출 호조와 한은의 긴축 전환으로 원화 강세가 두드러지며 달러/원이 1,420원대까지 급락하였습니다.
+- 기간 중 국내주식은 반도체 쏠림 해소 과정에서 낙폭이 과도하다고 판단해 급락 구간에서 분할 매수로 비중을 확대하였습니다. 재원은 유가발 물가 부담과 한국은행의 금리 인상으로 상승 압력이 확대된 국내채권에서 마련하였으며, 중기물과 초장기물을 함께 축소해 조달하였습니다.
+- 7월 중 인컴추구 포트폴리오와 수익추구 포트폴리오의 수익률은 각각 -5.94%, -8.60%를 기록하였습니다. BM대비 자산배분 성과는 해외주식(UW), 해외채권(UW)는 긍정적으로 기여하였고, 국내주식(OW), 국내채권(OW)는 부정적으로 작용하였습니다. 종목선택 효과의 경우 국내채권의 듀레이션 확대 전략이 부정적이었습니다.
+인컴추구포트폴리오와 수익추구포트폴리오의 비중은 48:52 수준으로 유지하였습니다. 전체 포트폴리오 성과는 BM을 하회(-3.72%)하였습니다.
+
+- 8월 국내주식시장은 삼성전자의 실적 개선과 월말 낙폭 되돌림에도 불구하고, 유가 급등에 따른 인플레이션 재점화와 한은의 연속 인상 경계로 변동성이 지속될 것으로 예상합니다. 다만 12개월 선행 PER이 금융위기 당시를 밑도는 수준까지 하락해 밸류에이션 부담은 크게 완화되었고, 2분기 어닝시즌 개시와 함께 이익 전망이 연쇄 상향되고 있어 하방은 제한적일 것으로 판단합니다. 글로벌 주식시장도 호르무즈 봉쇄 리스크와 미국 장기금리 상승 부담이 위험회피 심리를 자극하고 있어, 성장주 중심의 회복까지 시간이 필요할 것으로 보입니다.
+- 이번 급락은 지정학과 반도체 쏠림이 결합된 이례적 충격으로 판단하여 국내주식을 분할 매수로 확대하였으며, 향후에도 반도체 쏠림 구조에 따른 역방향 변동성에 유의하여 익스포저를 관리할 계획입니다. 미국 성장주는 AI 투자 사이클과 빅테크 이익 성장 기대가 여전히 유효해 핵심 포지션을 유지하되, 고금리 장기화에 따른 밸류에이션 부담을 고려해 선별적으로 대응할 계획입니다. 채권 부문에서는 향후 금리 급등 구간에서 분할 매수 전략을 통해 금리 안정 시 자본차익 확보가 가능한 포지션을 구축할 방침입니다.""",
 
     'D': """1. 운용성과 요약
 2월 글로벌주식시장은 양호한 기업실적에도 불구하고 빅테크 업체들이 부진한 성과를 보인 반면, 반도체 주식과 미국외 선진국, 신흥국 시장이 양호한 성과를 기록하였습니다.
@@ -2604,6 +2648,8 @@ def generate_report(fund_code, year, month, bm_returns=None, pa_all=None,
         return format_A(fund_code, common_market, fund_perf, outlook, manager, holdings, month), 0
     elif fmt == 'C':
         return format_C(fund_code, common_market, fund_perf, outlook, holdings, month, fund_ret=fund_ret), 0
+    elif fmt == 'K':
+        return format_K(fund_code, common_market, fund_perf, outlook, holdings, month, fund_ret=fund_ret), 0
     elif fmt == 'D':
         fund_perf_d = generate_fund_performance_detailed(fund_code, fund_ret, pa, month)
         return format_D(fund_code, common_market, fund_perf_d, outlook, holdings, month), 0

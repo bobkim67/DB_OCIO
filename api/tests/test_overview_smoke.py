@@ -119,15 +119,25 @@ def test_overview_bmless_saa_filled_08N33(client):
 
 
 def test_overview_4jm12_base_preserved(client):
-    """4JM12 since_inception 카드 값 = last_nav / 1970.76 - 1 (절대 유지)"""
+    """4JM12 since_inception 카드 값 = NAV(returns_as_of) / 1970.76 - 1 (절대 유지)
+
+    ⚠ 기준은 `nav_series[-1]` 이 아니라 **`returns_as_of` 시점의 NAV** 다.
+    기간수익률 앵커는 BM 최종일에 맞춰지는데(BM 적재가 펀드보다 늦음, `_returns_window`),
+    펀드 NAV 가 BM 보다 하루 앞서 적재되는 날이 있어 둘이 어긋난다. `meta.as_of_date` 는
+    기준가/AUM 기준일이라 이 용도로는 쓸 수 없다(둘이 다를 때 응답 warning 으로도 안내됨).
+    (2026-08-05 실측: nav_series·meta 는 08-04, returns_as_of 는 08-03 → 구 단언이 깨졌다.)
+    """
     r = client.get("/api/funds/4JM12/overview")
     assert r.status_code == 200
     body = r.json()
     card = next(c for c in body["cards"] if c["key"] == "since_inception")
-    if body["nav_series"]:
-        last_nav = body["nav_series"][-1]["nav"]
-        expected = last_nav / 1970.76 - 1.0
-        assert abs(card["value"] - expected) < 1e-6
+    series = body["nav_series"]
+    if not series:
+        return
+    anchor = body.get("returns_as_of") or (body.get("meta") or {}).get("as_of_date")
+    nav_at = next((p["nav"] for p in reversed(series)
+                   if not anchor or p["date"] <= anchor), series[-1]["nav"])
+    assert abs(card["value"] - (nav_at / 1970.76 - 1.0)) < 1e-6
 
 
 def test_overview_period_returns_keys(client):
