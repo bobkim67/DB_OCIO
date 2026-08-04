@@ -18,6 +18,7 @@ from ..schemas.holdings import (
     HoldingAssetClassDTO,
     HoldingItemDTO,
     HoldingsResponseDTO,
+    PendingSettlementDTO,
     PortfolioMixSummaryDTO,
     WeightedDurationDTO,
 )
@@ -568,6 +569,179 @@ def _resolve_as_of_from_db(fund_code: str, hint: str | None) -> date | None:
         return None
 
 
+# ── 결제 예정 (2026-08-03) ─────────────────────────────────────────────
+# 해외 ETF 는 체결 다음 영업일(브로커 SettleDate)에야 원장에 잡힌다. 그 사이엔
+# 화면이 매매를 전혀 모르므로, 확인서 메일을 배치 파싱한 JSON 을 읽어 안내만 한다.
+# 비중은 손대지 않는다 (원장 = SSOT, 사용자 확정).
+_PENDING_JSON = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    ".cache", "pending_trades.json",
+)
+
+
+def _load_pending_mail_trades() -> list[dict]:
+    """.cache/pending_trades.json (tools/parse_overseas_confirmations.py 산출)."""
+    try:
+        with open(_PENDING_JSON, encoding="utf-8") as fh:
+            return json.load(fh).get("trades", [])
+    except (OSError, ValueError):
+        return []          # 배치 미실행/파손 → 배너 없음 (기능 무중단)
+
+
+def _usdkrw_on(as_of: date | None) -> float | None:
+    """as_of 이하 최신 USD 매매기준율 (DWCI10260). 배너 원화 환산용 참고값."""
+    if as_of is None:
+        return None
+    try:
+        from modules.data_loader import get_connection
+        conn = get_connection("dt")
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT TR_STD_RT FROM DWCI10260 WHERE CURR_DS_CD='USD' "
+                    "AND STD_DT <= %s ORDER BY STD_DT DESC LIMIT 1",
+                    (as_of.strftime("%Y%m%d"),))
+                row = cur.fetchone()
+                if not row:
+                    return None
+                v = row.get("TR_STD_RT") if isinstance(row, dict) else row[0]
+                return float(v) if v else None
+        finally:
+            conn.close()
+    except Exception:      # noqa: BLE001 — 환율 없으면 원통화만 표기
+        return None
+
+
+def _load_ledger_unsettled(fund_code: str, as_of: date | None) -> list[dict]:
+    """원장에 있으나 결제일 미도래(STL_DT > 기준일)인 거래. 미지급금으로 이미 반영됨."""
+    if as_of is None:
+        return []
+    try:
+        from modules.data_loader import _portfolio_fund, get_connection
+        conn = get_connection("dt")
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT item_nm, buy_sell_ds_cd, trd_qty, curr_ds_cd, "
+                    "       stl_amt, krw_stl_amt, std_dt, stl_dt "
+                    "FROM DWPM10520 WHERE fund_cd=%s AND stl_dt > %s AND std_dt <= %s "
+                    "ORDER BY stl_dt, item_nm",
+                    (_portfolio_fund(fund_code), as_of.strftime("%Y%m%d"),
+                     as_of.strftime("%Y%m%d")))
+                rows = cur.fetchall()
+        finally:
+            conn.close()
+    except Exception:      # noqa: BLE001
+        return []
+
+    out = []
+    for r in rows:
+        d = r if isinstance(r, dict) else dict(zip(
+            ["item_nm", "buy_sell_ds_cd", "trd_qty", "curr_ds_cd",
+             "stl_amt", "krw_stl_amt", "std_dt", "stl_dt"], r))
+        out.append(d)
+    return out
+
+
+def _next_business_day(d: date | None) -> date | None:
+    """d 다음 영업일 (DWCI10220). 결제일 → 화면 반영일 계산용.
+
+    원장 STD_DT 는 결제일이지만 보유·기준가 스냅샷이 익일 새벽 적재라 화면에
+    나타나는 건 하루 뒤다. 캘린더 조회 실패 시 주말만 건너뛰는 fallback.
+    """
+    if d is None:
+        return None
+    from datetime import timedelta
+    try:
+        from modules.data_loader import load_business_days_set
+        days = load_business_days_set(
+            d.strftime("%Y%m%d"), (d + timedelta(days=21)).strftime("%Y%m%d"))
+    except Exception:      # noqa: BLE001
+        days = frozenset()
+    nxt = d + timedelta(days=1)
+    for _ in range(21):
+        if days:
+            if nxt.strftime("%Y-%m-%d") in days:
+                return nxt
+        elif nxt.weekday() < 5:       # 캘린더 없으면 주말만 제외
+            return nxt
+        nxt += timedelta(days=1)
+    return None
+
+
+def _parse_ymd(s) -> date | None:
+    if not s:
+        return None
+    try:
+        return pd.to_datetime(str(s).replace("-", "")[:8], format="%Y%m%d").date()
+    except Exception:
+        return None
+
+
+def _build_pending_settlements(
+    fund_code: str, as_of: date | None,
+) -> list[PendingSettlementDTO]:
+    """결제 예정 목록 = 메일 확인서 중 원장 미반영분 + 원장 내 미결제분."""
+    if as_of is None:
+        return []
+    out: list[PendingSettlementDTO] = []
+    rate = None
+
+    # 1) 확인서 메일 — SettleDate > 기준일 이면 아직 원장에 없다
+    #    (실측: 원장 STD_DT = 브로커 SettleDate. 2026-08-03 IAUM 건으로 확인)
+    from modules.data_loader import _portfolio_fund
+    _pf = _portfolio_fund(fund_code)
+    for t in _load_pending_mail_trades():
+        if t.get("fund_cd") not in (fund_code, _pf):
+            continue
+        settle = _parse_ymd(t.get("settle_date"))
+        if settle is None or settle <= as_of:
+            continue                                # 이미 원장에 반영됐거나 반영 예정일 지남
+        amt = t.get("net_amount")
+        krw = None
+        if t.get("ccy") == "USD" and amt:
+            if rate is None:
+                rate = _usdkrw_on(as_of)
+            krw = amt * rate if rate else None
+        out.append(PendingSettlementDTO(
+            source="mail",
+            item_nm=t.get("security_name") or t.get("ticker") or "",
+            ticker=t.get("ticker") or None,
+            side="매도" if str(t.get("side", "")).upper().startswith("S") else "매수",
+            qty=t.get("qty"),
+            ccy=t.get("ccy") or "USD",
+            amount=amt,
+            amount_krw=krw,
+            trade_date=_parse_ymd(t.get("order_date")),
+            settle_date=settle,
+            reflect_date=_next_business_day(settle),
+            note=f"{t.get('broker', '')} 확인서 — 원장 미반영".strip(),
+        ))
+
+    # 2) 원장 미결제 — 비중엔 이미 미지급금으로 반영돼 있음 (유동성 음수의 원인)
+    for d in _load_ledger_unsettled(fund_code, as_of):
+        krw = d.get("krw_stl_amt") or None
+        amt = d.get("stl_amt") or None
+        ccy = str(d.get("curr_ds_cd") or "KRW").strip() or "KRW"
+        if ccy == "KRW" and not krw:
+            krw = amt
+        out.append(PendingSettlementDTO(
+            source="ledger",
+            item_nm=str(d.get("item_nm") or ""),
+            side="매도" if str(d.get("buy_sell_ds_cd") or "").upper() == "D" else "매수",
+            qty=float(d["trd_qty"]) if d.get("trd_qty") is not None else None,
+            ccy=ccy,
+            amount=float(amt) if amt else None,
+            amount_krw=float(krw) if krw else None,
+            trade_date=_parse_ymd(d.get("std_dt")),
+            settle_date=_parse_ymd(d.get("stl_dt")),
+            note="원장 반영됨 — 미지급금 계상",
+        ))
+
+    out.sort(key=lambda p: (p.settle_date or date.max, p.item_nm))
+    return out
+
+
 def build_holdings(
     fund_code: str,
     lookthrough: bool,
@@ -831,6 +1005,13 @@ def build_holdings(
         equity_focus = None
     compliance = _build_compliance(fund_code, items, portfolio_mix, fx_hedge)
 
+    # 11) 결제 예정 안내 (비중 불변 — 배너 표시용)
+    try:
+        pending_settlements = _build_pending_settlements(fund_code, as_of)
+    except Exception as exc:      # noqa: BLE001 — 부가 안내라 실패해도 본문 유지
+        warnings.append(f"결제예정 조회 실패: {type(exc).__name__}")
+        pending_settlements = []
+
     return HoldingsResponseDTO(
         meta=BaseMeta(
             as_of_date=as_of,
@@ -855,4 +1036,5 @@ def build_holdings(
         portfolio_mix=portfolio_mix,
         equity_focus=equity_focus,
         compliance=compliance,
+        pending_settlements=pending_settlements,
     )

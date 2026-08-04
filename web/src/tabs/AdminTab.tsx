@@ -23,7 +23,7 @@ const TAB_BTN_ACTIVE: CSSProperties = {
   borderColor: "#1f2937",
 };
 
-export default function AdminTab() {
+export default function AdminTab({ fundCode }: { fundCode: string }) {
   const [view, setView] = useState<SubView>("funds");
 
   return (
@@ -58,7 +58,7 @@ export default function AdminTab() {
       </div>
 
       {view === "funds" && <AdminFundsPanel />}
-      {view === "comment" && <AdminCommentWorkflowPanel />}
+      {view === "comment" && <AdminCommentWorkflowPanel fundCode={fundCode} />}
       {view === "ppt" && <AdminReportPptPanel />}
     </section>
   );

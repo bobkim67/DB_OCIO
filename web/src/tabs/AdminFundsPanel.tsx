@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import "../styles/sentreports.css";
 import "../styles/transactions.css";   // 거래내역 날짜패널(tx-date/tx-chip) 재사용
-import type { ComplianceItemDTO } from "../api/endpoints";
+import type { ComplianceItemDTO, PendingSettlementDTO } from "../api/endpoints";
+import { unreflectedSummary } from "../lib/pendingSettlement";
 
 /**
  * Admin > 펀드 운용 (모니터링, 2026-07-10 재설계 v3).
@@ -19,6 +20,7 @@ type Row = {
   ytm_bond: number | null;
   duration_overall: number | null;
   ytm_overall: number | null;
+  unreflected_settlements?: PendingSettlementDTO[];
 };
 
 // 07G02(ISP)/07G03(RSP) 모펀드 표기 — 수익자 없음
@@ -191,6 +193,8 @@ export default function AdminFundsPanel() {
               {rows.map((r) => {
                 const isBM = r.benchmark_kind === "BM";
                 const benef = BENEF_OVERRIDE[r.fund_code] ?? r.beneficiary ?? "—";
+                // 원장 미반영(해외 체결확인서) 카드 — 수익자 텍스트 하단 (2026-08-03 사용자 지시)
+                const unref = unreflectedSummary(r.unreflected_settlements);
                 return (
                   <tr key={r.fund_code}>
                     <td style={{ maxWidth: 128 }}>
@@ -198,6 +202,15 @@ export default function AdminFundsPanel() {
                       <div className="fname" style={{ fontSize: 11.5, color: "#6b7280", whiteSpace: "normal", wordBreak: "keep-all", lineHeight: 1.25 }}>
                         {benef}
                       </div>
+                      {unref && (
+                        <div title={unref.detail}
+                          style={{ marginTop: 4, display: "inline-block", cursor: "help",
+                            fontSize: 10.5, fontWeight: 600, lineHeight: 1.3, letterSpacing: "-0.1px",
+                            padding: "2px 7px", borderRadius: 6, whiteSpace: "normal", wordBreak: "keep-all",
+                            color: "#9a3412", background: "#ffedd5", border: "1px solid #fed7aa" }}>
+                          ⚠ {unref.label}
+                        </div>
+                      )}
                     </td>
                     <RetCell v={r.returns[preset]} bm={r.bm_returns[preset]} isBM={isBM} strong />
                     {TRAIL_COLS.map((c) => (

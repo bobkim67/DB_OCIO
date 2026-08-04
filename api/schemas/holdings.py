@@ -106,6 +106,35 @@ class ComplianceItemDTO(BaseModel):
     breakdown: str | None = None      # 라벨 옆 구성 표기 예: "주식 + 금" / "주식 + 금 + 하이일드"
 
 
+class PendingSettlementDTO(BaseModel):
+    """기준일 시점에 결제가 안 끝난 거래 — 안내 배너용 (2026-08-03).
+
+    source:
+      - 'mail'   : 브로커 체결확인서(Outlook 해외거래 폴더)에만 있고 원장 미반영.
+                   해외 거래는 체결 다음 영업일(SettleDate)에야 원장에 잡히므로
+                   그 사이 화면 비중에 전혀 반영되지 않는다.
+      - 'ledger' : 원장(DWPM10520)에 있고 결제일만 미도래. 비중에는 이미
+                   매입/환매미지급금(부채)으로 반영돼 있다 — 유동성이 음수로
+                   보이는 이유가 대개 이것.
+    비중·평가금액은 건드리지 않는다 (원장 = SSOT, 2026-08-03 사용자 확정).
+    """
+    source: str                        # mail / ledger
+    item_nm: str
+    ticker: str | None = None
+    side: str                          # 매수 / 매도
+    qty: float | None = None
+    ccy: str = "KRW"
+    amount: float | None = None        # 결제금액 (원통화)
+    amount_krw: float | None = None    # 원화 환산 (외화는 매매기준율 적용, 참고값)
+    trade_date: date | None = None
+    settle_date: date | None = None
+    # 화면 반영 예정일 = 결제일 다음 영업일 (2026-08-03).
+    # 원장 STD_DT 는 결제일(T+1)이지만 보유·기준가 스냅샷은 익일 새벽 적재라
+    # 눈에 보이는 건 하루 더 뒤 = 체결 기준 T+2. 배너/카드의 '{M/D} 반영'이 이 값.
+    reflect_date: date | None = None
+    note: str | None = None
+
+
 class HoldingsResponseDTO(BaseModel):
     meta: BaseMeta
     fund_code: str
@@ -123,3 +152,4 @@ class HoldingsResponseDTO(BaseModel):
     portfolio_mix: PortfolioMixSummaryDTO | None = None
     equity_focus: EquityFocusDTO | None = None       # 주식 포커스 (PER×EPS성장)
     compliance: list[ComplianceItemDTO] = []         # 컴플 게이지
+    pending_settlements: list[PendingSettlementDTO] = []   # 결제 예정 안내 (비중 미반영)

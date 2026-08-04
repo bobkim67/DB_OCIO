@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "../styles/sentreports.css";
+import "../styles/transactions.css";   // 대상 토글(.tx-seg) 재사용
 import { useFunds } from "../hooks/useFunds";
 
 /**
@@ -22,6 +23,32 @@ const ST_COLOR: Record<string, { bg: string; fg: string }> = {
   edited: { bg: "#fef3e0", fg: "#8a5a00" },
   approved: { bg: "#e6f4ea", fg: "#1e7b45" },
 };
+
+/** 내용 높이에 맞춰 자동으로 늘어나는 textarea — 세로 스크롤 제거 (2026-08-03 사용자 지시).
+ *  코멘트가 1,300~1,700자라 rows 고정(10줄)으로는 계속 스크롤해야 했다.
+ *  value 가 바뀔 때마다 scrollHeight 로 높이를 다시 잡는다. */
+function AutoTextarea({ value, onChange, placeholder }: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";                     // 줄어들 때도 다시 계산되도록 초기화
+    el.style.height = `${el.scrollHeight + 2}px`; // +2 = border 보정 (마지막 줄 잘림 방지)
+  }, [value]);
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      style={{ overflowY: "hidden", minHeight: 180 }}
+    />
+  );
+}
 
 function StBadge({ s }: { s: string }) {
   const c = ST_COLOR[s] ?? ST_COLOR.not_generated;
@@ -75,7 +102,7 @@ function buildPeriodOpts(kind: Kind): PeriodOpt[] {
   return out;
 }
 
-export default function AdminCommentWorkflowPanel() {
+export default function AdminCommentWorkflowPanel({ fundCode }: { fundCode?: string }) {
   const { data: fundsResp } = useFunds();
   const fundList = useMemo(
     () => (fundsResp?.data ?? []).slice().sort((a, b) => a.code.localeCompare(b.code)),
@@ -90,8 +117,44 @@ export default function AdminCommentWorkflowPanel() {
     if (!periodOpts.some((o) => o.value === period)) setPeriod(periodOpts[0].value);
   }, [periodOpts, period]);
 
+  // 펀드 기본값 = 상단 대시보드에서 고른 펀드 (2026-08-03 사용자 지시).
+  // 상단을 바꾸면 이 패널도 따라간다. 목록에 없으면(권한/필터) 첫 펀드로 폴백.
   const [fund, setFund] = useState("");
-  useEffect(() => { if (!fund && fundList.length) setFund(fundList[0].code); }, [fundList, fund]);
+  useEffect(() => {
+    if (!fundList.length) return;
+    const has = (c: string) => fundList.some((f) => f.code === c);
+    if (fundCode && has(fundCode)) setFund(fundCode);
+    else if (!fund) setFund(fundList[0].code);
+  }, [fundList, fundCode, fund]);
+
+  // 대상 = 시장(_market) | 펀드 (2026-08-03 사용자 지시).
+  // 시장은 debate 를 직접 돌리며 ②발송용 보고서 단계가 없다(client 는 /market-report 조회).
+  // TD(QTD/HTD/YTD)는 시장 debate 를 돌리지 않고 월간/분기 승인본을 재사용하므로 유형에서 제외.
+  const [scope, setScope] = useState<"market" | "fund">("fund");
+  const isMarket = scope === "market";
+  const target = isMarket ? "_market" : fund;
+  const kindOpts = useMemo<readonly Kind[]>(
+    () => (isMarket ? (["월간", "분기"] as const) : KINDS), [isMarket]);
+  useEffect(() => {
+    if (!kindOpts.includes(kind)) setKind(kindOpts[0]);
+  }, [kindOpts, kind]);
+
+  // 기간 기본값 (월간) — **전월 코멘트가 아직 승인 전이면 전월**(마감 작업 중),
+  // 이미 승인됐으면 **당월 MTD**. 대상(펀드/시장)·펀드가 바뀔 때마다 다시 판정한다.
+  // (2026-08-03 사용자 지시). 조회 실패 시 기존 선택 유지 — 화면이 튀지 않게.
+  useEffect(() => {
+    if (kind !== "월간" || !target) return;
+    const opts = buildPeriodOpts("월간");
+    const [cur, prev] = [opts[0].value, opts[1].value];
+    let stale = false;
+    fetch(`/api/admin/funds/${target}/workflow?period=${prev}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (!stale) setPeriod(d?.comment?.status === "approved" ? cur : prev);
+      })
+      .catch(() => { /* 유지 */ });
+    return () => { stale = true; };
+  }, [target, kind]);
 
   const [wf, setWf] = useState<{ comment: Stage; report: Stage } | null>(null);
   const [editText, setEditText] = useState("");
@@ -108,19 +171,46 @@ export default function AdminCommentWorkflowPanel() {
       .then((d) => { setWf(d); setEditText(d.comment?.text ?? ""); setEditRpt(d.report?.text ?? ""); })
       .catch((e) => setErr(String(e)));
   }, []);
-  useEffect(() => { if (fund) loadWf(fund, period); }, [fund, period, loadWf]);
+  useEffect(() => { if (target) loadWf(target, period); }, [target, period, loadWf]);
 
   const act = async (path: string, body: object, label: string) => {
     setBusy(label); setMsg("");
     try {
       const method = path.includes("/draft") ? "PUT" : "POST";
-      const r = await fetch(`/api/admin/funds/${fund}/${path}`, {
+      const r = await fetch(`/api/admin/funds/${target}/${path}`, {
         method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
       });
       const d = await r.json();
       if (!r.ok) { setMsg(`✖ ${d?.detail ?? `HTTP ${r.status}`}`); return; }
       setMsg(`✔ ${label} 완료`);
-      loadWf(fund, period);
+      loadWf(target, period);
+    } catch (e) { setMsg(`✖ ${String(e)}`); } finally { setBusy(""); }
+  };
+
+  // 승인 = 현재 편집 내용 저장 → 승인 (2026-08-03 fix).
+  //   종전엔 승인 요청이 {period} 만 보내서, textarea 를 고친 뒤 수정저장 없이
+  //   승인하면 서버가 디스크의 **구 draft** 를 승인했다(편집분 유실).
+  const approveStage = async (kind: "comment" | "report") => {
+    const text = kind === "comment" ? editText : editRpt;
+    setBusy("승인"); setMsg("");
+    try {
+      const pre = await fetch(`/api/admin/funds/${target}/${kind}/draft`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ period, text }),
+      });
+      if (!pre.ok) {
+        const e = await pre.json().catch(() => null);
+        setMsg(`✖ 편집분 저장 실패 — ${e?.detail ?? `HTTP ${pre.status}`}`);
+        return;
+      }
+      const r = await fetch(`/api/admin/funds/${target}/${kind}/approve`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ period }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setMsg(`✖ ${d?.detail ?? `HTTP ${r.status}`}`); return; }
+      setMsg("✔ 승인 완료 (편집분 반영)");
+      loadWf(target, period);
     } catch (e) { setMsg(`✖ ${String(e)}`); } finally { setBusy(""); }
   };
 
@@ -128,43 +218,55 @@ export default function AdminCommentWorkflowPanel() {
     <div className="afp-root">
       <div className="sra-gen">
         <span className="lab">코멘트 · 보고서 생성/관리</span>
-        <select value={fund} onChange={(e) => setFund(e.target.value)}>
+        {/* 대상 토글 — 시장(_market) / 펀드 */}
+        <div className="tx-seg" title="시장 = 월간 시장 debate(_market) · 펀드 = 펀드별 코멘트">
+          <button type="button" className={isMarket ? "on" : ""}
+            onClick={() => setScope("market")}>시장</button>
+          <button type="button" className={!isMarket ? "on" : ""}
+            onClick={() => setScope("fund")}>펀드</button>
+        </div>
+        <select value={fund} onChange={(e) => setFund(e.target.value)} disabled={isMarket}
+          title={isMarket ? "시장 코멘트는 펀드 선택과 무관합니다" : "펀드 선택"}>
           {fundList.map((f) => <option key={f.code} value={f.code}>{f.code} — {f.name}</option>)}
         </select>
         <select value={kind} onChange={(e) => setKind(e.target.value as Kind)} title="기간 유형">
-          {KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+          {kindOpts.map((k) => <option key={k} value={k}>{k}</option>)}
         </select>
         <select value={period} onChange={(e) => setPeriod(e.target.value)}
           disabled={periodOpts.length <= 1} title={KIND_HINT[kind]}>
           {periodOpts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
-        <span className="hint">{KIND_HINT[kind]} · 프로세스: 펀드코멘트 생성→승인 → 보고서 생성→승인 → client 노출</span>
+        <span className="hint">{KIND_HINT[kind]} · 프로세스: {isMarket
+          ? "시장 debate 생성→승인 → 펀드 코멘트가 이 승인본을 사용"
+          : "펀드코멘트 생성→승인 → 보고서 생성→승인 → client 노출"}</span>
         {err && <span className="err">{err}</span>}
       </div>
 
       <div className="sra-genout">
-        <div className="gh">{fund} · {kind} {period} 워크플로우 {busy &&<span className="ref">⏳ {busy} 진행 중…</span>} {msg && <span className="ref">{msg}</span>}</div>
+        <div className="gh">{isMarket ? "시장(_market)" : fund} · {kind} {period} 워크플로우 {busy &&<span className="ref">⏳ {busy} 진행 중…</span>} {msg && <span className="ref">{msg}</span>}</div>
         {!wf ? <div className="sra-empty">로드 중…</div> : (
           <div className="afp-wf">
-            {/* 1단계 — 펀드코멘트 */}
+            {/* 1단계 — 시장 debate(_market) 또는 펀드코멘트 */}
             <div className="stage">
-              <div className="sh">① 펀드코멘트 <StBadge s={wf.comment.status} />
+              <div className="sh">① {isMarket ? "시장 코멘트" : "펀드코멘트"} <StBadge s={wf.comment.status} />
                 {wf.comment.approved_at && <span className="ref">승인 {wf.comment.approved_at.slice(0, 16)}</span>}
               </div>
               <div className="btns">
                 <button type="button" disabled={!!busy}
-                  onClick={() => act("comment/generate", { kind, period }, "코멘트 생성 (1~2분)")}>
+                  onClick={() => act("comment/generate", { kind, period },
+                    isMarket ? "시장 debate 생성 (1~2분)" : "코멘트 생성 (1~2분)")}>
                   {wf.comment.status === "not_generated" ? "생성" : "재생성"}
                 </button>
                 <button type="button" disabled={!!busy || wf.comment.status === "not_generated"}
                   onClick={() => act("comment/draft", { period, text: editText }, "코멘트 수정 저장")}>수정 저장</button>
                 <button type="button" className="approve" disabled={!!busy || wf.comment.status === "not_generated"}
-                  onClick={() => act("comment/approve", { period }, "코멘트 승인")}>승인</button>
+                  onClick={() => approveStage("comment")}>승인</button>
               </div>
-              <textarea value={editText} onChange={(e) => setEditText(e.target.value)}
-                placeholder="코멘트 생성 후 편집" rows={10} />
+              <AutoTextarea value={editText} onChange={setEditText}
+                placeholder="코멘트 생성 후 편집" />
             </div>
-            {/* 2단계 — 보고서 (코멘트 승인 게이트) */}
+            {/* 2단계 — 보고서 (코멘트 승인 게이트). 시장 코멘트는 발송용 단계가 없다. */}
+            {!isMarket && (
             <div className="stage">
               <div className="sh">② 보고서 (발송용) <StBadge s={wf.report.status} />
                 {wf.report.approved_at && <span className="ref">승인 {wf.report.approved_at.slice(0, 16)}</span>}
@@ -178,7 +280,7 @@ export default function AdminCommentWorkflowPanel() {
                 <button type="button" disabled={!!busy || wf.report.status === "not_generated"}
                   onClick={() => act("report/draft", { period, text: editRpt }, "보고서 수정 저장")}>수정 저장</button>
                 <button type="button" className="approve" disabled={!!busy || wf.report.status === "not_generated"}
-                  onClick={() => act("report/approve", { period }, "보고서 승인")}>승인</button>
+                  onClick={() => approveStage("report")}>승인</button>
                 {/* 4JM12 월간: 보고서 생성 시 DB생명 데이터 엑셀 동시 산출 (s6=승인 코멘트) */}
                 {wf.report.excel_ready && (
                   <a href={`/api/admin/funds/${fund}/report/excel?period=${period}`}>
@@ -189,9 +291,10 @@ export default function AdminCommentWorkflowPanel() {
                   <span className="ref">보고서 생성 시 DB생명 월간보고 엑셀이 함께 생성됩니다</span>
                 )}
               </div>
-              <textarea value={editRpt} onChange={(e) => setEditRpt(e.target.value)}
-                placeholder="① 승인 후 생성 → 편집" rows={10} />
+              <AutoTextarea value={editRpt} onChange={setEditRpt}
+                placeholder="① 승인 후 생성 → 편집" />
             </div>
+            )}
           </div>
         )}
       </div>

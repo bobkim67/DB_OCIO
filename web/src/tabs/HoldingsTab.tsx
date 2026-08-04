@@ -7,6 +7,8 @@ import EquityFocusChart from "../components/charts/EquityFocusChart";
 import BondDurationChart from "../components/charts/BondDurationChart";
 import SecurityReturnChart from "../components/charts/SecurityReturnChart";
 import type { HoldingItemDTO, ComplianceItemDTO } from "../api/endpoints";
+import { unreflectedSummary } from "../lib/pendingSettlement";
+import { secAlias } from "../lib/securityAlias";
 
 interface Props { fundCode: string; }
 
@@ -62,6 +64,10 @@ export default function HoldingsTab({ fundCode }: Props) {
   const acw = data.asset_class_weights ?? [];
   const items = data.holdings_items ?? [];
   const isEmpty = items.length === 0;
+  // 결제 예정 — source='mail' 은 원장 미반영(비중에 없음), 'ledger' 는 미지급금으로 반영됨
+  const pending = data.pending_settlements ?? [];
+  const unreflected = unreflectedSummary(pending);   // 원장 미반영(해외)만 — 상단 카드용
+  const hasMailPending = unreflected !== null;
   const ds = data.duration_summary;
   const ef = data.equity_focus;
   const mix = data.portfolio_mix;
@@ -124,7 +130,16 @@ export default function HoldingsTab({ fundCode }: Props) {
   return (
     <section className="hd-root">
       <div className="hd-head">
-        <h2 className="fund-title">{data.fund_name} <span className="code">{data.fund_code}</span></h2>
+        <h2 className="fund-title">
+          {data.fund_name} <span className="code">{data.fund_code}</span>
+          {/* 원장 미반영(해외 체결확인서) 카드 — 펀드코드 우측 (2026-08-03 사용자 지시).
+              미지급금(원장 반영분)은 카드에서 제외 — 아래 '결제 예정' 배너에만 표기. */}
+          {unreflected && (
+            <span className="hd-unreflected" title={unreflected.detail}>
+              ⚠ {unreflected.label}
+            </span>
+          )}
+        </h2>
       </div>
 
       {/* 컨트롤 패널 — look-through 토글 + 기준일(조회 버튼 갱신) + 해당일 NAV 카드 (2026-07-08) */}
@@ -155,18 +170,61 @@ export default function HoldingsTab({ fundCode }: Props) {
               </div>
             </>
           )}
-          {/* 환매정산중 경고 배지 (확정 표시는 제거, 2026-07-08) */}
-          {data.data_note && (
+          {/* 환매정산중 경고 배지 — data_pending(증권평가>순자산으로 비중이 실제 왜곡된 상태)일
+              때만 남긴다. 단순 '결제 대기 — 매입미지급금 반영'은 비중이 정상 균형이라
+              배지를 걷어내고 아래 '결제 예정' 배너 목록으로 일원화 (2026-08-03 사용자 지시). */}
+          {data.data_pending && data.data_note && (
             <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 600, padding: "1px 7px", borderRadius: 999,
-                color: data.data_pending ? "#9a3412" : "#92400e",
-                background: data.data_pending ? "#fee2e2" : "#fef3c7",
-                border: `1px solid ${data.data_pending ? "#fecaca" : "#fde68a"}` }}
+                color: "#9a3412", background: "#fee2e2", border: "1px solid #fecaca" }}
               title="환매정산중: 환매대금이 미지급금(부채)으로 먼저 차감돼 증권평가>순자산인 상태. 당일 스냅샷 그대로 표시하되 음수 '환매미지급금' 유동성 라인으로 합계 100%를 맞춥니다. 결제일에 증권 매도로 청산되면 해소됩니다.">
-              {data.data_pending ? "⚠ " : ""}{data.data_note}
+              ⚠ {data.data_note}
             </span>
           )}
         </div>
       </div>
+
+      {/* 결제 예정 안내 (2026-08-03) — 비중은 원장 그대로, 안내만. 상세는 아래 주석 참조 */}
+      {pending.length > 0 && (
+        <div className="hd-card hd-mb" style={{ borderLeft: "3px solid #d9a441" }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "#8a6d1f" }}>
+              ⓘ 결제 예정 {pending.length}건
+            </span>
+            <span style={{ fontSize: 11, color: "#6b7280" }}>
+              기준일({data.as_of_date}) 시점에 결제 미도래 — 아래 비중에는 {hasMailPending ? "일부 미반영" : "미지급금으로 반영됨"}
+            </span>
+          </div>
+          <ul style={{ margin: 0, paddingLeft: 16, fontSize: 12, color: "#374151", lineHeight: 1.75 }}>
+            {pending.map((p, i) => (
+              <li key={i}>
+                <span style={{ fontWeight: 600 }}>{secAlias(p.item_nm)}</span>
+                {p.ticker ? <span style={{ color: "#9ca3af" }}> ({p.ticker})</span> : null}
+                {" "}{p.side}
+                {p.qty ? ` ${p.qty.toLocaleString("ko-KR")}주` : ""}
+                {" · "}
+                {p.ccy !== "KRW" && p.amount != null
+                  ? `${p.ccy} ${p.amount.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${p.amount_krw ? ` (약 ${eok(p.amount_krw)})` : ""}`
+                  : eok(p.amount_krw ?? p.amount)}
+                <span style={{ color: "#6b7280" }}>
+                  {" · "}체결 {p.trade_date ?? "—"} · 결제 {p.settle_date ?? "—"}
+                  {p.reflect_date ? ` · ${p.reflect_date} 반영` : ""}
+                </span>
+                <span style={{
+                  marginLeft: 8, fontSize: 10, fontWeight: 600, padding: "1px 6px", borderRadius: 999,
+                  color: p.source === "mail" ? "#9a3412" : "#4b5563",
+                  background: p.source === "mail" ? "#ffedd5" : "#f3f4f6",
+                  border: `1px solid ${p.source === "mail" ? "#fed7aa" : "#e5e7eb"}`,
+                }}
+                  title={p.source === "mail"
+                    ? "브로커 체결확인서(해외거래 메일)에만 있고 원장에는 아직 없음. 해외 거래는 체결 다음 영업일(결제일)에 원장에 잡히므로 그때까지 비중·평가금액에 반영되지 않습니다."
+                    : "원장에 이미 반영된 거래로, 결제일만 아직 도래하지 않았습니다. 매입/환매 미지급금(부채)으로 계상돼 유동성이 일시적으로 낮거나 음수로 보일 수 있습니다."}>
+                  {p.source === "mail" ? "원장 미반영" : "미지급금 반영"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {isEmpty ? (
         <div style={{ color: "#6b7280", padding: 16 }}>데이터 없음 (fallback)</div>

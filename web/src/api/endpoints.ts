@@ -28,6 +28,7 @@ export type PeriodReturnsResponseDTO = S["PeriodReturnsResponseDTO"];
 // === Holdings ===
 export type HoldingAssetClassDTO = S["HoldingAssetClassDTO"];
 export type HoldingItemDTO = S["HoldingItemDTO"];
+export type PendingSettlementDTO = S["PendingSettlementDTO"];
 export type FxHedgeSummaryDTO = S["FxHedgeSummaryDTO"];
 export type WeightedDurationDTO = S["WeightedDurationDTO"];
 export type PortfolioMixSummaryDTO = S["PortfolioMixSummaryDTO"];

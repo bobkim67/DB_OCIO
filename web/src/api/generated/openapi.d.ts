@@ -424,8 +424,35 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Generate Report */
+        /**
+         * Generate Report
+         * @description 보고서(발송용) 생성 = **① 승인 코멘트 시드 복사** (2026-07-31 사용자 확정).
+         *
+         *     종전에는 ①과 동일한 LLM 파이프라인을 재실행했는데(도입 시점의 Phase 2 자리),
+         *     ① 생성이 발송본 서식 잇기를 이미 수행해 재생성은 비용·문구 불일치만 남았다.
+         *     → ①의 final_comment 를 draft 로 복사하고 편집→승인 사이클만 유지한다.
+         */
         post: operations["generate_report_api_admin_funds__fund__report_generate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/funds/{fund}/report/excel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Report Excel
+         * @description 4JM12 월간 DB생명 데이터 엑셀 다운로드 (보고서 생성 시 산출).
+         */
+        get: operations["download_report_excel_api_admin_funds__fund__report_excel_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1155,6 +1182,11 @@ export interface components {
             duration_overall?: number | null;
             /** Ytm Overall */
             ytm_overall?: number | null;
+            /**
+             * Unreflected Settlements
+             * @default []
+             */
+            unreflected_settlements: components["schemas"]["PendingSettlementDTO"][];
         };
         /** AdminFundWorkflowDTO */
         AdminFundWorkflowDTO: {
@@ -2117,6 +2149,11 @@ export interface components {
              * @default []
              */
             compliance: components["schemas"]["ComplianceItemDTO"][];
+            /**
+             * Pending Settlements
+             * @default []
+             */
+            pending_settlements: components["schemas"]["PendingSettlementDTO"][];
         };
         /**
          * IndicatorChartDTO
@@ -2468,6 +2505,48 @@ export interface components {
             bm_as_of?: string | null;
             /** Bm Source Notes */
             bm_source_notes?: string[];
+        };
+        /**
+         * PendingSettlementDTO
+         * @description 기준일 시점에 결제가 안 끝난 거래 — 안내 배너용 (2026-08-03).
+         *
+         *     source:
+         *       - 'mail'   : 브로커 체결확인서(Outlook 해외거래 폴더)에만 있고 원장 미반영.
+         *                    해외 거래는 체결 다음 영업일(SettleDate)에야 원장에 잡히므로
+         *                    그 사이 화면 비중에 전혀 반영되지 않는다.
+         *       - 'ledger' : 원장(DWPM10520)에 있고 결제일만 미도래. 비중에는 이미
+         *                    매입/환매미지급금(부채)으로 반영돼 있다 — 유동성이 음수로
+         *                    보이는 이유가 대개 이것.
+         *     비중·평가금액은 건드리지 않는다 (원장 = SSOT, 2026-08-03 사용자 확정).
+         */
+        PendingSettlementDTO: {
+            /** Source */
+            source: string;
+            /** Item Nm */
+            item_nm: string;
+            /** Ticker */
+            ticker?: string | null;
+            /** Side */
+            side: string;
+            /** Qty */
+            qty?: number | null;
+            /**
+             * Ccy
+             * @default KRW
+             */
+            ccy: string;
+            /** Amount */
+            amount?: number | null;
+            /** Amount Krw */
+            amount_krw?: number | null;
+            /** Trade Date */
+            trade_date?: string | null;
+            /** Settle Date */
+            settle_date?: string | null;
+            /** Reflect Date */
+            reflect_date?: string | null;
+            /** Note */
+            note?: string | null;
         };
         /** PeriodBodyDTO */
         PeriodBodyDTO: {
@@ -3307,6 +3386,11 @@ export interface components {
              * @default
              */
             generated_at: string;
+            /**
+             * Excel Ready
+             * @default false
+             */
+            excel_ready: boolean;
         };
     };
     responses: never;
@@ -4022,6 +4106,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkflowStageDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_report_excel_api_admin_funds__fund__report_excel_get: {
+        parameters: {
+            query: {
+                period: string;
+            };
+            header?: never;
+            path: {
+                fund: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

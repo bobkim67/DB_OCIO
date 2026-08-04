@@ -39,8 +39,8 @@ echo Restarting LAN server on port %PORT% ^(other ports left running^) ...
 for /f "delims=" %%p in ('powershell -NoProfile -Command "(Get-NetTCPConnection -LocalPort %PORT% -State Listen -ErrorAction SilentlyContinue).OwningProcess | Select-Object -First 1"') do taskkill /F /PID %%p >nul 2>&1
 timeout /t 1 /nobreak >nul
 
-REM ===== [1/3] build React SPA (web\dist) so FastAPI serves it on the same port =====
-echo [1/3] Building frontend (web\dist) ...
+REM ===== [1/4] build React SPA (web\dist) so FastAPI serves it on the same port =====
+echo [1/4] Building frontend (web\dist) ...
 pushd web
 call npm run build
 popd
@@ -50,12 +50,26 @@ if not exist "web\dist\index.html" (
   exit /b 1
 )
 
-REM ===== [2/3] daily_update (optional, separate window) =====
+REM ===== [2/4] overseas trade confirmations (Outlook) -> .cache\pending_trades.json =====
+REM Overseas ETF trades hit the ledger only on the broker SettleDate (next business
+REM day), so the dashboard is blind to them until then. This parses the broker
+REM confirmation mails so the holdings tab can show a "pending settlement" banner.
+REM Needs pywin32 + xlrd -> main venv (api\.venv has neither). Never fatal.
+echo [2/4] Refreshing overseas trade confirmations (Outlook) ...
+set "MAIN_PY=C:\Users\user\Downloads\python\.venv\Scripts\python.exe"
+if exist "%MAIN_PY%" (
+    "%MAIN_PY%" -m tools.parse_overseas_confirmations --days 60
+    if errorlevel 1 echo   [WARN] skipped - Outlook unavailable; banner uses last snapshot
+) else (
+    echo   [WARN] main venv not found - skipped
+)
+
+REM ===== [3/4] daily_update (optional, separate window) =====
 if "%RUN_DU%"=="1" (
-    echo [2/3] Starting Daily Update in a separate window ...
+    echo [3/4] Starting Daily Update in a separate window ...
     start "Daily Update" "%~dp0launch_daily_update.bat"
 ) else (
-    echo [2/3] Daily Update SKIPPED ^(declined / timeout^)
+    echo [3/4] Daily Update SKIPPED ^(declined / timeout^)
 )
 
 REM ===== current LAN IP (192.168 / 10 / 172) =====
@@ -75,7 +89,7 @@ echo.
 REM open local browser shortly after the server binds
 start "" powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep 6; Start-Process 'http://localhost:%PORT%/'"
 
-echo [3/3] Starting server (host 0.0.0.0:%PORT%) ...
+echo [4/4] Starting server (host 0.0.0.0:%PORT%) ...
 title DB OCIO Monitor (8020)
 REM release watchdog pause right before bind (watchdog double-checks with 5s delay)
 del ".cache\launcher_active.flag" 2>nul

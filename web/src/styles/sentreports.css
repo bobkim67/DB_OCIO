@@ -143,7 +143,7 @@
 .afp-wf .btns button { font-size: 11.5px; padding: 4px 12px; border: 1px solid var(--ace-line); background: #fff; border-radius: var(--ace-radius-sm); cursor: pointer; font-weight: 600; }
 .afp-wf .btns button:disabled { opacity: 0.45; cursor: default; }
 .afp-wf .btns button.approve { background: #1e7b45; border-color: #1e7b45; color: #fff; }
-.afp-wf textarea { width: 100%; font-size: 12px; line-height: 1.55; padding: 8px 10px; border: 1px solid var(--ace-line); border-radius: var(--ace-radius-sm); resize: vertical; font-family: inherit; box-sizing: border-box; }
+.afp-wf textarea { width: 100%; font-size: 13px; line-height: 1.55; padding: 8px 10px; border: 1px solid var(--ace-line); border-radius: var(--ace-radius-sm); resize: vertical; font-family: inherit; box-sizing: border-box; }
 .sra-sec { font-size: 12.5px; font-weight: 700; background: #eef2f7; color: #1a4d8f; border-left: 3px solid #1a4d8f; padding: 4px 10px; margin: 12px 0 4px; }
 .sra-p { font-size: 12.5px; margin: 3px 0; line-height: 1.55; color: var(--ace-ink); }
 /* 표 — 엑셀 덤프 가독성 (2026-07-28): 표 컨테이너에서만 가로 스크롤, 숫자 우측정렬 */

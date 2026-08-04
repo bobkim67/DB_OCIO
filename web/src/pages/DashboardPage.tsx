@@ -73,7 +73,7 @@ export default function DashboardPage() {
     ) : key === "memo" ? (
       <MemoTab />
     ) : (
-      <AdminTab />
+      <AdminTab fundCode={selected} />
     );
 
   return (

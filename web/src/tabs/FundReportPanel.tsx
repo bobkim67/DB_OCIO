@@ -16,7 +16,8 @@ export default function FundReportPanel({ fundCode }: { fundCode: string }) {
   }, [fundCode]);
 
   useEffect(() => {
-    if (period === "" && periods.length > 0) setPeriod(periods[0]);
+    // 목록은 시간 오름차순(1월…7월)이므로 기본 선택은 마지막 = 최신 기간
+    if (period === "" && periods.length > 0) setPeriod(periods[periods.length - 1]);
   }, [period, periods]);
 
   const reportQuery = useFundReport(fundCode, period || undefined);

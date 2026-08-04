@@ -1393,19 +1393,39 @@ def build_fund_report(period: str, fund_code: str) -> ReportFinalResponseDTO:
 # Approved periods listing
 # ──────────────────────────────────────────────────────────────────────────
 
+def _period_sort_key(period: str) -> tuple[int, int, int]:
+    """기간 문자열 → (연, 기간말 월, 단위순위). 시간순 + 같은 종료월이면 월→분기→반기.
+
+    문자열 정렬은 'Q'/'H' > 숫자라 분기·반기가 목록 맨 위로 떠오른다
+    (2026-Q2, 2026-Q1, 2026-H1, 2026-07 …). 사용자가 원하는 배열은
+    **1월 2월 3월 1Q 4월 5월 6월 2Q 1H 7월** — 즉 기간이 끝나는 시점 순으로
+    늘어놓되, 종료월이 같으면 좁은 단위(월)부터 넓은 단위(반기) 순이다.
+    (2026-08-03 사용자 지시)
+    """
+    m = re.fullmatch(r"(\d{4})-(?:(0[1-9]|1[0-2])|Q([1-4])|H([1-2]))", period or "")
+    if not m:
+        return (9999, 99, 9)            # 규격 외(TD 등)는 뒤로
+    year = int(m.group(1))
+    if m.group(2):
+        return (year, int(m.group(2)), 0)        # 월간
+    if m.group(3):
+        return (year, int(m.group(3)) * 3, 1)    # 분기 → 종료월 3/6/9/12
+    return (year, int(m.group(4)) * 6, 2)        # 반기 → 종료월 6/12
+
+
 def _list_approved_periods(fund_code: str) -> list[str]:
     """fund_code(_market 포함)의 approved=true final.json 이 존재하는 기간 목록.
 
     report_store.list_period_dirs() 로 모든 기간 디렉터리를 스캔 후,
     각 기간에서 load_final → approved=true 인 것만 추림.
-    정렬: 내림차순 (rsg.list_period_dirs 가 이미 desc 반환).
+    정렬: `_period_sort_key` 오름차순 (월 → 해당 분기 → 해당 반기 → 다음 달).
     """
     out: list[str] = []
     for period in rsg.list_period_dirs():
         payload = rsg.load_final(period, fund_code)
         if payload and payload.get("approved"):
             out.append(period)
-    return out
+    return sorted(out, key=_period_sort_key)
 
 
 def build_market_approved_periods() -> ReportApprovedPeriodsResponseDTO:

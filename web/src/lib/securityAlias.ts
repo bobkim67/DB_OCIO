@@ -20,6 +20,9 @@ const ALIAS: Record<string, string> = {
   "iShares Broad USD High Yield Corporate B": "iShares USD HY",
   "VANGUARD EMERG MKTS GOV BND": "Vanguard EM국채",
   "월넛은행채플러스일반사모투자신탁제3호": "월넛은행채플러스",
+  // 브로커 체결확인서(해외거래 메일) 정식명 — 원장 ITEM_NM 과 표기가 달라 별도 등재.
+  // 결제 예정 카드/툴팁에서만 쓰임 (2026-08-03).
+  "ISHARES GOLD TRUST UNDIVIDED BENEFICIAL INTS USD": "iShares Gold Trust",
   // (ACE 200 / ACE 200 TR / ACE 국고채10년 등 짧은 이름은 그대로 노출)
 };
 

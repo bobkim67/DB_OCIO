@@ -15,7 +15,7 @@ import re
 from fastapi import APIRouter, HTTPException, Path, Query
 from pydantic import BaseModel
 
-from api.schemas.holdings import ComplianceItemDTO
+from api.schemas.holdings import ComplianceItemDTO, PendingSettlementDTO
 
 REPORT_SUFFIX = 'sentrep'  # 발송 보고서 아티팩트 suffix
 
@@ -38,6 +38,9 @@ class AdminFundRowDTO(BaseModel):
     ytm_bond: float | None = None          # 채권성 가중평균 YTM (%)
     duration_overall: float | None = None  # 펀드 전체 가중평균 듀레이션 (년)
     ytm_overall: float | None = None       # 펀드 전체 가중평균 YTM (%)
+    # 원장 미반영 거래(해외 체결확인서에만 있는 건) — 수익자 아래 카드용 (2026-08-03).
+    # 미지급금(원장 반영분)은 제외 — 카드는 '원장에 없는 것'만 알린다.
+    unreflected_settlements: list[PendingSettlementDTO] = []
 
 
 class AdminFundsOverviewDTO(BaseModel):
@@ -226,11 +229,16 @@ def _stage(period: str, fund: str, suffix: str | None) -> WorkflowStageDTO:
     status = get_status(period, fund, target_suffix=suffix)
     final = load_final(period, fund, target_suffix=suffix)
     draft = load_draft(period, fund, target_suffix=suffix)
+    # text 는 admin 편집 상자의 내용 = **작업본(draft) 우선** (2026-08-03 fix).
+    #   종전엔 승인된 final 을 우선해서, 승인 후 수정저장을 하면 draft 는 갱신됐는데
+    #   화면은 구 승인본으로 되돌아갔다(= 사용자 체감 '원복'). 승인 직후엔 approve 가
+    #   draft→final 을 복사하므로 둘이 같아 이 변경의 부작용이 없다.
+    #   draft 가 없는 legacy/외부 반입 final 만 final 로 폴백.
     text = ''
-    if final and final.get('approved'):
-        text = str(final.get('final_comment') or '')
-    elif draft:
+    if draft:
         text = str(draft.get('draft_comment') or '')
+    elif final:
+        text = str(final.get('final_comment') or '')
     xp = _excel_path(fund, period) if suffix == REPORT_SUFFIX else None
     return WorkflowStageDTO(
         status=status, text=text,
@@ -240,8 +248,31 @@ def _stage(period: str, fund: str, suffix: str | None) -> WorkflowStageDTO:
     )
 
 
+MARKET_CODE = '_market'
+# 시장 debate 를 실제로 돌리는 기간 유형. TD(QTD/HTD/YTD)는 돌리지 않고 승인본을
+# 재사용한다(2026-07-31 사용자 확정) — run_debate_and_save 의 else 분기가 분기 debate 라
+# TD 를 그냥 넘기면 엉뚱한 기간이 생성되므로 진입에서 막는다.
+_MARKET_MODES = ('월별', '분기', '반기')
+
+
 def _generate(fund: str, body: GenBodyDTO, suffix: str | None) -> WorkflowStageDTO:
     mode, year, num = _parse_period(body.kind, body.period)
+
+    # 시장 코멘트(_market)는 debate 엔진 직행 — 선행 시장 승인본이 필요 없다
+    if fund == MARKET_CODE:
+        if mode not in _MARKET_MODES:
+            raise HTTPException(
+                status_code=400,
+                detail=f'{body.kind} 기간은 시장 debate 를 생성하지 않습니다 '
+                       '— 월간/분기 승인본이 자동 재사용됩니다')
+        from market_research.report.debate_service import run_debate_and_save
+        try:
+            run_debate_and_save(mode, year, num, MARKET_CODE, body.period,
+                                target_suffix=suffix)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f'시장 debate 실패: {exc}')
+        return _stage(body.period, fund, suffix)
+
     market = _resolve_market_payload(body.period, mode, year, num)
     if not market:
         raise HTTPException(status_code=409,
@@ -310,6 +341,7 @@ def _build_funds_overview(as_of: str | None) -> AdminFundsOverviewDTO:
         comp_status, breaches = 'error', []
         comp_items: list[ComplianceItemDTO] = []
         d_bond = y_bond = d_all = y_all = None
+        unreflected: list[PendingSettlementDTO] = []
         try:
             from api.services.holdings_service import build_holdings
             h = build_holdings(fund, lookthrough=True, as_of_date=as_of)
@@ -327,6 +359,10 @@ def _build_funds_overview(as_of: str | None) -> AdminFundsOverviewDTO:
                 d_all, y_all = ds.duration_overall, ds.ytm_overall
             if snapshot is None and getattr(h, 'as_of_date', None):
                 snapshot = str(h.as_of_date)
+            unreflected = [
+                p for p in (getattr(h, 'pending_settlements', None) or [])
+                if p.source == 'mail'
+            ]
         except Exception:
             pass
         # 기간수익률 + 동일기간 BM 수익률 (as_of 앵커)
@@ -353,6 +389,7 @@ def _build_funds_overview(as_of: str | None) -> AdminFundsOverviewDTO:
             benchmark_kind=bm_kind,
             duration_bond=d_bond, ytm_bond=y_bond,
             duration_overall=d_all, ytm_overall=y_all,
+            unreflected_settlements=unreflected,
         ))
     return AdminFundsOverviewDTO(as_of_date=snapshot or as_of, rows=rows)
 
@@ -405,6 +442,10 @@ def generate_report(body: GenBodyDTO, fund: str = Path(..., max_length=32)) -> W
     → ①의 final_comment 를 draft 로 복사하고 편집→승인 사이클만 유지한다.
     """
     _parse_period(body.kind, body.period)   # kind/period 검증
+    # 시장 코멘트는 발송용 보고서 단계가 없다 — client 는 /market-report 로 승인본을 직접 본다
+    if fund == MARKET_CODE:
+        raise HTTPException(status_code=400,
+                            detail='시장 코멘트는 발송용 보고서 단계가 없습니다')
     import time as _time
     from market_research.report.report_store import STATUS_DRAFT, load_final, save_draft
     cf = load_final(body.period, fund)
