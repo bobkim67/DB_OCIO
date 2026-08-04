@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from datetime import date
+from datetime import date, timedelta
 
 from market_research.report.report_store import (
     save_draft, load_draft, load_final,
@@ -478,11 +478,23 @@ def generate_fund_comment_and_save(
             data_warnings.append(f'BM 수익률 로드 실패: {e}')
 
     # 3. PA 기여도 + 보유비중
+    #
+    # ★ prev_last(전월말)는 두 가지 상반된 규약에 동시에 쓰인다 (2026-08-04 발견):
+    #   - BM 지수 비율(_load_bm_returns_for_range) · 보유 스냅샷(_load_position_events)
+    #     → 전월말이 '기준점(분모/기초)' 이라 그대로 써야 맞다.
+    #   - MA000410 일별손익 PA(compute_single_port_pa) · DWPM10520 거래
+    #     → start_date **당일의 손익·거래를 포함**한다. 전월말을 그대로 넣으면
+    #       전월 마지막 영업일 하루가 당월에 섞인다.
+    # 증상: 2026-07 08N33 이 -4.72%(6/30 +0.57% 포함) 로 나와 기준가 -5.26% 와 불일치.
+    #       7개 펀드 전부 +0.39~+1.01%p 손실 축소. 시작일을 하루 뒤로 밀면
+    #       7개 모두 기준가 기간수익률과 소수점까지 일치한다.
+    # → PA·거래만 (전월말, 기간말] 창으로 맞춘다. BM·스냅샷은 prev_last 유지.
+    pa_start_dt = start_dt + timedelta(days=1) if start_dt else None
     pa = {}
     fund_ret = None
     holdings_end = {}
     holdings_diff = []
-    if start_dt and end_dt:
+    if pa_start_dt and end_dt:
         try:
             from modules.data_loader import compute_single_port_pa
             # fx_split=False (FX 포함) — 환효과를 별도 FX 자산군으로 떼지 않고
@@ -493,7 +505,7 @@ def generate_fund_comment_and_save(
             #   항목을 별도로 적어 합을 맞출 것.
             pa_result = compute_single_port_pa(
                 fund_code,
-                start_date=start_dt.strftime('%Y%m%d'),
+                start_date=pa_start_dt.strftime('%Y%m%d'),
                 end_date=end_dt.strftime('%Y%m%d'),
                 fx_split=False,
             )
@@ -509,12 +521,14 @@ def generate_fund_comment_and_save(
         except Exception as e:
             data_warnings.append(f'PA 데이터 로드 실패: {e}')
 
-    # 4. 거래내역
+    # 4. 거래내역 — std_dt BETWEEN 이라 prev_last 를 그대로 주면 전월말 거래가 섞인다.
+    #    위 §3 과 같은 이유로 (전월말, 기간말] 로 맞춘다.
     trades = {}
-    if prev_last and cur_last:
+    if pa_start_dt and cur_last:
         try:
             from modules.data_loader import load_fund_net_trades
-            trades = load_fund_net_trades(fund_code, prev_last, cur_last)
+            trades = load_fund_net_trades(
+                fund_code, int(pa_start_dt.strftime('%Y%m%d')), cur_last)
         except Exception as e:
             data_warnings.append(f'거래내역 로드 실패: {e}')
 
