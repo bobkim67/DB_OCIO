@@ -213,18 +213,28 @@ def _compact_market_payload(merged: dict | None) -> dict | None:
 # ── 보고서 단계에 딸린 데이터 엑셀 (펀드별) ──
 # 4JM12(2026-07-31): 보고서 **생성** 시 tools.dblife_monthly_excel 로 DB생명 데이터 엑셀.
 #   s6 코멘트 = 1단계 승인 코멘트(final.json)가 자동 인용됨.
-# 08N33(2026-08-04): 보고서 **승인** 시 성과분석 엑셀(=6월 발송본 `월간운용보고서_08N33_*`
-#   과 동일 산출물). 코멘트 본문과 무관한 PA 데이터라 승인 시점에 확정본으로 굽는다.
-#   6월 발송본 역산 파라미터: 기간=월초~월말 · 방법3 · pa_method='8' · SAA.
-#   ⚠ FX 만 6월 발송본과 다르다 — 발송본은 'FX 분리'였으나 코멘트가 FX 포함 기준으로
-#   전환돼(2026-08-04) 엑셀도 **FX 포함**으로 맞춘다(사용자 지시). 환효과를 별도 FX
-#   자산군으로 떼지 않고 각 해외 자산군 수익률에 접는다 → 코멘트 분해와 같은 기준.
-#   총수익률은 두 방식이 동일하고 분해만 달라진다.
+# 08N33·08N81(2026-08-04): 보고서 **승인** 시 성과분석 엑셀(=6월 발송본
+#   `월간운용보고서_{fund}_*` 과 동일 산출물). 코멘트와 무관한 PA 데이터라 승인 시점에 굽는다.
+#   ★ brinson 옵션은 spec 의 'brinson' 에 담아 `_build_excel` 이 그대로 넘긴다(하드코딩 금지).
+#   6월 발송본 헤더 역산값은 펀드마다 달랐다:
+#       08N33 = FX 분리 · SAA / 08N81 = FX 포함 · SAA / 08P22 = FX 포함 · SAA(**proxy**)
+#   ⚠ 현재는 셋 다 **08N33 7월 기준(FX 포함 · 등록 SAA)으로 통일**한다 (2026-08-04 사용자
+#     지시). 발송본과 달라지는 지점 2곳:
+#       · 08N33 FX 분리→포함  — 코멘트가 FX 포함 기준으로 전환된 데 맞춤
+#       · 08P22 proxy→등록 SAA — 벤치마크 기준선이 바뀌므로 6월 발송본과 SAA 수치가 다름
+#     둘 다 총수익률(AP)은 불변이고 분해·벤치 비교만 달라진다.
 _EXCEL_SPECS = {
     '4JM12': {'kind': '월간', 'on': 'generate', 'label': 'DB생명 엑셀',
               'name': 'DB생명_월간보고_데이터_{ym}.xlsx'},
     '08N33': {'kind': '월간', 'on': 'approve', 'label': '월간운용보고서 엑셀',
-              'name': '월간운용보고서_08N33_{y}년{m}월말.xlsx'},
+              'name': '월간운용보고서_08N33_{y}년{m}월말.xlsx',
+              'brinson': {'fx_split': False, 'saa_mode': 'auto'}},
+    '08N81': {'kind': '월간', 'on': 'approve', 'label': '월간운용보고서 엑셀',
+              'name': '월간운용보고서_08N81_{y}년{m}월말.xlsx',
+              'brinson': {'fx_split': False, 'saa_mode': 'auto'}},
+    '08P22': {'kind': '월간', 'on': 'approve', 'label': '월간운용보고서 엑셀',
+              'name': '월간운용보고서_08P22_{y}년{m}월말.xlsx',
+              'brinson': {'fx_split': False, 'saa_mode': 'auto'}},
 }
 _EXCEL_FUND, _EXCEL_KIND = '4JM12', '월간'   # (legacy 별칭 — 기존 참조 보존)
 
@@ -246,7 +256,8 @@ def _build_excel(fund: str, period: str, xp) -> None:
         from tools.dblife_monthly_excel import build as build_dblife_excel
         build_dblife_excel(period, xp)
         return
-    if fund == '08N33':
+    _bo = (_EXCEL_SPECS.get(fund) or {}).get('brinson')
+    if _bo:
         import calendar
         from datetime import date as _d
         from api.services.brinson_export_service import build_brinson_export_xlsx
@@ -269,8 +280,8 @@ def _build_excel(fund: str, period: str, xp) -> None:
             start_date=_d(y, m, 1),
             end_date=_d(y, m, calendar.monthrange(y, m)[1]),
             mapping_method='방법3', pa_method='8',
-            fx_split=False, saa_mode='auto',
             comment_text=_cmt or None,
+            **_bo,                      # fx_split / saa_mode — 펀드별 발송본 역산값
         )
         xp.parent.mkdir(parents=True, exist_ok=True)
         xp.write_bytes(content)

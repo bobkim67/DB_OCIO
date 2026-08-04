@@ -19,6 +19,8 @@ type Stage = {
 const EXCEL_SPEC: Record<string, { label: string; on: "generate" | "approve" }> = {
   "4JM12": { label: "DB생명 엑셀", on: "generate" },
   "08N33": { label: "월간운용보고서 엑셀", on: "approve" },
+  "08N81": { label: "월간운용보고서 엑셀", on: "approve" },
+  "08P22": { label: "월간운용보고서 엑셀", on: "approve" },
 };
 
 const ST_LABEL: Record<string, string> = {
