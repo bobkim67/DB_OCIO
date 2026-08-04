@@ -485,10 +485,17 @@ def generate_fund_comment_and_save(
     if start_dt and end_dt:
         try:
             from modules.data_loader import compute_single_port_pa
+            # fx_split=False (FX 포함) — 환효과를 별도 FX 자산군으로 떼지 않고
+            # 각 해외 자산군 수익률에 접는다 (2026-08-04 사용자 지시).
+            # compute_single_port_pa 기본값은 True(분리)라 명시 전달이 필요하다.
+            # ⚠ 달러선물 환헤지를 쓰는 펀드(4JM12)는 헤지손익이 FX 자산군에 있어
+            #   이 모드에서 자산군 합계가 포트수익률과 어긋난다 → 코멘트에 '환헤지'
+            #   항목을 별도로 적어 합을 맞출 것.
             pa_result = compute_single_port_pa(
                 fund_code,
                 start_date=start_dt.strftime('%Y%m%d'),
                 end_date=end_dt.strftime('%Y%m%d'),
+                fx_split=False,
             )
             if pa_result:
                 # Q-FIX-2 (2026-05-06): asset_summary DataFrame 새 schema → 구버전 키 변환
