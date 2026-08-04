@@ -5516,7 +5516,11 @@ def compute_rf_annualized_metrics(end_date: str, start_date: str = None,
     결과6: 무위험 연율화수익률 계산.
     R: weekly_calculation_Risk_free + annualized_geometric_return
 
-    ECOS CD(91일) 복리지수 → 주간수익률 → 연율화.
+    소스 = **KIS CD Index 총수익지수**(`load_rf_index_from_db`, SCIP dataset 194/ds 33)
+    → 주간수익률 → 연율화. 펀드와 동일 파이프라인(공휴일 NA·pad·요일 group).
+    ⚠ 종전 주석은 'ECOS CD(91일) 복리지수'였으나 실제 로드 경로와 달라 정정(2026-08-04).
+      ECOS CD(91일) 대비 0.01~0.02bp 차이로 실무상 동일해 KIS 를 채택한 것이며
+      (KAP CD 총수익지수 300 은 ~12bp 차이로 부적합), 'CD 91일 기준' 이라는 성격은 같다.
     """
     if periods is None:
         periods = ['누적', '1M', '3M', '6M', '1Y', 'YTD']
