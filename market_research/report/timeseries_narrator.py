@@ -383,9 +383,14 @@ def _bew_windows_for_bm(bm_name, bew_data):
         return []
     segs = []
     for w in raw[:MAX_SEGMENTS_PER_BM]:
+        # ⚠ return_pct(=benchmark_move_pct)는 pivot 기준 5거래일 누적이라
+        #   signal 구간(date_from~date_to)과 다른 기간이다. 종전엔 그 둘을 짝지어
+        #   내러티브에 실어 보내 코멘트가 "7/13~16 -15.5%"(실제 +0.20%)처럼
+        #   틀린 기간-수치 쌍을 인용했다 → pct 가 실제 측정한 구간을 쓴다.
+        #   move_from/move_to 없는 legacy BEW 파일은 기존 필드로 폴백 (2026-08-03)
         try:
-            sd = pd.Timestamp(w.get('date_from'))
-            ed = pd.Timestamp(w.get('date_to'))
+            sd = pd.Timestamp(w.get('move_from') or w.get('date_from'))
+            ed = pd.Timestamp(w.get('move_to') or w.get('date_to'))
         except Exception:
             continue
         z = abs(float(w.get('zscore', 0) or 0))

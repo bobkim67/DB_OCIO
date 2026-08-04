@@ -1,6 +1,6 @@
 {
   "month": "2026-07",
-  "generated_at": "2026-07-27T09:18:12",
+  "generated_at": "2026-08-03T18:27:30",
   "windows": [
     {
       "window_id": "e0252c01b7",
@@ -10,6 +10,9 @@
       "date_to": "2026-07-02",
       "signal_type": "drawdown",
       "benchmark_move_pct": -14.3552,
+      "move_from": "2026-06-25",
+      "move_to": "2026-07-02",
+      "span_move_pct": 0.0,
       "zscore": -2.8432,
       "pivot_date": "2026-07-02",
       "event_count": 1,
@@ -51,6 +54,9 @@
       "date_to": "2026-07-02",
       "signal_type": "trend_break",
       "benchmark_move_pct": 2.0578,
+      "move_from": "2026-06-25",
+      "move_to": "2026-07-02",
+      "span_move_pct": 0.0,
       "zscore": 1.0411,
       "pivot_date": "2026-07-02",
       "event_count": 1,
@@ -101,6 +107,9 @@
       "date_to": "2026-07-03",
       "signal_type": "rebound",
       "benchmark_move_pct": 3.0214,
+      "move_from": "2026-06-26",
+      "move_to": "2026-07-03",
+      "span_move_pct": 0.0,
       "zscore": 1.4381,
       "pivot_date": "2026-07-03",
       "event_count": 1,
@@ -151,6 +160,9 @@
       "date_to": "2026-07-06",
       "signal_type": "anomaly",
       "benchmark_move_pct": 2.924,
+      "move_from": "2026-06-29",
+      "move_to": "2026-07-06",
+      "span_move_pct": 0.0,
       "zscore": 1.5021,
       "pivot_date": "2026-07-06",
       "event_count": 1,
@@ -199,6 +211,9 @@
       "date_to": "2026-07-10",
       "signal_type": "drawdown",
       "benchmark_move_pct": -12.7244,
+      "move_from": "2026-07-01",
+      "move_to": "2026-07-08",
+      "span_move_pct": -2.3558,
       "zscore": -2.8184,
       "pivot_date": "2026-07-08",
       "event_count": 4,
@@ -246,6 +261,9 @@
       "date_to": "2026-07-07",
       "signal_type": "trend_break",
       "benchmark_move_pct": 2.6261,
+      "move_from": "2026-06-30",
+      "move_to": "2026-07-07",
+      "span_move_pct": 0.0,
       "zscore": 1.3588,
       "pivot_date": "2026-07-07",
       "event_count": 1,
@@ -294,6 +312,9 @@
       "date_to": "2026-07-10",
       "signal_type": "trend_break",
       "benchmark_move_pct": -1.737,
+      "move_from": "2026-07-03",
+      "move_to": "2026-07-10",
+      "span_move_pct": 0.0,
       "zscore": -1.0737,
       "pivot_date": "2026-07-10",
       "event_count": 1,
@@ -331,6 +352,9 @@
       "date_to": "2026-07-16",
       "signal_type": "drawdown",
       "benchmark_move_pct": -15.4558,
+      "move_from": "2026-07-06",
+      "move_to": "2026-07-13",
+      "span_move_pct": 0.2014,
       "zscore": -3.3462,
       "pivot_date": "2026-07-13",
       "event_count": 3,
@@ -379,6 +403,9 @@
       "date_to": "2026-07-14",
       "signal_type": "anomaly",
       "benchmark_move_pct": -2.755,
+      "move_from": "2026-07-07",
+      "move_to": "2026-07-14",
+      "span_move_pct": -0.9592,
       "zscore": -1.8991,
       "pivot_date": "2026-07-14",
       "event_count": 2,
@@ -426,6 +453,9 @@
       "date_to": "2026-07-16",
       "signal_type": "trend_break",
       "benchmark_move_pct": -1.6955,
+      "move_from": "2026-07-09",
+      "move_to": "2026-07-16",
+      "span_move_pct": 0.0,
       "zscore": -1.1943,
       "pivot_date": "2026-07-16",
       "event_count": 1,
@@ -473,6 +503,9 @@
       "date_to": "2026-07-17",
       "signal_type": "anomaly",
       "benchmark_move_pct": -2.7722,
+      "move_from": "2026-07-10",
+      "move_to": "2026-07-17",
+      "span_move_pct": 0.0,
       "zscore": -2.0805,
       "pivot_date": "2026-07-17",
       "event_count": 1,
@@ -498,6 +531,9 @@
       "date_to": "2026-07-20",
       "signal_type": "drawdown",
       "benchmark_move_pct": -12.8342,
+      "move_from": "2026-07-10",
+      "move_to": "2026-07-20",
+      "span_move_pct": 0.0,
       "zscore": -2.5842,
       "pivot_date": "2026-07-20",
       "event_count": 1,
@@ -535,6 +571,187 @@
       "graph_seed_size": {
         "nodes": 12,
         "edges": 6
+      }
+    },
+    {
+      "window_id": "815ff03ebd",
+      "asset_class": "대체투자",
+      "benchmark": "Gold",
+      "date_from": "2026-07-22",
+      "date_to": "2026-07-22",
+      "signal_type": "anomaly",
+      "benchmark_move_pct": 2.2203,
+      "move_from": "2026-07-15",
+      "move_to": "2026-07-22",
+      "span_move_pct": 0.0,
+      "zscore": 1.7827,
+      "pivot_date": "2026-07-22",
+      "event_count": 1,
+      "mapped_evidence_ids": [
+        "5d86a1eba505",
+        "96f10ade295b",
+        "92d41b42ee0d",
+        "80f82e0cef51",
+        "1f0f0f992b3c",
+        "a7cc53fffa73",
+        "06504607bfe8",
+        "a6d90a12e7cd"
+      ],
+      "mapped_topics": [
+        "경기_소비",
+        "에너지_원자재",
+        "테크_AI_반도체",
+        "통화정책"
+      ],
+      "mapped_event_groups": [
+        "event_0154b7051b",
+        "event_0e51e29103",
+        "event_4cf53b01b6",
+        "event_50a3351c5b",
+        "event_b55d2ac576",
+        "event_b682eb8077",
+        "event_e9dba6aa7a",
+        "event_ebd2cee8ce"
+      ],
+      "evidence_count": 8,
+      "evidence_source_mix": {
+        "naver_research": 8,
+        "news": 0
+      },
+      "confidence": 0.7131,
+      "graph_seed_size": {
+        "nodes": 12,
+        "edges": 5
+      }
+    },
+    {
+      "window_id": "08cf955662",
+      "asset_class": "대체투자",
+      "benchmark": "Gold",
+      "date_from": "2026-07-23",
+      "date_to": "2026-07-23",
+      "signal_type": "trend_break",
+      "benchmark_move_pct": 1.579,
+      "move_from": "2026-07-16",
+      "move_to": "2026-07-23",
+      "span_move_pct": 0.0,
+      "zscore": 1.3378,
+      "pivot_date": "2026-07-23",
+      "event_count": 1,
+      "mapped_evidence_ids": [],
+      "mapped_topics": [],
+      "mapped_event_groups": [],
+      "evidence_count": 0,
+      "evidence_source_mix": {
+        "naver_research": 0,
+        "news": 0
+      },
+      "confidence": 0.0,
+      "graph_seed_size": {
+        "nodes": 8,
+        "edges": 2
+      }
+    },
+    {
+      "window_id": "45edc90784",
+      "asset_class": "대체투자",
+      "benchmark": "Gold",
+      "date_from": "2026-07-24",
+      "date_to": "2026-07-24",
+      "signal_type": "anomaly",
+      "benchmark_move_pct": 1.7337,
+      "move_from": "2026-07-17",
+      "move_to": "2026-07-24",
+      "span_move_pct": 0.0,
+      "zscore": 1.5297,
+      "pivot_date": "2026-07-24",
+      "event_count": 1,
+      "mapped_evidence_ids": [],
+      "mapped_topics": [],
+      "mapped_event_groups": [],
+      "evidence_count": 0,
+      "evidence_source_mix": {
+        "naver_research": 0,
+        "news": 0
+      },
+      "confidence": 0.0,
+      "graph_seed_size": {
+        "nodes": 8,
+        "edges": 2
+      }
+    },
+    {
+      "window_id": "94c9813387",
+      "asset_class": "대체투자",
+      "benchmark": "Gold",
+      "date_from": "2026-07-27",
+      "date_to": "2026-07-29",
+      "signal_type": "anomaly",
+      "benchmark_move_pct": -2.1879,
+      "move_from": "2026-07-22",
+      "move_to": "2026-07-29",
+      "span_move_pct": -1.7577,
+      "zscore": -1.8137,
+      "pivot_date": "2026-07-29",
+      "event_count": 2,
+      "mapped_evidence_ids": [
+        "9ae7338ee299",
+        "cacab73b0c05"
+      ],
+      "mapped_topics": [
+        "에너지_원자재",
+        "테크_AI_반도체"
+      ],
+      "mapped_event_groups": [
+        "event_29fce50b4c",
+        "event_c0d26360e0"
+      ],
+      "evidence_count": 2,
+      "evidence_source_mix": {
+        "naver_research": 2,
+        "news": 0
+      },
+      "confidence": 0.3627,
+      "graph_seed_size": {
+        "nodes": 12,
+        "edges": 5
+      }
+    },
+    {
+      "window_id": "3ba0219909",
+      "asset_class": "국내주식",
+      "benchmark": "KOSPI",
+      "date_from": "2026-07-28",
+      "date_to": "2026-07-30",
+      "signal_type": "drawdown",
+      "benchmark_move_pct": -21.1702,
+      "move_from": "2026-07-23",
+      "move_to": "2026-07-30",
+      "span_move_pct": -7.1281,
+      "zscore": -4.1727,
+      "pivot_date": "2026-07-30",
+      "event_count": 3,
+      "mapped_evidence_ids": [
+        "9ae7338ee299",
+        "cacab73b0c05"
+      ],
+      "mapped_topics": [
+        "에너지_원자재",
+        "테크_AI_반도체"
+      ],
+      "mapped_event_groups": [
+        "event_29fce50b4c",
+        "event_c0d26360e0"
+      ],
+      "evidence_count": 2,
+      "evidence_source_mix": {
+        "naver_research": 2,
+        "news": 0
+      },
+      "confidence": 0.6,
+      "graph_seed_size": {
+        "nodes": 12,
+        "edges": 5
       }
     }
   ],
@@ -1405,6 +1622,164 @@
       "evidence_id": "fa0904236605",
       "source_type": "naver_research",
       "primary_topic": "통화정책"
+    },
+    {
+      "date": "2026-07-20",
+      "kind": "evidence",
+      "window_id": "815ff03ebd",
+      "asset_class": "대체투자",
+      "evidence_id": "5d86a1eba505",
+      "source_type": "naver_research",
+      "primary_topic": "에너지_원자재"
+    },
+    {
+      "date": "2026-07-20",
+      "kind": "evidence",
+      "window_id": "815ff03ebd",
+      "asset_class": "대체투자",
+      "evidence_id": "96f10ade295b",
+      "source_type": "naver_research",
+      "primary_topic": "통화정책"
+    },
+    {
+      "date": "2026-07-20",
+      "kind": "evidence",
+      "window_id": "815ff03ebd",
+      "asset_class": "대체투자",
+      "evidence_id": "92d41b42ee0d",
+      "source_type": "naver_research",
+      "primary_topic": "경기_소비"
+    },
+    {
+      "date": "2026-07-20",
+      "kind": "evidence",
+      "window_id": "815ff03ebd",
+      "asset_class": "대체투자",
+      "evidence_id": "80f82e0cef51",
+      "source_type": "naver_research",
+      "primary_topic": "테크_AI_반도체"
+    },
+    {
+      "date": "2026-07-20",
+      "kind": "evidence",
+      "window_id": "815ff03ebd",
+      "asset_class": "대체투자",
+      "evidence_id": "1f0f0f992b3c",
+      "source_type": "naver_research",
+      "primary_topic": "경기_소비"
+    },
+    {
+      "date": "2026-07-20",
+      "kind": "evidence",
+      "window_id": "815ff03ebd",
+      "asset_class": "대체투자",
+      "evidence_id": "a7cc53fffa73",
+      "source_type": "naver_research",
+      "primary_topic": "테크_AI_반도체"
+    },
+    {
+      "date": "2026-07-20",
+      "kind": "evidence",
+      "window_id": "815ff03ebd",
+      "asset_class": "대체투자",
+      "evidence_id": "06504607bfe8",
+      "source_type": "naver_research",
+      "primary_topic": "경기_소비"
+    },
+    {
+      "date": "2026-07-20",
+      "kind": "evidence",
+      "window_id": "815ff03ebd",
+      "asset_class": "대체투자",
+      "evidence_id": "a6d90a12e7cd",
+      "source_type": "naver_research",
+      "primary_topic": "테크_AI_반도체"
+    },
+    {
+      "date": "2026-07-22",
+      "kind": "bm_pivot",
+      "window_id": "815ff03ebd",
+      "asset_class": "대체투자",
+      "benchmark": "Gold",
+      "signal_type": "anomaly",
+      "zscore": 1.7827,
+      "move_pct": 2.2203
+    },
+    {
+      "date": "2026-07-23",
+      "kind": "bm_pivot",
+      "window_id": "08cf955662",
+      "asset_class": "대체투자",
+      "benchmark": "Gold",
+      "signal_type": "trend_break",
+      "zscore": 1.3378,
+      "move_pct": 1.579
+    },
+    {
+      "date": "2026-07-24",
+      "kind": "bm_pivot",
+      "window_id": "45edc90784",
+      "asset_class": "대체투자",
+      "benchmark": "Gold",
+      "signal_type": "anomaly",
+      "zscore": 1.5297,
+      "move_pct": 1.7337
+    },
+    {
+      "date": "2026-07-27",
+      "kind": "evidence",
+      "window_id": "94c9813387",
+      "asset_class": "대체투자",
+      "evidence_id": "9ae7338ee299",
+      "source_type": "naver_research",
+      "primary_topic": "테크_AI_반도체"
+    },
+    {
+      "date": "2026-07-27",
+      "kind": "evidence",
+      "window_id": "94c9813387",
+      "asset_class": "대체투자",
+      "evidence_id": "cacab73b0c05",
+      "source_type": "naver_research",
+      "primary_topic": "에너지_원자재"
+    },
+    {
+      "date": "2026-07-27",
+      "kind": "evidence",
+      "window_id": "3ba0219909",
+      "asset_class": "국내주식",
+      "evidence_id": "9ae7338ee299",
+      "source_type": "naver_research",
+      "primary_topic": "테크_AI_반도체"
+    },
+    {
+      "date": "2026-07-27",
+      "kind": "evidence",
+      "window_id": "3ba0219909",
+      "asset_class": "국내주식",
+      "evidence_id": "cacab73b0c05",
+      "source_type": "naver_research",
+      "primary_topic": "에너지_원자재"
+    },
+    {
+      "date": "2026-07-29",
+      "kind": "bm_pivot",
+      "window_id": "94c9813387",
+      "asset_class": "대체투자",
+      "benchmark": "Gold",
+      "signal_type": "anomaly",
+      "zscore": -1.8137,
+      "move_pct": -2.1879
+    },
+    {
+      "date": "2026-07-30",
+      "kind": "bm_pivot",
+      "window_id": "3ba0219909",
+      "asset_class": "국내주식",
+      "benchmark": "KOSPI",
+      "signal_type": "drawdown",
+      "zscore": -4.1727,
+      "move_pct": -21.1702
     }
   ],
   "graph": {
@@ -1427,7 +1802,10 @@
           "ab78f7c573",
           "1d2d3935e6",
           "5b998a28f2",
-          "99e6a4bc9d"
+          "99e6a4bc9d",
+          "815ff03ebd",
+          "94c9813387",
+          "3ba0219909"
         ]
       },
       {
@@ -1442,7 +1820,8 @@
           "e0252c01b7",
           "25d850da45",
           "5b998a28f2",
-          "99e6a4bc9d"
+          "99e6a4bc9d",
+          "3ba0219909"
         ]
       },
       {
@@ -1462,7 +1841,10 @@
           "ab78f7c573",
           "1d2d3935e6",
           "5b998a28f2",
-          "99e6a4bc9d"
+          "99e6a4bc9d",
+          "815ff03ebd",
+          "94c9813387",
+          "3ba0219909"
         ]
       },
       {
@@ -1480,7 +1862,10 @@
           "ab78f7c573",
           "1d2d3935e6",
           "5b998a28f2",
-          "99e6a4bc9d"
+          "99e6a4bc9d",
+          "815ff03ebd",
+          "94c9813387",
+          "3ba0219909"
         ]
       },
       {
@@ -1498,7 +1883,10 @@
           "ab78f7c573",
           "1d2d3935e6",
           "5b998a28f2",
-          "99e6a4bc9d"
+          "99e6a4bc9d",
+          "815ff03ebd",
+          "94c9813387",
+          "3ba0219909"
         ]
       },
       {
@@ -1516,7 +1904,10 @@
           "ab78f7c573",
           "1d2d3935e6",
           "5b998a28f2",
-          "99e6a4bc9d"
+          "99e6a4bc9d",
+          "815ff03ebd",
+          "94c9813387",
+          "3ba0219909"
         ]
       },
       {
@@ -1534,7 +1925,10 @@
           "ab78f7c573",
           "1d2d3935e6",
           "5b998a28f2",
-          "99e6a4bc9d"
+          "99e6a4bc9d",
+          "815ff03ebd",
+          "94c9813387",
+          "3ba0219909"
         ]
       },
       {
@@ -1624,7 +2018,10 @@
           "c10f5b82ed",
           "dce3eff1d8",
           "a3b26223dd",
-          "71db61a227"
+          "71db61a227",
+          "815ff03ebd",
+          "94c9813387",
+          "3ba0219909"
         ]
       },
       {
@@ -1637,7 +2034,10 @@
           "c10f5b82ed",
           "dce3eff1d8",
           "a3b26223dd",
-          "71db61a227"
+          "71db61a227",
+          "815ff03ebd",
+          "94c9813387",
+          "3ba0219909"
         ]
       },
       {
@@ -1650,7 +2050,10 @@
           "c10f5b82ed",
           "dce3eff1d8",
           "a3b26223dd",
-          "71db61a227"
+          "71db61a227",
+          "815ff03ebd",
+          "94c9813387",
+          "3ba0219909"
         ]
       },
       {
@@ -1707,7 +2110,10 @@
           "c10f5b82ed",
           "dce3eff1d8",
           "a3b26223dd",
-          "71db61a227"
+          "71db61a227",
+          "815ff03ebd",
+          "94c9813387",
+          "3ba0219909"
         ]
       },
       {
@@ -1726,7 +2132,12 @@
           "1d2d3935e6",
           "a3b26223dd",
           "71db61a227",
-          "a4d6953f1f"
+          "a4d6953f1f",
+          "815ff03ebd",
+          "08cf955662",
+          "45edc90784",
+          "94c9813387",
+          "3ba0219909"
         ]
       },
       {
@@ -1745,7 +2156,11 @@
           "1d2d3935e6",
           "a3b26223dd",
           "71db61a227",
-          "a4d6953f1f"
+          "a4d6953f1f",
+          "815ff03ebd",
+          "08cf955662",
+          "45edc90784",
+          "94c9813387"
         ]
       },
       {
@@ -1762,7 +2177,9 @@
           "1d2d3935e6",
           "a3b26223dd",
           "71db61a227",
-          "a4d6953f1f"
+          "a4d6953f1f",
+          "08cf955662",
+          "45edc90784"
         ]
       },
       {
@@ -1818,7 +2235,9 @@
         "window_ids": [
           "a3b26223dd",
           "71db61a227",
-          "a4d6953f1f"
+          "a4d6953f1f",
+          "08cf955662",
+          "45edc90784"
         ]
       },
       {
@@ -1832,7 +2251,9 @@
         "window_ids": [
           "a3b26223dd",
           "71db61a227",
-          "a4d6953f1f"
+          "a4d6953f1f",
+          "08cf955662",
+          "45edc90784"
         ]
       },
       {
@@ -1846,7 +2267,9 @@
         "window_ids": [
           "a3b26223dd",
           "71db61a227",
-          "a4d6953f1f"
+          "a4d6953f1f",
+          "08cf955662",
+          "45edc90784"
         ]
       },
       {
@@ -1860,7 +2283,9 @@
         "window_ids": [
           "a3b26223dd",
           "71db61a227",
-          "a4d6953f1f"
+          "a4d6953f1f",
+          "08cf955662",
+          "45edc90784"
         ]
       },
       {
@@ -1872,7 +2297,9 @@
           "news"
         ],
         "window_ids": [
-          "a4d6953f1f"
+          "a4d6953f1f",
+          "08cf955662",
+          "45edc90784"
         ]
       }
     ],
@@ -3161,14 +3588,182 @@
       "salience": 0.325,
       "asset_relevance": 0.0,
       "match_level": 1
+    },
+    {
+      "window_id": "815ff03ebd",
+      "evidence_id": "5d86a1eba505",
+      "source_type": "naver_research",
+      "date": "2026-07-20",
+      "asset_class": "대체투자",
+      "primary_topic": "에너지_원자재",
+      "title": "두개의 분수령: 유가와 오라클",
+      "source": "iM증권",
+      "broker": "iM증권",
+      "salience": 0.325,
+      "asset_relevance": 0.0,
+      "match_level": 1
+    },
+    {
+      "window_id": "815ff03ebd",
+      "evidence_id": "96f10ade295b",
+      "source_type": "naver_research",
+      "date": "2026-07-20",
+      "asset_class": "대체투자",
+      "primary_topic": "통화정책",
+      "title": "7월 금통위Review: 전쟁 → 수요측 물가로의 전환",
+      "source": "유진투자증권",
+      "broker": "유진투자증권",
+      "salience": 0.325,
+      "asset_relevance": 0.0,
+      "match_level": 1
+    },
+    {
+      "window_id": "815ff03ebd",
+      "evidence_id": "92d41b42ee0d",
+      "source_type": "naver_research",
+      "date": "2026-07-20",
+      "asset_class": "대체투자",
+      "primary_topic": "경기_소비",
+      "title": "주간 증시 브리핑",
+      "source": "유진투자증권",
+      "broker": "유진투자증권",
+      "salience": 0.325,
+      "asset_relevance": 0.0,
+      "match_level": 3
+    },
+    {
+      "window_id": "815ff03ebd",
+      "evidence_id": "80f82e0cef51",
+      "source_type": "naver_research",
+      "date": "2026-07-20",
+      "asset_class": "대체투자",
+      "primary_topic": "테크_AI_반도체",
+      "title": "[Morning Brief] 반도체 업종 약세 지속으로 미 증시 ..",
+      "source": "iM증권",
+      "broker": "iM증권",
+      "salience": 0.325,
+      "asset_relevance": 0.0,
+      "match_level": 3
+    },
+    {
+      "window_id": "815ff03ebd",
+      "evidence_id": "1f0f0f992b3c",
+      "source_type": "naver_research",
+      "date": "2026-07-20",
+      "asset_class": "대체투자",
+      "primary_topic": "경기_소비",
+      "title": "마켓레이더 - 설상가상 KOSPI 6,600p 이탈 (7월 20일)",
+      "source": "신한투자증권",
+      "broker": "신한투자증권",
+      "salience": 0.325,
+      "asset_relevance": 0.0,
+      "match_level": 3
+    },
+    {
+      "window_id": "815ff03ebd",
+      "evidence_id": "a7cc53fffa73",
+      "source_type": "naver_research",
+      "date": "2026-07-20",
+      "asset_class": "대체투자",
+      "primary_topic": "테크_AI_반도체",
+      "title": "Equity Strategy - 반도체 고점론의 정체",
+      "source": "유진투자증권",
+      "broker": "유진투자증권",
+      "salience": 0.325,
+      "asset_relevance": 0.0,
+      "match_level": 3
+    },
+    {
+      "window_id": "815ff03ebd",
+      "evidence_id": "06504607bfe8",
+      "source_type": "naver_research",
+      "date": "2026-07-20",
+      "asset_class": "대체투자",
+      "primary_topic": "경기_소비",
+      "title": "THE GLOBAL 주간 증시 전략",
+      "source": "대신증권",
+      "broker": "대신증권",
+      "salience": 0.325,
+      "asset_relevance": 0.0,
+      "match_level": 3
+    },
+    {
+      "window_id": "815ff03ebd",
+      "evidence_id": "a6d90a12e7cd",
+      "source_type": "naver_research",
+      "date": "2026-07-20",
+      "asset_class": "대체투자",
+      "primary_topic": "테크_AI_반도체",
+      "title": "사이드카가 일상이 된 증시, 반도체발 충격 반복",
+      "source": "대신증권",
+      "broker": "대신증권",
+      "salience": 0.325,
+      "asset_relevance": 0.0,
+      "match_level": 3
+    },
+    {
+      "window_id": "94c9813387",
+      "evidence_id": "9ae7338ee299",
+      "source_type": "naver_research",
+      "date": "2026-07-27",
+      "asset_class": "대체투자",
+      "primary_topic": "테크_AI_반도체",
+      "title": "7/24 KB 리서치 장마감코멘트",
+      "source": "KB증권",
+      "broker": "KB증권",
+      "salience": 0.606,
+      "asset_relevance": 0.0,
+      "match_level": 1
+    },
+    {
+      "window_id": "94c9813387",
+      "evidence_id": "cacab73b0c05",
+      "source_type": "naver_research",
+      "date": "2026-07-27",
+      "asset_class": "대체투자",
+      "primary_topic": "에너지_원자재",
+      "title": "기름뿜뿜 Weekly: 홍해 봉쇄 시나리오에서 정..",
+      "source": "iM증권",
+      "broker": "iM증권",
+      "salience": 0.606,
+      "asset_relevance": 0.0,
+      "match_level": 1
+    },
+    {
+      "window_id": "3ba0219909",
+      "evidence_id": "9ae7338ee299",
+      "source_type": "naver_research",
+      "date": "2026-07-27",
+      "asset_class": "국내주식",
+      "primary_topic": "테크_AI_반도체",
+      "title": "7/24 KB 리서치 장마감코멘트",
+      "source": "KB증권",
+      "broker": "KB증권",
+      "salience": 0.606,
+      "asset_relevance": 0.54,
+      "match_level": 1
+    },
+    {
+      "window_id": "3ba0219909",
+      "evidence_id": "cacab73b0c05",
+      "source_type": "naver_research",
+      "date": "2026-07-27",
+      "asset_class": "국내주식",
+      "primary_topic": "에너지_원자재",
+      "title": "기름뿜뿜 Weekly: 홍해 봉쇄 시나리오에서 정..",
+      "source": "iM증권",
+      "broker": "iM증권",
+      "salience": 0.606,
+      "asset_relevance": 0.4,
+      "match_level": 2
     }
   ],
   "debug": {
-    "window_count": 12,
-    "unmapped_windows": 1,
-    "evidence_total": 83,
+    "window_count": 17,
+    "unmapped_windows": 3,
+    "evidence_total": 95,
     "source_mix": {
-      "naver_research": 83,
+      "naver_research": 95,
       "news": 0
     },
     "graph_size": {

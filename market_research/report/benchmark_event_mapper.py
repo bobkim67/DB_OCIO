@@ -159,6 +159,8 @@ def detect_benchmark_windows(year: int, month: int) -> list[dict]:
         df_month = df[df['date'].str.startswith(month_str)].copy()
         if df_month.empty:
             continue
+        # move_from/span_move_pct 계산용 — 월 이전 lookback 포함 전체 시계열
+        bm_rows = df[['date', 'price']].to_dict('records')
 
         events = []
         for _, row in df_month.iterrows():
@@ -190,22 +192,51 @@ def detect_benchmark_windows(year: int, month: int) -> list[dict]:
             if (d_cur - d_prev).days <= WINDOW_GAP_DAYS and same_sig:
                 cur_group.append(ev)
             else:
-                windows.append(_finalize_window(bm_name, cur_group, BM_ASSET_CLASS_MAP))
+                windows.append(_finalize_window(bm_name, cur_group, BM_ASSET_CLASS_MAP,
+                                                series=bm_rows))
                 cur_group = [ev]
-        windows.append(_finalize_window(bm_name, cur_group, BM_ASSET_CLASS_MAP))
+        windows.append(_finalize_window(bm_name, cur_group, BM_ASSET_CLASS_MAP,
+                                        series=bm_rows))
 
     # 정렬: date_from 오름차순, 같으면 |zscore| 내림차순
     windows.sort(key=lambda w: (w['date_from'], -abs(w['zscore'])))
     return windows
 
 
-def _finalize_window(bm: str, events: list[dict], asset_map: dict) -> dict:
-    """events 묶음 → 단일 window dict."""
+def _finalize_window(bm: str, events: list[dict], asset_map: dict,
+                     series: 'list[dict] | None' = None) -> dict:
+    """events 묶음 → 단일 window dict.
+
+    ⚠ `benchmark_move_pct` 는 **pivot 일자의 5거래일 누적 수익률**이지
+    `date_from~date_to` 구간의 수익률이 아니다. 둘은 서로 다른 구간을 가리킨다
+    (실측 2026-07: 윈도우 7/13~7/16 의 pct 는 -15.46 인데 그 구간 실제는 +0.20).
+    이 값만 보고 기간을 붙여 인용하면 코멘트에 틀린 수치가 실린다 — 실제로
+    2026-07 시장 코멘트가 "7월 13~16일 -15.5%" 로 잘못 썼다.
+
+    → 수치가 항상 자기 구간을 달고 다니도록 명시 필드를 추가한다 (2026-08-03):
+      move_from / move_to  : `benchmark_move_pct` 가 실제로 측정한 구간
+      span_move_pct        : `date_from → date_to` 실제 수익률
+    `benchmark_move_pct` 자체는 하위호환을 위해 의미 변경 없이 유지한다.
+    """
     dates = [e['date'] for e in events]
-    zs = [e['z'] for e in events]
-    rs = [e['ret_5d'] for e in events]
     # 대표값: |z| 최대인 일자 기준
     pivot = max(events, key=lambda e: abs(e['z']))
+
+    move_from = move_to = pivot['date']
+    span_move_pct = None
+    if series:
+        all_dates = [r['date'] for r in series]
+        px = {r['date']: r['price'] for r in series}
+        try:
+            i = all_dates.index(pivot['date'])
+            move_from = all_dates[i - 5] if i >= 5 else all_dates[0]
+            move_to = pivot['date']
+        except ValueError:
+            pass
+        p0, p1 = px.get(dates[0]), px.get(dates[-1])
+        if p0 and p1:
+            span_move_pct = round((p1 / p0 - 1) * 100, 4)
+
     return {
         'window_id': _make_window_id(bm, dates[0], pivot['signal']),
         'asset_class': asset_map.get(bm, '미분류'),
@@ -214,6 +245,10 @@ def _finalize_window(bm: str, events: list[dict], asset_map: dict) -> dict:
         'date_to': dates[-1],
         'signal_type': pivot['signal'],
         'benchmark_move_pct': round(pivot['ret_5d'] * 100, 4),
+        # pct 가 실제로 측정한 구간 — 인용 시 반드시 이 쌍을 함께 쓸 것
+        'move_from': move_from,
+        'move_to': move_to,
+        'span_move_pct': span_move_pct,
         'zscore': round(pivot['z'], 4),
         'pivot_date': pivot['date'],
         'event_count': len(events),
