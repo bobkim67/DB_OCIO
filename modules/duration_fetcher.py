@@ -33,10 +33,9 @@ from pathlib import Path
 from typing import Any
 
 import requests
-import urllib3
 from bs4 import BeautifulSoup
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+from modules.data_loader import _use_os_truststore   # OS 신뢰 저장소 주입(사내 프록시 CA)
 
 
 # ============================================================
@@ -101,7 +100,8 @@ def _http_get(url: str, accept_html: bool = False, timeout: int = 15) -> request
     headers = dict(_HEADERS)
     if accept_html:
         headers["Accept"] = "text/html,application/xhtml+xml,*/*"
-    return requests.get(url, headers=headers, verify=False, timeout=timeout)
+    _use_os_truststore()   # 사내 프록시 self-signed CA → OS 신뢰 저장소로 검증(끄지 않음)
+    return requests.get(url, headers=headers, timeout=timeout)
 
 
 def _norm_yyyymmdd(s: str) -> str | None:

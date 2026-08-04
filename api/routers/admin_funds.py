@@ -250,13 +250,27 @@ def _build_excel(fund: str, period: str, xp) -> None:
         import calendar
         from datetime import date as _d
         from api.services.brinson_export_service import build_brinson_export_xlsx
+        from market_research.report.report_store import load_draft, load_final
         y, m = int(period[:4]), int(period[5:7])
+        # Comment 시트 = 발송용 보고서(sentrep) 승인본 우선 → 없으면 ①펀드코멘트 승인본
+        # → 그래도 없으면 보고서 draft. (이 함수는 보고서 승인 직후에 불리므로 보통 1순위)
+        _cmt = ''
+        for _get, _kw, _key in (
+            (load_final, {'target_suffix': REPORT_SUFFIX}, 'final_comment'),
+            (load_final, {}, 'final_comment'),
+            (load_draft, {'target_suffix': REPORT_SUFFIX}, 'draft_comment'),
+        ):
+            _d_ = _get(period, fund, **_kw)
+            if _d_ and str(_d_.get(_key) or '').strip():
+                _cmt = str(_d_[_key])
+                break
         content, _ = build_brinson_export_xlsx(
             fund,
             start_date=_d(y, m, 1),
             end_date=_d(y, m, calendar.monthrange(y, m)[1]),
             mapping_method='방법3', pa_method='8',
             fx_split=False, saa_mode='auto',
+            comment_text=_cmt or None,
         )
         xp.parent.mkdir(parents=True, exist_ok=True)
         xp.write_bytes(content)

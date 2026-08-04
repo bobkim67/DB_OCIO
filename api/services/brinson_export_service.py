@@ -17,6 +17,7 @@ from datetime import date, datetime, timedelta
 
 import pandas as pd
 
+from api.schemas.brinson import BrinsonSecContribDTO
 from config.funds import FUND_META
 
 from .brinson_service import build_brinson
@@ -141,6 +142,183 @@ def _period_label(s: date, e: date) -> str:
     return "기간"
 
 
+def _write_comment_sheet(wb, br, fmts, comment_text: str) -> None:
+    """Comment 시트 — 해당 기간 승인 운용보고 코멘트 본문.
+
+    발송 원고와 같은 문단 구조(`■ 월간 시장동향과 펀드의 움직임` / `■ 향후 시장전망과
+    펀드의 움직임` / `■ 매니저 코멘트`)를 그대로 옮긴다. 엑셀은 wrap 텍스트의 행 높이를
+    자동으로 잡아주지 않으므로 글자수로 줄 수를 추정해 set_row 한다.
+    """
+    ws = wb.add_worksheet("Comment")
+    ws.hide_gridlines(2)
+    body = fmts["wrap"]
+    ws.write(0, 0, f"{br.fund_name} ({br.fund_code}) — 운용보고 코멘트", fmts["title"])
+    ws.write(1, 0, f"기간 {br.start_date} ~ {br.end_date}", fmts["muted"])
+
+    # A열 폭(엑셀 문자 단위 ≈ 반각 1글자). 한글은 반각 2칸이므로 한 줄에 약 _WIDTH/2 글자.
+    # ⚠ 행 높이 추정과 **같은 단위**를 써야 한다 — 폭 55 에 줄바꿈은 110 기준으로 잡으면
+    #   행이 절반 높이로 계산돼 아래쪽 문장이 잘린다(2026-08-04 사용자 리포트).
+    _WIDTH = 120
+    _PER_LINE = _WIDTH - 6        # 여백/서식 오차 마진
+    r = 3
+    for para in str(comment_text).replace("\r\n", "\n").split("\n"):
+        p = para.strip()
+        if not p:
+            r += 1
+            continue
+        if p.startswith("■"):
+            ws.write(r, 0, p, fmts["title"])
+            r += 1
+            continue
+        ws.write(r, 0, p, body)
+        _cells = sum(2 if ord(ch) > 0x2000 else 1 for ch in p)   # 한글=2칸
+        _lines = max(1, -(-_cells // _PER_LINE))
+        ws.set_row(r, _lines * 16.5 + 4)
+        r += 1
+    ws.set_column(0, 0, _WIDTH)
+
+
+def _write_composition_sheet(wb, br, fmts) -> None:
+    """구성 시트(표0) — AP=기말 보유 스냅샷(현금 포함) vs BM/SAA 목표비중.
+
+    ★ 계층 시트(표1)의 AP비중은 **PA 비중**(시가평가/순자산)이라 현금·예금·콜론이 행으로
+    잡히지 않는다 — 손익 소스 `dt.MA000410` 에 현금 라인이 없고, R 골든 PA 도 미수금을
+    제외한다(`func_펀드_PA_모듈` L131). 그래서 유동성및기타 AP비중이 0 이 되고 합계가
+    현금 비중만큼 100% 에 미달한다(2026-07 08N33: 99.69%, 현금 0.27%).
+    FX 분리 모드에선 FX 오버레이가 더해져 합계가 130%대라 이 갭이 묻혔는데, FX 포함으로
+    바꾸면서 드러났다 (2026-08-04 사용자 지적).
+
+    화면 표0 은 이미 `ap_composition`(build_holdings 기말 스냅샷)으로 우회하고 있어
+    엑셀에도 같은 시트를 둔다. **표1(기여 분해)은 손대지 않는다 — 골든 attribution 불변.**
+    FX 는 오버레이라 제외(화면 표0 동일 규칙).
+    """
+    lbl = "SAA" if br.bm_source == "SAA" else "BM"
+    has_bm = br.bm_source != "none"
+    ws = wb.add_worksheet("구성")
+    ws.hide_gridlines(2)
+    ws.write(0, 0, f"{br.fund_name} ({br.fund_code}) — 구성 (기말 보유 스냅샷)", fmts["title"])
+    _note = f"기준일 {br.end_date} · AP=기말 보유(현금·미수금 포함, FX 제외)"
+    if has_bm:
+        _note += f" · {lbl}=목표비중"
+    ws.write(1, 0, _note, fmts["muted"])
+
+    bm_w = {r.asset_class: r.bm_weight for r in br.asset_rows}
+    comp = {c.asset_class: c for c in (br.ap_composition or [])}
+    # 표1 자산군 순서 유지 → ap_composition 에만 있는 자산군(유동성및기타 등)을 뒤에 붙임
+    order = [r.asset_class for r in br.asset_rows if r.asset_class != "FX"]
+    order += [c.asset_class for c in (br.ap_composition or [])
+              if c.asset_class not in order and c.asset_class != "FX"]
+
+    # (자산군, AP비중, [(종목명, 비중)]) 로 먼저 조립 — 잔차를 유동성및기타에 얹어야 하므로
+    # 행을 쓰기 전에 합계가 확정돼야 한다.
+    rows: list[list] = []
+    for cls in order:
+        cp = comp.get(cls)
+        rows.append([cls,
+                     float(cp.weight_pct) if cp else 0.0,
+                     [(it.item_nm, float(it.weight_pct)) for it in (cp.items if cp else [])]])
+
+    # ★ 100% 잔차를 유동성및기타에 귀속 (2026-08-04 사용자 지시).
+    # 잔차 = NAST − Σ(스냅샷 보유) = 미수/미지급 계정의 순액. 로더가 `미수|미지급` 행을
+    # 제외하고(data_loader `~contains('미지급|미수')`), holdings_service 4.7 의 균형 라인은
+    # |잔차| ≤ NAST×0.5% 면 노이즈로 보고 안 붙인다 → 합계가 100% 에 살짝 못 미친다.
+    # (2026-07 08N33: 매도미수금 +1.93% / 매입미지급금 −1.93% 가 상계돼 순 0.04%)
+    # 발송 자료는 합이 100% 여야 하므로 잔차를 유동성및기타 항목으로 명시해 채운다.
+    _LIQ = "유동성및기타"
+    resid = 100.0 - sum(x[1] for x in rows)
+    if abs(resid) >= 0.005:
+        tgt = next((x for x in rows if x[0] == _LIQ), None)
+        if tgt is None:
+            tgt = [_LIQ, 0.0, []]
+            rows.append(tgt)
+        tgt[1] += resid
+        tgt[2].append(("현금·미수금 잔여" if resid >= 0 else "미지급금 잔여", resid))
+
+    r = 3
+    for c, h in ((0, "구분"), (1, "AP비중(%)"), (2, f"{lbl}비중(%)"), (3, "차이(%p)")):
+        ws.write(r, c, h, fmts["head"])
+    r += 1
+    tot_ap = tot_bm = 0.0
+    for cls, ap_w, items in rows:
+        bw = float(bm_w.get(cls, 0.0))
+        ws.write(r, 0, cls, fmts["l1"])
+        ws.write_number(r, 1, ap_w, fmts["l1w"])
+        if has_bm:
+            ws.write_number(r, 2, bw, fmts["l1w"])
+            ws.write_number(r, 3, ap_w - bw, fmts["l1n"])
+        else:
+            ws.write(r, 2, "—", fmts["l1"])
+            ws.write(r, 3, "—", fmts["l1"])
+        tot_ap += ap_w
+        tot_bm += bw
+        r += 1
+        for nm, w in items:
+            ws.write(r, 0, nm, fmts["l3"])
+            ws.write_number(r, 1, w, fmts["l3w"])
+            r += 1
+    ws.write(r, 0, "합계", fmts["thead"])
+    ws.write_number(r, 1, tot_ap, fmts["tnum"])
+    if has_bm:
+        ws.write_number(r, 2, tot_bm, fmts["tnum"])
+    r += 2
+
+    if br.bm_components:
+        ws.write(r, 0, f"{lbl} 구성", fmts["title"])
+        r += 1
+        for c, h in ((0, "지수"), (1, "목표비중(%)"), (2, "자산군"), (3, "지역"), (4, "헤지")):
+            ws.write(r, c, h, fmts["head"])
+        r += 1
+        for cmp_ in br.bm_components:
+            ws.write(r, 0, cmp_.name, fmts["cell"])
+            ws.write_number(r, 1, float(cmp_.weight), fmts["num"])
+            ws.write(r, 2, cmp_.asset_class, fmts["cell"])
+            ws.write(r, 3, cmp_.region or "—", fmts["cell"])
+            ws.write(r, 4, "H" if cmp_.hedged else "—", fmts["cell"])
+            r += 1
+        r += 1
+
+    # proxy 구성 — 안전자산(채권 ex-HY·EM)→KAP All / 나머지→MSCI ACWI.
+    # Overview 의 "기간별 수익률 — proxy 기준" 표와 같은 벤치마크의 구성 내역이다.
+    # weight 는 fraction(0.598) 이라 %로 환산한다(등록 SAA 컴포넌트는 이미 %).
+    try:
+        from modules.data_loader import (
+            _build_proxy_bm_info,
+            _map_bm_component_to_asset_class,
+        )
+        _px = _build_proxy_bm_info(br.fund_code, br.start_date.strftime("%Y%m%d"))
+    except Exception:                     # noqa: BLE001 — proxy 실패는 시트만 생략
+        _px = None
+    if _px and _px.get("components"):
+        ws.write(r, 0, "proxy 구성", fmts["title"])
+        r += 1
+        ws.write(r, 0, "안전자산(채권 ex-HY·EM) → KAP All · 나머지 → MSCI ACWI. "
+                       "비중은 등록 SAA 의 주식/채권 매핑 고정값.", fmts["muted"])
+        r += 1
+        for c, h in ((0, "지수"), (1, "목표비중(%)"), (2, "자산군"), (3, "지역"), (4, "헤지")):
+            ws.write(r, c, h, fmts["head"])
+        r += 1
+        for cmp_ in _px["components"]:
+            _nm = str(cmp_.get("name", ""))
+            ws.write(r, 0, _nm, fmts["cell"])
+            ws.write_number(r, 1, float(cmp_.get("weight", 0.0)) * 100.0, fmts["num"])
+            try:
+                _ac = _map_bm_component_to_asset_class(_nm, "방법3")
+            except Exception:             # noqa: BLE001
+                _ac = ""
+            ws.write(r, 2, _ac or "—", fmts["cell"])
+            ws.write(r, 3, str(cmp_.get("region") or "—"), fmts["cell"])
+            ws.write(r, 4, "H" if cmp_.get("hedged") else "—", fmts["cell"])
+            r += 1
+        r += 1
+
+    ws.write(r, 0, "※ AP비중 = 기말 보유 스냅샷(현금·미수금 포함, 순자산 대비 합 100%). "
+                   "결제 대기 중인 미수/미지급 순액은 유동성및기타에 귀속했습니다. "
+                   "성과분석 시트의 AP비중은 기간 PA 비중(시가평가/순자산)이라 현금이 제외됩니다.",
+             fmts["muted"])
+    ws.set_column(0, 0, 38)
+    ws.set_column(1, 4, 12)
+
+
 def _write_hierarchy_sheet(wb, br1, br3, dur, fmts, sheet_name: str) -> None:
     """자산군별(계층) 시트 — 주식/채권/대체(방법1) → 국내/해외…(방법3) → 종목 3-레벨.
 
@@ -182,6 +360,30 @@ def _write_hierarchy_sheet(wb, br1, br3, dur, fmts, sheet_name: str) -> None:
         secs_by.setdefault(s.asset_class, []).append(s)
     for arr in secs_by.values():
         arr.sort(key=lambda x: -x.weight_pct)
+    # ★ AP비중 합계 100% 보정 — 잔여를 유동성및기타에 귀속 (2026-08-04 사용자 지시).
+    #   PA 비중(=시가평가/순자산)은 현금·예금·미수금이 손익 소스(MA000410)에 없어 행이 안 잡히고,
+    #   그만큼 합계가 100% 에 미달한다(R 골든 로직 그대로. 2026-07 08N33: 99.69%).
+    #   "유동성및기타" 는 원래 그 잔여가 들어갈 자리이므로 비중을 채워 합을 100% 로 맞춘다.
+    #   ⚠ **비중 열만** 보정한다 — 기여/Alloc/Select/Cross·수익률은 손대지 않아 attribution 불변.
+    #   ⚠ FX 분리 모드는 FX 오버레이가 더해져 합계가 원래 100% 를 넘으므로 보정하지 않는다.
+    _LIQ_CLS = "유동성및기타"
+    if not br3.fx_split:
+        for _rows in (br1_rows, br3_rows):
+            _resid = 100.0 - sum(x.ap_weight for x in _rows)
+            if abs(_resid) < 0.005:
+                continue
+            _tgt = next((x for x in _rows if x.asset_class == _LIQ_CLS), None)
+            if _tgt is None:
+                continue
+            _tgt.ap_weight += _resid
+            if _rows is br3_rows:
+                # 계층 표의 소계는 종목 셀 SUM 수식이라 종목 행도 함께 있어야 값이 맞는다
+                secs_by.setdefault(_LIQ_CLS, []).append(BrinsonSecContribDTO(
+                    asset_class=_LIQ_CLS,
+                    item_nm="현금·미수금 잔여" if _resid >= 0 else "미지급금 잔여",
+                    weight_pct=_resid, return_pct=0.0, contrib_pct=0.0,
+                ))
+
     # 방법3 leaf 를 L1 로 그룹핑 (정렬 유지 → 국내→해외 순)
     leaf_by_l1: dict[str, list] = {}
     for rowv in br3_rows:
@@ -420,8 +622,13 @@ def build_brinson_export_xlsx(
     pa_method: str = "8",
     fx_split: bool = False,
     saa_mode: str = "auto",
+    comment_text: str | None = None,
 ) -> tuple[bytes, str]:
-    """xlsx bytes + 파일명(ascii) 생성. 화면 조회조건 스냅샷 + 방법1 재계산 + 전체기간 시계열."""
+    """xlsx bytes + 파일명(ascii) 생성. 화면 조회조건 스냅샷 + 방법1 재계산 + 전체기간 시계열.
+
+    comment_text 를 주면 'Comment' 시트로 운용보고 코멘트 본문을 함께 싣는다
+    (Admin 보고서 승인 경로. 성과분석 탭 다운로드는 코멘트가 없어 시트도 생기지 않는다).
+    """
     br = build_brinson(
         fund_code, start_date=start_date, end_date=end_date,
         mapping_method=mapping_method, pa_method=pa_method,
@@ -463,6 +670,7 @@ def build_brinson_export_xlsx(
         "head": _fmt({"bold": True, "bg_color": "#EEF1F5", "border": 1, "align": "center"}),
         "thead": _fmt({"bold": True, "top": 1}),
         "cell": _fmt({}),
+        "wrap": _fmt({"text_wrap": True, "valign": "top"}),   # Comment 시트 본문
         "k": _fmt({"font_color": "#606870"}),
         "num": _fmt({"num_format": "0.00"}),
         "num_s": _fmt({"num_format": "+0.00;-0.00;0.00"}),
@@ -562,7 +770,14 @@ def build_brinson_export_xlsx(
     ws.set_column(9, 9, 13)   # proxy 표 구분
     ws.set_column(10, 16, 9)  # proxy 표 기간 컬럼
 
-    # ── 2·3) 성과분석 시트 — 조회기간 + YTD (2026-07-03 사용자 지정) ──
+    # ── 2) Comment — 승인 운용보고 코멘트 (주어졌을 때만, 2026-08-04) ──
+    if comment_text and str(comment_text).strip():
+        _write_comment_sheet(wb, br3, fmts, str(comment_text))
+
+    # ── 3) 구성 시트(표0) — 기말 보유 스냅샷 기준 AP비중 (현금 포함, 2026-08-04) ──
+    _write_composition_sheet(wb, br3, fmts)
+
+    # ── 3·4) 성과분석 시트 — 조회기간 + YTD (2026-07-03 사용자 지정) ──
     dur_info = _duration_info(fund_code, br.end_date)
     _lbl1 = _period_label(br.start_date, br.end_date)
     _write_hierarchy_sheet(wb, br1, br3, dur_info, fmts, f"성과분석({_lbl1})")

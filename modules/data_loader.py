@@ -18,6 +18,30 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================
+# 사내 프록시 TLS 대응
+# ============================================================
+# 사내 프록시가 TLS 를 중간에서 끊고 자체 서명 CA 로 다시 묶기 때문에 표준 CA 번들
+# (certifi)로는 외부 HTTPS 검증이 실패한다. 사내 루트 CA 는 Windows 신뢰 저장소에
+# 이미 배포돼 있으므로, truststore 로 파이썬 ssl 을 OS 저장소에 연결해 해결한다.
+# → verify=False (검증 비활성) 를 쓰지 않고도 통과. 최초 1회만 주입.
+_TRUSTSTORE_READY = False
+
+
+def _use_os_truststore() -> bool:
+    """파이썬 ssl 이 OS(Windows) 신뢰 저장소를 쓰도록 주입. 성공 여부 반환."""
+    global _TRUSTSTORE_READY
+    if _TRUSTSTORE_READY:
+        return True
+    try:
+        import truststore
+        truststore.inject_into_ssl()
+        _TRUSTSTORE_READY = True
+    except Exception as e:      # truststore 미설치 등 — 호출부의 fallback 에 맡긴다
+        logger.warning(f"[TLS] OS 신뢰 저장소 주입 실패: {e}")
+    return _TRUSTSTORE_READY
+
+
+# ============================================================
 # 인메모리 TTL 캐시 (FastAPI 로딩 단축용 — 외부 의존성 없음)
 # 데이터는 EOD 1회 갱신 + 캐시 키에 날짜 포함 → 일자 변경 시 자동 무효.
 # ============================================================
@@ -3166,8 +3190,7 @@ def _load_usdkrw_from_ecos(start_date: str = None, end_date: str = None) -> pd.D
 
     캐시: 펀드무관(날짜키)·네트워크 콜 → 9펀드 워밍업서 1회만 호출. 호출처 read-only. TTL 6h."""
     import requests
-    import warnings
-    warnings.filterwarnings('ignore', message='Unverified HTTPS request')
+    _use_os_truststore()   # 사내 프록시 self-signed CA → OS 신뢰 저장소로 검증(끄지 않음)
 
     api_key = os.environ.get('ECOS_API_KEY', '')
     if not api_key:
@@ -3180,7 +3203,7 @@ def _load_usdkrw_from_ecos(start_date: str = None, end_date: str = None) -> pd.D
            f"1/10000/731Y003/D/{st}/{ed}/0000003")
 
     try:
-        resp = requests.get(url, timeout=15, verify=False)
+        resp = requests.get(url, timeout=15)
         data = resp.json()
     except Exception as e:
         logger.warning(f"[ECOS API] 요청 실패, DWCI10260 fallback: {e}")
