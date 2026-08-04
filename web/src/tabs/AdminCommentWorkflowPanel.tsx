@@ -11,7 +11,14 @@ import { useFunds } from "../hooks/useFunds";
  */
 type Stage = {
   status: string; text: string; approved_at: string; generated_at: string;
-  excel_ready?: boolean;   // 4JM12 월간: DB생명 데이터 엑셀 생성 여부
+  excel_ready?: boolean;   // 보고서 단계 데이터 엑셀 생성 여부 (EXCEL_SPEC 참조)
+};
+
+// 보고서 단계에 딸린 데이터 엑셀 — 백엔드 `admin_funds._EXCEL_SPECS` 와 1:1 대응.
+// on = 어느 단계에서 구워지는지 (4JM12=생성 시 / 08N33=승인 시).
+const EXCEL_SPEC: Record<string, { label: string; on: "generate" | "approve" }> = {
+  "4JM12": { label: "DB생명 엑셀", on: "generate" },
+  "08N33": { label: "월간운용보고서 엑셀", on: "approve" },
 };
 
 const ST_LABEL: Record<string, string> = {
@@ -281,14 +288,18 @@ export default function AdminCommentWorkflowPanel({ fundCode }: { fundCode?: str
                   onClick={() => act("report/draft", { period, text: editRpt }, "보고서 수정 저장")}>수정 저장</button>
                 <button type="button" className="approve" disabled={!!busy || wf.report.status === "not_generated"}
                   onClick={() => approveStage("report")}>승인</button>
-                {/* 4JM12 월간: 보고서 생성 시 DB생명 데이터 엑셀 동시 산출 (s6=승인 코멘트) */}
-                {wf.report.excel_ready && (
-                  <a href={`/api/admin/funds/${fund}/report/excel?period=${period}`}>
-                    <button type="button">DB생명 엑셀 다운로드</button>
-                  </a>
-                )}
-                {fund === "4JM12" && kind === "월간" && !wf.report.excel_ready && (
-                  <span className="ref">보고서 생성 시 DB생명 월간보고 엑셀이 함께 생성됩니다</span>
+                {/* 보고서 단계 데이터 엑셀 — 월간에만, EXCEL_SPEC 등록 펀드만 노출 */}
+                {kind === "월간" && EXCEL_SPEC[fund] && (
+                  wf.report.excel_ready ? (
+                    <a href={`/api/admin/funds/${fund}/report/excel?period=${period}`}>
+                      <button type="button">{EXCEL_SPEC[fund].label} 다운로드</button>
+                    </a>
+                  ) : (
+                    <span className="ref">
+                      보고서 {EXCEL_SPEC[fund].on === "approve" ? "승인" : "생성"} 시{" "}
+                      {EXCEL_SPEC[fund].label}이 함께 생성됩니다
+                    </span>
+                  )
                 )}
               </div>
               <AutoTextarea value={editRpt} onChange={setEditRpt}

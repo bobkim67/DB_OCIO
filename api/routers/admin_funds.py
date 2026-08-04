@@ -210,18 +210,80 @@ def _compact_market_payload(merged: dict | None) -> dict | None:
     return out
 
 
-# ── 4JM12 DB생명 월간보고 엑셀 (2026-07-31 사용자 지시) ──
-# 보고서 생성(2단계, 코멘트 승인 게이트 뒤)이 실행되면 tools.dblife_monthly_excel 로
-# 데이터 엑셀을 함께 생성한다. s6 코멘트 = 1단계 승인 코멘트(final.json)가 자동 인용됨.
-_EXCEL_FUND, _EXCEL_KIND = '4JM12', '월간'
+# ── 보고서 단계에 딸린 데이터 엑셀 (펀드별) ──
+# 4JM12(2026-07-31): 보고서 **생성** 시 tools.dblife_monthly_excel 로 DB생명 데이터 엑셀.
+#   s6 코멘트 = 1단계 승인 코멘트(final.json)가 자동 인용됨.
+# 08N33(2026-08-04): 보고서 **승인** 시 성과분석 엑셀(=6월 발송본 `월간운용보고서_08N33_*`
+#   과 동일 산출물). 코멘트 본문과 무관한 PA 데이터라 승인 시점에 확정본으로 굽는다.
+#   6월 발송본 역산 파라미터: 기간=월초~월말 · 방법3 · pa_method='8' · SAA.
+#   ⚠ FX 만 6월 발송본과 다르다 — 발송본은 'FX 분리'였으나 코멘트가 FX 포함 기준으로
+#   전환돼(2026-08-04) 엑셀도 **FX 포함**으로 맞춘다(사용자 지시). 환효과를 별도 FX
+#   자산군으로 떼지 않고 각 해외 자산군 수익률에 접는다 → 코멘트 분해와 같은 기준.
+#   총수익률은 두 방식이 동일하고 분해만 달라진다.
+_EXCEL_SPECS = {
+    '4JM12': {'kind': '월간', 'on': 'generate', 'label': 'DB생명 엑셀',
+              'name': 'DB생명_월간보고_데이터_{ym}.xlsx'},
+    '08N33': {'kind': '월간', 'on': 'approve', 'label': '월간운용보고서 엑셀',
+              'name': '월간운용보고서_08N33_{y}년{m}월말.xlsx'},
+}
+_EXCEL_FUND, _EXCEL_KIND = '4JM12', '월간'   # (legacy 별칭 — 기존 참조 보존)
 
 
 def _excel_path(fund: str, period: str):
     from pathlib import Path as _P
-    if fund != _EXCEL_FUND or not re.fullmatch(r'\d{4}-(0[1-9]|1[0-2])', period or ''):
+    spec = _EXCEL_SPECS.get(fund)
+    if not spec or not re.fullmatch(r'\d{4}-(0[1-9]|1[0-2])', period or ''):
         return None
+    y, m = period.split('-')
     base = _P(__file__).resolve().parent.parent.parent
-    return base / 'output' / f'DB생명_월간보고_데이터_{period.replace("-", "")}.xlsx'
+    return base / 'output' / spec['name'].format(
+        ym=period.replace('-', ''), y=y, m=int(m))
+
+
+def _build_excel(fund: str, period: str, xp) -> None:
+    """펀드별 데이터 엑셀 생성. 호출자가 예외를 처리한다."""
+    if fund == '4JM12':
+        from tools.dblife_monthly_excel import build as build_dblife_excel
+        build_dblife_excel(period, xp)
+        return
+    if fund == '08N33':
+        import calendar
+        from datetime import date as _d
+        from api.services.brinson_export_service import build_brinson_export_xlsx
+        y, m = int(period[:4]), int(period[5:7])
+        content, _ = build_brinson_export_xlsx(
+            fund,
+            start_date=_d(y, m, 1),
+            end_date=_d(y, m, calendar.monthrange(y, m)[1]),
+            mapping_method='방법3', pa_method='8',
+            fx_split=False, saa_mode='auto',
+        )
+        xp.parent.mkdir(parents=True, exist_ok=True)
+        xp.write_bytes(content)
+        return
+    raise RuntimeError(f'엑셀 빌더 미정의: {fund}')
+
+
+def _run_excel_step(fund: str, period: str, kind: str | None, when: str, stage) -> None:
+    """해당 단계(when='generate'|'approve')에 지정된 펀드만 엑셀을 굽는다.
+
+    kind=None 이면 유형 검사를 생략한다 — 승인 body(PeriodBodyDTO)에는 kind 가 없고,
+    `_excel_path` 의 period 정규식(YYYY-MM)이 이미 월간 외 기간을 걸러낸다.
+    """
+    spec = _EXCEL_SPECS.get(fund)
+    if not spec or spec['on'] != when or (kind is not None and spec['kind'] != kind):
+        return
+    xp = _excel_path(fund, period)
+    if xp is None:
+        return
+    try:
+        _build_excel(fund, period, xp)
+        stage.excel_ready = True
+    except Exception as exc:
+        # 텍스트 보고서(draft/final)는 이미 저장됨 — 엑셀 실패만 명확히 알린다
+        raise HTTPException(
+            status_code=500,
+            detail=f"보고서는 저장됨. {spec['label']} 생성 실패: {exc}")
 
 
 def _stage(period: str, fund: str, suffix: str | None) -> WorkflowStageDTO:
@@ -465,17 +527,7 @@ def generate_report(body: GenBodyDTO, fund: str = Path(..., max_length=32)) -> W
         'edit_history': [],
     }, target_suffix=REPORT_SUFFIX)
     stage = _stage(body.period, fund, REPORT_SUFFIX)
-    # 4JM12 월간: DB생명 월간보고 데이터 엑셀 동시 생성 (s6 = 승인 코멘트 자동 인용)
-    xp = _excel_path(fund, body.period) if body.kind == _EXCEL_KIND else None
-    if xp is not None:
-        try:
-            from tools.dblife_monthly_excel import build as build_dblife_excel
-            build_dblife_excel(body.period, xp)
-            stage.excel_ready = True
-        except Exception as exc:
-            # 텍스트 보고서 draft 는 이미 저장됨 — 엑셀 실패만 명확히 알린다
-            raise HTTPException(status_code=500,
-                                detail=f'보고서 텍스트는 생성됨. DB생명 엑셀 생성 실패: {exc}')
+    _run_excel_step(fund, body.period, body.kind, 'generate', stage)
     return stage
 
 
@@ -504,4 +556,6 @@ def approve_report(body: PeriodBodyDTO, fund: str = Path(..., max_length=32)) ->
     from market_research.report.report_store import approve_and_save_final
     if approve_and_save_final(body.period, fund, target_suffix=REPORT_SUFFIX) is None:
         raise HTTPException(status_code=404, detail='보고서 draft 없음 — 먼저 생성')
-    return _stage(body.period, fund, REPORT_SUFFIX)
+    stage = _stage(body.period, fund, REPORT_SUFFIX)
+    _run_excel_step(fund, body.period, None, 'approve', stage)
+    return stage
