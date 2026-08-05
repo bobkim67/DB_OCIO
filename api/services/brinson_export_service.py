@@ -155,25 +155,19 @@ def _write_comment_sheet(wb, br, fmts, comment_text: str) -> None:
     ws.write(0, 0, f"{br.fund_name} ({br.fund_code}) — 운용보고 코멘트", fmts["title"])
     ws.write(1, 0, f"기간 {br.start_date} ~ {br.end_date}", fmts["muted"])
 
-    # A열 폭(엑셀 문자 단위 ≈ 반각 1글자). 한글은 반각 2칸이므로 한 줄에 약 _WIDTH/2 글자.
-    # ⚠ 행 높이 추정과 **같은 단위**를 써야 한다 — 폭 55 에 줄바꿈은 110 기준으로 잡으면
-    #   행이 절반 높이로 계산돼 아래쪽 문장이 잘린다(2026-08-04 사용자 리포트).
-    _WIDTH = 120
-    _PER_LINE = _WIDTH - 6        # 여백/서식 오차 마진
+    # ★ 행 높이는 **설정하지 않는다** — Excel 이 wrap 텍스트에 맞춰 자동으로 잡는다
+    #   (2026-08-05 실측: set_row 미호출 115.5 / set_row(100) 고정 100.0).
+    #   종전엔 글자수로 줄 수를 추정해 set_row 했는데, 폭·서식 오차로 문장이 잘렸다.
+    #   ⚠ Excel COM `Rows.AutoFit()` 은 쓰지 말 것 — 저장 시 산출물이 **DRM 재래핑**된다
+    #     (실측 확인: 저장 후 헤더 `<DOCUMENT SAFER`).
+    _WIDTH = 120                  # A열 폭(엑셀 문자 단위 ≈ 반각). 한글 약 60자/줄
     r = 3
     for para in str(comment_text).replace("\r\n", "\n").split("\n"):
         p = para.strip()
         if not p:
             r += 1
             continue
-        if p.startswith("■"):
-            ws.write(r, 0, p, fmts["title"])
-            r += 1
-            continue
-        ws.write(r, 0, p, body)
-        _cells = sum(2 if ord(ch) > 0x2000 else 1 for ch in p)   # 한글=2칸
-        _lines = max(1, -(-_cells // _PER_LINE))
-        ws.set_row(r, _lines * 16.5 + 4)
+        ws.write(r, 0, p, fmts["title"] if p.startswith("■") else body)
         r += 1
     ws.set_column(0, 0, _WIDTH)
 
