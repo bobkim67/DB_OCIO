@@ -17,6 +17,7 @@
 """
 from __future__ import annotations
 
+import re as _re
 import time
 import uuid
 from datetime import date, timedelta
@@ -371,6 +372,56 @@ def _month_last_bday(year: int, month: int):
         return (load_business_days(year, month) or {}).get('cur_month_last')
     except Exception:
         return None
+
+
+# 환헤지 레인지 — **DXY 대비 원화 상대가치(RV)** 기준 (2026-08-06 사용자 확정).
+#   DXY 현행 유지 가정 하에 스프레드가 롤링1Y 분포의 μ ~ +2σ 사이를 움직인다고 본다.
+#   정의·검증은 `report/fx_rv_range.py` 참조 (사내 알파페어 화면과 수치 동일).
+#   레인지는 최종적으로 운용역 판단이라 **제안값**이며 Admin 에서 고친다.
+_HEDGE_RANGE_RE = _re.compile(
+    r'(\d{1,2},?\d{3})\s*원?\s*~\s*(\d{1,2},?\d{3})\s*원')
+
+
+def _hedge_line(fund_code: str, period_key: str, end_dt, warnings: list) -> str:
+    """환헤지 비율 문장 — **전월 승인본 문장을 그대로 잇고 레인지 숫자만 교체**한다
+    (2026-08-06 사용자 지시: "레인지만 업데이트하고 나머진 전월과 동일").
+
+    전월 문장이 없거나 레인지 패턴을 못 찾으면 빈 문자열/원문을 돌려주고 경고한다 —
+    지어내지 않는다.
+    """
+    from market_research.report.report_store import load_final
+
+    y, m = int(period_key[:4]), int(period_key[5:7])
+    py, pm = (y - 1, 12) if m == 1 else (y, m - 1)
+    prev = load_final(f'{py}-{pm:02d}', fund_code)
+    body = str((prev or {}).get('final_comment') or '')
+    mt = _re.search(r'환헤지\s*비율\s*:\s*(.+?)(?:\n\s*\n|\Z)', body, _re.S)
+    if not mt:
+        warnings.append(
+            f'{py}-{pm:02d} 승인본에서 환헤지 비율 문단을 찾지 못했습니다 — '
+            f'환헤지 문장을 직접 작성하세요')
+        return ''
+    line = ' '.join(mt.group(1).split())
+
+    from market_research.report.fx_rv_range import compute as _rv
+    rv = _rv(str(end_dt)) if end_dt is not None else None
+    if not rv:
+        warnings.append('원화 RV 분포를 계산하지 못해 환헤지 레인지를 전월 값 그대로 '
+                        '두었습니다 — 직접 확인하세요')
+        return line
+    lo, hi = rv['range_mu_2s']
+    new, n = _HEDGE_RANGE_RE.subn(f'{lo:,}원 ~ {hi:,}원', line, count=1)
+    if not n:
+        warnings.append('전월 환헤지 문장에서 레인지(0,000원 ~ 0,000원) 패턴을 찾지 '
+                        '못했습니다 — 레인지를 직접 수정하세요')
+        return line
+    p_lo, p_hi = rv['range_pm_2s']
+    warnings.append(
+        f"환헤지 레인지 제안 {lo:,}~{hi:,}원 — DXY 현행 유지 · 원화 RV 스프레드가 "
+        f"μ~+2σ 구간(롤링1Y μ={rv['mu']}% σ={rv['sd']}%p, 현재 z={rv['z']:+}σ, "
+        f"기준일 {rv['asof']} {rv['spot']:,}원). 좁으면 ±2σ={p_lo:,}~{p_hi:,}원. "
+        f"운용역 판단으로 조정하세요")
+    return new
 
 
 def _perf_period_label(mode: str, end_dt, quarter: int) -> str:
@@ -856,9 +907,13 @@ def generate_fund_comment_and_save(
                 sub_line = ('{who}의 비중은 {r} 수준으로 유지하였습니다.'.format(
                     who='와 '.join(f'{l}포트폴리오' for l in subs),
                     r=(_FC.get(fund_code) or {}).get('sub_ratio', 'N/A')))
+            # 포맷 E(DB생명) 환헤지 문장 — 전월 승계 + 레인지만 기간말 환율 기준 제안
+            hedge_line = ''
+            if fmt == 'E':
+                hedge_line = _hedge_line(fund_code, period_key, end_dt, data_warnings)
             comment_text_raw = assemble_seeded_comment(
                 fmt, seed_sections['market'], seed_sections['outlook'],
-                blocks, sub_line=sub_line)
+                blocks, sub_line=sub_line, hedge_line=hedge_line)
             seed_meta['blocks'] = {k: len(v) for k, v in blocks.items()}
         else:
             seed_meta = {'used': False, 'reason': 'block_parse_failed', 'format': fmt}

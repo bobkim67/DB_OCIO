@@ -22,11 +22,15 @@ from market_research.report.market_seed import compress_market_paragraph
 
 # ── 설정 결선 ──
 
-def test_only_2jm23_is_overridden():
-    """다른 펀드는 종전 경로 그대로여야 한다 (골든 불변)."""
-    assert set(MARKET_PARA_CAP) == {'2JM23'}
+def test_override_scope():
+    """override 대상 펀드만 바뀌어야 한다 (나머지는 골든 불변).
+
+    시장동향 캡은 2JM23·4JM12 공유(같은 문단, 2026-08-06). 성과 문장 코드 고정은
+    2JM23 전용 — 4JM12(포맷 E)는 '펀드 성과' 를 BM 대비로 쓰므로 해당 없다.
+    """
+    assert set(MARKET_PARA_CAP) == {'2JM23', '4JM12'}
+    assert all(v == 400 for v in MARKET_PARA_CAP.values())
     assert FIXED_PERF_SENTENCE_FUNDS == {'2JM23'}
-    assert MARKET_PARA_CAP['2JM23'] == 400
 
 
 # ── 성과 문장 (코드 고정) ──

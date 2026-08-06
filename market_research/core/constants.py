@@ -150,7 +150,9 @@ FUND_CONFIGS = {
         'position_constraints': _COMMON_CONSTRAINTS,
     },
     '4JM12': {
-        'format': 'D', 'target_return': None, 'name': '4JM12',
+        # E = DB생명 6슬롯 (2026-08-06 사용자 스펙). 발송본 s6 가 D 와 구조가 다르다:
+        #   운용경과(시장 동향 / 운용 경과 / 펀드 성과) + 운용계획(매크로 / 운용계획 / 환헤지 비율)
+        'format': 'E', 'target_return': None, 'name': '4JM12',
         'philosophy': (
             'BM은 MSCI ACWI Standard(45%) + KIS 종합채권(55%) 복합지수입니다. '
             '경기국면모델(팽창/회복/둔화/침체) 기반 TAA 전략으로 운용하며, '
@@ -186,7 +188,9 @@ FUND_CONFIGS = {
 # 수치 나열 한 문장으로 고정한다. 미등록 펀드는 전부 종전 경로 그대로다.
 
 # 시장동향(공통 시드 조립분) 상한 — 공백 포함 글자수. 초과하면 LLM 이 1회 재압축한다.
-MARKET_PARA_CAP = {'2JM23': 400}
+# 4JM12 는 2026-08-06 사용자 지시로 **2JM23 과 같은 문단**을 쓴다. 캡이 같으면
+# 재압축 캐시(원문 해시+cap)도 공유해 LLM 이 기간당 1회만 돈다.
+MARKET_PARA_CAP = {'2JM23': 400, '4JM12': 400}
 
 # 성과 문단을 LLM 이 아니라 **코드가 결정론적으로** 쓰는 펀드.
 # 수치가 순수 나열이라 LLM 이 개입하면 오기·표현 흔들림만 생긴다.
