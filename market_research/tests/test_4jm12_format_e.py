@@ -104,9 +104,25 @@ _GYEONGGWA_OK = (
 )
 
 
-def test_gyeonggwa_allows_numbers():
-    """거래내역 베이스라 매매금액·레인지 숫자는 허용 — 발송본도 쓴다."""
+def test_gyeonggwa_allows_market_levels_and_fx_range():
+    """시장 레벨·환율 레인지 숫자는 허용 — 발송본이 실제로 쓰는 표기다."""
     assert check_block_rules('4JM12', '운용경과', _GYEONGGWA_OK) == []
+
+
+def test_gyeonggwa_bans_trade_volume():
+    """★ 거래 볼륨(억 단위 매매금액)은 금지 — 행위만 쓴다 (2026-08-06 사용자 지시).
+
+    ⚠ 숫자 전체를 막으면 안 된다. 위 테스트의 '1,440원~1,520원' 이 반려된다.
+    """
+    v = ' | '.join(check_block_rules(
+        '4JM12', '운용경과',
+        '국내주식은 KOSPI가 장중 5,200선까지 밀린 국면에서 17.4억을 순매수하였고, '
+        '재원은 국내채권 21.4억과 해외주식 12.1억을 순매도해 충당하였습니다. '
+        '환헤지는 오버헤지를 완화해 BM 수준에 근접시켰습니다.'))
+    assert '거래 볼륨' in v
+    for tok in ('17.4억', '21.4억', '12.1억'):
+        assert tok in v, tok
+    assert '5,200' not in v          # 시장 레벨은 위반이 아니다
 
 
 def test_gyeonggwa_flags_security_names():
