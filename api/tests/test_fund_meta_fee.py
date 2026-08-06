@@ -5,13 +5,15 @@
 A50 만 바뀌어 0.16(A50 단독)을 돌려줬다 — 실제 총보수는 7.225(=0.7225%)다.
 
 추가로 `BOS3203.fee_rate_bp` 는 이름과 달리 **0.1%p 단위**라 ×10 해야 진짜 bp 다.
-0.7225% 는 신한라이프 2026-06 발송본 대조로 확정된 값이다
-(`tools/shinhan_monthly_ppt.FEE_ANNUAL_PCT`).
 """
 import pytest
 
 from modules.data_loader import load_fund_meta
-from tools.shinhan_monthly_ppt import FEE_ANNUAL_PCT
+
+# 2JM23 연 총보수(%) — 신한라이프 2026-06 발송본의 보수 환원 값을 역산해 확정했다.
+# (구 `tools/shinhan_monthly_ppt.FEE_ANNUAL_PCT`. 표② 를 엑셀 범위에서 빼면서
+#  빌더 상수는 사라졌고, 검증값으로서의 출처만 여기 남긴다.)
+FEE_ANNUAL_PCT = 0.7225
 
 
 def test_2jm23_fee_sums_all_valid_components():

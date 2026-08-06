@@ -19,14 +19,14 @@ type Stage = {
 
 // 보고서 단계에 딸린 산출물 — 백엔드 `admin_funds._EXCEL_SPECS` 와 1:1 대응.
 // on = 어느 단계에서 구워지는지 (4JM12=생성 시 / 나머지=승인 시).
-// 2JM23 만 엑셀이 아니라 pptx 지만(신한라이프 4장 양식) 경로는 완전히 동일하다.
 const EXCEL_SPEC: Record<string, { label: string; on: "generate" | "approve" }> = {
   "4JM12": { label: "DB생명 엑셀", on: "generate" },
   "08N33": { label: "월간운용보고서 엑셀", on: "approve" },
   "08N81": { label: "월간운용보고서 엑셀", on: "approve" },
   "08P22": { label: "월간운용보고서 엑셀", on: "approve" },
   "08K88": { label: "월간운용보고서 엑셀", on: "approve" },
-  "2JM23": { label: "신한라이프 PPT", on: "approve" },
+  // 발송본 PPT 표에 블록 복사로 붙여넣는 데이터 시트 (Comment + 자산배분현황)
+  "2JM23": { label: "신한라이프 엑셀", on: "approve" },
 };
 
 const ST_LABEL: Record<string, string> = {
@@ -241,9 +241,9 @@ export default function AdminCommentWorkflowPanel({ fundCode }: { fundCode?: str
   //   승인하면 서버가 디스크의 **구 draft** 를 승인했다(편집분 유실).
   const approveStage = async (stage: "comment" | "report") => {
     const text = stage === "comment" ? editText : editRpt;
-    // 2JM23 은 승인이 PowerPoint COM 을 돌려 수 분 걸린다 — 멈춘 걸로 오해하지 않게 알린다
+    // 승인이 산출물까지 굽는 조합은 오래 걸린다 — 멈춘 걸로 오해하지 않게 알린다
     setBusy(stage === "report" && artifactOnApprove
-      ? `승인 + ${EXCEL_SPEC[fund].label} 생성${fund === "2JM23" ? " (수 분)" : ""}`
+      ? `승인 + ${EXCEL_SPEC[fund].label} 생성`
       : "승인");
     setMsg("");
     try {
@@ -352,7 +352,7 @@ export default function AdminCommentWorkflowPanel({ fundCode }: { fundCode?: str
                   onClick={() => act("report/draft", { period, text: editRpt }, "보고서 수정 저장")}>수정 저장</button>
                 <button type="button" className="approve" disabled={!!busy || wf.report.status === "not_generated"}
                   title={artifactOnApprove
-                    ? `승인 시 ${EXCEL_SPEC[fund].label}이 재생성됩니다${fund === "2JM23" ? " (PowerPoint COM — 수 분 소요)" : ""}`
+                    ? `승인 시 ${EXCEL_SPEC[fund].label}이 재생성됩니다`
                     : undefined}
                   onClick={() => approveStage("report")}>승인</button>
                 {/* 보고서 단계 산출물(엑셀/PPT) — 월간에만, EXCEL_SPEC 등록 펀드만 노출 */}

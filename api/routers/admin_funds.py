@@ -280,13 +280,12 @@ _EXCEL_SPECS = {
     '08K88': {'kind': '월간', 'on': 'approve', 'label': '월간운용보고서 엑셀',
               'name': '월간운용보고서_08K88_{y}년{m}월말.xlsx',
               'brinson': {'fx_split': False, 'saa_mode': 'auto'}},
-    # 신한라이프 4장 PPT — 엑셀이 아니라 pptx 지만 산출 파이프라인은 동일하게 탄다
-    # (보고서 승인 시 재생성 → 승인 버튼 우측 다운로드, 2026-08-06 사용자 지시).
-    # ⚠ PowerPoint COM 으로 전월 발송본을 열어 치환하므로 승인이 **수 분** 걸린다.
-    #   name 은 `tools.shinhan_monthly_ppt.OUT_NAME` 과 반드시 같아야 한다 —
-    #   빌더가 자기 경로에 쓰고 여기서는 그 경로를 읽기 때문. 테스트가 고정한다.
-    '2JM23': {'kind': '월간', 'on': 'approve', 'label': '신한라이프 PPT',
-              'name': '한국투자신탁운용_신한라이프_운용보고서(글로벌자산배분B형)_{ym}_회신.pptx'},
+    # 신한라이프 월간보고 데이터 엑셀 (Comment + 자산배분현황 2시트).
+    # PPT COM 치환기는 2026-08-06 폐기 — 이 엑셀에서 **블록 복사 → 발송본 PPT 표에
+    # 붙여넣기** 한다. name 은 `tools.shinhan_monthly_excel.OUT_NAME` 과 반드시
+    # 같아야 한다(빌더가 자기 경로에 쓰고 여기서는 그 경로를 읽는다). 테스트가 고정.
+    '2JM23': {'kind': '월간', 'on': 'approve', 'label': '신한라이프 엑셀',
+              'name': '한국투자신탁운용_신한라이프_운용보고서(글로벌자산배분B형)_{ym}_데이터.xlsx'},
 }
 
 
@@ -333,13 +332,13 @@ def _build_excel(fund: str, period: str, xp) -> list[str]:
         build_dblife_excel(period, xp)
         return []
     if fund == SHINHAN_PPT_FUND:
-        # 코멘트 승인본이 ③⑥ 소스 — 없으면 빈 칸으로 나가므로 여기서 막는다.
+        # 코멘트 승인본이 Comment 시트 소스 — 없으면 빈 칸으로 나가므로 여기서 막는다.
         from market_research.report.report_store import load_final as _lf
         cf = _lf(period, fund)
         if not (cf and cf.get('approved')):
-            raise RuntimeError('펀드 코멘트 승인본 없음 (③⑥ 코멘트 소스)')
-        from tools.shinhan_monthly_ppt import build as build_shinhan_ppt
-        return list(build_shinhan_ppt(period).get('warnings') or [])
+            raise RuntimeError('펀드 코멘트 승인본 없음 (Comment 시트 소스)')
+        from tools.shinhan_monthly_excel import build as build_shinhan_xlsx
+        return list(build_shinhan_xlsx(period, xp).get('warnings') or [])
     _spec = _EXCEL_SPECS.get(fund) or {}
     _bo = _spec.get('brinson')
     if _bo:
@@ -602,14 +601,12 @@ def approve_comment(body: PeriodBodyDTO, fund: str = Path(..., max_length=32)) -
     return _stage(body.period, fund, None)
 
 
-# ── 신한라이프 월간보고 PPT (2JM23) ──
-# 4장 양식(표지/운용현황/자산배분/종목·전망). DRM 때문에 python-pptx 를 못 써서
-# PowerPoint COM 으로 **전월 발송본을 틀로 열어 치환**한다 → 생성이 느리고(수 분)
-# 서버에 PowerPoint 가 떠야 한다. 표② 변동성·BM, 표④ TAA, ① 그래프는 템플릿 값 유지(수기).
+# ── 신한라이프 월간보고 엑셀 (2JM23) ──
+# `tools/shinhan_monthly_excel.py` — Comment + 자산배분현황 2시트. 발송본 PPT 표에
+# **블록 복사로 붙여넣는 데이터 소스**다(2026-08-06 사용자 지시로 PPT COM 치환기 폐기).
 #
-# 2026-08-06 사용자 지시로 **SAA 펀드 엑셀과 동일 경로로 통합**했다 — 전용 엔드포인트
-# 3종(get/generate/download)을 걷어내고 `_EXCEL_SPECS['2JM23']` 에 얹어
-# 보고서 승인 시 재생성 + 승인 버튼 우측 다운로드(`/report/excel`)로 일원화.
+# 배선은 SAA 펀드 엑셀과 동일 — 전용 엔드포인트 없이 `_EXCEL_SPECS['2JM23']` 에 얹어
+# 보고서 승인 시 재생성 + 승인 버튼 우측 다운로드(`/report/excel`).
 # 재생성은 **승인을 다시 누르면** 된다(approve 는 멱등).
 
 
