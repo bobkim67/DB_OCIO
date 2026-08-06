@@ -89,11 +89,43 @@ def test_plan_rule_flags_numbers_and_tickers():
     assert '숫자' in v and '정도부사' in v and '종목명' in v
 
 
-def test_other_blocks_not_rule_checked():
-    """운용경과·펀드성과는 수치를 써야 하므로 규칙 대상이 아니다."""
-    txt = 'BM 대비 84bps 상회하였습니다.'
-    assert check_block_rules('4JM12', '펀드성과', txt) == []
-    assert check_block_rules('4JM12', '운용경과', txt) == []
+def test_perf_block_not_rule_checked():
+    """펀드 성과는 수치·BM 비교가 본문이라 규칙 대상이 아니다."""
+    assert check_block_rules('4JM12', '펀드성과', 'BM 대비 84bps 상회하였습니다.') == []
+
+
+# ── 운용경과: 자산군 단위만, 숫자는 허용 (2026-08-06 사용자 지시) ──
+
+_GYEONGGWA_OK = (
+    '국내주식은 월중 급등락 국면에서 전량 매도하여 차익실현을 완료했고, 해당 자금은 '
+    '미국 가치주 및 선진국 주식으로 재배분하여 BM 수준으로 포트폴리오를 재편했습니다. '
+    '채권은 듀레이션 확대 포지션을 유지하면서 환헤지 비율은 원달러 환율이 기존 '
+    '레인지(1,440원~1,520원) 상단을 상회한 것으로 판단해 확대 운용 중입니다.'
+)
+
+
+def test_gyeonggwa_allows_numbers():
+    """거래내역 베이스라 매매금액·레인지 숫자는 허용 — 발송본도 쓴다."""
+    assert check_block_rules('4JM12', '운용경과', _GYEONGGWA_OK) == []
+
+
+def test_gyeonggwa_flags_security_names():
+    """★ 회귀 방어 — 실제 생성분이 종목 축약을 썼다."""
+    bad = ('당월 국내채권을 순매도(-21.4억)하며 국고채10년을 축소하고 30년스트립을 '
+           '전량 편출한 가운데, 머니마켓을 신규 편입해 유동성을 확보하였습니다. '
+           '국내주식은 순매수(+17.4억)하며 KOSPI200을 신규 편입하였습니다.')
+    v = ' | '.join(check_block_rules('4JM12', '운용경과', bad))
+    assert '종목명' in v
+    for tok in ('국고채10년', '30년스트립', '머니마켓', 'KOSPI200'):
+        assert tok in v, tok
+    assert '숫자' not in v          # 숫자는 이 블록에서 위반이 아니다
+
+
+def test_gyeonggwa_rule_demands_purpose_and_source():
+    """매매 나열이 아니라 목적→재원→환포지션 서사를 요구해야 한다."""
+    rule = BLOCK_EXTRA_RULES[('4JM12', '운용경과')]
+    for token in ('주 목적', '재원', '순매도로 찍힌 자산군만', 'BM 수준', '환 익스포저'):
+        assert token in rule, token
 
 
 # ── 환헤지 레인지 ──

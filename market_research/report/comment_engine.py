@@ -2067,7 +2067,8 @@ SEEDED_BLOCKS = {
     'E': [
         ('운용경과', '당 기간 **실제 매매**를 기준으로 쓰세요 — 무엇을 팔아 무엇을 샀고, '
                      '듀레이션·환헤지 포지션을 어떻게 가져갔는지. 제공된 자산군별 순매수 '
-                     '표의 방향과 어긋나게 쓰지 마세요. 2~3문장, 150~230자.'),
+                     '표의 방향과 어긋나게 쓰지 마세요. 아래 3단 구조라 분량이 필요합니다 — '
+                     '3문장, 200~270자.'),
         ('펀드성과', '**BM 대비 수익률**로 시작하세요 — 펀드 수익률, BM 수익률, 초과폭(bp). '
                      '이어서 제공된 Brinson 요인표의 **자산배분효과 위주로** 무엇이 상대성과에 '
                      '기여했고 무엇이 불리했는지. 종목선택 효과는 부차적으로만. '
@@ -2125,6 +2126,34 @@ BLOCK_EXTRA_RULES = {
 # 4JM12(포맷 E) 운용계획 — 2JM23 과 **같은 규칙**, 내용은 이 펀드 매매로 생성
 # (2026-08-06 사용자 확정: "같은 규칙으로 4JM12 내용 생성").
 # ⚠ 분량·문장 수는 E 스펙(2~3문장 120~200자)을 따르므로 자수 문구만 뺀 판본을 쓴다.
+# 4JM12 운용경과 — **자산군 단위로만** 서술 (2026-08-06 사용자 지시).
+# ⚠ 숫자(매매금액)는 허용한다. 거래내역 베이스라 발송본도 금액·레인지를 쓴다.
+#   막는 건 개별 종목·상품명뿐이다.
+BLOCK_EXTRA_RULES[('4JM12', '운용경과')] = (
+    '   ★ 서술 순서 (반드시 이 순서로 — 매매 나열이 아니라 **의사결정 서사**입니다):\n'
+    '     ① **주 목적** — 왜 그 포지션을 바꿔야 했는지부터. (예: 국내주식이 급락해\n'
+    '        비중을 늘려야 했다)\n'
+    '     ② **재원** — 그 재원을 무엇을 팔아 충당했는지. 제공된 자산군별 순매수에서\n'
+    '        **순매도로 찍힌 자산군만** 재원으로 쓰세요.\n'
+    '     ③ **환 포지션** — 달러선물 포지션 변화와 **그 목적**. 제공된 환헤지 비율\n'
+    '        표(전월→당월, BM 기준)를 근거로 "환 익스포저를 BM 수준에 맞춰 변동성을\n'
+    '        관리" 처럼 **목적**을 밝히세요. 방향(확대/축소)만 쓰면 실패입니다.\n'
+    '   ★ 표기 규칙 (반드시 지킬 것):\n'
+    '     · **개별 종목·상품명을 쓰지 마세요.** 자산군 단위로만 서술합니다.\n'
+    '       금지: ACE 국고채10년 · TIGER 국고채30년스트립액티브 · ACE 머니마켓액티브 ·\n'
+    '             ACE 200 · VANGUARD FTSE DEVELOPED ETF · 국고채10년 · 30년스트립 ·\n'
+    '             머니마켓 · KOSPI200 · TMF28 처럼 **상품을 특정하는 축약도 금지**입니다.\n'
+    '       허용: 국내주식 · 해외주식 · 국내채권 · 해외채권 · 대체 · 현금, 그리고\n'
+    '             미국 성장주 · 미국 가치주 · 선진국 주식 같은 **스타일·지역 구분**,\n'
+    '             듀레이션 · 환헤지 같은 **포지션 표현**.\n'
+    '     · 매매금액·비중 같은 **숫자는 써도 됩니다** (거래내역 베이스).\n'
+    '     · 모범 예시 — 문체 기준이며 내용은 재사용하지 마세요:\n'
+    '       "국내주식은 월중 급등락 국면에서 전량 매도하여 차익실현을 완료했고, '
+    '해당 자금은 미국 가치주 및 선진국 주식으로 재배분하여 BM 수준으로 포트폴리오를 '
+    '재편했습니다. 채권은 듀레이션 확대 포지션을 유지하면서 환헤지 비율은 원달러 '
+    '환율이 기존 레인지 상단을 상회한 것으로 판단해 확대 운용 중입니다."'
+)
+
 BLOCK_EXTRA_RULES[('4JM12', '운용계획')] = (
     '   ★ 표현 규칙 (반드시 지킬 것):\n'
     '     · **숫자를 일절 쓰지 마세요** — 비중·수익률·금액·배수·날짜 전부.\n'
@@ -2147,14 +2176,32 @@ _PLAN_ADVERBS = ('대폭', '큰 폭', '크게', '급격', '상당', '대거')
 _PLAN_REASONING = ('판단', '때문', '감안', '고려', '우려', '기대', '전망',
                    '따라', '평가', '보아', '보고')
 
-# 블록별 요구 구조 (min문장, max문장, min자, max자, 판단근거 필수) — 규칙 문구와 짝을 이룬다.
+# 개별 종목을 가리키는 토큰 — TAA 등록 종목명으로 안 잡히는 축약형까지 포함한다.
+# (LLM 이 "국고채10년", "30년스트립", "머니마켓" 처럼 상품 축약으로 쓴 실측 사례)
+_SECURITY_TOKENS = (
+    'ACE ', 'KODEX', 'TIGER', 'SPDR', 'ISHARES', 'iShares', 'VANGUARD',
+    '나스닥100', '국고채10년', '30년스트립', '스트립', '머니마켓', 'KOSPI200',
+    'TMF28', 'S&P500',
+)
+
+# 블록별 검사 규격 — 규칙 문구와 짝을 이룬다. 블록마다 허용/금지가 다르다.
 #
-# ⚠ 4JM12 는 2JM23 보다 느슨하다. 발송본 운용계획이 **개조식 혼용**("…유지 예정.")에
+# ⚠ 4JM12 운용계획은 2JM23 보다 느슨하다. 발송본이 **개조식 혼용**("…유지 예정.")에
 #   107자라, 2JM23 기준(2문장 110~170자 + 판단근거 필수)을 그대로 적용하면 **실제
-#   발송본 문장이 반려된다**(실측). 금지 규칙만 공유하고 문체 제약은 펀드별로 둔다.
+#   발송본 문장이 반려된다**(실측).
+# ⚠ 4JM12 **운용경과는 숫자를 허용**한다 — 거래내역 베이스라 매매금액이 들어간다.
+#   여기서 막는 건 **개별 종목명뿐**이다 (2026-08-06 사용자 지시).
 _BLOCK_SHAPE = {
-    ('2JM23', '계획'): (2, 2, 110, 170, True),
-    ('4JM12', '운용계획'): (1, 3, 90, 210, False),
+    ('2JM23', '계획'):
+        {'sent': (2, 2), 'chars': (110, 170), 'reason': True,
+         'no_num': True, 'no_adv': True},
+    ('4JM12', '운용계획'):
+        {'sent': (1, 3), 'chars': (90, 210), 'reason': False,
+         'no_num': True, 'no_adv': True},
+    # 목적→재원→환포지션 3단이라 2JM23 블록보다 길다 (실측 255자)
+    ('4JM12', '운용경과'):
+        {'sent': (2, 3), 'chars': (170, 290), 'reason': False,
+         'no_num': False, 'no_adv': False},
 }
 
 
@@ -2163,26 +2210,32 @@ def check_block_rules(fund_code: str, block: str, text: str) -> list[str]:
     if (fund_code, block) not in BLOCK_EXTRA_RULES or not text:
         return []
     import re as _re
+    spec = _BLOCK_SHAPE[(fund_code, block)]
     out = []
-    nums = _re.findall(r'\d+(?:\.\d+)?', text)
-    if nums:
-        out.append(f'숫자 사용: {", ".join(sorted(set(nums))[:6])}')
-    advs = [a for a in _PLAN_ADVERBS if a in text]
-    if advs:
-        out.append(f'정도부사 사용: {", ".join(advs)}')
+
+    if spec['no_num']:
+        nums = _re.findall(r'\d+(?:\.\d+)?', text)
+        if nums:
+            out.append(f'숫자 사용: {", ".join(sorted(set(nums))[:6])}')
+    if spec['no_adv']:
+        advs = [a for a in _PLAN_ADVERBS if a in text]
+        if advs:
+            out.append(f'정도부사 사용: {", ".join(advs)}')
+
+    # 개별 종목명 — 모든 등록 블록 공통 금지 (자산군·자산 유형 표기는 허용)
     try:
         from config.taa_classification import TAA_CLASSIFICATION
         names = {str(v[0]) for v in TAA_CLASSIFICATION.values() if v and v[0]}
     except Exception:
         names = set()
-    # 보유 종목명 + 흔한 ETF 브랜드 토큰
     hits = [n for n in names if n and n in text]
-    hits += [b for b in ('ACE ', 'KODEX', 'TIGER', 'SPDR', 'ISHARES', 'iShares',
-                         '나스닥100', '국고채10년') if b in text]
+    hits += [b for b in _SECURITY_TOKENS if b in text]
     if hits:
         out.append(f'종목명 표기: {", ".join(sorted(set(hits))[:5])}')
+
     # 구조 — 블록마다 요구 문장 수·분량이 다르다
-    s_lo, s_hi, l_lo, l_hi, need_reason = _BLOCK_SHAPE[(fund_code, block)]
+    s_lo, s_hi = spec['sent']
+    l_lo, l_hi = spec['chars']
     # ⚠ '다.' 로 세면 **개조식 종결**("…유지 예정.")을 놓친다 — 4JM12 발송본이 그렇다.
     n_sent = len(_re.findall(r'[.!?](?:\s|$)', text))
     if not s_lo <= n_sent <= s_hi:
@@ -2190,7 +2243,7 @@ def check_block_rules(fund_code: str, block: str, text: str) -> list[str]:
         out.append(f'문장 수 {n_sent} (규칙 {want})')
     if not l_lo <= len(text) <= l_hi:
         out.append(f'분량 {len(text)}자 (규칙 {l_lo}~{l_hi}자)')
-    if need_reason and not any(k in text for k in _PLAN_REASONING):
+    if spec['reason'] and not any(k in text for k in _PLAN_REASONING):
         out.append('판단 근거 문구가 보이지 않음 — 무엇을 했는지만 쓰여 있는지 확인')
     return out
 

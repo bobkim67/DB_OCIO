@@ -439,6 +439,48 @@ def _hedge_line(fund_code: str, period_key: str, end_dt, warnings: list) -> str:
     return new
 
 
+def _hedge_ratio_block(prev_eom: str, cur_eom: str) -> str | None:
+    """환헤지 비율 전월→당월 + BM 기준 — 프롬프트 주입용 (4JM12, 2026-08-06).
+
+    운용경과에 "환 익스포저를 BM 에 맞춰 조정" 을 쓰려면 이 수치가 있어야 한다.
+    없으면 LLM 이 방향만 보고 "확대/축소" 만 나열한다(실측).
+    정의·산식은 `tools/dblife_monthly_excel.py` 와 동일한 것을 재사용한다.
+    """
+    from tools.dblife_monthly_excel import (
+        BM_HEDGE_RATIO, _overseas_equity_isins, bucket_of, load_holdings_eom,
+    )
+    ovs_isins = _overseas_equity_isins()
+
+    def _one(eom: str):
+        h = load_holdings_eom(str(eom))
+        if h is None or not len(h):
+            return None
+        h = h.copy()
+        h['bucket'] = h.apply(bucket_of, axis=1)
+        h['w'] = h['NAST_TAMT_AGNST_WGH'].astype(float)
+        hedge = float(h.loc[h['bucket'] == '달러선물', 'w'].abs().sum())
+        eq = h[h['bucket'] == '주식형']
+        is_o = (eq['ITEM_CD'].astype(str).str.strip().isin(ovs_isins)
+                if ovs_isins else eq['ITEM_CD'].astype(bool))
+        ovs = float(eq.loc[is_o, 'w'].sum()
+                    + h.loc[h['bucket'] == '외화현금', 'w'].sum())
+        return hedge, ovs, (hedge / ovs * 100 if ovs else None)
+
+    try:
+        a, b = _one(prev_eom), _one(cur_eom)
+    except Exception:
+        return None
+    if not a or not b or a[2] is None or b[2] is None:
+        return None
+    return (
+        '[환헤지 비율 (사실 — 이 값만 인용)]\n'
+        f'- 전월말: 헤지 {a[0]:.1f}% / 해외자산 {a[1]:.1f}% → 헤지비율 {a[2]:.1f}%\n'
+        f'- 당월말: 헤지 {b[0]:.1f}% / 해외자산 {b[1]:.1f}% → 헤지비율 {b[2]:.1f}%\n'
+        f'- BM 헤지비율: {BM_HEDGE_RATIO:.1f}% (BM 해외 45% 중 절반만 환헤지)\n'
+        '  ※ 헤지비율이 BM 보다 높으면 오버헤지(환노출 축소), 낮으면 언더헤지다.'
+    )
+
+
 def _perf_period_label(mode: str, end_dt, quarter: int) -> str:
     """성과 문장 첫머리 — 발송본은 "6월 중 펀드는 …" 처럼 **기간을 명시**한다.
 
@@ -794,6 +836,19 @@ def generate_fund_comment_and_save(
                 additional_parts.append(blk)
         except Exception as e:
             data_warnings.append(f'Brinson 요인 블록 생성 실패: {e}')
+
+    # 환헤지 비율 (포맷 E — 운용경과에 "환 익스포저를 BM 에 맞춰" 를 쓰려면 필요)
+    from market_research.core.constants import FUND_CONFIGS as _FCG
+    if (_FCG.get(fund_code) or {}).get('format') == 'E' and prev_last and cur_last:
+        try:
+            hb = _hedge_ratio_block(prev_last, cur_last)
+            if hb:
+                additional_parts.append(hb)
+            else:
+                data_warnings.append('환헤지 비율 블록 생성 실패 — 운용경과에 환 포지션 '
+                                     '근거가 빠질 수 있습니다')
+        except Exception as e:
+            data_warnings.append(f'환헤지 비율 블록 생성 실패: {e}')
 
     # 모펀드 서브 포트폴리오 수익률 (07G04/07G07 — "인컴추구 …%, 수익추구 …%" 문장용)
     if start_dt and end_dt:

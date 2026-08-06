@@ -1000,7 +1000,7 @@ def load_fund_net_trades(fund_code: str, start_date: int, end_date: int) -> dict
     try:
         df = pd.read_sql(f"""
             SELECT item_cd, item_nm, hold_ast_ds_cd, curr_ds_cd,
-                   buy_sell_ds_cd, trd_amt
+                   buy_sell_ds_cd, trd_amt, stl_amt, krw_stl_amt
             FROM DWPM10520
             WHERE fund_cd = %s AND std_dt BETWEEN %s AND %s
               AND imc_cd = '003228'
@@ -1037,13 +1037,25 @@ def load_fund_net_trades(fund_code: str, start_date: int, end_date: int) -> dict
 
     df['자산군'] = df.apply(_classify_trade, axis=1)
 
-    # 매수(M)/매도(D)별 금액 합산
-    df['trd_amt'] = pd.to_numeric(df['trd_amt'], errors='coerce').fillna(0)
+    # ★ 해외 종목 원화 환산 (2026-08-06 수정) — `TRD_AMT` 는 해외 종목이면 **외화 단위**라
+    #   그대로 1e8 로 나누면 0 에 수렴해 자산군 집계에서 통째로 사라진다.
+    #   실측(4JM12 2026-07): VANGUARD 순매도 12.12억이 **해외주식 -0.0억**으로 찍혔고,
+    #   그 탓에 코멘트 재원 서술에서 선진국 주식이 빠졌다.
+    #   `load_fund_trade_detail` 이 2026-06-22 에 같은 방식으로 이미 고쳐진 버그다
+    #   — 행별 실제 체결환율(KRW_STL_AMT/STL_AMT)로 환산한다. 통화 무관.
+    for c in ('trd_amt', 'stl_amt', 'krw_stl_amt'):
+        df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0)
+    _is_fc = ~df['curr_ds_cd'].isin(('', 'KRW')) & df['curr_ds_cd'].notna()
+    _rate = (df['krw_stl_amt'] / df['stl_amt'].replace(0, pd.NA)).fillna(0)
+    # 결제금액 0(예수금 등 정산성) 해외행은 KRW_STL_AMT 를 직접 쓴다
+    df['amt_krw'] = df['trd_amt'].where(
+        ~_is_fc, (df['trd_amt'] * _rate).where(_rate > 0, df['krw_stl_amt']))
+
     result = {}
     for asset_class in df['자산군'].unique():
         sub = df[df['자산군'] == asset_class]
-        buy = sub.loc[sub['buy_sell_ds_cd'] == 'M', 'trd_amt'].sum()
-        sell = sub.loc[sub['buy_sell_ds_cd'] == 'D', 'trd_amt'].sum()
+        buy = sub.loc[sub['buy_sell_ds_cd'] == 'M', 'amt_krw'].sum()
+        sell = sub.loc[sub['buy_sell_ds_cd'] == 'D', 'amt_krw'].sum()
         result[asset_class] = {
             'buy': round(buy / 1e8, 1),
             'sell': round(sell / 1e8, 1),
