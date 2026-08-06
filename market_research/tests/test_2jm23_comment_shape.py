@@ -171,11 +171,40 @@ def test_plan_rule_flags_numbers_names_adverbs():
     assert '숫자' in joined and '정도부사' in joined and '종목명' in joined
 
 
-def test_plan_rule_passes_clean_text():
+# 사용자 확정본 (2026-08-06). 문체·인과 밀도의 기준이자 검증기 통과 기준.
+_PLAN_OK = (
+    '당월에는 KOSPI 급락이 반도체 쏠림 해소에 따른 과매도라고 판단해, 국내주식 '
+    '비중을 확대하였습니다. 재원은 유가발 인플레이션이 실질금리를 밀어올려 하방 '
+    '헷지 기능이 약해진 금 ETF와 국고채 포지션을 축소해 마련하였습니다.'
+)
+# 금지 규칙만 걸었을 때 나온 1차 LLM 산출물 — 사실 나열뿐이고 판단 근거가 없다.
+_PLAN_FLAT = (
+    '당월 펀드는 국내주식을 순매수하여 비중을 확대하는 리밸런싱을 실행하였으며, '
+    '국내채권은 일부 순매도하였습니다. 대체는 하방 헷지 수단으로서의 기여가 '
+    '제한되어 비중을 축소하였습니다.'
+)
+
+
+def test_plan_rule_passes_confirmed_text():
     from market_research.report.comment_engine import check_block_rules
-    assert check_block_rules(
-        '2JM23', '계획',
-        '국내주식 비중을 확대하였습니다. 재원은 대체 축소로 마련하였습니다.') == []
+    assert check_block_rules('2JM23', '계획', _PLAN_OK) == []
+
+
+def test_plan_rule_catches_reasoning_free_draft():
+    """★ 회귀 방어 — 금지 규칙만으로는 판단 근거가 빠진 초안이 그냥 통과했다."""
+    from market_research.report.comment_engine import check_block_rules
+    v = ' | '.join(check_block_rules('2JM23', '계획', _PLAN_FLAT))
+    assert '판단 근거' in v
+
+
+def test_plan_rule_allows_asset_type_wording():
+    """'금 ETF'·'국고채 포지션' 은 자산 유형이라 허용 — 확정본이 그 표현을 쓴다.
+
+    개별 종목명(ACE 200 등)만 막는다. 유형까지 막으면 발송본과 멀어진다.
+    """
+    from market_research.report.comment_engine import check_block_rules
+    v = ' | '.join(check_block_rules('2JM23', '계획', _PLAN_OK))
+    assert '종목명' not in v
 
 
 def test_plan_rule_scoped_to_2jm23_plan_block():
@@ -187,9 +216,14 @@ def test_plan_rule_scoped_to_2jm23_plan_block():
 
 
 def test_plan_rule_is_injected_into_prompt_spec():
+    """금지 목록 + **긍정 구조 + 모범 예시**가 모두 프롬프트에 들어가야 한다."""
     from market_research.report.comment_engine import BLOCK_EXTRA_RULES
     rule = BLOCK_EXTRA_RULES[('2JM23', '계획')]
-    assert '숫자' in rule and '종목명' in rule and '대폭' in rule
+    for token in ('숫자', '종목명', '대폭',        # 금지
+                  '판단 근거', '재원', '2문장',     # 구조
+                  '순매도로 찍힌 자산군만',          # 사실 고정
+                  '과매도라고 판단해'):             # 모범 예시(앵커)
+        assert token in rule, token
 
 
 def test_compress_cache_key_includes_cap():
