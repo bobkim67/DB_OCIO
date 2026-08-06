@@ -9,8 +9,11 @@
 # - 종료 흔적: logs\watchdog.heartbeat 를 15초마다 갱신. 정상 종료·중지 스크립트는
 #   이 파일을 지우므로, 남아 있으면 강제 종료/로그오프/크래시다. 파일의 갱신 시각이
 #   곧 사망 시각이고, 다음 기동 때 그 사실이 watchdog.log 에 한 줄로 남는다.
-#   heartbeat 에는 자원 지표(ws/pm/handles/threads/uptime)도 같이 적는다 — 사망 직전
-#   수치가 평소와 같으면 외부 kill, 우상향이면 자원 누수다.
+#   heartbeat 에는 자원 지표(ws/pm/handles/threads/uptime)와 **최근 60초 신규 프로세스**
+#   (new60s)를 같이 적는다 — 수치가 평소와 같으면 외부 kill(3회 확인), 우상향이면 누수.
+#   new60s 는 다음 사망 때 "그 순간 무엇이 돌았는지" 를 남겨 범인 후보를 좁힌다.
+# - 종료 코드: `ocio_watchdog_run.cmd` 로 띄우면 죽은 뒤 rc 가 watchdog.log 에 남는다.
+#   (taskkill=1 / Ctrl+C=-1073741510 / 그 외=죽인 프로그램 고유값)
 # - 단일 인스턴스: 이미 실행 중이면 즉시 종료.
 #
 # 수동 실행:  powershell -NoProfile -ExecutionPolicy Bypass -File scripts\ocio_watchdog.ps1
@@ -65,6 +68,20 @@ if (Test-Path $Beat) {
 #   가른다. 마지막 heartbeat 의 수치가 평소와 같으면 외부 kill 이다.
 $proc = Get-Process -Id $PID
 
+# 사망 직전 **주변 스냅샷** (2026-08-07) — 3회차까지 자원은 정상이었고 시각은 전부
+# 00~01시대였다. 즉 야간에 도는 무언가가 죽인다는 뜻인데, 지금은 그 순간 무엇이
+# 돌았는지가 백지다. heartbeat 에 **최근 60초 내 새로 뜬 프로세스**를 같이 적어
+# 다음 사망 때 범인 후보를 좁힌다. (프로세스 종료 감사·Sysmon 은 관리자 권한 필요)
+function NewNeighbors {
+    $cut = (Get-Date).AddSeconds(-60)
+    $names = @(Get-Process -ErrorAction SilentlyContinue |
+        Where-Object { $_.Id -ne $PID -and $_.StartTime -and $_.StartTime -gt $cut } |
+        Select-Object -ExpandProperty ProcessName -Unique)
+    if (-not $names) { return '-' }
+    if ($names.Count -gt 6) { $names = $names[0..5] + '…' }
+    return ($names -join ',')
+}
+
 # ---- 정상 종료 흔적 (Ctrl+C·창닫기·exit. 강제 종료는 못 잡음 → heartbeat 담당) ----
 Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action ([scriptblock]::Create(@"
     "`$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') | watchdog stopping (pid `$PID) - graceful exit" | Add-Content -Path '$Log' -Encoding UTF8
@@ -77,9 +94,10 @@ while ($true) {
     # 생존 신호 (15s 주기). 이 한 줄이 다음 기동 때 사망 기록에 그대로 실린다.
     $proc.Refresh()
     $up = [int]((Get-Date) - $proc.StartTime).TotalMinutes
-    ("pid $PID ws={0}MB pm={1}MB handles={2} threads={3} uptime={4}min" -f `
+    ("pid $PID ws={0}MB pm={1}MB handles={2} threads={3} uptime={4}min new60s={5}" -f `
         [int]($proc.WorkingSet64 / 1MB), [int]($proc.PrivateMemorySize64 / 1MB), `
-        $proc.HandleCount, $proc.Threads.Count, $up) | Set-Content -Path $Beat -Encoding UTF8
+        $proc.HandleCount, $proc.Threads.Count, $up, (NewNeighbors)) |
+        Set-Content -Path $Beat -Encoding UTF8
     if (-not (PortUp)) {
         if (LauncherActive) {
             WLog "port $Port down but launcher_active.flag present - skip (launcher restarting)"

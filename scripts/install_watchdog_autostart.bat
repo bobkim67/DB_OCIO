@@ -10,7 +10,9 @@ set "ROOT=%~dp0.."
 for %%i in ("%ROOT%") do set "ROOT=%%~fi"
 set "VBS=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\ocio_watchdog.vbs"
 
-> "%VBS%" echo CreateObject("WScript.Shell").Run "powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""%ROOT%\scripts\ocio_watchdog.ps1""", 0, False
+REM Go through ocio_watchdog_run.cmd so the watchdog's EXIT CODE gets logged
+REM when something kills it (see that file for why).
+> "%VBS%" echo CreateObject("WScript.Shell").Run "cmd /c ""%ROOT%\scripts\ocio_watchdog_run.cmd""", 0, False
 
 if exist "%VBS%" (
     echo [OK] Startup entry written: %VBS%
