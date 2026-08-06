@@ -2098,6 +2098,40 @@ def parse_seeded_blocks(text: str, fmt: str):
     return out if all(n in out for n in names) else None
 
 
+def build_perf_sentence(period_label: str, fund_return, pa_by_class: dict) -> str | None:
+    """성과 문단을 **코드가 결정론적으로** 쓴다 (2026-08-06 사용자 지시, 2JM23).
+
+    발송본 양식 그대로 한 문장 — 해설을 붙이지 않는다:
+      "6월 중 펀드는 +2.44%의 성과를 기록하였으며, 자산군별 성과기여도는
+       국내주식 +3.90%, 해외주식 +0.42%, 국내채권 +0.11%, 원자재 -1.73% 이었습니다."
+
+    - 자산군은 **고정 순서**(`CANONICAL_CLASSES`) — 기여도 크기순이 아니다.
+      ⚠ 발송본 3건(2·5·6월)을 대조하면 기여도 정렬이 아니라 고정 순서다. 크기순으로
+        하면 매달 자산군 순서가 뒤바뀌어 정기 보고서로서 읽기 나쁘다.
+    - `PERF_SENTENCE_EXCLUDE` 자산군(유동성·보수비용)은 뺀다 → 기여도 합이 펀드
+      수익률과 어긋나지만 발송본 관행이다.
+    - 라벨은 PA 어휘 그대로('대체') — 대시보드·엑셀과 용어를 맞춘다
+      (2026-08-06 사용자 확정: '원자재'로 바꾸지 않는다).
+    - 수치가 없으면 None → 호출부가 LLM 블록을 그대로 쓴다(무중단).
+    """
+    from market_research.core.asset_class import CANONICAL_CLASSES
+    from market_research.core.constants import PERF_SENTENCE_EXCLUDE
+
+    ret = fund_return.get('return') if isinstance(fund_return, dict) else fund_return
+    if ret is None or not pa_by_class:
+        return None
+    live = {c: v for c, v in pa_by_class.items()
+            if c not in PERF_SENTENCE_EXCLUDE and v is not None}
+    if not live:
+        return None
+    # canonical 에 없는 라벨(신규 자산군 등)은 뒤에 원래 순서대로 붙인다 — 조용히 버리지 않는다
+    items = ([(c, live[c]) for c in CANONICAL_CLASSES if c in live]
+             + [(c, v) for c, v in live.items() if c not in CANONICAL_CLASSES])
+    body = ', '.join(f'{c} {v:+.2f}%' for c, v in items)
+    return (f'{period_label} 펀드는 {ret:+.2f}%의 성과를 기록하였으며, '
+            f'자산군별 성과기여도는 {body} 이었습니다.')
+
+
 def assemble_seeded_comment(fmt: str, market: str, outlook: str,
                             blocks: dict, *, sub_line: str = '') -> str:
     """공통 문단(시드) + 펀드 블록(LLM) → 포맷별 최종 본문.

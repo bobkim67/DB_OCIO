@@ -373,6 +373,21 @@ def _month_last_bday(year: int, month: int):
         return None
 
 
+def _perf_period_label(mode: str, end_dt, quarter: int) -> str:
+    """성과 문장 첫머리 — 발송본은 "6월 중 펀드는 …" 처럼 **기간을 명시**한다.
+
+    월간은 종료일의 월을 쓴다(08K88 처럼 기간 창이 달력월과 어긋나도 보고 대상 월과
+    같다). 그 외 유형은 해당 기간 명칭으로, 알 수 없으면 '당 기간'.
+    """
+    if mode == '월간' and end_dt is not None:
+        return f'{end_dt.month}월 중'
+    if mode == '분기':
+        return f'{quarter}분기 중'
+    if mode in ('QTD', 'HTD', 'YTD'):
+        return {'QTD': '분기 중', 'HTD': '반기 중', 'YTD': '연초 이후'}[mode]
+    return '당 기간'
+
+
 def _resolve_dates(mode: str, year: int, period_num: int):
     """기간 유형에 따른 영업일 범위 계산.
 
@@ -748,11 +763,16 @@ def generate_fund_comment_and_save(
     #   블록만 쓴다. 시드가 없거나 블록 파싱이 실패하면 **종전 경로 그대로** 간다.
     from market_research.report.comment_engine import (
         generate_report_from_inputs, parse_seeded_blocks, assemble_seeded_comment,
+        build_perf_sentence,
     )
     from market_research.report.market_seed import (
         assemble as _seed_assemble, load_approved_seed, seed_coverage,
+        compress_market_paragraph as _compress_market,
     )
-    from market_research.core.constants import FUND_CONFIGS as _FC
+    from market_research.core.constants import (
+        FUND_CONFIGS as _FC, MARKET_PARA_CAP as _MARKET_CAP,
+        FIXED_PERF_SENTENCE_FUNDS as _FIXED_PERF,
+    )
 
     fmt = (_FC.get(fund_code) or {}).get('format', 'C')
     seed = load_approved_seed(period_key)
@@ -777,6 +797,21 @@ def generate_fund_comment_and_save(
                 if c['missing']:
                     data_warnings.append(
                         f'시드 {s} 섹션에 {", ".join(c["missing"])} 문장 없음 — 해당 자산군 서술 누락')
+            # 펀드별 시장동향 상한 (2026-08-06 사용자 지시 — 2JM23 400자).
+            # 발송본 텍스트 상자가 좁은 펀드만. 미등록 펀드는 그대로 지나간다.
+            _cap = _MARKET_CAP.get(fund_code)
+            if _cap:
+                _c = _compress_market(seed_sections['market'], _cap)
+                seed_sections['market'] = _c['text']
+                seed_meta['market_cap'] = {
+                    'cap': _cap, 'applied': _c['applied'],
+                    'chars': len(_c['text']), 'reason': _c['reason'],
+                    'cached': _c['cached'],
+                }
+                if not _c['applied']:
+                    data_warnings.append(
+                        f'시장동향 {_cap}자 재압축 실패({_c["reason"]}) — '
+                        f'{len(_c["text"])}자 원문을 그대로 씁니다. 직접 줄여주세요')
 
     # 9. LLM 호출 (Opus)
     result = generate_report_from_inputs(
@@ -795,6 +830,18 @@ def generate_fund_comment_and_save(
     if seed_sections:
         blocks = parse_seeded_blocks(comment_text_raw, fmt)
         if blocks:
+            # 성과 문단을 코드가 쓰는 펀드 (2026-08-06 사용자 지시 — 2JM23).
+            # 수치 나열이라 LLM 이 개입하면 오기·표현 흔들림만 생긴다. 해설은 붙이지 않는다.
+            if fund_code in _FIXED_PERF and '성과' in blocks:
+                _fixed = build_perf_sentence(_perf_period_label(mode, end_dt, quarter),
+                                             fund_ret, pa)
+                if _fixed:
+                    seed_meta['fixed_perf'] = {'llm_chars': len(blocks['성과']),
+                                               'fixed_chars': len(_fixed)}
+                    blocks['성과'] = _fixed
+                else:
+                    data_warnings.append(
+                        '성과 문장 고정 생성 실패(PA 수치 없음) — LLM 문단을 그대로 씁니다')
             sub_line = ''
             if fmt == 'K' and (fund_ret or {}).get('sub_returns'):
                 subs = fund_ret['sub_returns']

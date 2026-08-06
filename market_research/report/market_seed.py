@@ -304,6 +304,118 @@ def _recompress(client, model: str, sections: dict,
     return out, cost
 
 
+# ══════════════════════════════════════════
+# 펀드별 시장동향 재압축 (2026-08-06 사용자 지시 — 2JM23 400자)
+# ══════════════════════════════════════════
+#
+# 조립된 공통 문단이 특정 펀드 발송본의 텍스트 상자에 안 들어갈 때, **그 펀드에만**
+# 짧은 판본을 만든다. 문장 단위로 잘라내면 뒤쪽 자산군(FX 등)이 통째로 사라지므로
+# 자산군을 모두 살린 채 LLM 이 다시 쓴다(2026-08-06 사용자 선택).
+#
+# 캐시 키가 기간이 아니라 **원문 해시 + 상한**이라 같은 시드를 여러 번 조립해도
+# LLM 은 1회만 돈다. 시드를 다시 승인하면 원문이 바뀌어 자동 무효화된다.
+
+_COMPACT_CACHE = Path(__file__).resolve().parents[2] / '.cache' / 'market_seed_compact'
+
+
+def _compact_cache_path(body: str, cap: int, model: str) -> Path:
+    import hashlib
+    h = hashlib.sha256(f'{model}\n{cap}\n{body}'.encode('utf-8')).hexdigest()[:16]
+    return _COMPACT_CACHE / f'{h}.json'
+
+
+def compress_market_paragraph(text: str, cap: int, *,
+                              model: str | None = None) -> dict:
+    """시장동향 문단을 `cap` 자 이하로 재압축.
+
+    Returns `{'text', 'applied', 'cost', 'cached', 'reason'}`.
+    **실패하면 원문을 그대로 돌려준다**(`applied=False`) — 문장을 기계적으로 잘라
+    자산군을 유실시키는 것보다, 길게 두고 Admin 이 손으로 줄이는 편이 안전하다.
+    호출부가 경고를 남긴다.
+    """
+    import anthropic
+
+    body = (text or '').strip()
+    if not body:
+        return {'text': body, 'applied': False, 'cost': 0.0, 'cached': False,
+                'reason': 'empty'}
+    if len(body) <= cap:
+        return {'text': body, 'applied': True, 'cost': 0.0, 'cached': False,
+                'reason': 'already_within_cap'}
+
+    mdl = model or LLM_MODEL
+    cache = _compact_cache_path(body, cap, mdl)
+    if cache.exists():
+        try:
+            hit = json.loads(cache.read_text(encoding='utf-8'))
+            if (hit.get('text') or '') and len(hit['text']) <= cap:
+                hit['cached'] = True
+                return hit
+        except Exception:
+            pass
+
+    # 문장 수를 세어 문장당 예산을 명시한다 — "N자 이하"만으로는 안 지켜진다
+    # (시드 생성에서도 규칙 문장만으로는 1.5배 초과했다. 자수를 박아야 지켜진다).
+    n_sent = max(1, body.count('다.'))
+    per = max(30, int(cap * 0.92) // n_sent)
+
+    def _prompt(target: int, feedback: str = '') -> str:
+        return (
+            f'아래 시장동향 문단을 **{cap}자 이하**(공백 포함)로 다시 쓰세요.\n\n'
+            f'{feedback}'
+            '## 규칙\n'
+            f'1. ★ 전체 {cap}자 이하. 이것이 가장 중요한 제약입니다.\n'
+            f'2. 원문은 {n_sent}개 문장입니다. **문장 수를 유지**하되 각 문장을 '
+            f'**{per}자 안팎**으로 줄이세요. 자산군을 통째로 버리지 마세요.\n'
+            '3. 각 문장에서 핵심 인과 하나만 남기고 부연 사례·2차 파급·수식어를 '
+            '버립니다. 원문에 없는 사실·수치를 만들지 마세요.\n'
+            '4. 경어체. 마크다운·불릿·[ref:N] 금지. 한 문단으로 이어 쓰세요.\n'
+            '5. 등락률 퍼센트를 쓰지 말고 방향과 레벨로 서술하세요.\n\n'
+            f'## 원문 ({len(body)}자)\n{body}\n\n'
+            '재작성한 문단만 출력하세요. 설명·머리말 금지.'
+        )
+
+    cost = 0.0
+    new = ''
+    try:
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        # 1차는 cap, 넘치면 초과분을 알려주고 1회만 더 — 실측상 첫 시도가 근소하게
+        # 넘는 일이 잦다(735→428/400). 무한 재시도는 하지 않는다.
+        for attempt in (1, 2):
+            fb = ('' if attempt == 1 else
+                  f'⚠ 직전 시도가 {len(new)}자로 {len(new) - cap}자 초과했습니다. '
+                  f'문장마다 더 덜어내세요.\n\n')
+            resp = client.messages.create(
+                model=mdl, max_tokens=2000,
+                messages=[{'role': 'user', 'content': _prompt(cap, fb)}])
+            usage = resp.usage
+            cost += usage.input_tokens * 3 / 1_000_000 + usage.output_tokens * 15 / 1_000_000
+            # 잘린 응답은 채택하지 않는다 ([[reference_debate_token_cap]] 의 cap 오염과 동일)
+            if getattr(resp, 'stop_reason', None) == 'max_tokens':
+                return {'text': body, 'applied': False, 'cost': cost, 'cached': False,
+                        'reason': 'max_tokens'}
+            new = _clean(resp.content[0].text)
+            if new and len(new) <= cap:
+                break
+    except Exception as exc:
+        return {'text': body, 'applied': False, 'cost': cost, 'cached': False,
+                'reason': f'llm_error: {exc}'}
+
+    if not new or len(new) > cap:
+        return {'text': body, 'applied': False, 'cost': cost, 'cached': False,
+                'reason': f'over_cap({len(new)}자)' if new else 'empty_response'}
+
+    out = {'text': new, 'applied': True, 'cost': cost, 'cached': False,
+           'reason': 'compressed'}
+    try:
+        _COMPACT_CACHE.mkdir(parents=True, exist_ok=True)
+        cache.write_text(json.dumps(out, ensure_ascii=False, indent=2),
+                         encoding='utf-8')
+    except Exception:
+        pass
+    return out
+
+
 def build_seed(period: str, market_payload: dict,
                *, model: str | None = None, period_label: str | None = None,
                next_label: str | None = None) -> dict:
