@@ -18,9 +18,9 @@ type Stage = {
 };
 
 // 보고서 단계에 딸린 산출물 — 백엔드 `admin_funds._EXCEL_SPECS` 와 1:1 대응.
-// on = 어느 단계에서 구워지는지 (4JM12=생성 시 / 나머지=승인 시).
+// on = 어느 단계에서 구워지는지 — 2026-08-06 전 펀드 '승인 시'로 통일.
 const EXCEL_SPEC: Record<string, { label: string; on: "generate" | "approve" }> = {
-  "4JM12": { label: "DB생명 엑셀", on: "generate" },
+  "4JM12": { label: "DB생명 엑셀", on: "approve" },
   "08N33": { label: "월간운용보고서 엑셀", on: "approve" },
   "08N81": { label: "월간운용보고서 엑셀", on: "approve" },
   "08P22": { label: "월간운용보고서 엑셀", on: "approve" },

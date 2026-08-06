@@ -193,6 +193,9 @@ def build(month: str, out_path: Path) -> dict:
     if nav.empty or hold.empty:
         raise SystemExit(f'{month} 데이터 없음 (NAV {len(nav)}행 / 보유 {len(hold)}행)')
 
+    # 발송 전 눈으로 확인해야 하는 것들 — Admin 승인 응답에 실린다
+    warns: list[str] = []
+
     ap_ret = period_returns(stpr, end_dt, INCEPTION_BASE)
     bm_ret = period_returns(bm, end_dt, BM_BASE)
 
@@ -306,32 +309,52 @@ def build(month: str, out_path: Path) -> dict:
     h['bucket'] = h.apply(bucket_of, axis=1)
     h['w'] = h['NAST_TAMT_AGNST_WGH'].astype(float)
 
+    # ★ 붙여넣기 규약 (2026-08-06) — 발송본 3p 표 구조를 COM 으로 떠서 1:1 로 맞췄다.
+    #   운용사(한투) 작성 영역은 3p·6p 뿐이라 이 시트가 실제 작업 대상이다.
+    #     보유 현황  Table 18 : 9행 x 3열  구분 | 종목 | 비중 (%)   ← 값은 숫자만
+    #     환헤지 비율 Table 6 : 2행 x 2열  BM 기준 | USD Exposure 기준  ← 값에 % 포함
+    #     환헤지 포지션 Table 7: 2행 x 2열  헤지 포지션/순자산 | 해외자산/순자산
+    #   '펀드 자산 구성 비중' 은 발송본에 **표가 없다(파이 차트)** — 붙여넣기 대상이 아니라
+    #   차트 수정용 참고값이다.
+    #   ⚠ 종목명은 **원장 표기 그대로** 둔다. 발송본은 'ACE미국대형성장주액티브' 처럼
+    #     공백을 뺐지만, 원장이 사실 기준이라 임의로 맞추지 않는다.
     r = title(ws, 1, '업종별·지역별 투자 현황', 6)
-    r = section(ws, r, '펀드 주요 보유 현황')
-    for c, hd in enumerate(('구분', '종목', '비중(%)'), start=1):
+    r = section(ws, r, '펀드 주요 보유 현황  ※ 발송본 3p 표에 A:C 블록 그대로 붙여넣기')
+    for c, hd in enumerate(('구분', '종목', '비중 (%)'), start=1):
         put(ws, r, c, hd, bold=True, fill=H_FILL, align=C)
     r += 1
     # PPT 표기 규약: 소수 1자리 **버림**(truncate) — 38.949→38.9, 합계도 원시합 버림
     # (47.986→47.9). 반올림이면 48.0/46.0 이 되어 발송본(47.9/45.9)과 어긋난다.
     trunc1 = lambda x: int(float(x) * 10) / 10
     comp = {}
+    n_rows = 0
     for bucket in ('채권형', '주식형'):
         sub = h[h['bucket'] == bucket].sort_values('w', ascending=False)
         wsum = trunc1(sub['w'].sum())
         comp[bucket] = wsum
         put(ws, r, 1, bucket, bold=True, fill=H_FILL)
         put(ws, r, 2, '합계', bold=True)
-        put(ws, r, 3, wsum, fmt='0.0', align=R, bold=True)
+        put(ws, r, 3, f'{wsum:.1f}', align=R, bold=True)
         r += 1
+        n_rows += 1
         for _, row in sub.iterrows():
+            # 구분 열은 그룹 첫 행에만 — 발송본과 동일. 종목명 들여쓰기 금지
+            # (앞 공백이 그대로 붙여넣어진다).
             put(ws, r, 1, '')
-            put(ws, r, 2, f"  {row['ITEM_NM']}")
-            put(ws, r, 3, trunc1(row['w']), fmt='0.0', align=R)
+            put(ws, r, 2, str(row['ITEM_NM']))
+            put(ws, r, 3, f'{trunc1(row["w"]):.1f}', align=R)
             r += 1
+            n_rows += 1
     liq = round(100.0 - comp.get('채권형', 0) - comp.get('주식형', 0), 1)
+    # 발송본 표는 9행 고정(헤더 1 + 데이터 8). 보유 종목 수가 달라지면 PPT 표 행을
+    # 손으로 늘리거나 줄여야 한다 — 모르고 붙이면 아래 종목이 잘린다.
+    if n_rows != 8:
+        warns.append(
+            f'보유 현황 {n_rows}행 — 발송본 3p 표는 데이터 8행 고정입니다. '
+            f'붙여넣기 전에 PPT 표 행 수를 {n_rows}행으로 맞추세요')
 
     r += 1
-    r = section(ws, r, '펀드 자산 구성 비중 (%)')
+    r = section(ws, r, '펀드 자산 구성 비중 (%)  ※ 발송본은 파이 차트 — 차트 수정용 참고값')
     for c, hd in enumerate(('채권형', '주식형', '유동성'), start=1):
         put(ws, r, c, hd, bold=True, fill=H_FILL, align=C)
     r += 1
@@ -344,21 +367,25 @@ def build(month: str, out_path: Path) -> dict:
     hedge_w = float(h.loc[h['bucket'] == '달러선물', 'w'].abs().sum())
     ovs_w = float(h.loc[h['bucket'] == '주식형', 'w'].sum()
                   + h.loc[h['bucket'] == '외화현금', 'w'].sum())
-    r = section(ws, r, '해외자산 환헤지 비율')
-    put(ws, r, 1, 'BM 기준(헤지/45%)', bold=True, fill=H_FILL)
-    put(ws, r, 2, round(hedge_w / 45.0 * 100, 1), fmt='0.0', align=R)
+    bm_base = round(hedge_w / 45.0 * 100, 1)
+    usd_base = round(hedge_w / ovs_w * 100, 1) if ovs_w else None
+    # 발송본과 같은 **가로 2x2**. 종전엔 세로 2행이라 블록 복사가 안 됐다.
+    # 값에 % 기호를 붙이는 것도 발송본 표기 그대로다.
+    r = section(ws, r, '해외자산 환헤지 비율  ※ 발송본 3p 표에 A:B 2x2 블록 붙여넣기')
+    put(ws, r, 1, 'BM 기준', bold=True, fill=H_FILL, align=C)
+    put(ws, r, 2, 'USD Exposure 기준', bold=True, fill=H_FILL, align=C)
     r += 1
-    put(ws, r, 1, 'USD Exposure 기준(헤지/해외자산)', bold=True, fill=H_FILL)
-    put(ws, r, 2, round(hedge_w / ovs_w * 100, 1) if ovs_w else None, fmt='0.0', align=R)
+    put(ws, r, 1, f'{bm_base:.1f}%', align=C)
+    put(ws, r, 2, f'{usd_base:.1f}%' if usd_base is not None else '', align=C)
     r += 2
-    r = section(ws, r, '환헤지 포지션 | 해외자산 비율')
-    put(ws, r, 1, '헤지 포지션/순자산(%)', bold=True, fill=H_FILL)
-    put(ws, r, 2, round(hedge_w, 1), fmt='0.0', align=R)
+    r = section(ws, r, '환헤지 포지션 · 해외자산 비율  ※ 발송본 3p 표에 A:B 2x2 블록 붙여넣기')
+    put(ws, r, 1, '헤지 포지션/순자산', bold=True, fill=H_FILL, align=C)
+    put(ws, r, 2, '해외자산/순자산', bold=True, fill=H_FILL, align=C)
     r += 1
-    put(ws, r, 1, '해외자산/순자산(%)', bold=True, fill=H_FILL)
-    put(ws, r, 2, round(ovs_w, 1), fmt='0.0', align=R)
-    ws.column_dimensions['A'].width = 34
-    ws.column_dimensions['B'].width = 42
+    put(ws, r, 1, f'{hedge_w:.1f}%', align=C)
+    put(ws, r, 2, f'{ovs_w:.1f}%', align=C)
+    ws.column_dimensions['A'].width = 26
+    ws.column_dimensions['B'].width = 44
     ws.column_dimensions['C'].width = 12
 
     # ── s4 수익증권 보유 현황 ──
@@ -546,9 +573,9 @@ def build(month: str, out_path: Path) -> dict:
         '자산구성': {'채권형': round(comp.get('채권형', 0), 1),
                      '주식형': round(comp.get('주식형', 0), 1), '유동성': round(liq, 1)},
         '환헤지': {'헤지/순자산': round(hedge_w, 1), '해외자산/순자산': round(ovs_w, 1),
-                   'BM기준': round(hedge_w / 45.0 * 100, 1),
-                   'USDExp기준': round(hedge_w / ovs_w * 100, 1) if ovs_w else None},
+                   'BM기준': bm_base, 'USDExp기준': usd_base},
         'out': str(out_path),
+        'warnings': warns,
     }
 
 

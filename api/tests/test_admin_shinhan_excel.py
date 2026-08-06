@@ -12,12 +12,22 @@ import pytest
 
 
 def test_spec_wired_on_approve():
-    """보고서 **승인** 단계에 걸려야 한다 (4JM12 처럼 generate 가 아니라)."""
+    """보고서 **승인** 단계에 걸려야 한다."""
     from api.routers.admin_funds import _EXCEL_SPECS, SHINHAN_PPT_FUND
     spec = _EXCEL_SPECS[SHINHAN_PPT_FUND]
     assert spec["on"] == "approve" and spec["kind"] == "월간"
     # 브린슨 엑셀 옵션이 붙으면 안 된다 — 빌더 분기가 달라진다
     assert "brinson" not in spec
+
+
+def test_all_specs_bake_on_approve():
+    """전 펀드 산출물이 **승인 시** 구워져야 한다 (2026-08-06 통일).
+
+    종전엔 4JM12 만 'generate' 라 같은 화면에서 동작이 갈렸다.
+    """
+    from api.routers.admin_funds import _EXCEL_SPECS
+    off = {f: s['on'] for f, s in _EXCEL_SPECS.items() if s['on'] != 'approve'}
+    assert not off, off
 
 
 def test_spec_name_matches_builder_out_name():

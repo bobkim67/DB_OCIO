@@ -261,7 +261,9 @@ def _compact_market_payload(merged: dict | None) -> dict | None:
 SHINHAN_PPT_FUND = '2JM23'
 
 _EXCEL_SPECS = {
-    '4JM12': {'kind': '월간', 'on': 'generate', 'label': 'DB생명 엑셀',
+    # 2026-08-06: on 'generate' → 'approve' 로 통일 (사용자 지시). 종전엔 4JM12 만
+    # 보고서 생성 시 구워져 다른 5개 펀드와 동작이 달랐다. 이제 전부 승인 시 재생성.
+    '4JM12': {'kind': '월간', 'on': 'approve', 'label': 'DB생명 엑셀',
               'name': 'DB생명_월간보고_데이터_{ym}.xlsx'},
     '08N33': {'kind': '월간', 'on': 'approve', 'label': '월간운용보고서 엑셀',
               'name': '월간운용보고서_08N33_{y}년{m}월말.xlsx',
@@ -329,8 +331,7 @@ def _build_excel(fund: str, period: str, xp) -> list[str]:
     """펀드별 보고서 산출물 생성 → 빌더 경고 리스트. 호출자가 예외를 처리한다."""
     if fund == '4JM12':
         from tools.dblife_monthly_excel import build as build_dblife_excel
-        build_dblife_excel(period, xp)
-        return []
+        return list((build_dblife_excel(period, xp) or {}).get('warnings') or [])
     if fund == SHINHAN_PPT_FUND:
         # 코멘트 승인본이 Comment 시트 소스 — 없으면 빈 칸으로 나가므로 여기서 막는다.
         from market_research.report.report_store import load_final as _lf
