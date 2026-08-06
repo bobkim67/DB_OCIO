@@ -136,14 +136,18 @@
 .afp-open { font-size: 11.5px; padding: 3px 12px; border: 1px solid var(--ace-line); background: var(--ace-surface-2); border-radius: var(--ace-radius-sm); cursor: pointer; font-weight: 600; }
 .afp-wf { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 @media (max-width: 980px) { .afp-wf { grid-template-columns: 1fr; } }
-.afp-wf .stage { border: 1px solid var(--ace-line); border-radius: var(--ace-radius-sm); padding: 10px 12px; background: var(--ace-surface-2); }
+/* stage 를 flex 열로 — textarea 가 남는 칸을 채워 ①과 ②가 같은 높이가 된다
+   (그리드 행이 둘 중 높은 쪽에 맞춰지므로 짧은 쪽 textarea 가 늘어난다). */
+.afp-wf .stage { border: 1px solid var(--ace-line); border-radius: var(--ace-radius-sm); padding: 10px 12px; background: var(--ace-surface-2); display: flex; flex-direction: column; }
 .afp-wf .sh { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 700; margin-bottom: 8px; }
 .afp-wf .sh .ref { font-size: 11px; font-weight: 500; color: var(--ace-ink-3); }
 .afp-wf .btns { display: flex; gap: 6px; margin-bottom: 8px; }
 .afp-wf .btns button { font-size: 11.5px; padding: 4px 12px; border: 1px solid var(--ace-line); background: #fff; border-radius: var(--ace-radius-sm); cursor: pointer; font-weight: 600; }
 .afp-wf .btns button:disabled { opacity: 0.45; cursor: default; }
 .afp-wf .btns button.approve { background: #1e7b45; border-color: #1e7b45; color: #fff; }
-.afp-wf textarea { width: 100%; font-size: 13px; line-height: 1.55; padding: 8px 10px; border: 1px solid var(--ace-line); border-radius: var(--ace-radius-sm); resize: vertical; font-family: inherit; box-sizing: border-box; }
+/* flex:1 = 남는 칸 채우기(좌우 높이 일치) · max-height + auto = 아주 긴 코멘트만 스크롤.
+   높이는 AutoTextarea 가 min-height 로 준다 — height 를 박으면 폰트/폭 변화 때 잘린다. */
+.afp-wf textarea { width: 100%; font-size: 13px; line-height: 1.55; padding: 8px 10px; border: 1px solid var(--ace-line); border-radius: var(--ace-radius-sm); resize: vertical; font-family: inherit; box-sizing: border-box; flex: 1 1 auto; max-height: 70vh; overflow-y: auto; }
 .sra-sec { font-size: 12.5px; font-weight: 700; background: #eef2f7; color: #1a4d8f; border-left: 3px solid #1a4d8f; padding: 4px 10px; margin: 12px 0 4px; }
 .sra-p { font-size: 12.5px; margin: 3px 0; line-height: 1.55; color: var(--ace-ink); }
 /* 표 — 엑셀 덤프 가독성 (2026-07-28): 표 컨테이너에서만 가로 스크롤, 숫자 우측정렬 */

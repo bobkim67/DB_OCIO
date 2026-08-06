@@ -377,15 +377,18 @@ def _perf_period_label(mode: str, end_dt, quarter: int) -> str:
     """성과 문장 첫머리 — 발송본은 "6월 중 펀드는 …" 처럼 **기간을 명시**한다.
 
     월간은 종료일의 월을 쓴다(08K88 처럼 기간 창이 달력월과 어긋나도 보고 대상 월과
-    같다). 그 외 유형은 해당 기간 명칭으로, 알 수 없으면 '당 기간'.
+    같다). 그 외 유형은 해당 기간 명칭으로, 종료일을 모르면 '당 기간'.
+
+    ⚠ 월간의 `mode` 값은 **'월별'** 이다 ('월간'은 API 가 받는 kind 이고,
+      `_PERIOD_PATTERNS` 가 '월별'로 바꿔 넘긴다). 그래서 `_resolve_dates` 와 똑같이
+      **비월간을 먼저 걸러내고 나머지를 월간으로** 처리한다 — '월별'을 직접 비교하면
+      값이 또 바뀔 때 조용히 '당 기간'으로 새어나간다(실측: 7월 코멘트가 그렇게 나왔다).
     """
-    if mode == '월간' and end_dt is not None:
-        return f'{end_dt.month}월 중'
     if mode == '분기':
         return f'{quarter}분기 중'
     if mode in ('QTD', 'HTD', 'YTD'):
         return {'QTD': '분기 중', 'HTD': '반기 중', 'YTD': '연초 이후'}[mode]
-    return '당 기간'
+    return f'{end_dt.month}월 중' if end_dt is not None else '당 기간'
 
 
 def _resolve_dates(mode: str, year: int, period_num: int):
@@ -763,7 +766,7 @@ def generate_fund_comment_and_save(
     #   블록만 쓴다. 시드가 없거나 블록 파싱이 실패하면 **종전 경로 그대로** 간다.
     from market_research.report.comment_engine import (
         generate_report_from_inputs, parse_seeded_blocks, assemble_seeded_comment,
-        build_perf_sentence,
+        build_perf_sentence, check_block_rules,
     )
     from market_research.report.market_seed import (
         assemble as _seed_assemble, load_approved_seed, seed_coverage,
@@ -834,7 +837,7 @@ def generate_fund_comment_and_save(
             # 수치 나열이라 LLM 이 개입하면 오기·표현 흔들림만 생긴다. 해설은 붙이지 않는다.
             if fund_code in _FIXED_PERF and '성과' in blocks:
                 _fixed = build_perf_sentence(_perf_period_label(mode, end_dt, quarter),
-                                             fund_ret, pa)
+                                             fund_ret, pa, data_warnings)
                 if _fixed:
                     seed_meta['fixed_perf'] = {'llm_chars': len(blocks['성과']),
                                                'fixed_chars': len(_fixed)}
@@ -842,6 +845,11 @@ def generate_fund_comment_and_save(
                 else:
                     data_warnings.append(
                         '성과 문장 고정 생성 실패(PA 수치 없음) — LLM 문단을 그대로 씁니다')
+            # 펀드별 블록 규칙(2JM23 운용계획: 숫자·종목명·정도부사 금지) 준수 점검.
+            # 자동으로 지우지 않는다 — 숫자를 기계적으로 빼면 문장이 깨진다. Admin 이 고친다.
+            for _bname, _btext in blocks.items():
+                for _v in check_block_rules(fund_code, _bname, _btext):
+                    data_warnings.append(f'{_bname} 블록 규칙 위반 — {_v}')
             sub_line = ''
             if fmt == 'K' and (fund_ret or {}).get('sub_returns'):
                 subs = fund_ret['sub_returns']

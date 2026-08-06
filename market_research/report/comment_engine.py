@@ -2073,6 +2073,53 @@ SEEDED_BLOCKS = {
 
 _BLOCK_OPEN = '<<<%s>>>'
 
+# 펀드별 블록 추가 규칙 (2026-08-06 사용자 지시 — 2JM23 운용계획).
+# 신한라이프 발송본의 운용계획은 "무엇을 어느 방향으로" 만 적고 수치·종목명을 쓰지 않는다.
+#   예) "ACE 200 비중을 11.1%에서 27.7%로 대폭 확대" → "국내주식 비중 확대"
+BLOCK_EXTRA_RULES = {
+    ('2JM23', '계획'): (
+        '   ★ 이 블록만의 추가 제약 (반드시 지킬 것):\n'
+        '     · **숫자를 일절 쓰지 마세요** — 비중·수익률·금액·배수·날짜 전부. '
+        '"비중을 11.1%에서 27.7%로" 같은 서술 금지.\n'
+        '     · **종목명·티커를 쓰지 마세요.** 자산군 이름으로만 쓰세요 '
+        '(국내주식/해외주식/국내채권/해외채권/대체/현금). "ACE 200", "나스닥100", '
+        '"국고채10년" 같은 표기 금지.\n'
+        '     · **정도부사 금지** — 대폭·크게·급격히·상당히·큰 폭으로·대거.\n'
+        '     · 예시: "ACE 200 비중을 11.1%에서 27.7%로 대폭 확대하였습니다" → '
+        '"국내주식 비중을 확대하였습니다"'
+    ),
+}
+
+# 위 규칙 위반 탐지용 — 프롬프트가 안 지켜졌을 때 Admin 에 경고를 띄운다.
+# 자동으로 지우지는 않는다: 숫자를 기계적으로 빼면 "에서 로" 처럼 문장이 깨진다.
+_PLAN_ADVERBS = ('대폭', '큰 폭', '크게', '급격', '상당', '대거')
+
+
+def check_block_rules(fund_code: str, block: str, text: str) -> list[str]:
+    """`BLOCK_EXTRA_RULES` 위반 목록. 규칙 미등록 조합이면 항상 빈 리스트."""
+    if (fund_code, block) not in BLOCK_EXTRA_RULES or not text:
+        return []
+    import re as _re
+    out = []
+    nums = _re.findall(r'\d+(?:\.\d+)?', text)
+    if nums:
+        out.append(f'숫자 사용: {", ".join(sorted(set(nums))[:6])}')
+    advs = [a for a in _PLAN_ADVERBS if a in text]
+    if advs:
+        out.append(f'정도부사 사용: {", ".join(advs)}')
+    try:
+        from config.taa_classification import TAA_CLASSIFICATION
+        names = {str(v[0]) for v in TAA_CLASSIFICATION.values() if v and v[0]}
+    except Exception:
+        names = set()
+    # 보유 종목명 + 흔한 ETF 브랜드 토큰
+    hits = [n for n in names if n and n in text]
+    hits += [b for b in ('ACE ', 'KODEX', 'TIGER', 'SPDR', 'ISHARES', 'iShares',
+                         '나스닥100', '국고채10년') if b in text]
+    if hits:
+        out.append(f'종목명 표기: {", ".join(sorted(set(hits))[:5])}')
+    return out
+
 
 def parse_seeded_blocks(text: str, fmt: str):
     """LLM 출력에서 `<<<블록명>>>` 구획 추출. 하나라도 비면 None (→ 레거시 폴백)."""
@@ -2098,7 +2145,8 @@ def parse_seeded_blocks(text: str, fmt: str):
     return out if all(n in out for n in names) else None
 
 
-def build_perf_sentence(period_label: str, fund_return, pa_by_class: dict) -> str | None:
+def build_perf_sentence(period_label: str, fund_return, pa_by_class: dict,
+                        warnings: list | None = None) -> str | None:
     """성과 문단을 **코드가 결정론적으로** 쓴다 (2026-08-06 사용자 지시, 2JM23).
 
     발송본 양식 그대로 한 문장 — 해설을 붙이지 않는다:
@@ -2120,8 +2168,16 @@ def build_perf_sentence(period_label: str, fund_return, pa_by_class: dict) -> st
     ret = fund_return.get('return') if isinstance(fund_return, dict) else fund_return
     if ret is None or not pa_by_class:
         return None
+    # FX 는 fx_split=False 기준이라 껍데기(0.00%)여야 한다 — 실제 FX 상품을 들고 있어
+    # 값이 잡히면 조용히 사라지지 않도록 알린다.
+    _fx = pa_by_class.get('FX')
+    if warnings is not None and _fx is not None and abs(_fx) >= 0.005:
+        warnings.append(
+            f'FX 기여도 {_fx:+.2f}% 가 0 이 아닙니다 — 성과 문장에서 제외되므로 '
+            f'실제 FX 포지션이 있는지 확인하세요')
     live = {c: v for c, v in pa_by_class.items()
-            if c not in PERF_SENTENCE_EXCLUDE and v is not None}
+            if c not in PERF_SENTENCE_EXCLUDE and v is not None
+            and abs(v) >= 0.005}          # 반올림 0.00% 자산군은 빼 (미보유 = 발송본 관행)
     if not live:
         return None
     # canonical 에 없는 라벨(신규 자산군 등)은 뒤에 원래 순서대로 붙인다 — 조용히 버리지 않는다
@@ -3105,7 +3161,10 @@ def build_report_prompt(fund_code, year, quarter, data_ctx, inputs,
     if seed_sections:
         spec = SEEDED_BLOCKS.get(fmt) or SEEDED_BLOCKS['A']
         block_spec = '\n'.join(
-            f'{_BLOCK_OPEN % name}\n{desc}' for name, desc in spec)
+            f'{_BLOCK_OPEN % name}\n{desc}'
+            + (f'\n{BLOCK_EXTRA_RULES[(fund_code, name)]}'
+               if (fund_code, name) in BLOCK_EXTRA_RULES else '')
+            for name, desc in spec)
         seeded_instruction = f"""## 출력 형식 (반드시 이대로)
 아래 블록만 순서대로 출력하세요. 블록 머리표(<<<...>>>)를 정확히 그대로 쓰고,
 그 밖의 제목·번호·불릿·마크다운은 쓰지 마세요.

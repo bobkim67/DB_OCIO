@@ -39,9 +39,18 @@ const ST_COLOR: Record<string, { bg: string; fg: string }> = {
   approved: { bg: "#e6f4ea", fg: "#1e7b45" },
 };
 
-/** 내용 높이에 맞춰 자동으로 늘어나는 textarea — 세로 스크롤 제거 (2026-08-03 사용자 지시).
- *  코멘트가 1,300~1,700자라 rows 고정(10줄)으로는 계속 스크롤해야 했다.
- *  value 가 바뀔 때마다 scrollHeight 로 높이를 다시 잡는다. */
+/** 내용 높이에 맞춰 자동으로 늘어나는 textarea — 스크롤 없이 전문을 펼쳐 본다
+ *  (2026-08-03 사용자 지시. 코멘트가 1,300~1,700자라 rows 고정으론 계속 스크롤해야 했다).
+ *
+ *  ★ 2026-08-06 수정 — 바닥이 잘리던 문제.
+ *   - `height` 를 직접 박으면 그 순간의 `scrollHeight` 로 고정된다. 폰트가 늦게 로드되거나
+ *     폭이 바뀌어 줄 수가 늘면 **높이는 그대로라 마지막 줄이 잘린다**
+ *     (실측 ①펀드코멘트 481px / 내용 499px → 18px 잘림, overflowY:hidden 이라 접근 불가).
+ *     → `minHeight` 로 바꾸고 `flex:1` 로 칸을 채운다. 좌우 stage 가 그리드에서 같은 높이로
+ *       늘어나므로 ①이 ②(보고서)만큼 커진다.
+ *   - `overflowY:auto` + 상한(70vh) — 아주 긴 코멘트는 패널을 무한정 늘리지 않고 스크롤한다.
+ *   - `ResizeObserver` 로 폭 변화에도 다시 잰다.
+ */
 function AutoTextarea({ value, onChange, placeholder }: {
   value: string;
   onChange: (v: string) => void;
@@ -51,8 +60,14 @@ function AutoTextarea({ value, onChange, placeholder }: {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    el.style.height = "auto";                     // 줄어들 때도 다시 계산되도록 초기화
-    el.style.height = `${el.scrollHeight + 2}px`; // +2 = border 보정 (마지막 줄 잘림 방지)
+    const fit = () => {
+      el.style.minHeight = "0px";                  // 줄어들 때도 다시 계산되도록 초기화
+      el.style.minHeight = `${el.scrollHeight + 2}px`;  // +2 = border 보정
+    };
+    fit();
+    const ro = new ResizeObserver(fit);            // 폭 변화 → 줄바꿈 수 변화
+    ro.observe(el);
+    return () => ro.disconnect();
   }, [value]);
   return (
     <textarea
@@ -60,7 +75,6 @@ function AutoTextarea({ value, onChange, placeholder }: {
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      style={{ overflowY: "hidden", minHeight: 180 }}
     />
   );
 }
