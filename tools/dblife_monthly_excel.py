@@ -172,6 +172,85 @@ def bucket_of(row) -> str:
     return '유동성'
 
 
+# ── BM 환헤지 상수 (BM 정의에서 도출 — 월별로 변하지 않는다) ──
+# BM = 0.55 KBP-동부생명7 + 0.225 ACWI(USD, 환노출) + 0.225 ACWI(USDKRW, 환헤지)
+#   → 해외비중  = 0.225 + 0.225 = 45.0%
+#   → 환헤지비율 = 22.5 / 45 = 50.0%   (해외 절반만 헤지)
+BM_OVERSEAS_W = 45.0
+BM_HEDGE_RATIO = 50.0
+
+
+_OVERSEAS_KW = ('미국', 'VANGUARD', 'FTSE', 'DEVELOPED', '글로벌', '해외',
+                'S&P', '나스닥', 'MSCI')
+
+
+def _overseas_equity_isins() -> set:
+    """universe(방법3) 에서 **해외주식** ISIN 집합. 실패하면 빈 집합 → 키워드 폴백.
+
+    ★ 2026-08-06 버그 수정 — `bucket_of` 의 '주식형' 은 국내/해외를 구분하지 않는다.
+      6월까지는 주식형이 전부 미국 ETF 라 `해외자산 = 주식형 + 외화현금` 이 우연히
+      맞았는데, 7월에 **ACE 200(국내주식) 7.90%** 이 편입되면서 해외자산이 부풀었다
+      (46.65% → 실제 38.75%). 환헤지 비율이 55.8% 대신 46.3% 로 낮게 나온다.
+      보유 현황 표(채권형/주식형)는 발송본 구조 그대로 두고 **환헤지 분모만** 고친다.
+    """
+    try:
+        conn = get_pandas_connection('solution')
+        try:
+            df = pd.read_sql(
+                "SELECT ISIN FROM universe_non_derivative "
+                "WHERE classification_method='방법3' AND classification='해외주식'",
+                conn)
+        finally:
+            conn.close()
+        return {str(x).strip() for x in df['ISIN'] if str(x).strip()}
+    except Exception:
+        return set()
+
+
+def _add_comp_pie(ws, hdr_row: int, val_row: int, anchor: str) -> None:
+    """자산 구성 파이 차트 (2026-08-06 사용자 지정 옵션).
+
+    차트 영역 테두리 없음 · 데이터레이블 = 바깥쪽 끝 · 항목이름+백분율(소수1자리) ·
+    구분기호 ", " · 10pt 볼드. 항목이름이 라벨에 있으므로 범례는 뺀다.
+    """
+    from openpyxl.chart import PieChart, Reference
+    from openpyxl.chart.label import DataLabelList
+    from openpyxl.chart.shapes import GraphicalProperties
+    from openpyxl.chart.text import RichText
+    from openpyxl.drawing.line import LineProperties
+    from openpyxl.drawing.text import (CharacterProperties, Paragraph,
+                                       ParagraphProperties)
+
+    pie = PieChart()
+    pie.title = None
+    # 값·범주가 **가로 한 줄**이라 from_rows=True 가 필요하다
+    pie.add_data(Reference(ws, min_col=1, max_col=3, min_row=val_row, max_row=val_row),
+                 from_rows=True, titles_from_data=False)
+    pie.set_categories(Reference(ws, min_col=1, max_col=3,
+                                 min_row=hdr_row, max_row=hdr_row))
+    pie.legend = None
+
+    lbl = DataLabelList()
+    lbl.showCatName = True          # 항목이름
+    lbl.showPercent = True          # 백분율
+    lbl.showVal = False
+    lbl.showSerName = False
+    lbl.showLegendKey = False
+    lbl.showBubbleSize = False
+    lbl.separator = ', '            # 구분기호
+    lbl.dLblPos = 'outEnd'          # 바깥쪽 끝에
+    lbl.numFmt = '0.0%'             # 백분율 소수 첫째자리
+    cp = CharacterProperties(sz=1000, b=True)   # 10pt(=1000), 볼드
+    lbl.txPr = RichText(p=[Paragraph(pPr=ParagraphProperties(defRPr=cp),
+                                     endParaRPr=cp)])
+    pie.dataLabels = lbl
+
+    # 차트 영역 테두리 없음
+    pie.graphical_properties = GraphicalProperties(ln=LineProperties(noFill=True))
+    pie.width, pie.height = 12, 8
+    ws.add_chart(pie, anchor)
+
+
 # ── 엑셀 쓰기 ─────────────────────────────────────────────────────
 
 
@@ -354,36 +433,63 @@ def build(month: str, out_path: Path) -> dict:
             f'붙여넣기 전에 PPT 표 행 수를 {n_rows}행으로 맞추세요')
 
     r += 1
-    r = section(ws, r, '펀드 자산 구성 비중 (%)  ※ 발송본은 파이 차트 — 차트 수정용 참고값')
+    r = section(ws, r, '펀드 자산 구성 비중 (%)  ※ 아래 파이 차트를 복사해 발송본 3p 차트와 교체')
+    comp_hdr = r
     for c, hd in enumerate(('채권형', '주식형', '유동성'), start=1):
         put(ws, r, c, hd, bold=True, fill=H_FILL, align=C)
     r += 1
+    comp_val = r
     put(ws, r, 1, round(comp.get('채권형', 0), 1), fmt='0.0', align=R)
     put(ws, r, 2, round(comp.get('주식형', 0), 1), fmt='0.0', align=R)
     put(ws, r, 3, round(liq, 1), fmt='0.0', align=R)
+    _add_comp_pie(ws, comp_hdr, comp_val, anchor=f'E{comp_hdr}')
     r += 2
 
-    # 환헤지 — 헤지 = 달러선물(매도) 비중 절대값, 해외자산 = 주식형(미국 ETF) + 외화현금
+    # 환헤지 — 헤지 = 달러선물(매도) 비중 절대값
+    #          해외자산 = **해외주식**(universe 방법3) + 외화현금.
+    #   ⚠ 주식형 전체를 쓰면 국내주식(ACE 200)이 섞여 해외자산이 부풀고 환헤지 비율이
+    #     낮게 나온다 (2026-07 실측 46.65% vs 실제 38.75%).
     hedge_w = float(h.loc[h['bucket'] == '달러선물', 'w'].abs().sum())
-    ovs_w = float(h.loc[h['bucket'] == '주식형', 'w'].sum()
-                  + h.loc[h['bucket'] == '외화현금', 'w'].sum())
-    bm_base = round(hedge_w / 45.0 * 100, 1)
-    usd_base = round(hedge_w / ovs_w * 100, 1) if ovs_w else None
+    eq = h[h['bucket'] == '주식형'].copy()
+    ovs_isins = _overseas_equity_isins()
+    if ovs_isins:
+        is_ovs = eq['ITEM_CD'].astype(str).str.strip().isin(ovs_isins)
+    else:   # universe 조회 실패 — 종목명 키워드로 폴백
+        warns.append('universe(방법3) 조회 실패 — 해외주식 판정을 종목명 키워드로 '
+                     '대체했습니다. 환헤지 분모를 확인하세요')
+        is_ovs = eq['ITEM_NM'].astype(str).str.upper().apply(
+            lambda s: any(k.upper() in s for k in _OVERSEAS_KW))
+    dom_eq = eq[~is_ovs]
+    if len(dom_eq):
+        warns.append(
+            '해외자산에서 국내주식 제외: '
+            + ', '.join(f"{n} {w:.1f}%" for n, w in zip(dom_eq['ITEM_NM'], dom_eq['w']))
+            + f" (합 {dom_eq['w'].sum():.1f}%p)")
+    ovs_w = float(eq.loc[is_ovs, 'w'].sum() + h.loc[h['bucket'] == '외화현금', 'w'].sum())
+    # 2026-08-06 사용자 지시 — 두 표를 **같은 지표의 BM vs AP 비교**로 재정의했다.
+    #   해외자산 환헤지 비율(FX헤지 포지션/해외자산) : BM 50.0%  vs AP 헤지/해외자산
+    #   USD Exposure(해외자산/순자산)                : BM 45.0%  vs AP 해외자산/순자산
+    # 종전 'BM 기준(헤지/45%)' 은 AP 헤지를 BM 해외비중으로 나눈 혼합 비율이라
+    # 무엇과 무엇을 비교하는지 불분명했다.
+    ap_hedge_ratio = round(hedge_w / ovs_w * 100, 1) if ovs_w else None
+    ap_usd_exp = round(ovs_w, 1)
     # 발송본과 같은 **가로 2x2**. 종전엔 세로 2행이라 블록 복사가 안 됐다.
     # 값에 % 기호를 붙이는 것도 발송본 표기 그대로다.
-    r = section(ws, r, '해외자산 환헤지 비율  ※ 발송본 3p 표에 A:B 2x2 블록 붙여넣기')
-    put(ws, r, 1, 'BM 기준', bold=True, fill=H_FILL, align=C)
-    put(ws, r, 2, 'USD Exposure 기준', bold=True, fill=H_FILL, align=C)
+    r = section(ws, r, '해외자산 환헤지 비율(FX헤지 포지션/해외자산)'
+                       '  ※ 발송본 3p 표에 A:B 2x2 블록 붙여넣기')
+    put(ws, r, 1, 'BM', bold=True, fill=H_FILL, align=C)
+    put(ws, r, 2, 'AP', bold=True, fill=H_FILL, align=C)
     r += 1
-    put(ws, r, 1, f'{bm_base:.1f}%', align=C)
-    put(ws, r, 2, f'{usd_base:.1f}%' if usd_base is not None else '', align=C)
+    put(ws, r, 1, f'{BM_HEDGE_RATIO:.1f}%', align=C)
+    put(ws, r, 2, f'{ap_hedge_ratio:.1f}%' if ap_hedge_ratio is not None else '', align=C)
     r += 2
-    r = section(ws, r, '환헤지 포지션 · 해외자산 비율  ※ 발송본 3p 표에 A:B 2x2 블록 붙여넣기')
-    put(ws, r, 1, '헤지 포지션/순자산', bold=True, fill=H_FILL, align=C)
-    put(ws, r, 2, '해외자산/순자산', bold=True, fill=H_FILL, align=C)
+    r = section(ws, r, 'USD Exposure(해외자산/순자산)'
+                       '  ※ 발송본 3p 표에 A:B 2x2 블록 붙여넣기')
+    put(ws, r, 1, 'BM', bold=True, fill=H_FILL, align=C)
+    put(ws, r, 2, 'AP', bold=True, fill=H_FILL, align=C)
     r += 1
-    put(ws, r, 1, f'{hedge_w:.1f}%', align=C)
-    put(ws, r, 2, f'{ovs_w:.1f}%', align=C)
+    put(ws, r, 1, f'{BM_OVERSEAS_W:.1f}%', align=C)
+    put(ws, r, 2, f'{ap_usd_exp:.1f}%', align=C)
     ws.column_dimensions['A'].width = 26
     ws.column_dimensions['B'].width = 44
     ws.column_dimensions['C'].width = 12
@@ -572,8 +678,9 @@ def build(month: str, out_path: Path) -> dict:
         'BM수익률': {k: round(v, 2) for k, v in bm_ret.items() if v is not None},
         '자산구성': {'채권형': round(comp.get('채권형', 0), 1),
                      '주식형': round(comp.get('주식형', 0), 1), '유동성': round(liq, 1)},
-        '환헤지': {'헤지/순자산': round(hedge_w, 1), '해외자산/순자산': round(ovs_w, 1),
-                   'BM기준': bm_base, 'USDExp기준': usd_base},
+        '환헤지': {'헤지/순자산': round(hedge_w, 1),
+                   '해외자산환헤지비율': {'BM': BM_HEDGE_RATIO, 'AP': ap_hedge_ratio},
+                   'USDExposure': {'BM': BM_OVERSEAS_W, 'AP': ap_usd_exp}},
         'out': str(out_path),
         'warnings': warns,
     }
