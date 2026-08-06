@@ -54,7 +54,10 @@ class WorkflowStageDTO(BaseModel):
     text: str = ''
     approved_at: str = ''
     generated_at: str = ''
-    excel_ready: bool = False   # 4JM12 월간: DB생명 월간보고 엑셀 생성 여부
+    excel_ready: bool = False   # 보고서 단계 산출물(엑셀/PPT) 존재 여부 — _EXCEL_SPECS
+    # 산출물 빌더가 남긴 경고. 승인 응답에만 실린다(GET workflow 는 빈 리스트) —
+    # 2JM23 PPT 의 템플릿 승계·현금 잔여 경고처럼 발송 전 눈으로 봐야 하는 것들.
+    build_warnings: list[str] = []
 
 
 class AdminFundWorkflowDTO(BaseModel):
@@ -255,6 +258,8 @@ def _compact_market_payload(merged: dict | None) -> dict | None:
 #       · 08N33 FX 분리→포함  — 코멘트가 FX 포함 기준으로 전환된 데 맞춤
 #       · 08P22 proxy→등록 SAA — 벤치마크 기준선이 바뀌므로 6월 발송본과 SAA 수치가 다름
 #     둘 다 총수익률(AP)은 불변이고 분해·벤치 비교만 달라진다.
+SHINHAN_PPT_FUND = '2JM23'
+
 _EXCEL_SPECS = {
     '4JM12': {'kind': '월간', 'on': 'generate', 'label': 'DB생명 엑셀',
               'name': 'DB생명_월간보고_데이터_{ym}.xlsx'},
@@ -275,6 +280,13 @@ _EXCEL_SPECS = {
     '08K88': {'kind': '월간', 'on': 'approve', 'label': '월간운용보고서 엑셀',
               'name': '월간운용보고서_08K88_{y}년{m}월말.xlsx',
               'brinson': {'fx_split': False, 'saa_mode': 'auto'}},
+    # 신한라이프 4장 PPT — 엑셀이 아니라 pptx 지만 산출 파이프라인은 동일하게 탄다
+    # (보고서 승인 시 재생성 → 승인 버튼 우측 다운로드, 2026-08-06 사용자 지시).
+    # ⚠ PowerPoint COM 으로 전월 발송본을 열어 치환하므로 승인이 **수 분** 걸린다.
+    #   name 은 `tools.shinhan_monthly_ppt.OUT_NAME` 과 반드시 같아야 한다 —
+    #   빌더가 자기 경로에 쓰고 여기서는 그 경로를 읽기 때문. 테스트가 고정한다.
+    '2JM23': {'kind': '월간', 'on': 'approve', 'label': '신한라이프 PPT',
+              'name': '한국투자신탁운용_신한라이프_운용보고서(글로벌자산배분B형)_{ym}_회신.pptx'},
 }
 
 
@@ -314,12 +326,20 @@ def _excel_path(fund: str, period: str):
         ym=period.replace('-', ''), y=y, m=int(m))
 
 
-def _build_excel(fund: str, period: str, xp) -> None:
-    """펀드별 데이터 엑셀 생성. 호출자가 예외를 처리한다."""
+def _build_excel(fund: str, period: str, xp) -> list[str]:
+    """펀드별 보고서 산출물 생성 → 빌더 경고 리스트. 호출자가 예외를 처리한다."""
     if fund == '4JM12':
         from tools.dblife_monthly_excel import build as build_dblife_excel
         build_dblife_excel(period, xp)
-        return
+        return []
+    if fund == SHINHAN_PPT_FUND:
+        # 코멘트 승인본이 ③⑥ 소스 — 없으면 빈 칸으로 나가므로 여기서 막는다.
+        from market_research.report.report_store import load_final as _lf
+        cf = _lf(period, fund)
+        if not (cf and cf.get('approved')):
+            raise RuntimeError('펀드 코멘트 승인본 없음 (③⑥ 코멘트 소스)')
+        from tools.shinhan_monthly_ppt import build as build_shinhan_ppt
+        return list(build_shinhan_ppt(period).get('warnings') or [])
     _spec = _EXCEL_SPECS.get(fund) or {}
     _bo = _spec.get('brinson')
     if _bo:
@@ -349,7 +369,7 @@ def _build_excel(fund: str, period: str, xp) -> None:
         )
         xp.parent.mkdir(parents=True, exist_ok=True)
         xp.write_bytes(content)
-        return
+        return []
     raise RuntimeError(f'엑셀 빌더 미정의: {fund}')
 
 
@@ -366,7 +386,7 @@ def _run_excel_step(fund: str, period: str, kind: str | None, when: str, stage) 
     if xp is None:
         return
     try:
-        _build_excel(fund, period, xp)
+        stage.build_warnings = _build_excel(fund, period, xp)
         stage.excel_ready = True
     except Exception as exc:
         # 텍스트 보고서(draft/final)는 이미 저장됨 — 엑셀 실패만 명확히 알린다
@@ -582,81 +602,15 @@ def approve_comment(body: PeriodBodyDTO, fund: str = Path(..., max_length=32)) -
     return _stage(body.period, fund, None)
 
 
-# ── 신한라이프 월간보고 PPT (2JM23, 2026-08-06) ──
+# ── 신한라이프 월간보고 PPT (2JM23) ──
 # 4장 양식(표지/운용현황/자산배분/종목·전망). DRM 때문에 python-pptx 를 못 써서
 # PowerPoint COM 으로 **전월 발송본을 틀로 열어 치환**한다 → 생성이 느리고(수 분)
-# 서버에 PowerPoint 가 떠야 한다. 그래서 엑셀처럼 승인에 묶지 않고 **명시적 버튼**
-# 으로 분리했다. 표② 변동성·BM, 표④ TAA, ① 그래프는 템플릿 값 유지(수기).
-
-SHINHAN_PPT_FUND = '2JM23'
-
-
-class ShinhanPptDTO(BaseModel):
-    ready: bool = False
-    filename: str = ''
-    generated_at: str = ''
-    warnings: list[str] = []
-
-
-def _shinhan_ppt_path(period: str):
-    from pathlib import Path as _P
-    if not re.fullmatch(r'\d{4}-(0[1-9]|1[0-2])', period or ''):
-        return None
-    from tools.shinhan_monthly_ppt import OUT_NAME
-    base = _P(__file__).resolve().parent.parent.parent
-    return base / 'output' / OUT_NAME.format(ym=period.replace('-', ''))
-
-
-@router.get('/admin/funds/{fund}/shinhan-ppt', response_model=ShinhanPptDTO)
-def get_shinhan_ppt(fund: str = Path(..., max_length=32),
-                    period: str = Query(..., min_length=7, max_length=7)) -> ShinhanPptDTO:
-    if fund != SHINHAN_PPT_FUND:
-        return ShinhanPptDTO()
-    p = _shinhan_ppt_path(period)
-    if p is None or not p.exists():
-        return ShinhanPptDTO()
-    return ShinhanPptDTO(
-        ready=True, filename=p.name,
-        generated_at=time.strftime('%Y-%m-%d %H:%M',
-                                   time.localtime(p.stat().st_mtime)))
-
-
-@router.post('/admin/funds/{fund}/shinhan-ppt/generate',
-             response_model=ShinhanPptDTO)
-def generate_shinhan_ppt(body: PeriodBodyDTO,
-                         fund: str = Path(..., max_length=32)) -> ShinhanPptDTO:
-    if fund != SHINHAN_PPT_FUND:
-        raise HTTPException(status_code=400,
-                            detail=f'신한라이프 PPT 는 {SHINHAN_PPT_FUND} 전용입니다')
-    if _shinhan_ppt_path(body.period) is None:
-        raise HTTPException(status_code=422, detail='월간(YYYY-MM) 기간만 지원')
-    from market_research.report.report_store import load_final
-    cf = load_final(body.period, fund)
-    if not (cf and cf.get('approved')):
-        raise HTTPException(status_code=409,
-                            detail='펀드 코멘트 승인 후 생성 가능 (③⑥ 코멘트 소스)')
-    try:
-        from tools.shinhan_monthly_ppt import build
-        res = build(body.period)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f'PPT 생성 실패: {exc}')
-    out = get_shinhan_ppt(fund=fund, period=body.period)
-    out.warnings = list(res.get('warnings') or [])
-    return out
-
-
-@router.get('/admin/funds/{fund}/shinhan-ppt/download')
-def download_shinhan_ppt(fund: str = Path(..., max_length=32),
-                         period: str = Query(..., min_length=7, max_length=7)):
-    from fastapi.responses import FileResponse
-    if fund != SHINHAN_PPT_FUND:
-        raise HTTPException(status_code=400, detail='2JM23 전용')
-    p = _shinhan_ppt_path(period)
-    if p is None or not p.exists():
-        raise HTTPException(status_code=404, detail='PPT 없음 — 먼저 생성')
-    return FileResponse(
-        str(p), filename=p.name,
-        media_type='application/vnd.openxmlformats-officedocument.presentationml.presentation')
+# 서버에 PowerPoint 가 떠야 한다. 표② 변동성·BM, 표④ TAA, ① 그래프는 템플릿 값 유지(수기).
+#
+# 2026-08-06 사용자 지시로 **SAA 펀드 엑셀과 동일 경로로 통합**했다 — 전용 엔드포인트
+# 3종(get/generate/download)을 걷어내고 `_EXCEL_SPECS['2JM23']` 에 얹어
+# 보고서 승인 시 재생성 + 승인 버튼 우측 다운로드(`/report/excel`)로 일원화.
+# 재생성은 **승인을 다시 누르면** 된다(approve 는 멱등).
 
 
 # ── 리서치 wiki 뷰어 (2026-08-06) ──
@@ -974,12 +928,15 @@ def generate_report(body: GenBodyDTO, fund: str = Path(..., max_length=32)) -> W
 @router.get('/admin/funds/{fund}/report/excel')
 def download_report_excel(fund: str = Path(..., max_length=32),
                           period: str = Query(..., max_length=10)):
-    """4JM12 월간 DB생명 데이터 엑셀 다운로드 (보고서 생성 시 산출)."""
+    """보고서 단계 산출물 다운로드 — `_EXCEL_SPECS` 등록 펀드(엑셀/PPT)."""
     from fastapi.responses import FileResponse
     xp = _excel_path(fund, period)
     if xp is None or not xp.exists():
-        raise HTTPException(status_code=404, detail='엑셀 없음 — 보고서 생성 먼저')
-    return FileResponse(str(xp), filename=xp.name)
+        raise HTTPException(status_code=404, detail='산출물 없음 — 보고서 생성/승인 먼저')
+    # .pptx 는 mimetypes 가 못 알아보는 환경이 있어(그러면 text/plain) 명시한다
+    mt = ('application/vnd.openxmlformats-officedocument.presentationml.presentation'
+          if xp.suffix == '.pptx' else None)
+    return FileResponse(str(xp), filename=xp.name, media_type=mt)
 
 
 @router.put('/admin/funds/{fund}/report/draft', response_model=WorkflowStageDTO)

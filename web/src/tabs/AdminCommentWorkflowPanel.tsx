@@ -13,17 +13,20 @@ import AdminResearchWikiPanel from "./AdminResearchWikiPanel";
  */
 type Stage = {
   status: string; text: string; approved_at: string; generated_at: string;
-  excel_ready?: boolean;   // 보고서 단계 데이터 엑셀 생성 여부 (EXCEL_SPEC 참조)
+  excel_ready?: boolean;      // 보고서 단계 산출물 존재 여부 (EXCEL_SPEC 참조)
+  build_warnings?: string[];  // 산출물 빌더 경고 — 승인 응답에만 실린다
 };
 
-// 보고서 단계에 딸린 데이터 엑셀 — 백엔드 `admin_funds._EXCEL_SPECS` 와 1:1 대응.
-// on = 어느 단계에서 구워지는지 (4JM12=생성 시 / 08N33=승인 시).
+// 보고서 단계에 딸린 산출물 — 백엔드 `admin_funds._EXCEL_SPECS` 와 1:1 대응.
+// on = 어느 단계에서 구워지는지 (4JM12=생성 시 / 나머지=승인 시).
+// 2JM23 만 엑셀이 아니라 pptx 지만(신한라이프 4장 양식) 경로는 완전히 동일하다.
 const EXCEL_SPEC: Record<string, { label: string; on: "generate" | "approve" }> = {
   "4JM12": { label: "DB생명 엑셀", on: "generate" },
   "08N33": { label: "월간운용보고서 엑셀", on: "approve" },
   "08N81": { label: "월간운용보고서 엑셀", on: "approve" },
   "08P22": { label: "월간운용보고서 엑셀", on: "approve" },
   "08K88": { label: "월간운용보고서 엑셀", on: "approve" },
+  "2JM23": { label: "신한라이프 PPT", on: "approve" },
 };
 
 const ST_LABEL: Record<string, string> = {
@@ -194,18 +197,13 @@ export default function AdminCommentWorkflowPanel({ fundCode }: { fundCode?: str
     return () => { stale = true; };
   }, [period, isMarket, scope]);
 
-  // 신한라이프 4장 PPT — 2JM23 월간 전용 (2026-08-06).
-  // PowerPoint COM 으로 전월 발송본을 틀 삼아 치환하므로 수 분 걸린다 →
-  // 엑셀처럼 승인에 묶지 않고 별도 버튼으로 분리.
-  const shinhanEligible = fund === "2JM23" && kind === "월간" && scope === "fund";
-  const [ppt, setPpt] = useState<{ ready: boolean; filename: string; generated_at: string; warnings: string[] } | null>(null);
-  const loadPpt = useCallback((p: string) => {
-    fetch(`/api/admin/funds/2JM23/shinhan-ppt?period=${encodeURIComponent(p)}`)
-      .then((r) => r.json()).then(setPpt).catch(() => setPpt(null));
-  }, []);
-  useEffect(() => { if (shinhanEligible) loadPpt(period); }, [shinhanEligible, period, loadPpt]);
+  // 보고서 승인이 산출물(엑셀/PPT)까지 굽는 조합인지 — 승인이 오래 걸린다는 안내용.
+  const artifactOnApprove = kind === "월간" && EXCEL_SPEC[fund]?.on === "approve";
 
   const [wf, setWf] = useState<{ comment: Stage; report: Stage } | null>(null);
+  // 산출물 빌더 경고 — 승인 응답에만 실려 오므로 별도로 붙들어 둔다.
+  // (2JM23 PPT 의 템플릿 승계·현금 잔여 경고처럼 발송 전 눈으로 봐야 하는 것들)
+  const [buildWarn, setBuildWarn] = useState<string[]>([]);
   const [editText, setEditText] = useState("");
   const [editRpt, setEditRpt] = useState("");
   const [busy, setBusy] = useState("");
@@ -214,7 +212,7 @@ export default function AdminCommentWorkflowPanel({ fundCode }: { fundCode?: str
 
   const loadWf = useCallback((f: string, p: string) => {
     if (!f) return;
-    setWf(null); setMsg("");
+    setWf(null); setMsg(""); setBuildWarn([]);
     fetch(`/api/admin/funds/${f}/workflow?period=${p}`)
       .then((r) => r.json())
       .then((d) => { setWf(d); setEditText(d.comment?.text ?? ""); setEditRpt(d.report?.text ?? ""); })
@@ -232,18 +230,24 @@ export default function AdminCommentWorkflowPanel({ fundCode }: { fundCode?: str
       const d = await r.json();
       if (!r.ok) { setMsg(`✖ ${d?.detail ?? `HTTP ${r.status}`}`); return; }
       setMsg(`✔ ${label} 완료`);
-      loadWf(target, period);
+      const w: string[] = d?.build_warnings ?? [];
+      loadWf(target, period);            // loadWf 가 경고를 비우므로 그 뒤에 세운다
+      if (w.length) setBuildWarn(w);
     } catch (e) { setMsg(`✖ ${String(e)}`); } finally { setBusy(""); }
   };
 
   // 승인 = 현재 편집 내용 저장 → 승인 (2026-08-03 fix).
   //   종전엔 승인 요청이 {period} 만 보내서, textarea 를 고친 뒤 수정저장 없이
   //   승인하면 서버가 디스크의 **구 draft** 를 승인했다(편집분 유실).
-  const approveStage = async (kind: "comment" | "report") => {
-    const text = kind === "comment" ? editText : editRpt;
-    setBusy("승인"); setMsg("");
+  const approveStage = async (stage: "comment" | "report") => {
+    const text = stage === "comment" ? editText : editRpt;
+    // 2JM23 은 승인이 PowerPoint COM 을 돌려 수 분 걸린다 — 멈춘 걸로 오해하지 않게 알린다
+    setBusy(stage === "report" && artifactOnApprove
+      ? `승인 + ${EXCEL_SPEC[fund].label} 생성${fund === "2JM23" ? " (수 분)" : ""}`
+      : "승인");
+    setMsg("");
     try {
-      const pre = await fetch(`/api/admin/funds/${target}/${kind}/draft`, {
+      const pre = await fetch(`/api/admin/funds/${target}/${stage}/draft`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ period, text }),
       });
@@ -252,14 +256,16 @@ export default function AdminCommentWorkflowPanel({ fundCode }: { fundCode?: str
         setMsg(`✖ 편집분 저장 실패 — ${e?.detail ?? `HTTP ${pre.status}`}`);
         return;
       }
-      const r = await fetch(`/api/admin/funds/${target}/${kind}/approve`, {
+      const r = await fetch(`/api/admin/funds/${target}/${stage}/approve`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ period }),
       });
       const d = await r.json();
       if (!r.ok) { setMsg(`✖ ${d?.detail ?? `HTTP ${r.status}`}`); return; }
       setMsg("✔ 승인 완료 (편집분 반영)");
-      loadWf(target, period);
+      const w: string[] = d?.build_warnings ?? [];
+      loadWf(target, period);            // loadWf 가 경고를 비우므로 그 뒤에 세운다
+      if (w.length) setBuildWarn(w);
     } catch (e) { setMsg(`✖ ${String(e)}`); } finally { setBusy(""); }
   };
 
@@ -345,8 +351,11 @@ export default function AdminCommentWorkflowPanel({ fundCode }: { fundCode?: str
                 <button type="button" disabled={!!busy || wf.report.status === "not_generated"}
                   onClick={() => act("report/draft", { period, text: editRpt }, "보고서 수정 저장")}>수정 저장</button>
                 <button type="button" className="approve" disabled={!!busy || wf.report.status === "not_generated"}
+                  title={artifactOnApprove
+                    ? `승인 시 ${EXCEL_SPEC[fund].label}이 재생성됩니다${fund === "2JM23" ? " (PowerPoint COM — 수 분 소요)" : ""}`
+                    : undefined}
                   onClick={() => approveStage("report")}>승인</button>
-                {/* 보고서 단계 데이터 엑셀 — 월간에만, EXCEL_SPEC 등록 펀드만 노출 */}
+                {/* 보고서 단계 산출물(엑셀/PPT) — 월간에만, EXCEL_SPEC 등록 펀드만 노출 */}
                 {kind === "월간" && EXCEL_SPEC[fund] && (
                   wf.report.excel_ready ? (
                     <a href={`/api/admin/funds/${fund}/report/excel?period=${period}`}>
@@ -360,44 +369,14 @@ export default function AdminCommentWorkflowPanel({ fundCode }: { fundCode?: str
                   )
                 )}
               </div>
-              <AutoTextarea value={editRpt} onChange={setEditRpt}
-                placeholder="① 승인 후 생성 → 편집" />
-              {/* 신한라이프 4장 PPT — 2JM23 월간 전용 */}
-              {shinhanEligible && (
-                <div className="btns" style={{ marginTop: 8 }}>
-                  <button type="button"
-                    disabled={!!busy || wf.comment.status !== "approved"}
-                    title={wf.comment.status !== "approved"
-                      ? "펀드코멘트 승인 후 생성 가능 (③⑥ 코멘트 소스)"
-                      : "전월 발송본을 틀로 표·코멘트 치환 (수 분 소요)"}
-                    onClick={async () => {
-                      setBusy("신한라이프 PPT 생성 (수 분)"); setMsg("");
-                      try {
-                        const r = await fetch("/api/admin/funds/2JM23/shinhan-ppt/generate", {
-                          method: "POST", headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ period }),
-                        });
-                        const d = await r.json();
-                        if (!r.ok) { setMsg(`✖ ${d?.detail ?? `HTTP ${r.status}`}`); return; }
-                        setPpt(d); setMsg("✔ 신한라이프 PPT 생성 완료");
-                      } catch (e) { setMsg(`✖ ${String(e)}`); } finally { setBusy(""); }
-                    }}>
-                    신한라이프 PPT {ppt?.ready ? "재생성" : "생성"}
-                  </button>
-                  {ppt?.ready && (
-                    <a href={`/api/admin/funds/2JM23/shinhan-ppt/download?period=${period}`}>
-                      <button type="button">다운로드</button>
-                    </a>
-                  )}
-                  {ppt?.generated_at && <span className="ref">생성 {ppt.generated_at}</span>}
-                  {/* 템플릿 승계 항목(변동성·BM·TAA·그래프)은 반드시 눈으로 확인해야 한다 */}
-                  {!!ppt?.warnings?.length && (
-                    <div style={{ fontSize: 11, color: "#8a5a00", marginTop: 4, lineHeight: 1.6 }}>
-                      {ppt.warnings.map((w, i) => <div key={i}>⚠ {w}</div>)}
-                    </div>
-                  )}
+              {/* 빌더 경고 — 템플릿 승계 항목·현금 잔여 등 발송 전 눈으로 확인할 것 */}
+              {!!buildWarn.length && (
+                <div style={{ fontSize: 11, color: "#8a5a00", margin: "4px 0 6px", lineHeight: 1.6 }}>
+                  {buildWarn.map((w, i) => <div key={i}>⚠ {w}</div>)}
                 </div>
               )}
+              <AutoTextarea value={editRpt} onChange={setEditRpt}
+                placeholder="① 승인 후 생성 → 편집" />
             </div>
             )}
           </div>

@@ -853,9 +853,24 @@ DashboardPage 신규 탭 "거래내역" — 거래내역 조회 + 일별 비중 
 
 ## 신한라이프 월간보고 PPT — 2JM23 4장 양식 (2026-08-06)
 
-`tools/shinhan_monthly_ppt.py` + Admin `[펀드] → 2JM23 → 월간` 버튼.
+`tools/shinhan_monthly_ppt.py`.
 **DRM 때문에 python-pptx 불가**(발송본·`SaveCopyAs` 모두 `<DOCUMENT SAFER`) →
 **전월 발송본을 틀로 PowerPoint COM 치환**. `kb_monthly_report.py`(Word) 선례.
+
+### 배선 = SAA 펀드 엑셀과 동일 경로 (2026-08-06 사용자 지시)
+
+전용 엔드포인트 3종(`/shinhan-ppt` get·generate·download)을 걷어내고
+**`_EXCEL_SPECS['2JM23']`** 에 얹었다 — pptx 지만 산출 파이프라인은 엑셀과 같다.
+
+- **② 보고서 승인 시 재생성** → 승인 버튼 우측 `신한라이프 PPT 다운로드`
+  (`GET /report/excel`). 재생성은 **승인을 다시 누르면** 된다(approve 는 멱등).
+- ⚠ 승인이 **수 분** 걸린다(PowerPoint COM). 프론트가 busy 라벨로 알린다.
+- ⚠ `_EXCEL_SPECS` 의 `name` 은 `shinhan_monthly_ppt.OUT_NAME` 과 **반드시 같아야**
+  한다 — 빌더는 자기 경로에 쓰고 라우터는 그 경로를 읽는다. 어긋나면 승인해도
+  "산출물 없음"이 뜬다. `test_spec_name_matches_builder_out_name` 이 고정한다.
+- 빌더 경고는 `WorkflowStageDTO.build_warnings` 로 **승인 응답에만** 실린다
+  (GET workflow 는 빈 리스트) — 화면을 새로 열면 사라지므로 승인 직후에 확인할 것.
+- 코멘트 승인본 게이트는 `_build_excel` 안으로 옮겼다(③⑥ 소스).
 
 | 슬라이드 | 자동 | 템플릿 승계(수기) |
 |---|---|---|
