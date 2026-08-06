@@ -230,6 +230,14 @@ def daily_update(
     print(f'  → status={rs_step.get("status")} pages={rs_step.get("pages")} '
           f'reused={rs_step.get("reused")}')
 
+    # ── Step 2.9b: 전월 캐치업 (★ 월경계 P0, 2026-08-06) ──
+    # 전월 09 체인이 stale 하면 따라잡는다. 최신이면 mtime 비교만 하고 no-op.
+    print(f'\n[Step 2.9b] 전월 캐치업...')
+    catchup = _step_prev_month_catchup(month_str, dry_run=dry_run)
+    result['steps']['prev_month_catchup'] = catchup
+    print(f'  → {catchup["month"]} status={catchup.get("status")} '
+          f'ran={catchup.get("ran") or "없음(최신)"}')
+
     # 09 readiness 게이트 — monthly pipeline 완료 조건.
     readiness = check_09_readiness(month_str)
     result['steps']['research_synthesis_readiness'] = readiness
@@ -1068,6 +1076,110 @@ def _adapted_newer_than_claims(month_str: str, claims_path) -> bool:
         return False
 
 
+def _unprocessed_article_count(month_str: str, claims_path) -> int:
+    """추출되지 않은 기사 수 — `processed_article_ids` 미포함 건 (2026-08-06).
+
+    ★ mtime 비교(`_adapted_newer_than_claims`)만으로는 부족하다. claims 파일이
+      어떤 이유로든 adapted 보다 나중에 touch 되면(예: 다른 경로의 부분 갱신)
+      게이트가 **영구히 false** 가 되어 미처리 기사가 영영 추출되지 않는다.
+
+    실측(2026-07): 기사 1,702건 중 `processed_article_ids` 는 1,656건 —
+    **미처리 61건, 그 중 58건이 7/28 이후**였다. 어제 캐치업이 09 만 재생성하고
+    추출을 건너뛴 이유가 이것이다(adapted mtime < claims mtime).
+    """
+    import json as _json
+    try:
+        if not claims_path.exists():
+            return 0
+        d = _json.loads(claims_path.read_text(encoding='utf-8'))
+        processed = {str(x) for x in (d.get('processed_article_ids') or [])}
+        if not processed:
+            return 0          # legacy 파일(필드 부재) — 판정 불가, mtime 게이트에 맡김
+        from market_research.analyze.research_claim_extractor import (
+            prep_research_evidence,
+        )
+        n = 0
+        for lane in ('naver_research', 'broker_mail', 'monygeek'):
+            try:
+                for a in prep_research_evidence(month_str, lane) or []:
+                    if str(a.get('_article_id') or '') not in processed:
+                        n += 1
+            except Exception as exc:
+                print(f'  [커버리지 점검] {lane} 로드 실패: {exc}')
+        return n
+    except Exception as exc:
+        print(f'  [커버리지 점검] 실패: {exc}')
+        return 0
+
+
+def _prev_month_str(month_str: str) -> str:
+    y, m = int(month_str[:4]), int(month_str[5:7])
+    return f'{y - 1}-12' if m == 1 else f'{y}-{m - 1:02d}'
+
+
+def _raw_newer_than_adapted(month_str: str) -> bool:
+    """naver_research raw 가 adapted 보다 최신이면 True (adapter 재실행 필요)."""
+    try:
+        from market_research.collect.naver_research_adapter import adapted_path
+        from market_research.wiki.paths import BASE_DIR as _B  # noqa: F401
+        ap = adapted_path(month_str)
+        if not ap.exists():
+            return True
+        raw_dir = BASE_DIR / 'data' / 'naver_research' / 'raw'
+        newest = max((p.stat().st_mtime
+                      for p in raw_dir.glob(f'*/{month_str}.json')), default=0.0)
+        return newest > ap.stat().st_mtime
+    except Exception:
+        return False
+
+
+def _step_prev_month_catchup(month_str: str, *, dry_run: bool = False) -> dict:
+    """★ 월경계 캐치업 (2026-08-06) — 전월 09 체인이 stale 하면 따라잡는다.
+
+    ## 왜 필요한가
+
+    `daily_update` 는 `month_str`=당월만 처리한다. 월이 바뀌면 전월은 다시 보지
+    않으므로, **월말(마지막 며칠) 발행 리서치가 영구 미반영**으로 남는다.
+
+    실측(2026-07): claims 는 08-03 까지 갱신됐는데 09 페이지는 **07-27 생성분
+    그대로**였다. 그 사이 나온 신한 7/29 「엔 캐리 트레이드 청산 재발 가능성
+    점검」·대신 7/28 「호르무즈發 에너지 충격」이 09 에 없었고, 09 가 시장
+    debate 의 primary source 라 7월 시장 코멘트에도 해당 주제가 빠졌다.
+
+    ## 설계
+
+    날짜 규칙(월초 N일)이 아니라 **기존 신선도 판정을 재사용**한다 —
+      - raw > adapted        → adapter(1.3) + refine(2.5) 재실행 (LLM 0)
+      - adapted > claims     → 증분 재추출 (2.9 내부 게이트, LLM)
+      - claims > 09          → 09 재생성 (2.9 내부 게이트, LLM)
+    셋 다 아니면 **mtime 비교만 하고 no-op** — 정상 운영일의 비용은 0.
+
+    ⚠ 대상은 **09 체인 한정**(adapter/refine/synthesis). BEW(3.5)·base wiki(2.6)·
+      GraphRAG(3) 는 포함하지 않았다 — 이번 사고의 경로가 아니고, 무조건 재실행하면
+      파일 mtime 이 매일 갱신돼 하위 단계의 신선도 판정을 오염시킨다.
+    """
+    prev = _prev_month_str(month_str)
+    out: dict = {'month': prev, 'ran': []}
+    if dry_run:
+        return {**out, 'status': 'skip', 'reason': 'dry_run'}
+    try:
+        if _raw_newer_than_adapted(prev):
+            out['adapter'] = _step_naver_research_adapter(prev)
+            out['refine'] = _step_refine(prev)
+            out['ran'] += ['adapter', 'refine']
+        # 2.9 는 내부에 재추출/재생성 신선도 게이트가 있어 그대로 호출한다.
+        # 최신이면 reused=True 로 즉시 반환(LLM 0).
+        rs = _step_research_synthesis(prev)
+        out['research_synthesis'] = rs
+        if not rs.get('reused'):
+            out['ran'].append('research_synthesis')
+        out['status'] = 'ok'
+    except Exception as exc:      # 캐치업 실패가 당월 파이프라인을 막지 않는다
+        out['status'] = 'error'
+        out['error'] = str(exc)
+    return out
+
+
 def _step_benchmark_events(year: int, month: int) -> dict:
     """Step 3.5 — BEW(Benchmark Event Window) contract 생성 (GraphRAG 이후).
 
@@ -1117,8 +1229,16 @@ def _step_research_synthesis(month_str: str, *, dry_run: bool = False,
 
     rp = research_claims_path(month_str)
     extracted = None
-    # 신선도 자동감지: adapted/{month}.json 이 claims 보다 최신이면 재추출(late-month 흡수).
-    if force or not rp.exists() or _adapted_newer_than_claims(month_str, rp):
+    # 신선도 자동감지 2중 게이트:
+    #   (a) adapted mtime > claims mtime  — late-month 증분 크롤 흡수
+    #   (b) ★ processed_article_ids 미포함 기사 존재 — **커버리지** 기준 (2026-08-06)
+    # (a) 만으로는 claims 가 어떤 이유로든 adapted 보다 나중에 touch 되면 게이트가
+    # 영구히 false 가 되어 미처리 기사가 영영 추출되지 않는다. 실측(2026-07):
+    # 기사 1,702건 중 미처리 61건, 그 중 58건이 7/28 이후였다.
+    _unproc = _unprocessed_article_count(month_str, rp)
+    if _unproc:
+        print(f'  미처리 기사 {_unproc}건 감지 → 증분 추출')
+    if force or not rp.exists() or _adapted_newer_than_claims(month_str, rp) or _unproc:
         try:
             # force=전량 재추출 / 그 외(신선도 트리거)=증분(신규 기사만) → late-month 저비용 흡수.
             ext = run_research_extraction(month_str, incremental=not force)  # P2 (LLM)
