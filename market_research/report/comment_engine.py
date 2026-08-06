@@ -5,6 +5,7 @@ SCIP 벤치마크 + 펀드 포지션/PA → 펀드별 운용보고 코멘트
 """
 
 import json
+import re
 import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -2030,6 +2031,135 @@ def format_D(fund_code, common_market, fund_perf_detailed, outlook, holdings, mo
     return text
 
 
+# ═══════════════════════════════════════════════════════
+# 시드 조립 모드 (2026-08-05 사용자 지시)
+# ═══════════════════════════════════════════════════════
+#
+# 공통 문단(시장동향·전망)은 `market_seed` 가 기간당 1본 만들어 두고, 펀드는
+# 보유 자산군 문장만 골라 조립한다. LLM 은 **펀드 고유 블록만** 쓴다.
+# 종전처럼 LLM 이 전문을 쓰면 펀드마다 공통 문단이 미세하게 갈렸다
+# (2026-07 은 7개 펀드를 손으로 통일해서 발송).
+#
+# 아래 골격은 **2026-07 승인본 원문에서 그대로 뜬 것**이다 (들여쓰기·빈 줄 포함).
+# 사용자가 "지금 승인된 내용이 마음에 든다"고 확인한 형태라 바꾸지 않는다.
+
+SEEDED_BLOCKS = {
+    'A': [
+        ('성과', '당 기간 펀드 수익률과 자산군별 기여도. PA 표의 수치를 그대로 인용. '
+                 '0.05% 이상 기여 자산군은 원인까지. 2~4문장, 180~260자.'),
+        ('매니저', '펀드 운용철학·목표수익률로 시작해 당 기간 실제 매매와 향후 대응 계획. '
+                   '3~5문장, 250~340자.'),
+    ],
+    'C': [
+        ('성과', '당 기간 펀드 수익률과 자산군별 기여도, BM 대비 자산배분·종목선택 효과. '
+                 '서브 포트폴리오 수익률이 제공되면 함께. 3~5문장, 220~320자.'),
+        ('포지션', '당 기간 실제 매매(무엇을 재원으로 무엇을 늘렸는지)와 향후 포지션 계획. '
+                   '3~5문장, 220~320자.'),
+    ],
+    'D': [
+        ('성과', '당 기간 펀드 수익률(보수 차감전)과 자산군별 성과기여도 나열. '
+                 '2~4문장, 150~250자.'),
+        ('계획', '당 기간 실제 매매와 향후 운용 계획. 2~4문장, 180~280자.'),
+    ],
+    'K': [
+        ('매매', '당 기간 중 실제 매매 — 무엇을 왜 늘렸고 재원은 어디서 마련했는지. '
+                 '2~3문장, 130~200자.'),
+        ('성과', '서브 포트폴리오별 수익률 → BM 대비 자산배분/종목선택 효과 → 서브 비중 '
+                 '→ BM 대비 초과/하회. 제공된 Brinson 요인 표의 부호와 수치만 사용. '
+                 '3~5문장, 200~300자.'),
+        ('계획', '향후 운용 계획. 2~3문장, 150~230자.'),
+    ],
+}
+
+_BLOCK_OPEN = '<<<%s>>>'
+
+
+def parse_seeded_blocks(text: str, fmt: str):
+    """LLM 출력에서 `<<<블록명>>>` 구획 추출. 하나라도 비면 None (→ 레거시 폴백)."""
+    spec = SEEDED_BLOCKS.get(fmt)
+    if not spec or not text:
+        return None
+    names = [n for n, _ in spec]
+    pattern = re.compile(r'<<<\s*(' + '|'.join(map(re.escape, names)) + r')\s*>>>')
+    hits = list(pattern.finditer(text))
+    if not hits:
+        return None
+    out = {}
+    for i, mt in enumerate(hits):
+        end = hits[i + 1].start() if i + 1 < len(hits) else len(text)
+        body = text[mt.end():end].strip()
+        # 블록 안에 남은 마크다운·머리기호 제거 (프롬프트로 금지하지만 방어).
+        # 굵게 표시는 쌍으로 오므로 머리기호를 떼기 전에 먼저 지운다 —
+        # 순서를 바꾸면 '- **성과** 본문' 에서 앞 '**' 만 떨어져 '**' 가 남는다.
+        body = body.replace('**', '').replace('__', '')
+        body = re.sub(r'^[\s\-•*]+', '', body).strip()
+        if body:
+            out[mt.group(1)] = body
+    return out if all(n in out for n in names) else None
+
+
+def assemble_seeded_comment(fmt: str, market: str, outlook: str,
+                            blocks: dict, *, sub_line: str = '') -> str:
+    """공통 문단(시드) + 펀드 블록(LLM) → 포맷별 최종 본문.
+
+    골격은 2026-07 승인본 원문 그대로 (들여쓰기 문자까지 동일).
+    """
+    if fmt == 'A':
+        return (
+            '■ 월간 시장동향과 펀드의 움직임\n'
+            f'\t{market}\n'
+            f'\t{blocks["성과"]}\n'
+            '\n'
+            '■ 향후 시장전망\n'
+            f'\t{outlook}\n'
+            '\n'
+            '■ 매니저 코멘트\n'
+            f'\t{blocks["매니저"]}'
+        )
+    if fmt == 'C':
+        return (
+            '[운용경과]\n'
+            '1. 시장 동향\n'
+            f' {market}\n'
+            '\n'
+            '2. 운용경과\n'
+            f' {blocks["성과"]}\n'
+            '\n'
+            '[운용계획]\n'
+            '1. 시장 전망\n'
+            f' {outlook}\n'
+            '\n'
+            '2. 포지션\n'
+            f' {blocks["포지션"]}'
+        )
+    if fmt == 'D':
+        return (
+            '1. 운용성과 요약\n'
+            '\n'
+            f'{market}\n'
+            '\n'
+            f'{blocks["성과"]}\n'
+            '\n'
+            '2. 시장환경 분석 및 펀드운용계획\n'
+            '\n'
+            f'시장환경 분석: {outlook}\n'
+            '\n'
+            f'펀드 운용 계획: {blocks["계획"]}'
+        )
+    if fmt == 'K':
+        # KB FactSheet — B29 3불릿 / B33 2불릿. 빈 줄이 두 셀의 경계다.
+        perf = blocks['성과'] + (f'\n{sub_line}' if sub_line else '')
+        return (
+            f'- {market}\n'
+            f'- {blocks["매매"]}\n'
+            f'- {perf}\n'
+            '\n'
+            f'- {outlook}\n'
+            f'- {blocks["계획"]}'
+        )
+    raise ValueError(f'시드 조립 미지원 포맷: {fmt}')
+
+
 def _filter_by_holdings(market_text, holdings):
     """펀드 미편입 자산군 관련 문장 제거"""
     lines = market_text.split('\n')
@@ -2714,7 +2844,8 @@ def run(year=2026, month=2, use_llm=False):
 
 def build_report_prompt(fund_code, year, quarter, data_ctx, inputs,
                         past_comments=None, detail=False,
-                        start_date=None, end_date=None):
+                        start_date=None, end_date=None,
+                        seed_sections=None):
     """inputs dict + data_ctx → LLM 프롬프트 빌드.
 
     Parameters
@@ -2726,6 +2857,9 @@ def build_report_prompt(fund_code, year, quarter, data_ctx, inputs,
     past_comments : list[dict] | None — [{file, code, text}, ...]
     detail : bool — True면 과거 코멘트 few-shot 상세 양식
     start_date, end_date : date | None — 분석 기간. None이면 분기 기준 fallback.
+    seed_sections : dict | None — {'market': str, 'outlook': str}. 주어지면
+        **시드 조립 모드** — 공통 문단은 코드가 넣고 LLM 은 펀드 고유 블록만
+        쓴다 (2026-08-05). None 이면 종전대로 전문을 생성한다.
     """
     cfg = FUND_CONFIGS.get(fund_code, {})
     fmt = cfg.get('format', 'C')
@@ -2930,8 +3064,34 @@ def build_report_prompt(fund_code, year, quarter, data_ctx, inputs,
             )
         pattern_text = '\n\n## 기간 내 가격 통계 (저점/고점/MDD)\n' + '\n'.join(p_lines)
 
-    # 양식 결정
-    if detail and fund_comments:
+    # ── 시드 조립 모드 (2026-08-05) ──
+    # seed_sections 가 주어지면 공통 문단은 코드가 조립하고 LLM 은 펀드 고유
+    # 블록만 쓴다. 공통 문단은 **읽기 전용 맥락**으로만 넣어 성과·매니저 블록이
+    # 같은 말을 반복하지 않게 한다 (규칙 8-5 섹션 간 중복 금지의 연장).
+    if seed_sections:
+        spec = SEEDED_BLOCKS.get(fmt) or SEEDED_BLOCKS['A']
+        block_spec = '\n'.join(
+            f'{_BLOCK_OPEN % name}\n{desc}' for name, desc in spec)
+        seeded_instruction = f"""## 출력 형식 (반드시 이대로)
+아래 블록만 순서대로 출력하세요. 블록 머리표(<<<...>>>)를 정확히 그대로 쓰고,
+그 밖의 제목·번호·불릿·마크다운은 쓰지 마세요.
+
+{block_spec}
+
+## ★ 이미 확정된 공통 문단 (다시 쓰지 마세요 — 참고용)
+같은 기간 모든 펀드가 공유하는 시장동향·전망 문단은 아래로 **이미 확정**되어
+보고서에 자동으로 들어갑니다. 위 블록에서 이 내용을 반복하거나 요약하지 마세요.
+시장 상황을 다시 설명하지 말고, 펀드의 성과·매매·계획만 쓰세요.
+
+[시장동향 — 자동 삽입됨]
+{seed_sections.get('market', '')}
+
+[향후 전망 — 자동 삽입됨]
+{seed_sections.get('outlook', '')}"""
+        format_instruction = seeded_instruction
+        format_markers = ('블록 머리표(<<<...>>>) 외에는 어떤 기호도 쓰지 마세요. '
+                          '각 블록은 순수 텍스트 문단입니다.')
+    elif detail and fund_comments:
         format_sample = fund_comments[-1]['text'][:3000]
         format_instruction = """## 양식 샘플 (이 구조와 톤을 정확히 따르세요)
 아래는 이전 기간의 실제 보고서입니다. 동일한 섹션 구조, 번호 체계(1/2, -, ㅇ, ①②③, A.B.C.), 톤을 따르되 내용은 현재 분석 기간 데이터만 사용하세요.
@@ -2944,6 +3104,21 @@ def build_report_prompt(fund_code, year, quarter, data_ctx, inputs,
         format_instruction = f"""## 포맷 (이 양식을 따르세요)
 {format_sample}"""
         format_markers = '[운용경과], [운용계획] 같은 섹션 구분자와 들여쓰기만 사용하세요. 순수 텍스트 문단으로 작성하세요.'
+
+    if seed_sections:
+        length_rule = (
+            '**분량 — 각 블록에 지정된 자수를 지키세요.** 공통 문단(시장동향·전망)은 '
+            '이미 확정돼 자동 삽입되므로 블록 분량에 포함되지 않습니다. '
+            '내용을 더 넣으려고 문장을 늘리지 말고 핵심만 남기세요.')
+        closing = (f'위 블록 형식 그대로 {fund_code} ({period_desc}) 의 '
+                   f'펀드 고유 블록만 출력하세요.')
+    else:
+        length_rule = (
+            '**분량 상한 — 전체 900~1,300자, 각 섹션 2~5문장.** 아래 양식 샘플의 '
+            '분량을 넘기지 마세요. 내용을 더 넣으려고 문장을 늘리는 것보다, '
+            '핵심만 남기고 줄이는 쪽이 낫습니다.')
+        closing = (f'위 포맷과 동일한 구조, 톤, 분량으로 {fund_code} '
+                   f'({period_desc}) 보고서를 작성하세요.')
 
     prompt = f"""당신은 DB형 퇴직연금 OCIO 운용보고서 코멘트 작성자입니다.
 아래 데이터와 운용역 인터뷰 응답을 바탕으로 분석 기간 {period_desc}의 운용보고 코멘트를 작성하세요.
@@ -2984,13 +3159,15 @@ def build_report_prompt(fund_code, year, quarter, data_ctx, inputs,
    - **기간 중 실제 매매(거래내역) 서술은 매니저 코멘트에만** 씁니다. 전망 섹션에
      "이에 펀드는 …를 축소하고 …를 확대하였습니다" 같은 **과거형 매매 문장**을 넣지 마세요.
      전망 섹션의 펀드 관련 서술은 앞으로의 계획만 다룹니다.
+8-6. **PA 기여도는 `%` 로 표기** (발송본 관행, 2026-08-05). 기여도는 개념상 %p 지만
+   발송본은 "해외주식이 -3.95%로 부담이 되었습니다" 처럼 `%` 로 씁니다. `%p` 금지.
+   (BM 대비 초과/하회 **폭**은 종전대로 `%p` 를 씁니다 — 둘은 다른 값입니다.)
 
 ## 작성 규칙 — 핵심
 9. 운용역 인터뷰 응답을 최우선으로 반영하되, 데이터와 교차 검증하여 자연스럽게 서술하세요.
 10. 전망과 포지션은 운용역 답변의 구체적 메커니즘과 액션을 반영하세요. 일반론("모니터링 계획") 금지.
 11. PA 기여도 0.05% 이상인 모든 자산군의 원인을 서술하세요.
-12. **분량 상한 — 전체 900~1,300자, 각 섹션 2~5문장.** 아래 양식 샘플의 분량을 넘기지
-   마세요. 내용을 더 넣으려고 문장을 늘리는 것보다, 핵심만 남기고 줄이는 쪽이 낫습니다.
+12. {length_rule}
 
 {format_instruction}
 
@@ -3017,7 +3194,7 @@ def build_report_prompt(fund_code, year, quarter, data_ctx, inputs,
 
 {claim_block}
 
-위 포맷과 동일한 구조, 톤, 분량으로 {fund_code} ({period_desc}) 보고서를 작성하세요.
+{closing}
 수치는 반드시 제공된 데이터만 사용하세요."""
 
     return prompt
@@ -3026,7 +3203,8 @@ def build_report_prompt(fund_code, year, quarter, data_ctx, inputs,
 def generate_report_from_inputs(fund_code, year, quarter, data_ctx, inputs,
                                 past_comments=None, detail=False,
                                 model=None,
-                                start_date=None, end_date=None):
+                                start_date=None, end_date=None,
+                                seed_sections=None):
     """inputs + data → 프롬프트 빌드 → LLM 호출 → (comment, cost) 반환.
 
     Parameters
@@ -3041,6 +3219,7 @@ def generate_report_from_inputs(fund_code, year, quarter, data_ctx, inputs,
         fund_code, year, quarter, data_ctx, inputs,
         past_comments=past_comments, detail=detail,
         start_date=start_date, end_date=end_date,
+        seed_sections=seed_sections,
     )
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)

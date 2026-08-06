@@ -597,6 +597,10 @@ def run_debate_and_save(mode: str, year: int, period_num: int,
         'consensus_points': synthesis.get('consensus_points', []),
         'disagreements': synthesis.get('disagreements', []),
         'tail_risks': synthesis.get('tail_risks', []),
+        # 자산군별 전망 (synthesis Step 3, 2026-08-05) — 펀드 코멘트 '향후 시장전망'
+        # 시드. 승인 시 report_store 가 final 로 보존한다.
+        'asset_outlook': synthesis.get('asset_outlook', {}),
+        'asset_outlook_period': synthesis.get('asset_outlook_period', ''),
         'debate_narrative': debate_interp.get('debate_narrative', ''),
         'canonical_regime_snapshot': debate_interp.get('canonical_snapshot', {}),
         'diverges_from_canonical': debate_interp.get('diverges_from_canonical', False),

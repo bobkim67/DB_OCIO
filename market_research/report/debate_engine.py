@@ -2048,12 +2048,81 @@ def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> 
         print(f'  [Step 2] 실패: {exc}')
         analysis = {'error': str(exc)}
 
+    # ── Step 3: 자산군별 전망 (Opus) — 펀드 코멘트 '향후 시장전망' 시드 ──
+    #
+    # 2026-08-05 사용자 지시. 배경: 펀드 코멘트의 전망 섹션 문장이 승인된 시장
+    # 코멘트 어디에도 없었다 (2026-07 draft 전문 검색 0건) — 펀드마다 LLM 이
+    # 새로 써서 미세한 편차가 생겼다. 전망도 시장 판단이므로 **시장 단계에서
+    # 한 번 쓰고 한 번 승인**한 뒤, 펀드는 보유 자산군만 골라 조립한다.
+    #
+    # 본문(customer_comment) 구조는 건드리지 않는다 — structure_instruction 은
+    # 골든이고 client 시장 리포트가 그대로 노출하는 텍스트다. 별도 필드로 낸다.
+    from market_research.core.asset_class import CANONICAL_CLASSES
+
+    if is_quarterly and half:
+        next_label = (f'{context["year"]}년 하반기' if half == 1
+                      else f'{context["year"] + 1}년 상반기')
+    elif is_quarterly:
+        _q = int(context.get('_quarter') or 0)
+        next_label = (f'{context["year"]}년 {_q + 1}분기' if 0 < _q < 4
+                      else f'{context["year"] + 1}년 1분기')
+    else:
+        _mo = int(context['month'])
+        next_label = f'{_mo + 1}월' if _mo < 12 else '1월'
+
+    outlook_prompt = (
+        f'아래는 방금 작성한 {target_period} 시장 브리핑과 4인 분석가 의견입니다.\n\n'
+        f'## {target_period} 시장 브리핑\n{customer_comment}\n\n'
+        f'## 분석가별 의견\n{debate_text}\n\n'
+        f'## 합의 포인트\n' + '\n'.join(f'- {p}' for p in analysis.get('consensus_points', [])) + '\n\n'
+        f'## Tail Risk\n' + '\n'.join(f'- {t}' for t in analysis.get('tail_risks', [])) + '\n\n'
+        f'위 내용을 근거로 **{next_label} 자산군별 시장 전망**을 작성하세요.\n\n'
+        '## 규칙\n'
+        f'1. 각 자산군마다 {next_label} 전망을 **1~2문장, 90~160자**로 쓰세요.\n'
+        '2. 경어체 ("~할 것으로 예상합니다", "~로 판단합니다").\n'
+        '3. 이 문장들은 여러 펀드의 운용보고서에 **그대로 인용**됩니다. 따라서:\n'
+        '   - 특정 펀드/당사의 액션을 쓰지 마세요 ("비중을 확대", "듀레이션을 축소" 금지).\n'
+        '   - [ref:N] 태그를 쓰지 마세요.\n'
+        '   - 다른 자산군을 끌어와 설명해도 되지만, 문장의 주어는 해당 자산군이어야 합니다.\n'
+        '   - 각 문장은 **단독으로 읽어도 완결**되어야 합니다 (앞 문장 지시어 "이에", "또한" 금지).\n'
+        '4. 회고가 아니라 전망입니다. 지난 기간 서술로 시작하지 마세요.\n'
+        '5. 상방·하방 요인을 함께 담아 조건부로 서술하세요. 단정 금지.\n'
+        '6. 근거가 약한 자산군은 짧게 "방향성 제한" 정도로만 쓰고 지어내지 마세요.\n\n'
+        '반드시 유효한 JSON 객체 하나만 출력. 설명 텍스트 금지. 문자열 안 줄바꿈 금지.\n'
+        '{' + ','.join(f'"{c}":"{c} {next_label} 전망 문장"' for c in CANONICAL_CLASSES) + '}'
+    )
+
+    asset_outlook = {}
+    try:
+        text = _call_llm(
+            model=SYNTHESIS_MODEL,
+            system=system_msg,
+            prompt=outlook_prompt,
+            max_tokens=3000,
+            log_label='synthesis_step3_asset_outlook',
+            stream=True,
+        )
+        parsed = _parse_json_response(text) or {}
+        # canonical 키만 채택. 빈 값·비문자열은 버린다.
+        asset_outlook = {
+            c: parsed[c].strip() for c in CANONICAL_CLASSES
+            if isinstance(parsed.get(c), str) and parsed[c].strip()
+        }
+        if not asset_outlook:
+            print(f'  [Step 3] 자산군 전망 파싱 실패. Raw 앞 300자: {text[:300]}')
+        else:
+            print(f'  [Step 3] 자산군 전망 {len(asset_outlook)}/{len(CANONICAL_CLASSES)}개')
+    except Exception as exc:
+        print(f'  [Step 3] 실패: {exc}')
+
     return {
         'customer_comment': customer_comment,
         'consensus_points': analysis.get('consensus_points', []),
         'disagreements': analysis.get('disagreements', []),
         'tail_risks': analysis.get('tail_risks', []),
         'admin_summary': analysis.get('admin_summary', ''),
+        'asset_outlook': asset_outlook,
+        'asset_outlook_period': next_label,
         '_guard_issues': guard_issues,
     }
 

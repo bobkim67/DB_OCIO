@@ -232,6 +232,29 @@ def approve_and_save_final(period: str, fund_code: str,
         # 트랙 범위 외 (별 트랙).
         'claims': draft.get('claims', []),
     }
+
+    # ── 구조화 필드 if-present 보존 (2026-08-05 사용자 확정) ──
+    # 종전엔 위 고정 키만 기록해서, debate 가 만든 자산군별 구조화 산출물이
+    # **승인 순간 통째로 버려졌다**. 승인 기간의 펀드 코멘트는 final 을 우선
+    # 로드하므로(_resolve_market_payload), 결과적으로
+    # `_market_comment_to_inputs` 의 asset_movement_commentary / disagreements
+    # 분기가 승인본에서는 항상 비어 있었다 (2026-07 실측: draft 에 amc 5개 존재,
+    # final 에 0개).
+    #   - asset_outlook       : 펀드 코멘트 전망 섹션 시드 (필수)
+    #   - asset_movement_*    : 자산군별 과거 등락·drivers·portfolio_implication
+    #   - disagreements       : inputs['risk'] 소스
+    # 값이 없는 키는 쓰지 않는다 → 과거 final 재승인 전까지 파일 형태 불변.
+    for _key in (
+        'asset_outlook',
+        'asset_outlook_period',
+        'asset_movement_commentary',
+        'asset_movement_anchors',
+        'disagreements',
+    ):
+        _val = draft.get(_key)
+        if _val:
+            final[_key] = _val
+
     if suffix:
         # R9-B.3.1 — suffix 산출물은 운영 approved 가 아님을 명시. 다운스트림
         # client viewer 등이 approved=True 만 보고 운영 final 로 오인하지

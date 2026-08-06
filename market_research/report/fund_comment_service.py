@@ -536,6 +536,30 @@ def generate_fund_comment_and_save(
     if not cur_last:
         data_warnings.append(f'{period_key} 영업일 데이터 없음')
 
+    # 1.5. 펀드별 월간 창 오버라이드 (2026-08-05 사용자 지시)
+    #
+    # 08K88 은 보고 기간이 달력월이 아니다 — **전월 마지막 영업일부터(포함)
+    # 당월 마지막 영업일 −1영업일까지**. 엑셀(성과분석)이 같은 창을 쓰므로
+    # 코멘트도 맞추지 않으면 **한 보고서 안에서 수익률이 갈린다**
+    # (2026-07 실측: 엑셀 -16.02% vs 코멘트 -11.17%, 4.85%p 괴리).
+    # 정의는 `core.period_window` 단일 소스 — 미등록 펀드·월간 외 기간은 무영향.
+    #
+    # ★ 반드시 BM 로드(§2)보다 **앞**이어야 한다. prev_last/cur_last 가
+    #   `_load_bm_returns_for_range` 의 분모·분자라 뒤에서 바꾸면 BM 만 옛 창에
+    #   남아 AP/BM 이 서로 다른 기간이 된다.
+    _win_first_incl = None
+    if mode == '월별' and cur_last:
+        from market_research.core.period_window import month_window
+        _win = month_window(fund_code, year, period_num)
+        if _win:
+            prev_last = int(_win['base'].strftime('%Y%m%d'))
+            cur_last = int(_win['last'].strftime('%Y%m%d'))
+            start_dt, end_dt = _win['base'], _win['last']
+            _win_first_incl = _win['first_incl']
+            data_warnings.append(
+                f'{fund_code} 월간 창 오버라이드 — '
+                f'{_win_first_incl}~{end_dt} (기준 {start_dt} 종가)')
+
     # 2. BM 수익률
     bm = {}
     if prev_last and cur_last:
@@ -557,7 +581,8 @@ def generate_fund_comment_and_save(
     #       7개 펀드 전부 +0.39~+1.01%p 손실 축소. 시작일을 하루 뒤로 밀면
     #       7개 모두 기준가 기간수익률과 소수점까지 일치한다.
     # → PA·거래만 (전월말, 기간말] 창으로 맞춘다. BM·스냅샷은 prev_last 유지.
-    pa_start_dt = start_dt + timedelta(days=1) if start_dt else None
+    pa_start_dt = _win_first_incl or (
+        start_dt + timedelta(days=1) if start_dt else None)
     pa = {}
     fund_ret = None
     holdings_end = {}
@@ -620,12 +645,18 @@ def generate_fund_comment_and_save(
     # 6. 시장 payload → inputs 변환
     inputs = _market_comment_to_inputs(market_payload)
 
-    # 6.5. 펀드 미편입 자산군 파악 (market_view 필터링용)
-    all_asset_classes = {'국내주식', '해외주식', '국내채권', '해외채권', '대체투자', 'FX', '유동성'}
-    held_classes = set(holdings_end.keys()) if holdings_end else set()
-    traded_classes = set(trades.keys()) if trades else set()
-    active_classes = (held_classes | traded_classes) - {'유동성', '모펀드'}
-    excluded_classes = all_asset_classes - active_classes - {'유동성'}
+    # 6.5. 펀드 미편입 자산군 파악 (market_view 필터링 + 시드 조립용)
+    #
+    # ★ 2026-08-05: 종전엔 상수 집합이 **거래 어휘**('대체투자','유동성')인데
+    #   holdings_end 는 **PA 어휘**('대체','유동성및기타')로 와서 두 집합이 서로
+    #   맞물리지 않았다. 결과적으로 '대체투자' 는 거래가 있었던 달에만 active 로
+    #   잡히고, 금을 보유만 하고 매매하지 않은 달에는 "미편입"으로 판정됐다.
+    #   → core.asset_class 로 canonical 정규화. 상세는 해당 모듈 docstring.
+    from market_research.core.asset_class import (
+        active_classes as _active_classes, excluded_classes as _excluded_classes,
+    )
+    active_classes = _active_classes(holdings_end, trades)
+    excluded_classes = _excluded_classes(holdings_end, trades)
 
     # market_view 상단에 편입 제한 지시를 강하게 삽입
     if excluded_classes and inputs.get('market_view'):
@@ -708,17 +739,83 @@ def generate_fund_comment_and_save(
         'price_patterns': price_patterns,
     }
 
+    # 8.5. 자산군 시드 — 승인본이 있으면 공통 문단을 결정론적으로 조립 (2026-08-05)
+    #
+    # 시장동향·전망은 같은 기간 모든 펀드가 공유한다. 종전엔 펀드마다 LLM 이 새로
+    # 써서 미세하게 갈렸고(2026-07 은 7개 펀드를 손으로 통일해 발송), 미보유
+    # 자산군 제외도 프롬프트 지시에만 의존했다.
+    # → 승인 시드가 있으면 보유 자산군 문장만 골라 조립하고, LLM 은 펀드 고유
+    #   블록만 쓴다. 시드가 없거나 블록 파싱이 실패하면 **종전 경로 그대로** 간다.
+    from market_research.report.comment_engine import (
+        generate_report_from_inputs, parse_seeded_blocks, assemble_seeded_comment,
+    )
+    from market_research.report.market_seed import (
+        assemble as _seed_assemble, load_approved_seed, seed_coverage,
+    )
+    from market_research.core.constants import FUND_CONFIGS as _FC
+
+    fmt = (_FC.get(fund_code) or {}).get('format', 'C')
+    seed = load_approved_seed(period_key)
+    seed_sections = None
+    seed_meta = {'used': False, 'reason': 'no_approved_seed'}
+    if seed:
+        seed_sections = {
+            'market': _seed_assemble(seed, active_classes, 'market'),
+            'outlook': _seed_assemble(seed, active_classes, 'outlook'),
+        }
+        cov = {s: seed_coverage(seed, active_classes, s) for s in ('market', 'outlook')}
+        if not seed_sections['market'] or not seed_sections['outlook']:
+            # 보유 자산군에 해당하는 시드 문장이 하나도 없음 — 조립 불가
+            seed_sections = None
+            seed_meta = {'used': False, 'reason': 'seed_empty_for_active_classes',
+                         'coverage': cov}
+            data_warnings.append('시드에 이 펀드 보유 자산군 문장이 없어 레거시 경로 사용')
+        else:
+            seed_meta = {'used': True, 'format': fmt,
+                         'active_classes': sorted(active_classes), 'coverage': cov}
+            for s, c in cov.items():
+                if c['missing']:
+                    data_warnings.append(
+                        f'시드 {s} 섹션에 {", ".join(c["missing"])} 문장 없음 — 해당 자산군 서술 누락')
+
     # 9. LLM 호출 (Opus)
-    from market_research.report.comment_engine import generate_report_from_inputs
     result = generate_report_from_inputs(
         fund_code, year, quarter, data_ctx, inputs,
         model='claude-opus-4-8',
         start_date=start_dt, end_date=end_dt,
+        seed_sections=seed_sections,
     )
 
     comment_text_raw = result.get('comment', '')
     cost = result.get('cost', 0)
     token_usage = result.get('token_usage', {})
+
+    # 9.2. 시드 모드면 블록 파싱 → 조립. 실패 시 레거시 전문 생성으로 1회 재시도
+    #      (깨진 블록 원문을 그대로 산출물에 넣지 않기 위함).
+    if seed_sections:
+        blocks = parse_seeded_blocks(comment_text_raw, fmt)
+        if blocks:
+            sub_line = ''
+            if fmt == 'K' and (fund_ret or {}).get('sub_returns'):
+                subs = fund_ret['sub_returns']
+                sub_line = ('{who}의 비중은 {r} 수준으로 유지하였습니다.'.format(
+                    who='와 '.join(f'{l}포트폴리오' for l in subs),
+                    r=(_FC.get(fund_code) or {}).get('sub_ratio', 'N/A')))
+            comment_text_raw = assemble_seeded_comment(
+                fmt, seed_sections['market'], seed_sections['outlook'],
+                blocks, sub_line=sub_line)
+            seed_meta['blocks'] = {k: len(v) for k, v in blocks.items()}
+        else:
+            seed_meta = {'used': False, 'reason': 'block_parse_failed', 'format': fmt}
+            data_warnings.append('시드 블록 파싱 실패 — 레거시 전문 생성으로 재시도')
+            result = generate_report_from_inputs(
+                fund_code, year, quarter, data_ctx, inputs,
+                model='claude-opus-4-8',
+                start_date=start_dt, end_date=end_dt,
+            )
+            comment_text_raw = result.get('comment', '')
+            cost += result.get('cost', 0)
+            token_usage = result.get('token_usage', {})
 
     # 9.5. R6-A — [ref:N] 검증 + raw / customer 분리
     # 시장 debate 의 evidence_annotations 를 그대로 재사용 (ref 번호 일관)
@@ -769,6 +866,9 @@ def generate_fund_comment_and_save(
         'claim_citation_validation': claim_citation_validation,
         'evidence_annotations': fund_evidence_annotations,
         'market_debate_period': period_key,
+        # 시드 조립 추적 (2026-08-05) — admin 이 "이 코멘트가 공통 시드로 조립된
+        # 것인지 / 어떤 자산군이 살아남았는지" 를 산출물만 보고 알 수 있어야 한다.
+        'seed_assembly': seed_meta,
         'generated_at': time.strftime('%Y-%m-%dT%H:%M:%S'),
         'model': 'claude-opus-4-8',
         'cost_usd': round(cost, 3),

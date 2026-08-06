@@ -142,8 +142,9 @@ def test_synthesis_prompt_includes_claims_and_citation_instruction(monkeypatch):
 
     debate_engine._synthesize_debate(agent_responses, None, context)
 
-    # 두 LLM call 캡처 (comment + analysis)
-    assert len(captured_prompts) == 2
+    # 세 LLM call 캡처 (comment + analysis + asset_outlook).
+    # Step 3(자산군별 전망)은 2026-08-05 추가 — 펀드 코멘트 전망 섹션 시드.
+    assert len(captured_prompts) == 3
     comment_prompt = next(p for p in captured_prompts
                           if p["log_label"] == "synthesis_step1_comment")["prompt"]
 

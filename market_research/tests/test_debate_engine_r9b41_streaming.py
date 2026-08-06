@@ -236,14 +236,16 @@ def test_synthesize_debate_uses_stream_for_opus(monkeypatch, reset_debug_log):
         "wiki_primary_context_text": "",
     }
     result = de._synthesize_debate(agent_responses, None, context)
-    # Opus Step 1 + Step 2 둘 다 streamed (모델 버전 무관 prefix 매칭 — 2026-07-02)
+    # Opus Step 1·2·3 모두 streamed (모델 버전 무관 prefix 매칭 — 2026-07-02).
+    # Step 3(자산군별 전망)은 2026-08-05 추가 — 펀드 코멘트 전망 섹션 시드.
     opus_calls = [c for c in seen_calls
                    if c["model"].startswith("claude-opus")]
-    assert len(opus_calls) == 2
+    assert len(opus_calls) == 3
     assert all(c["stream"] is True for c in opus_calls)
-    # log_label 별로 둘 다 streamed
+    # log_label 별로 셋 다 streamed
     labels = sorted(c["log_label"] for c in opus_calls)
-    assert labels == ["synthesis_step1_comment", "synthesis_step2_analysis"]
+    assert labels == ["synthesis_step1_comment", "synthesis_step2_analysis",
+                      "synthesis_step3_asset_outlook"]
     # 결과 schema 보존
     assert "customer_comment" in result
     assert result["consensus_points"] == ["c1"]
@@ -275,7 +277,7 @@ def test_synthesize_debate_quarterly_uses_stream(monkeypatch, reset_debug_log):
     }
     de._synthesize_debate(agent_responses, None, context)
     opus = [c for c in seen if c["model"].startswith("claude-opus")]  # 버전 무관 (2026-07-02)
-    assert len(opus) == 2
+    assert len(opus) == 3   # Step1 comment + Step2 analysis + Step3 asset_outlook
     assert all(c["stream"] is True for c in opus)
     # 분기 Step1 max_tokens = 32000 (월별 16000) — comment_max_tokens 분기 분기
     step1 = next(c for c in opus
@@ -288,8 +290,9 @@ def test_synthesize_debate_quarterly_uses_stream(monkeypatch, reset_debug_log):
 # ──────────────────────────────────────────────────────────────────
 
 def test_other_call_sites_remain_non_streaming():
-    """grep 결과로 _call_llm 호출 사이트 4 개. _synthesize_debate 2 곳만
-    stream=True. agent run + debate_narrative 는 그대로 default(False)."""
+    """_synthesize_debate 의 synthesis 스텝만 stream=True.
+    agent run + debate_narrative 는 그대로 default(False).
+    (2026-08-05: synthesis Step 3 asset_outlook 추가 — 이 역시 stream=True.)"""
     src = (Path(__file__).resolve().parent.parent /
            "report" / "debate_engine.py").read_text(encoding="utf-8")
     # synthesis_step1 / synthesis_step2 사이트만 stream=True
