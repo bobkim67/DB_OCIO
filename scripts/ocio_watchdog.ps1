@@ -9,6 +9,8 @@
 # - 종료 흔적: logs\watchdog.heartbeat 를 15초마다 갱신. 정상 종료·중지 스크립트는
 #   이 파일을 지우므로, 남아 있으면 강제 종료/로그오프/크래시다. 파일의 갱신 시각이
 #   곧 사망 시각이고, 다음 기동 때 그 사실이 watchdog.log 에 한 줄로 남는다.
+#   heartbeat 에는 자원 지표(ws/pm/handles/threads/uptime)도 같이 적는다 — 사망 직전
+#   수치가 평소와 같으면 외부 kill, 우상향이면 자원 누수다.
 # - 단일 인스턴스: 이미 실행 중이면 즉시 종료.
 #
 # 수동 실행:  powershell -NoProfile -ExecutionPolicy Bypass -File scripts\ocio_watchdog.ps1
@@ -55,6 +57,14 @@ if (Test-Path $Beat) {
     Remove-Item $Beat -Force
 }
 
+# ---- 사망 원인 계측 (2026-08-06) ----
+# 2026-07-29 00:23 · 2026-08-04 00:58 두 번 다 자정 직후에 프로세스만 사라졌다.
+# 크래시(WER 무기록)·로그오프(다른 프로세스 생존)·정상종료(위 핸들러 무기록)가 전부
+# 배제돼 외부 kill 이 유력하나, 프로세스 종료 감사(4689)는 관리자 권한이 필요해 못 켠다.
+# → heartbeat 에 자원 지표를 같이 남겨 다음 사망 때 "자원 누수로 자살"과 "외부 kill"을
+#   가른다. 마지막 heartbeat 의 수치가 평소와 같으면 외부 kill 이다.
+$proc = Get-Process -Id $PID
+
 # ---- 정상 종료 흔적 (Ctrl+C·창닫기·exit. 강제 종료는 못 잡음 → heartbeat 담당) ----
 Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action ([scriptblock]::Create(@"
     "`$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') | watchdog stopping (pid `$PID) - graceful exit" | Add-Content -Path '$Log' -Encoding UTF8
@@ -64,7 +74,12 @@ Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action ([scriptblock]
 WLog "watchdog started (pid $PID, port $Port, interval 15s)"
 
 while ($true) {
-    "pid $PID" | Set-Content -Path $Beat -Encoding UTF8   # 생존 신호 (15s 주기)
+    # 생존 신호 (15s 주기). 이 한 줄이 다음 기동 때 사망 기록에 그대로 실린다.
+    $proc.Refresh()
+    $up = [int]((Get-Date) - $proc.StartTime).TotalMinutes
+    ("pid $PID ws={0}MB pm={1}MB handles={2} threads={3} uptime={4}min" -f `
+        [int]($proc.WorkingSet64 / 1MB), [int]($proc.PrivateMemorySize64 / 1MB), `
+        $proc.HandleCount, $proc.Threads.Count, $up) | Set-Content -Path $Beat -Encoding UTF8
     if (-not (PortUp)) {
         if (LauncherActive) {
             WLog "port $Port down but launcher_active.flag present - skip (launcher restarting)"
