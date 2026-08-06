@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "../styles/sentreports.css";
 import "../styles/transactions.css";   // 대상 토글(.tx-seg) 재사용
 import { useFunds } from "../hooks/useFunds";
+import AdminMarketSeedPanel from "./AdminMarketSeedPanel";
+import AdminResearchWikiPanel from "./AdminResearchWikiPanel";
 
 /**
  * Admin > 코멘트 생성/관리 (2026-07-10 분리 신설).
@@ -21,6 +23,7 @@ const EXCEL_SPEC: Record<string, { label: string; on: "generate" | "approve" }> 
   "08N33": { label: "월간운용보고서 엑셀", on: "approve" },
   "08N81": { label: "월간운용보고서 엑셀", on: "approve" },
   "08P22": { label: "월간운용보고서 엑셀", on: "approve" },
+  "08K88": { label: "월간운용보고서 엑셀", on: "approve" },
 };
 
 const ST_LABEL: Record<string, string> = {
@@ -126,21 +129,29 @@ export default function AdminCommentWorkflowPanel({ fundCode }: { fundCode?: str
     if (!periodOpts.some((o) => o.value === period)) setPeriod(periodOpts[0].value);
   }, [periodOpts, period]);
 
-  // 펀드 기본값 = 상단 대시보드에서 고른 펀드 (2026-08-03 사용자 지시).
-  // 상단을 바꾸면 이 패널도 따라간다. 목록에 없으면(권한/필터) 첫 펀드로 폴백.
-  const [fund, setFund] = useState("");
-  useEffect(() => {
-    if (!fundList.length) return;
-    const has = (c: string) => fundList.some((f) => f.code === c);
-    if (fundCode && has(fundCode)) setFund(fundCode);
-    else if (!fund) setFund(fundList[0].code);
-  }, [fundList, fundCode, fund]);
+  // 대상 펀드 = **상단 대시보드 선택** 단일 소스 (2026-08-05 사용자 지시).
+  //
+  // ★ 종전엔 이 패널에도 펀드 select 가 있었는데 **동작하지 않았다**:
+  //   effect 의 deps 에 `fund` 가 들어 있어, 로컬 select 로 바꾸는 즉시 effect 가
+  //   다시 돌며 `setFund(fundCode)` 로 상단 값으로 되돌렸다(상단 선택이 유효한
+  //   한 항상). 선택지가 둘인데 하나가 무력화된 상태라 select 를 제거하고
+  //   상단 하나로 일원화한다. 목록에 없으면(권한/필터) 첫 펀드로 폴백.
+  const fund = useMemo(() => {
+    if (fundCode && fundList.some((f) => f.code === fundCode)) return fundCode;
+    return fundList[0]?.code ?? "";
+  }, [fundCode, fundList]);
 
   // 대상 = 시장(_market) | 펀드 (2026-08-03 사용자 지시).
   // 시장은 debate 를 직접 돌리며 ②발송용 보고서 단계가 없다(client 는 /market-report 조회).
   // TD(QTD/HTD/YTD)는 시장 debate 를 돌리지 않고 월간/분기 승인본을 재사용하므로 유형에서 제외.
-  const [scope, setScope] = useState<"market" | "fund">("fund");
+  // 2026-08-05: '시드' 추가 — 시장 debate 승인 → **시드 생성·승인** → 펀드 코멘트.
+  // 시드는 공통 문단(시장동향·전망)의 단일 소스이고, 펀드는 보유 자산군 문장만
+  // 골라 조립한다. TD 기간도 시드는 만들 수 있다(월간·분기 승인본 재사용).
+  // 2026-08-06: 'wiki' 추가 — 자산군별 09 원문 + claim 전량 + 원본 링크(조회 전용).
+  const [scope, setScope] = useState<"market" | "seed" | "wiki" | "fund">("fund");
   const isMarket = scope === "market";
+  const isSeed = scope === "seed";
+  const isWiki = scope === "wiki";
   const target = isMarket ? "_market" : fund;
   const kindOpts = useMemo<readonly Kind[]>(
     () => (isMarket ? (["월간", "분기"] as const) : KINDS), [isMarket]);
@@ -149,21 +160,50 @@ export default function AdminCommentWorkflowPanel({ fundCode }: { fundCode?: str
   }, [kindOpts, kind]);
 
   // 기간 기본값 (월간) — **전월 코멘트가 아직 승인 전이면 전월**(마감 작업 중),
-  // 이미 승인됐으면 **당월 MTD**. 대상(펀드/시장)·펀드가 바뀔 때마다 다시 판정한다.
-  // (2026-08-03 사용자 지시). 조회 실패 시 기존 선택 유지 — 화면이 튀지 않게.
+  // 이미 승인됐으면 **당월 MTD**. (2026-08-03 사용자 지시)
+  // 조회 실패 시 기존 선택 유지 — 화면이 튀지 않게.
+  //
+  // ★ 시드는 기간 단위 산출물이라 펀드와 무관하다 → 판정 기준도 `_market` 을 쓴다.
+  //   `target`(=펀드)로 판정하면 상단 펀드를 바꿀 때마다 시드 탭의 기간이 따라
+  //   움직여, 펀드 무관이라는 성질이 깨진다 (2026-08-05).
+  const periodProbe = isMarket || isSeed || isWiki ? "_market" : target;
   useEffect(() => {
-    if (kind !== "월간" || !target) return;
+    if (kind !== "월간" || !periodProbe) return;
     const opts = buildPeriodOpts("월간");
     const [cur, prev] = [opts[0].value, opts[1].value];
     let stale = false;
-    fetch(`/api/admin/funds/${target}/workflow?period=${prev}`)
+    fetch(`/api/admin/funds/${periodProbe}/workflow?period=${prev}`)
       .then((r) => r.json())
       .then((d) => {
         if (!stale) setPeriod(d?.comment?.status === "approved" ? cur : prev);
       })
       .catch(() => { /* 유지 */ });
     return () => { stale = true; };
-  }, [target, kind]);
+  }, [periodProbe, kind]);
+
+  // 시드 승인 여부 — 펀드 코멘트가 공통 문단을 시드로 조립할지 미리 알려준다.
+  // 미승인이면 종전처럼 LLM 이 전문을 쓰므로 펀드 간 편차가 남는다.
+  const [seedStatus, setSeedStatus] = useState<string>("");
+  useEffect(() => {
+    if (isMarket || !period) return;
+    let stale = false;
+    fetch(`/api/admin/market-seed?period=${encodeURIComponent(period)}`)
+      .then((r) => r.json())
+      .then((d) => { if (!stale) setSeedStatus(d?.status ?? ""); })
+      .catch(() => { if (!stale) setSeedStatus(""); });
+    return () => { stale = true; };
+  }, [period, isMarket, scope]);
+
+  // 신한라이프 4장 PPT — 2JM23 월간 전용 (2026-08-06).
+  // PowerPoint COM 으로 전월 발송본을 틀 삼아 치환하므로 수 분 걸린다 →
+  // 엑셀처럼 승인에 묶지 않고 별도 버튼으로 분리.
+  const shinhanEligible = fund === "2JM23" && kind === "월간" && scope === "fund";
+  const [ppt, setPpt] = useState<{ ready: boolean; filename: string; generated_at: string; warnings: string[] } | null>(null);
+  const loadPpt = useCallback((p: string) => {
+    fetch(`/api/admin/funds/2JM23/shinhan-ppt?period=${encodeURIComponent(p)}`)
+      .then((r) => r.json()).then(setPpt).catch(() => setPpt(null));
+  }, []);
+  useEffect(() => { if (shinhanEligible) loadPpt(period); }, [shinhanEligible, period, loadPpt]);
 
   const [wf, setWf] = useState<{ comment: Stage; report: Stage } | null>(null);
   const [editText, setEditText] = useState("");
@@ -228,16 +268,19 @@ export default function AdminCommentWorkflowPanel({ fundCode }: { fundCode?: str
       <div className="sra-gen">
         <span className="lab">코멘트 · 보고서 생성/관리</span>
         {/* 대상 토글 — 시장(_market) / 펀드 */}
-        <div className="tx-seg" title="시장 = 월간 시장 debate(_market) · 펀드 = 펀드별 코멘트">
+        <div className="tx-seg" title="시장 debate → 자산군 시드 → 펀드 코멘트 순서로 진행합니다">
           <button type="button" className={isMarket ? "on" : ""}
             onClick={() => setScope("market")}>시장</button>
-          <button type="button" className={!isMarket ? "on" : ""}
+          <button type="button" className={isSeed ? "on" : ""}
+            onClick={() => setScope("seed")}>시드</button>
+          <button type="button" className={isWiki ? "on" : ""}
+            onClick={() => setScope("wiki")}>wiki</button>
+          <button type="button" className={scope === "fund" ? "on" : ""}
             onClick={() => setScope("fund")}>펀드</button>
         </div>
-        <select value={fund} onChange={(e) => setFund(e.target.value)} disabled={isMarket}
-          title={isMarket ? "시장 코멘트는 펀드 선택과 무관합니다" : "펀드 선택"}>
-          {fundList.map((f) => <option key={f.code} value={f.code}>{f.code} — {f.name}</option>)}
-        </select>
+        {/* 펀드 선택·표시는 **상단 대시보드 드롭다운 단일 소스** (2026-08-05 사용자 지시).
+            여기 두면 중복 노출이라 아예 두지 않는다. 시장·시드가 펀드 무관이라는
+            사실은 아래 hint 의 프로세스 문구가 이미 설명한다. */}
         <select value={kind} onChange={(e) => setKind(e.target.value as Kind)} title="기간 유형">
           {kindOpts.map((k) => <option key={k} value={k}>{k}</option>)}
         </select>
@@ -246,11 +289,17 @@ export default function AdminCommentWorkflowPanel({ fundCode }: { fundCode?: str
           {periodOpts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
         <span className="hint">{KIND_HINT[kind]} · 프로세스: {isMarket
-          ? "시장 debate 생성→승인 → 펀드 코멘트가 이 승인본을 사용"
+          ? "시장 debate 생성→승인 → 시드 생성→승인 → 펀드 코멘트"
+          : isSeed
+          ? "시장 승인본 → 자산군별 문장 분해 → 승인 → 전 펀드 공통 문단으로 사용"
+          : isWiki
+          ? "시장 debate 가 실제로 본 근거 — 09 원문 + 자산군별 claim 전량(컷 포함) + 원본 리포트"
           : "펀드코멘트 생성→승인 → 보고서 생성→승인 → client 노출"}</span>
         {err && <span className="err">{err}</span>}
       </div>
 
+      {isWiki ? <AdminResearchWikiPanel period={period} />
+        : isSeed ? <AdminMarketSeedPanel kind={kind} period={period} /> : (
       <div className="sra-genout">
         <div className="gh">{isMarket ? "시장(_market)" : fund} · {kind} {period} 워크플로우 {busy &&<span className="ref">⏳ {busy} 진행 중…</span>} {msg && <span className="ref">{msg}</span>}</div>
         {!wf ? <div className="sra-empty">로드 중…</div> : (
@@ -259,6 +308,13 @@ export default function AdminCommentWorkflowPanel({ fundCode }: { fundCode?: str
             <div className="stage">
               <div className="sh">① {isMarket ? "시장 코멘트" : "펀드코멘트"} <StBadge s={wf.comment.status} />
                 {wf.comment.approved_at && <span className="ref">승인 {wf.comment.approved_at.slice(0, 16)}</span>}
+                {!isMarket && (
+                  <span className="ref" style={{ color: seedStatus === "approved" ? "#1e7b45" : "#8a5a00" }}>
+                    {seedStatus === "approved"
+                      ? "시드 승인됨 — 공통 문단은 시드로 조립"
+                      : "시드 미승인 — 공통 문단을 LLM 이 새로 씁니다 (펀드 간 편차 발생)"}
+                  </span>
+                )}
               </div>
               <div className="btns">
                 <button type="button" disabled={!!busy}
@@ -306,11 +362,48 @@ export default function AdminCommentWorkflowPanel({ fundCode }: { fundCode?: str
               </div>
               <AutoTextarea value={editRpt} onChange={setEditRpt}
                 placeholder="① 승인 후 생성 → 편집" />
+              {/* 신한라이프 4장 PPT — 2JM23 월간 전용 */}
+              {shinhanEligible && (
+                <div className="btns" style={{ marginTop: 8 }}>
+                  <button type="button"
+                    disabled={!!busy || wf.comment.status !== "approved"}
+                    title={wf.comment.status !== "approved"
+                      ? "펀드코멘트 승인 후 생성 가능 (③⑥ 코멘트 소스)"
+                      : "전월 발송본을 틀로 표·코멘트 치환 (수 분 소요)"}
+                    onClick={async () => {
+                      setBusy("신한라이프 PPT 생성 (수 분)"); setMsg("");
+                      try {
+                        const r = await fetch("/api/admin/funds/2JM23/shinhan-ppt/generate", {
+                          method: "POST", headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ period }),
+                        });
+                        const d = await r.json();
+                        if (!r.ok) { setMsg(`✖ ${d?.detail ?? `HTTP ${r.status}`}`); return; }
+                        setPpt(d); setMsg("✔ 신한라이프 PPT 생성 완료");
+                      } catch (e) { setMsg(`✖ ${String(e)}`); } finally { setBusy(""); }
+                    }}>
+                    신한라이프 PPT {ppt?.ready ? "재생성" : "생성"}
+                  </button>
+                  {ppt?.ready && (
+                    <a href={`/api/admin/funds/2JM23/shinhan-ppt/download?period=${period}`}>
+                      <button type="button">다운로드</button>
+                    </a>
+                  )}
+                  {ppt?.generated_at && <span className="ref">생성 {ppt.generated_at}</span>}
+                  {/* 템플릿 승계 항목(변동성·BM·TAA·그래프)은 반드시 눈으로 확인해야 한다 */}
+                  {!!ppt?.warnings?.length && (
+                    <div style={{ fontSize: 11, color: "#8a5a00", marginTop: 4, lineHeight: 1.6 }}>
+                      {ppt.warnings.map((w, i) => <div key={i}>⚠ {w}</div>)}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             )}
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

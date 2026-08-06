@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 
 from fastapi import APIRouter, HTTPException, Path, Query
 from pydantic import BaseModel
@@ -75,6 +76,37 @@ class EditBodyDTO(BaseModel):
 
 class PeriodBodyDTO(BaseModel):
     period: str
+
+
+# ── 자산군 시드 (2026-08-05) ──
+# 공통 문단(시장동향·전망)을 기간당 1본 만들어 전 펀드가 공유한다.
+# 펀드 코멘트 생성은 **승인된 시드만** 사용한다 (draft 는 무시).
+
+class SeedSectionDTO(BaseModel):
+    market: dict[str, str] = {}
+    outlook: dict[str, str] = {}
+
+
+class SeedDTO(BaseModel):
+    period: str
+    status: str = 'not_generated'
+    sections: SeedSectionDTO = SeedSectionDTO()
+    outlook_period: str = ''
+    generated_at: str = ''
+    approved_at: str = ''
+    model: str = ''
+    cost_usd: float = 0
+    over_budget: list[dict] = []
+    classes: list[str] = []
+    # 서술 순서 — 프론트 미리보기가 순서를 추측하지 않도록 서버가 내려준다
+    # (시장동향과 전망의 관행적 순서가 다르다: core.asset_class 참조).
+    market_order: list[str] = []
+    outlook_order: list[str] = []
+
+
+class SeedEditBodyDTO(BaseModel):
+    period: str
+    sections: SeedSectionDTO
 
 
 # ── 내부 헬퍼 ──
@@ -235,7 +267,39 @@ _EXCEL_SPECS = {
     '08P22': {'kind': '월간', 'on': 'approve', 'label': '월간운용보고서 엑셀',
               'name': '월간운용보고서_08P22_{y}년{m}월말.xlsx',
               'brinson': {'fx_split': False, 'saa_mode': 'auto'}},
+    # 08K88 = 위 셋과 달리 **실제 BM 펀드**(SAA 아님). saa_mode 는 BM 펀드에도
+    # 비중방식(fixed/drift)으로 작용하는데 'auto'=fixed(constant-mix)라 골든 기본값과
+    # 같다 → 옵션은 나머지 셋과 동일하게 둔다 (2026-08-05 사용자 확정).
+    # ⚠ 08K88 은 기간 창이 달력월이 아니다 — `core.period_window.FUND_MONTH_WINDOW`
+    #   에 등록돼 있고 코멘트 경로도 같은 정의를 쓴다 (2026-08-05 사용자 확정).
+    '08K88': {'kind': '월간', 'on': 'approve', 'label': '월간운용보고서 엑셀',
+              'name': '월간운용보고서_08K88_{y}년{m}월말.xlsx',
+              'brinson': {'fx_split': False, 'saa_mode': 'auto'}},
 }
+
+
+def _excel_period_window(fund: str, y: int, m: int):
+    """엑셀 기간 창 → (start_date, end_date) — build_brinson 인자 규약.
+
+    ★ `build_brinson(start, end)` 의 AP 는 **start 당일 손익부터 포함**한다
+      (= 기준가로는 start 직전 영업일 종가 → end 종가).
+      실측(08K88 2026-07): (7/1, 7/30) → -16.9648% (기준가 6/30→7/30) /
+      (6/30, 7/30) → **-16.0226%** (기준가 6/29→7/30, 사용자 확인값).
+
+    창 정의는 `market_research.core.period_window` 단일 소스 — 코멘트 경로와
+    같은 함수를 쓴다. 한쪽만 고치면 같은 보고서 안에서 수익률이 갈린다
+    (2026-07 실측 4.85%p 괴리).
+
+    미등록 펀드는 종전대로 당월 1일 ~ 당월 말일 (골든 불변).
+    """
+    import calendar
+    from datetime import date as _date
+    from market_research.core.period_window import month_window
+
+    win = month_window(fund, y, m)
+    if not win:
+        return _date(y, m, 1), _date(y, m, calendar.monthrange(y, m)[1])
+    return win['first_incl'], win['last']
 _EXCEL_FUND, _EXCEL_KIND = '4JM12', '월간'   # (legacy 별칭 — 기존 참조 보존)
 
 
@@ -256,10 +320,9 @@ def _build_excel(fund: str, period: str, xp) -> None:
         from tools.dblife_monthly_excel import build as build_dblife_excel
         build_dblife_excel(period, xp)
         return
-    _bo = (_EXCEL_SPECS.get(fund) or {}).get('brinson')
+    _spec = _EXCEL_SPECS.get(fund) or {}
+    _bo = _spec.get('brinson')
     if _bo:
-        import calendar
-        from datetime import date as _d
         from api.services.brinson_export_service import build_brinson_export_xlsx
         from market_research.report.report_store import load_draft, load_final
         y, m = int(period[:4]), int(period[5:7])
@@ -275,10 +338,11 @@ def _build_excel(fund: str, period: str, xp) -> None:
             if _d_ and str(_d_.get(_key) or '').strip():
                 _cmt = str(_d_[_key])
                 break
+        _start, _end = _excel_period_window(fund, y, m)
         content, _ = build_brinson_export_xlsx(
             fund,
-            start_date=_d(y, m, 1),
-            end_date=_d(y, m, calendar.monthrange(y, m)[1]),
+            start_date=_start,
+            end_date=_end,
             mapping_method='방법3', pa_method='8',
             comment_text=_cmt or None,
             **_bo,                      # fx_split / saa_mode — 펀드별 발송본 역산값
@@ -516,6 +580,357 @@ def approve_comment(body: PeriodBodyDTO, fund: str = Path(..., max_length=32)) -
     if approve_and_save_final(body.period, fund) is None:
         raise HTTPException(status_code=404, detail='draft 없음 — 먼저 생성')
     return _stage(body.period, fund, None)
+
+
+# ── 신한라이프 월간보고 PPT (2JM23, 2026-08-06) ──
+# 4장 양식(표지/운용현황/자산배분/종목·전망). DRM 때문에 python-pptx 를 못 써서
+# PowerPoint COM 으로 **전월 발송본을 틀로 열어 치환**한다 → 생성이 느리고(수 분)
+# 서버에 PowerPoint 가 떠야 한다. 그래서 엑셀처럼 승인에 묶지 않고 **명시적 버튼**
+# 으로 분리했다. 표② 변동성·BM, 표④ TAA, ① 그래프는 템플릿 값 유지(수기).
+
+SHINHAN_PPT_FUND = '2JM23'
+
+
+class ShinhanPptDTO(BaseModel):
+    ready: bool = False
+    filename: str = ''
+    generated_at: str = ''
+    warnings: list[str] = []
+
+
+def _shinhan_ppt_path(period: str):
+    from pathlib import Path as _P
+    if not re.fullmatch(r'\d{4}-(0[1-9]|1[0-2])', period or ''):
+        return None
+    from tools.shinhan_monthly_ppt import OUT_NAME
+    base = _P(__file__).resolve().parent.parent.parent
+    return base / 'output' / OUT_NAME.format(ym=period.replace('-', ''))
+
+
+@router.get('/admin/funds/{fund}/shinhan-ppt', response_model=ShinhanPptDTO)
+def get_shinhan_ppt(fund: str = Path(..., max_length=32),
+                    period: str = Query(..., min_length=7, max_length=7)) -> ShinhanPptDTO:
+    if fund != SHINHAN_PPT_FUND:
+        return ShinhanPptDTO()
+    p = _shinhan_ppt_path(period)
+    if p is None or not p.exists():
+        return ShinhanPptDTO()
+    return ShinhanPptDTO(
+        ready=True, filename=p.name,
+        generated_at=time.strftime('%Y-%m-%d %H:%M',
+                                   time.localtime(p.stat().st_mtime)))
+
+
+@router.post('/admin/funds/{fund}/shinhan-ppt/generate',
+             response_model=ShinhanPptDTO)
+def generate_shinhan_ppt(body: PeriodBodyDTO,
+                         fund: str = Path(..., max_length=32)) -> ShinhanPptDTO:
+    if fund != SHINHAN_PPT_FUND:
+        raise HTTPException(status_code=400,
+                            detail=f'신한라이프 PPT 는 {SHINHAN_PPT_FUND} 전용입니다')
+    if _shinhan_ppt_path(body.period) is None:
+        raise HTTPException(status_code=422, detail='월간(YYYY-MM) 기간만 지원')
+    from market_research.report.report_store import load_final
+    cf = load_final(body.period, fund)
+    if not (cf and cf.get('approved')):
+        raise HTTPException(status_code=409,
+                            detail='펀드 코멘트 승인 후 생성 가능 (③⑥ 코멘트 소스)')
+    try:
+        from tools.shinhan_monthly_ppt import build
+        res = build(body.period)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f'PPT 생성 실패: {exc}')
+    out = get_shinhan_ppt(fund=fund, period=body.period)
+    out.warnings = list(res.get('warnings') or [])
+    return out
+
+
+@router.get('/admin/funds/{fund}/shinhan-ppt/download')
+def download_shinhan_ppt(fund: str = Path(..., max_length=32),
+                         period: str = Query(..., min_length=7, max_length=7)):
+    from fastapi.responses import FileResponse
+    if fund != SHINHAN_PPT_FUND:
+        raise HTTPException(status_code=400, detail='2JM23 전용')
+    p = _shinhan_ppt_path(period)
+    if p is None or not p.exists():
+        raise HTTPException(status_code=404, detail='PPT 없음 — 먼저 생성')
+    return FileResponse(
+        str(p), filename=p.name,
+        media_type='application/vnd.openxmlformats-officedocument.presentationml.presentation')
+
+
+# ── 리서치 wiki 뷰어 (2026-08-06) ──
+# 자산군별 09_Research_Synthesis + claim 전량 + 원본 링크. **조회 전용**.
+#
+# 배경: 09 는 자산군당 salience 상위 N(§2 8 / §4 12 / §5 6)만 싣는다. 2026-07
+# 환율(FX)은 111건 중 12건만 실려 엔캐리 청산 claim(45위)이 통째로 빠졌고, 09 가
+# debate primary source 라 시장 코멘트에도 그 주제가 없었다. 무엇이 잘렸는지
+# 눈으로 볼 수 있어야 해서 **전량 + 09 채택 표시**로 낸다 (2026-08-06 사용자 확정).
+
+class ClaimSourceDTO(BaseModel):
+    title: str = ''
+    date: str = ''
+    broker: str = ''
+    lane: str = ''          # naver_research | broker_mail
+    url: str = ''           # broker_mail 은 URL 부재 → 빈 문자열
+    attachments: str = ''   # broker_mail 첨부파일명 (원본 추적용)
+
+
+class ClaimRowDTO(BaseModel):
+    claim_id: str
+    text: str
+    stance: str = ''
+    direction: str = ''
+    horizon: str = ''
+    confidence: float = 0
+    salience: float = 0
+    source_type: str = ''
+    broker: str = ''
+    adopted: bool = False       # 09 페이지에 실렸는지
+    rank: int = 0               # 자산군 내 salience 순위 (1-base)
+    sources: list[ClaimSourceDTO] = []
+    # ★ claim_text 는 프롬프트상 "한 줄 요약(≤180자)" 이라 원인분석이 안 담긴다.
+    #   실제 인과는 아래 세 필드에 있다 — 이걸 안 보여주면 "사건 나열인데 왜 sal 이
+    #   높냐"는 오해가 생긴다 (2026-08-06 사용자 지적).
+    rationale: str = ''
+    risk_factor: str = ''
+    causal_chain: list[str] = []     # "A →relation→ B" 문자열로 평탄화
+
+
+class ResearchWikiDTO(BaseModel):
+    period: str
+    asset: str = ''
+    assets: list[str] = []
+    page_md: str = ''
+    page_generated_at: str = ''
+    page_stale: bool = False        # claims 가 09 보다 최신 → 재생성 대기
+    claims_total: int = 0
+    adopted_total: int = 0
+    claims: list[ClaimRowDTO] = []
+
+
+def _research_period_re(period: str) -> bool:
+    return bool(re.fullmatch(r'\d{4}-(0[1-9]|1[0-2])', period or ''))
+
+
+def _load_lane_index(period: str) -> dict:
+    """evidence_id → (lane, article). naver_research + broker_mail.
+
+    ★ 키 규약은 **추출기와 동일해야 한다** (2026-08-06 fix).
+      `research_claim_extractor._load_lane_evidence` 는 `_article_id` 가 없으면
+      `_raw_dedupe_key` → `_raw_nid` 순으로 폴백해 evidence id 를 만든다(메모리
+      한정 — adapted 파일에는 저장하지 않는다). 여기서 `_article_id` 만 인덱싱하면
+      **그 폴백으로 만들어진 claim 의 원본이 통째로 안 붙는다**.
+
+      실측(2026-07): adapted 1,412건 중 311건이 refine(Step 2.5)을 안 거쳐
+      `_article_id` 가 없고, 그 기사에서 나온 claim 222건이 "원본 연결 없음"
+      이었다. 폴백을 맞추니 evidence join 83.8% → 94.0%,
+      연결 없는 claim 242건 → 87건.
+
+    ★ monygeek 은 정적 파일이 아니라 `build_monygeek_articles()` 로 파생되는
+      레인이다 (posts.json 자체엔 `_article_id` 가 없다). 어댑터를 거치면
+      `_article_id`·`url` 이 100% 붙으므로 여기서도 같은 어댑터를 쓴다 —
+      종전에 이 레인을 통째로 빠뜨려 monygeek claim 의 원본이 안 붙었다.
+    """
+    import json as _json
+    from pathlib import Path as _P
+    base = _P(__file__).resolve().parent.parent.parent / 'market_research' / 'data'
+    out: dict = {}
+
+    def _add(lane: str, arts) -> None:
+        for a in arts or []:
+            aid = (a.get('_article_id') or a.get('_raw_dedupe_key')
+                   or a.get('_raw_nid') or '')
+            if aid:
+                out.setdefault(str(aid), (lane, a))
+
+    for lane, path in (
+        ('naver_research', base / 'naver_research' / 'adapted' / f'{period}.json'),
+        ('broker_mail', base / 'broker_mail' / f'{period}.json'),
+    ):
+        if not path.exists():
+            continue
+        try:
+            d = _json.loads(path.read_text(encoding='utf-8'))
+        except Exception:
+            continue
+        _add(lane, (d.get('articles') if isinstance(d, dict) else d))
+
+    try:
+        from market_research.collect.monygeek_research_adapter import (
+            build_monygeek_articles,
+        )
+        _add('monygeek', build_monygeek_articles(period))
+    except Exception:
+        pass      # 어댑터 실패는 조회를 막지 않는다 (monygeek 만 링크 누락)
+    return out
+
+
+@router.get('/admin/research-wiki', response_model=ResearchWikiDTO)
+def get_research_wiki(period: str = Query(..., min_length=7, max_length=7),
+                      asset: str = Query('', max_length=32)) -> ResearchWikiDTO:
+    import json as _json
+    from pathlib import Path as _P
+
+    if not _research_period_re(period):
+        raise HTTPException(status_code=422, detail='period 는 YYYY-MM 형식')
+
+    base = _P(__file__).resolve().parent.parent.parent / 'market_research' / 'data'
+    cp = base / 'claims' / f'{period}.research.json'
+    if not cp.exists():
+        return ResearchWikiDTO(period=period)
+    claims = (_json.loads(cp.read_text(encoding='utf-8')) or {}).get('claims') or []
+
+    from market_research.analyze.research_aggregator import aggregate_by_asset
+    agg = aggregate_by_asset(claims)
+    assets = sorted(agg, key=lambda a: -agg[a]['n_claims'])
+    if not assets:
+        return ResearchWikiDTO(period=period)
+    if asset not in agg:
+        asset = assets[0]
+
+    # 09 페이지 — stem 은 파일명 규칙상 특수문자 제거 (환율(FX) → 환율FX)
+    stem = re.sub(r'[^0-9A-Za-z가-힣]', '', asset)
+    pdir = base / 'wiki' / '09_Research_Synthesis'
+    page = pdir / f'{period}_{stem}.md'
+    page_md = page.read_text(encoding='utf-8') if page.exists() else ''
+    page_mtime = page.stat().st_mtime if page.exists() else 0.0
+    adopted_ids = set(re.findall(r'claim:([0-9a-f]{10})', page_md))
+
+    a = agg[asset]
+    ordered = list(a['broker_claims']) + list(a['monygeek_claims'])
+    lane_idx = _load_lane_index(period)
+
+    rows: list[ClaimRowDTO] = []
+    for i, c in enumerate(ordered, 1):
+        cid = str(c.get('claim_id') or '')
+        short = cid.split(':')[-1]
+        srcs = []
+        for eid in (c.get('source_evidence_ids') or [])[:6]:
+            # `_raw_nid` 폴백은 정수로 저장돼 있어 str 정규화가 필요하다.
+            hit = lane_idx.get(str(eid))
+            if not hit:
+                continue
+            lane, art = hit
+            srcs.append(ClaimSourceDTO(
+                title=str(art.get('title') or '')[:200],
+                date=str(art.get('date') or '')[:10],
+                broker=str(art.get('_raw_broker') or art.get('source') or ''),
+                lane=lane,
+                url=str(art.get('url') or ''),
+                attachments=', '.join(art.get('_raw_attach_names') or [])[:200],
+            ))
+        rows.append(ClaimRowDTO(
+            claim_id=cid, text=str(c.get('claim_text') or ''),
+            stance=str(c.get('stance') or ''), direction=str(c.get('direction') or ''),
+            horizon=str(c.get('horizon') or ''),
+            confidence=float(c.get('confidence') or 0),
+            salience=float(c.get('salience') or 0),
+            source_type=str(c.get('source_type') or ''),
+            broker=str(c.get('broker_author') or ''),
+            adopted=short in adopted_ids, rank=i, sources=srcs,
+            rationale=str(c.get('rationale_text') or ''),
+            risk_factor=str(c.get('risk_factor') or ''),
+            causal_chain=[
+                f"{x.get('source', '')} →{x.get('relation', '')}→ {x.get('target', '')}"
+                for x in (c.get('causal_chain') or [])
+                if isinstance(x, dict) and (x.get('source') or x.get('target'))
+            ],
+        ))
+
+    return ResearchWikiDTO(
+        period=period, asset=asset, assets=assets,
+        page_md=page_md,
+        page_generated_at=(time.strftime('%Y-%m-%d %H:%M',
+                                         time.localtime(page_mtime))
+                           if page_mtime else ''),
+        page_stale=bool(page_mtime and cp.stat().st_mtime > page_mtime),
+        claims_total=len(rows),
+        adopted_total=sum(1 for r in rows if r.adopted),
+        claims=rows,
+    )
+
+
+# ── 자산군 시드 (공통 문단 단일 소스) ──
+
+def _seed_dto(period: str) -> SeedDTO:
+    from market_research.core.asset_class import (
+        CANONICAL_CLASSES, MARKET_ORDER, OUTLOOK_ORDER,
+    )
+    from market_research.report.market_seed import load_seed, over_budget
+    orders = {'classes': list(CANONICAL_CLASSES),
+              'market_order': list(MARKET_ORDER),
+              'outlook_order': list(OUTLOOK_ORDER)}
+    seed = load_seed(period)
+    if not seed:
+        return SeedDTO(period=period, **orders)
+    sections = seed.get('sections') or {}
+    return SeedDTO(
+        period=period,
+        status=seed.get('status', 'draft'),
+        sections=SeedSectionDTO(market=sections.get('market') or {},
+                                outlook=sections.get('outlook') or {}),
+        outlook_period=(seed.get('source') or {}).get('outlook_period', ''),
+        generated_at=seed.get('generated_at', ''),
+        approved_at=seed.get('approved_at', ''),
+        model=seed.get('model', ''),
+        cost_usd=seed.get('cost_usd', 0) or 0,
+        over_budget=[{'section': s, 'key': k, 'chars': n, 'limit': hi}
+                     for s, k, n, hi in over_budget(sections)],
+        **orders,
+    )
+
+
+@router.get('/admin/market-seed', response_model=SeedDTO)
+def get_market_seed(period: str = Query(..., pattern=PERIOD_RE)) -> SeedDTO:
+    return _seed_dto(period)
+
+
+@router.post('/admin/market-seed/generate', response_model=SeedDTO)
+def generate_market_seed(body: GenBodyDTO) -> SeedDTO:
+    """승인된 _market 코멘트 → 자산군별 시드. LLM 1회 (펀드 수 무관)."""
+    mode, year, num = _parse_period(body.kind, body.period)
+    market = _resolve_market_payload(body.period, mode, year, num)
+    if not market:
+        raise HTTPException(
+            status_code=409,
+            detail=f'{body.period} 시장 코멘트 승인본 없음 — 시장 debate 승인 먼저')
+    from market_research.report.market_seed import build_seed, save_seed
+    try:
+        seed = build_seed(body.period, market, period_label=body.period)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f'시드 생성 실패: {exc}')
+    save_seed(body.period, seed)
+    return _seed_dto(body.period)
+
+
+@router.put('/admin/market-seed/draft', response_model=SeedDTO)
+def edit_market_seed(body: SeedEditBodyDTO) -> SeedDTO:
+    """Admin 수정 저장. 수정하면 승인 상태를 draft 로 되돌린다."""
+    from market_research.report.market_seed import (
+        STATUS_DRAFT, load_seed, save_seed,
+    )
+    seed = load_seed(body.period)
+    if not seed:
+        raise HTTPException(status_code=404, detail='시드 없음 — 먼저 생성')
+    seed['sections'] = {'market': dict(body.sections.market),
+                        'outlook': dict(body.sections.outlook)}
+    if seed.get('status') != STATUS_DRAFT:
+        seed['status'] = STATUS_DRAFT
+        seed.pop('approved_at', None)
+        seed.pop('approved_by', None)
+    seed.setdefault('edit_history', []).append(
+        {'at': time.strftime('%Y-%m-%dT%H:%M:%S'), 'by': 'admin'})
+    save_seed(body.period, seed)
+    return _seed_dto(body.period)
+
+
+@router.post('/admin/market-seed/approve', response_model=SeedDTO)
+def approve_market_seed(body: PeriodBodyDTO) -> SeedDTO:
+    from market_research.report.market_seed import approve_seed
+    if approve_seed(body.period) is None:
+        raise HTTPException(status_code=404, detail='시드 없음 — 먼저 생성')
+    return _seed_dto(body.period)
 
 
 # ── 보고서 (2단계 — 코멘트 승인 게이트) ──

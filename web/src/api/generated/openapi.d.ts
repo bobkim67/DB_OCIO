@@ -415,6 +415,80 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/market-seed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Market Seed */
+        get: operations["get_market_seed_api_admin_market_seed_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/market-seed/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Market Seed
+         * @description 승인된 _market 코멘트 → 자산군별 시드. LLM 1회 (펀드 수 무관).
+         */
+        post: operations["generate_market_seed_api_admin_market_seed_generate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/market-seed/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Edit Market Seed
+         * @description Admin 수정 저장. 수정하면 승인 상태를 draft 로 되돌린다.
+         */
+        put: operations["edit_market_seed_api_admin_market_seed_draft_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/market-seed/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Market Seed */
+        post: operations["approve_market_seed_api_admin_market_seed_approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/funds/{fund}/report/generate": {
         parameters: {
             query?: never;
@@ -2925,6 +2999,93 @@ export interface components {
             /** Weight */
             weight: number;
         };
+        /** SeedDTO */
+        SeedDTO: {
+            /** Period */
+            period: string;
+            /**
+             * Status
+             * @default not_generated
+             */
+            status: string;
+            /**
+             * @default {
+             *       "market": {},
+             *       "outlook": {}
+             *     }
+             */
+            sections: components["schemas"]["SeedSectionDTO"];
+            /**
+             * Outlook Period
+             * @default
+             */
+            outlook_period: string;
+            /**
+             * Generated At
+             * @default
+             */
+            generated_at: string;
+            /**
+             * Approved At
+             * @default
+             */
+            approved_at: string;
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+            /**
+             * Cost Usd
+             * @default 0
+             */
+            cost_usd: number;
+            /**
+             * Over Budget
+             * @default []
+             */
+            over_budget: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Classes
+             * @default []
+             */
+            classes: string[];
+            /**
+             * Market Order
+             * @default []
+             */
+            market_order: string[];
+            /**
+             * Outlook Order
+             * @default []
+             */
+            outlook_order: string[];
+        };
+        /** SeedEditBodyDTO */
+        SeedEditBodyDTO: {
+            /** Period */
+            period: string;
+            sections: components["schemas"]["SeedSectionDTO"];
+        };
+        /** SeedSectionDTO */
+        SeedSectionDTO: {
+            /**
+             * Market
+             * @default {}
+             */
+            market: {
+                [key: string]: string;
+            };
+            /**
+             * Outlook
+             * @default {}
+             */
+            outlook: {
+                [key: string]: string;
+            };
+        };
         /** SentReportFileDTO */
         SentReportFileDTO: {
             /** Filename */
@@ -4071,6 +4232,136 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkflowStageDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_market_seed_api_admin_market_seed_get: {
+        parameters: {
+            query: {
+                period: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeedDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_market_seed_api_admin_market_seed_generate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenBodyDTO"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeedDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_market_seed_api_admin_market_seed_draft_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SeedEditBodyDTO"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeedDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_market_seed_api_admin_market_seed_approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeriodBodyDTO"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeedDTO"];
                 };
             };
             /** @description Validation Error */
