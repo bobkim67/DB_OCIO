@@ -118,6 +118,58 @@ def _format_causal_path(chain: Any) -> str:
     return " ".join(p for p in parts if p).strip()
 
 
+# ── claim_type 쿼터 선택 (2026-08-06 사용자 지시) ──
+#
+# 09 는 자산군당 salience 상위 N 만 싣는데, salience 는 추출 프롬프트에 **정의가
+# 없어**(schema 에 `"salience": 0.0~1.0` 한 줄뿐) Haiku 가 루브릭 없이 매긴다.
+# 결과적으로 눈에 띄는 **사건**이 상위를 차지하고 **전망**이 밀린다.
+#
+# 실측(2026-07 top-12):
+#   해외주식 — 전체 outlook_view 359건(52%) 인데 top-12 에 **0건**
+#   국내주식 — 전체 outlook_view 308건(46%) 인데 top-12 에 **1건**
+#   대체     — event_to_macro 가 전체 24% 인데 top-12 의 **58%**
+# 운용보고에 필요한 건 전망인데 사건이 자리를 차지하는 구조였다.
+#
+# → salience 순을 유지하되 claim_type 최소 쿼터를 보장한다. 쿼터를 채울 claim 이
+#   없으면 그만큼 일반 순위로 채워져 **기존 동작으로 자연 degrade** 한다.
+BROKER_CLAIM_QUOTA = {'outlook_view': 4, 'risk': 2}
+
+
+def select_balanced(claims: list[dict], n: int,
+                    quota: dict[str, int] | None = None) -> list[dict]:
+    """salience 상위 n 선택 + claim_type 최소 쿼터 보장.
+
+    - 입력 순서(=salience 내림차순)를 신뢰한다. aggregate_by_asset 가 이미 정렬함.
+    - 쿼터를 먼저 채우고 남은 자리를 일반 순위로 채운 뒤, **원래 순위대로 되돌려**
+      반환한다 (읽는 순서가 salience 순이어야 페이지가 자연스럽다).
+    - quota 가 None/빈 dict 면 기존 `claims[:n]` 과 완전히 동일 (골든 불변).
+    """
+    if n <= 0 or not claims:
+        return []
+    if not quota:
+        return claims[:n]
+
+    rank = {id(c): i for i, c in enumerate(claims)}
+    picked: list[dict] = []
+    used: set[int] = set()
+    for ctype, need in quota.items():
+        for c in claims:
+            if len(picked) >= n or need <= 0:
+                break
+            if id(c) in used or c.get('claim_type') != ctype:
+                continue
+            picked.append(c)
+            used.add(id(c))
+            need -= 1
+    for c in claims:
+        if len(picked) >= n:
+            break
+        if id(c) not in used:
+            picked.append(c)
+            used.add(id(c))
+    return sorted(picked, key=lambda c: rank[id(c)])
+
+
 def aggregate_causal_paths(broker_claims: list[dict], top_n: int = 3) -> list[dict]:
     """broker claim 의 causal_chain 을 salience 순 top_n distinct path 로 집계 (Phase 2.8).
 

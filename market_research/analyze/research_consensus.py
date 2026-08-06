@@ -13,7 +13,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 from market_research.analyze.research_aggregator import (
-    load_research_claims, aggregate_by_asset, distribution_report,
+    BROKER_CLAIM_QUOTA, load_research_claims, aggregate_by_asset,
+    distribution_report, select_balanced,
 )
 from market_research.wiki.paths import RESEARCH_SYNTHESIS_DIR
 
@@ -60,10 +61,13 @@ def synthesize_asset_narrative(asset: str, a: dict[str, Any], *,
     if not broker and not monygeek:
         return {"consensus_narrative": "", "dissent_narrative": ""}
 
-    def _fmt(cs):
+    def _fmt(cs, quota=None):
+        # narrative 입력도 §4 와 같은 쿼터를 적용 — 본문 서술과 근거 목록이
+        # 서로 다른 claim 을 보면 "본문엔 있는데 근거엔 없는" 불일치가 생긴다.
         return "\n".join(
             f"- ({c.get('stance')}, {c.get('horizon')}) {c.get('view') or c.get('claim_text')}"
-            f" :: {c.get('rationale_text') or ''}"[:300] for c in cs[:12]) or "(없음)"
+            f" :: {c.get('rationale_text') or ''}"[:300]
+            for c in select_balanced(cs, 12, quota)) or "(없음)"
 
     # Phase 2.8 — broker-only causal skeleton (narrative 에 인과경로 반영용)
     causal = a.get("causal_paths") or []
@@ -77,7 +81,7 @@ def synthesize_asset_narrative(asset: str, a: dict[str, Any], *,
         f"자산군: {asset}\n"
         f"증권사 컨센서스 stance={a.get('consensus_stance')} "
         f"(vote={a.get('vote_distribution')}, strength={a.get('consensus_strength')})\n\n"
-        f"## 증권사 리서치 claim (consensus 본류)\n{_fmt(broker)}\n\n"
+        f"## 증권사 리서치 claim (consensus 본류)\n{_fmt(broker, BROKER_CLAIM_QUOTA)}\n\n"
         f"## 주요 인과 경로 (broker, top{len(causal)})\n{causal_block}\n\n"
         f"## monygeek 관점 (dissent/contrarian — consensus 산정 제외)\n{_fmt(monygeek)}\n\n"
         "위를 바탕으로 두 단락을 작성하세요(JSON):\n"
@@ -152,7 +156,9 @@ def build_research_synthesis_page(period: str, asset: str, a: dict[str, Any],
     b.append("")
 
     b.append("## 4. 근거 claim (broker)")
-    for c in (a.get("broker_claims") or [])[:12]:
+    # salience 상위 12 + claim_type 최소 쿼터 (2026-08-06) — 사건이 상위를 독점하고
+    # 전망이 밀리던 문제. 상세는 research_aggregator.BROKER_CLAIM_QUOTA 주석.
+    for c in select_balanced(a.get("broker_claims") or [], 12, BROKER_CLAIM_QUOTA):
         b.append(_claim_line(c))
     b.append("")
 
