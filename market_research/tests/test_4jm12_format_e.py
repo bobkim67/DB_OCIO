@@ -100,10 +100,21 @@ def test_other_blocks_not_rule_checked():
 
 def test_hedge_range_substitution_keeps_rest_of_sentence():
     """레인지 숫자만 갈아끼우고 나머지 문장은 그대로 — "나머진 전월과 동일"."""
-    new, n = _HEDGE_RANGE_RE.subn('1,410원 ~ 1,470원', _PREV_HEDGE, count=1)
+    new, n = _HEDGE_RANGE_RE.subn('1,410원 ~ 1,540원', _PREV_HEDGE, count=1)
     assert n == 1
-    assert '1,410원 ~ 1,470원' in new and '1,500원' not in new
+    assert '1,410원 ~ 1,540원' in new and '1,500원' not in new
     assert new.endswith('중점적으로 모니터링하고 있습니다.')
+
+
+def test_range_is_pm_2sigma_in_won_units():
+    """채택 구간 = ±2σ · 10원 단위 (2026-08-06 사용자 확정)."""
+    from market_research.report import fx_rv_range as rv
+    assert rv._ROUND == 10
+    r = rv.compute('2026-07-31')
+    assert r and tuple(r['range_pm_2s']) == (1410, 1540)
+    # 하단은 두 구간이 같고 상단만 다르다
+    assert r['range_mu_2s'][0] == r['range_pm_2s'][0]
+    assert r['range_mu_2s'][1] < r['range_pm_2s'][1]
 
 
 def test_rv_range_direction():
@@ -122,12 +133,29 @@ def test_hedge_range_matches_tight_spacing():
     assert n == 1
 
 
-def test_hedge_line_warns_without_prev(monkeypatch):
-    """전월 문단이 없으면 **지어내지 않고** 빈 문자열 + 경고."""
+def test_hedge_line_prefers_sent_report():
+    """정본은 **직전 발송본** — 실제로 고객에게 나간 문장이다.
+
+    2026-07 코멘트는 2026-06 회신본(s6)에서 승계한다. ⚠ s6 는 프롬프트용 3,000자
+    클립 뒤에 있어 `full_text` 를 봐야 잡힌다.
+    """
+    import datetime
+
+    from market_research.report import fund_comment_service as svc
+    w: list[str] = []
+    line = svc._hedge_line('4JM12', '2026-07', datetime.date(2026, 7, 31), w)
+    assert '1,410원 ~ 1,540원' in line
+    assert line.endswith('중점적으로 모니터링하고 있습니다.')
+    assert any('발송본 2026-06' in x for x in w)
+
+
+def test_hedge_line_warns_without_any_source(monkeypatch):
+    """원본이 하나도 없으면 **지어내지 않고** 빈 문자열 + 경고."""
     import datetime
 
     import market_research.report.report_store as rs
     from market_research.report import fund_comment_service as svc
+    monkeypatch.setattr(svc, '_load_sent_report_reference', lambda *a, **k: None)
     monkeypatch.setattr(rs, 'load_final', lambda *a, **k: None)
     w: list[str] = []
     assert svc._hedge_line('4JM12', '2026-08', datetime.date(2026, 7, 31), w) == ''

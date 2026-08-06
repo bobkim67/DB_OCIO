@@ -357,8 +357,12 @@ def _load_sent_report_reference(fund_code: str, period_key: str) -> dict | None:
     if not cands:
         return None
     e, txt = max(cands, key=lambda x: (x[0].get('period', ''), x[0].get('mail_date', '')))
+    body = txt.read_text(encoding='utf-8')
     return {'period': e['period'], 'filename': e['filename'],
-            'text': txt.read_text(encoding='utf-8')[:_SENT_REF_CLIP]}
+            'text': body[:_SENT_REF_CLIP],
+            # 전문 — 프롬프트에는 클립본을 쓰지만, 특정 문단을 뽑아 쓸 때는 전문이 필요하다
+            # (4JM12 환헤지 문장은 s6 라 3,000자 클립 뒤에 있다).
+            'full_text': body}
 
 
 # ══════════════════════════════════════════
@@ -383,25 +387,36 @@ _HEDGE_RANGE_RE = _re.compile(
 
 
 def _hedge_line(fund_code: str, period_key: str, end_dt, warnings: list) -> str:
-    """환헤지 비율 문장 — **전월 승인본 문장을 그대로 잇고 레인지 숫자만 교체**한다
+    """환헤지 비율 문장 — **전월 문장을 그대로 잇고 레인지 숫자만 교체**한다
     (2026-08-06 사용자 지시: "레인지만 업데이트하고 나머진 전월과 동일").
 
-    전월 문장이 없거나 레인지 패턴을 못 찾으면 빈 문자열/원문을 돌려주고 경고한다 —
-    지어내지 않는다.
+    원본 우선순위:
+      1) **직전 발송본 아카이브** — 실제로 고객에게 나간 문장이라 이게 정본이다.
+         (⚠ s6 는 3,000자 클립 뒤에 있어 `full_text` 를 써야 한다.)
+      2) 전월 report_output 승인본 — 아카이브가 없을 때.
+    둘 다 없으면 빈 문자열 + 경고. **지어내지 않는다.**
     """
     from market_research.report.report_store import load_final
 
-    y, m = int(period_key[:4]), int(period_key[5:7])
-    py, pm = (y - 1, 12) if m == 1 else (y, m - 1)
-    prev = load_final(f'{py}-{pm:02d}', fund_code)
-    body = str((prev or {}).get('final_comment') or '')
-    mt = _re.search(r'환헤지\s*비율\s*:\s*(.+?)(?:\n\s*\n|\Z)', body, _re.S)
-    if not mt:
-        warnings.append(
-            f'{py}-{pm:02d} 승인본에서 환헤지 비율 문단을 찾지 못했습니다 — '
-            f'환헤지 문장을 직접 작성하세요')
+    _pat = r'환헤지\s*비율\s*:\s*(.+?)(?:\n\s*\n|\n\S+\s*:|\Z)'
+    line, src = '', ''
+    ref = _load_sent_report_reference(fund_code, period_key)
+    if ref:
+        mt = _re.search(_pat, ref.get('full_text') or '', _re.S)
+        if mt:
+            line, src = ' '.join(mt.group(1).split()), f"발송본 {ref['period']}"
+    if not line:
+        y, m = int(period_key[:4]), int(period_key[5:7])
+        py, pm = (y - 1, 12) if m == 1 else (y, m - 1)
+        prev = load_final(f'{py}-{pm:02d}', fund_code)
+        mt = _re.search(_pat, str((prev or {}).get('final_comment') or ''), _re.S)
+        if mt:
+            line, src = ' '.join(mt.group(1).split()), f'승인본 {py}-{pm:02d}'
+    if not line:
+        warnings.append('직전 발송본·전월 승인본 어디에서도 환헤지 비율 문단을 찾지 '
+                        '못했습니다 — 환헤지 문장을 직접 작성하세요')
         return ''
-    line = ' '.join(mt.group(1).split())
+    warnings.append(f'환헤지 문장 승계 원본 = {src}')
 
     from market_research.report.fx_rv_range import compute as _rv
     rv = _rv(str(end_dt)) if end_dt is not None else None
@@ -409,17 +424,17 @@ def _hedge_line(fund_code: str, period_key: str, end_dt, warnings: list) -> str:
         warnings.append('원화 RV 분포를 계산하지 못해 환헤지 레인지를 전월 값 그대로 '
                         '두었습니다 — 직접 확인하세요')
         return line
-    lo, hi = rv['range_mu_2s']
+    lo, hi = rv['range_pm_2s']
     new, n = _HEDGE_RANGE_RE.subn(f'{lo:,}원 ~ {hi:,}원', line, count=1)
     if not n:
         warnings.append('전월 환헤지 문장에서 레인지(0,000원 ~ 0,000원) 패턴을 찾지 '
                         '못했습니다 — 레인지를 직접 수정하세요')
         return line
-    p_lo, p_hi = rv['range_pm_2s']
+    n_lo, n_hi = rv['range_mu_2s']
     warnings.append(
-        f"환헤지 레인지 제안 {lo:,}~{hi:,}원 — DXY 현행 유지 · 원화 RV 스프레드가 "
-        f"μ~+2σ 구간(롤링1Y μ={rv['mu']}% σ={rv['sd']}%p, 현재 z={rv['z']:+}σ, "
-        f"기준일 {rv['asof']} {rv['spot']:,}원). 좁으면 ±2σ={p_lo:,}~{p_hi:,}원. "
+        f"환헤지 레인지 제안 {lo:,}~{hi:,}원 — DXY 현행 유지 · 원화 RV 스프레드 "
+        f"±2σ 구간(롤링1Y μ={rv['mu']}% σ={rv['sd']}%p, 현재 z={rv['z']:+}σ, "
+        f"기준일 {rv['asof']} {rv['spot']:,}원). 좁은 판본 μ~+2σ={n_lo:,}~{n_hi:,}원. "
         f"운용역 판단으로 조정하세요")
     return new
 

@@ -27,7 +27,7 @@ import math
 _DXY = (105, 48)
 _USDKRW = (31, 48)
 _WINDOW = 252          # 롤링1Y = 직전 252 영업일
-_ROUND = 10            # 발송본 표기 단위
+_ROUND = 10            # 표기 단위 — 10원 (2026-08-06 사용자 확정)
 
 
 def _series(dataset_id: int, ds_id: int) -> dict:
@@ -93,8 +93,9 @@ def compute(asof: str) -> dict | None:
         'levels': {k: round(level(v), 1) for k, v in
                    (('mu', mu), ('+1s', mu + sd), ('+2s', mu + 2 * sd),
                     ('-1s', mu - sd), ('-2s', mu - 2 * sd))},
-        # 요청 구간: 스프레드가 평균 ~ +2σ 사이 (기본)
-        'range_mu_2s': rng(mu, mu + 2 * sd),
-        # 대안: ±2σ (기본 구간이 좁을 때)
+        # ★ 채택 구간 = **±2σ** (2026-08-06 사용자 확정). μ~+2σ 는 폭이 60원대라
+        #   발송본 관행(80원)보다 좁았다.
         'range_pm_2s': rng(mu - 2 * sd, mu + 2 * sd),
+        # 참고: 평균 ~ +2σ (좁은 판본)
+        'range_mu_2s': rng(mu, mu + 2 * sd),
     }
