@@ -60,9 +60,13 @@ def test_blocks_roundtrip():
         '운용경과': '가', '펀드성과': '나', '운용계획': '다'}
 
 
-def test_market_para_cap_shared_with_2jm23():
-    """시장 동향은 2JM23 과 **같은 문단** — 캡이 같아야 재압축 캐시도 공유된다."""
-    assert MARKET_PARA_CAP['4JM12'] == MARKET_PARA_CAP['2JM23'] == 400
+def test_market_para_cap_is_250():
+    """발송본 시장 동향이 210자 안팎이라 250자 (2026-08-07 사용자 지시).
+
+    ⚠ 2JM23(400)과 캡이 달라 재압축 결과도 다르다 — 두 문단이 글자 그대로 같지는 않다.
+    """
+    assert MARKET_PARA_CAP['4JM12'] == 250
+    assert MARKET_PARA_CAP['2JM23'] == 400
 
 
 # ── 운용계획 규칙 (2JM23 과 같은 규칙, 내용은 4JM12) ──
@@ -89,9 +93,24 @@ def test_plan_rule_flags_numbers_and_tickers():
     assert '숫자' in v and '정도부사' in v and '종목명' in v
 
 
-def test_perf_block_not_rule_checked():
-    """펀드 성과는 수치·BM 비교가 본문이라 규칙 대상이 아니다."""
-    assert check_block_rules('4JM12', '펀드성과', 'BM 대비 84bps 상회하였습니다.') == []
+def test_perf_block_bans_factor_listing():
+    """★ 요인 이름+수치만 옮기면 반려 — 왜 그랬는지가 없다 (2026-08-07 사용자 지적)."""
+    v = ' | '.join(check_block_rules(
+        '4JM12', '펀드성과',
+        '당월 펀드는 -2.90%를 기록하여 BM -1.65% 대비 0.66%p 하회하였습니다. '
+        '자산배분효과는 해외주식 저비중으로 +0.11%p 기여한 반면, 종목선택효과가 '
+        '-2.36%p로 부진하며 상대성과를 압박하였습니다.'))
+    assert 'Brinson 요인 수치 나열' in v
+
+
+def test_perf_block_passes_sent_report_wording():
+    """발송본은 요인 용어 없이 포지션·사유로 설명한다 — 그대로 통과해야 한다."""
+    ok = ('최근 1개월간 펀드는 +0.69%의 수익률, BM은 -0.15%의 수익률을 기록하여 BM '
+          '대비 약 84bps 상회하는 성과를 보였습니다. 국내주식 급락 이후 반등 국면에서의 '
+          '차익실현 대응과 국고채 중심 채권 구성의 상대적 견조함이 상대성과에 긍정적으로 '
+          '기여한 반면, 매파적 FOMC 영향으로 조정을 받은 미국 성장주 포지션은 상대성과에 '
+          '불리하게 작용했습니다.')
+    assert check_block_rules('4JM12', '펀드성과', ok) == []
 
 
 # ── 운용경과: 자산군 단위만, 숫자는 허용 (2026-08-06 사용자 지시) ──

@@ -29,7 +29,8 @@ def test_override_scope():
     2JM23 전용 — 4JM12(포맷 E)는 '펀드 성과' 를 BM 대비로 쓰므로 해당 없다.
     """
     assert set(MARKET_PARA_CAP) == {'2JM23', '4JM12'}
-    assert all(v == 400 for v in MARKET_PARA_CAP.values())
+    assert MARKET_PARA_CAP['2JM23'] == 400      # 슬라이드 여유가 더 크다
+    assert MARKET_PARA_CAP['4JM12'] == 250      # 발송본 시장 동향이 210자 안팎
     assert FIXED_PERF_SENTENCE_FUNDS == {'2JM23'}
 
 
