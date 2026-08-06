@@ -1484,6 +1484,14 @@ def load_fund_meta(fund_code: str) -> dict:
     소스: DWPI10011(펀드 마스터) + BOS3203(보수 컴포넌트 합). OCIO 사모펀드라
     협회 공시(ST_KITCA_DS)·거래소 티커(DWPI10021)엔 데이터 없음 → KSD코드로 대체.
     NAV(기준가)·설정액(순자산)은 nav_df 최신값을 서비스단에서 채움.
+
+    ★ BOS3203 보수 합산 규약 (2026-08-06 수정)
+    - 컴포넌트(fee_cms_cd)마다 **자기 유효기간**(apply_frdate~apply_todate)을 갖는다.
+      MAX(apply_frdate) 한 날짜로 거르면 그날 갱신된 컴포넌트만 남는다 — 2JM23 은
+      2024-12-16 에 A50 만 바뀌어 0.16(A50 단독)이 나왔다. **오늘 유효한 행 전부**를
+      합쳐야 7.225(신한라이프 발송본 검증값)가 된다.
+    - `fee_rate_bp` 는 이름과 달리 **0.1%p 단위**다(2JM23 7.225 → 연 0.7225%).
+      실제 bp 로 쓰려면 ×10 — 반환값 `fee_bp` 는 환산 후의 진짜 bp 다.
     """
     out = {'ticker': None, 'inception': None, 'fund_type': None,
            'manager': '한국투자신탁운용', 'fee_bp': None}
@@ -1501,12 +1509,13 @@ def load_fund_meta(fund_code: str) -> dict:
                 out['inception'] = fo if len(fo) == 8 and fo.isdigit() else None
                 parts = [str(r['PBOF_PROFF_DS_CD'] or '').strip(), str(r['TRST_DS_CD'] or '').strip()]
                 out['fund_type'] = ' · '.join([p for p in parts if p]) or None
+            today = datetime.now().strftime('%Y%m%d')
             fee = pd.read_sql(
-                "SELECT fee_rate_bp, apply_frdate FROM BOS3203 WHERE fund_cd=%s "
-                "ORDER BY apply_frdate DESC", conn, params=[fund_code])
+                "SELECT fee_rate_bp FROM BOS3203 WHERE fund_cd=%s "
+                "AND apply_frdate <= %s AND apply_todate >= %s",
+                conn, params=[fund_code, today, today])
             if len(fee):
-                latest = fee.iloc[0]['apply_frdate']
-                out['fee_bp'] = round(float(fee[fee['apply_frdate'] == latest]['fee_rate_bp'].sum()), 3)
+                out['fee_bp'] = round(float(fee['fee_rate_bp'].sum()) * 10, 3)
         finally:
             conn.close()
     except Exception as exc:

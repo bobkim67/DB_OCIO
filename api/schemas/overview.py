@@ -37,7 +37,7 @@ class FundInfoDTO(BaseModel):
     setup_amount: float | None = None  # 설정액 = 설정 시점(첫 영업일) 순자산(NAST_AMT), 원
     fund_type: str | None = None     # 펀드타입 (사모 · 수익증권 등)
     manager: str | None = None       # 운용사
-    fee_bp: float | None = None      # 총보수율 (bp, BOS3203 컴포넌트 합)
+    fee_bp: float | None = None      # 총보수율 (bp, BOS3203 유효 컴포넌트 합 ×10)
     nav: float | None = None         # 최신 기준가 (MOD_STPR)
     beneficiary: str | None = None   # 수익자 (FUND_BENEFICIARY, 하드코딩)
     target_return_annual: float | None = None  # 목표수익률 (연, fraction)
