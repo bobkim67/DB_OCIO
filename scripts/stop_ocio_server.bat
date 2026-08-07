@@ -5,6 +5,13 @@ REM (With the watchdog running, just closing the server window is not
 REM  enough - it restarts within ~15s. Use this to really stop it.)
 REM =====================================================================
 echo Stopping watchdog...
+REM Tell ocio_watchdog_run.cmd this stop is INTENTIONAL so its restart loop does
+REM not undo it. Must be written BEFORE the kill - the wrapper reads the flag the
+REM moment its child dies. (Without this the wrapper would revive the watchdog in
+REM 10s and "stop everything" would silently stop working.)
+if not exist "%~dp0..\.cache" mkdir "%~dp0..\.cache"
+>"%~dp0..\.cache\watchdog_stop.flag" echo stop requested by stop_ocio_server.bat
+
 REM leave a trace in logs\watchdog.log (this stop is intentional, not a crash)
 REM and clear the heartbeat so the next start does not report an unclean end.
 powershell -NoProfile -Command "$r='%~dp0..'; Add-Content -Path (Join-Path $r 'logs\watchdog.log') -Encoding UTF8 -Value ((Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + ' | stop_ocio_server.bat - watchdog + server stopped by user'); Remove-Item (Join-Path $r 'logs\watchdog.heartbeat') -Force -ErrorAction SilentlyContinue"
