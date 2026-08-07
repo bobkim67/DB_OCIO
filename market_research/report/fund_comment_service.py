@@ -481,6 +481,37 @@ def _hedge_ratio_block(prev_eom: str, cur_eom: str) -> str | None:
     )
 
 
+# Brinson 블록 꼬리의 헤드라인 — 형식은 `_brinson_factor_block` 이 만든다.
+_BRINSON_HEADLINE_RE = _re.compile(
+    r'\(펀드\s*(-?\d+\.\d+)%\s*/\s*BM\s*(-?\d+\.\d+)%\)')
+
+
+def _check_perf_numbers(text: str, brinson_block: str, warnings: list) -> None:
+    """펀드성과 본문의 수익률이 **Brinson 표 값과 같은지** 확인 (2026-08-07).
+
+    ⚠ 프롬프트에 사실을 넣어도 LLM 이 지어낸다. 2026-07 4JM12 실측: 표는
+      `(펀드 -2.90% / BM -2.20%)` 인데 본문은 "BM은 -1.65%" 로 썼고, 자기 문장 안의
+      초과폭(66bp)과도 안 맞았다. 고객에게 나가는 숫자라 경고로 잡는다.
+    """
+    if not text or not brinson_block:
+        return
+    m = _BRINSON_HEADLINE_RE.search(brinson_block)
+    if not m:
+        return
+    ap, bm = m.group(1), m.group(2)
+    try:
+        excess = float(ap) - float(bm)
+    except ValueError:
+        return
+    for label, val in (('펀드', ap), ('BM', bm)):
+        # 부호 표기가 갈릴 수 있어 절대값 문자열로 본다 ("-2.20%" / "2.20%" 모두 허용)
+        if val.lstrip('-') not in text:
+            warnings.append(
+                f'펀드성과에 {label} 수익률 {val}% 가 보이지 않습니다 — '
+                f'Brinson 표 값(펀드 {ap}% / BM {bm}% · 초과 {excess:+.2f}%p)과 다른 '
+                f'수치를 쓴 것 같습니다. 반드시 대조하세요')
+
+
 def _perf_period_label(mode: str, end_dt, quarter: int) -> str:
     """성과 문장 첫머리 — 발송본은 "6월 중 펀드는 …" 처럼 **기간을 명시**한다.
 
@@ -829,11 +860,13 @@ def generate_fund_comment_and_save(
     #   이는 R 산출물 중 **YTD(2026-01-01~) 파일** 값이었다. 해당 월(7월) 실제값은 +0.03%
     #   으로 부호가 반대. 기간·방법·FX 옵션 3축으로 파일이 갈려 있어 사람이 헷갈리기 쉽다.
     #   → 기간에 맞는 값을 표로 주입하고, 이 표 밖의 부호 서술을 금지한다.
+    brinson_blk = None
     if start_dt and end_dt:
         try:
             blk = _brinson_factor_block(fund_code, start_dt, end_dt)
             if blk:
                 additional_parts.append(blk)
+                brinson_blk = blk
         except Exception as e:
             data_warnings.append(f'Brinson 요인 블록 생성 실패: {e}')
 
@@ -971,6 +1004,9 @@ def generate_fund_comment_and_save(
             for _bname, _btext in blocks.items():
                 for _v in check_block_rules(fund_code, _bname, _btext):
                     data_warnings.append(f'{_bname} 블록 규칙 위반 — {_v}')
+            # 펀드성과의 수익률이 Brinson 표와 같은지 (LLM 이 BM 을 지어낸 실측 있음)
+            if '펀드성과' in blocks:
+                _check_perf_numbers(blocks['펀드성과'], brinson_blk or '', data_warnings)
             sub_line = ''
             if fmt == 'K' and (fund_ret or {}).get('sub_returns'):
                 subs = fund_ret['sub_returns']

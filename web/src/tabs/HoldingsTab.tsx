@@ -94,6 +94,9 @@ export default function HoldingsTab({ fundCode }: Props) {
   const totalEvl = sortedAcw.reduce((s, w) => s + w.evl_amt, 0);
   const fundInception = fundsData?.data.find((f) => f.code === fundCode)?.inception ?? null;
 
+  // FX 포지션 — 합계 아래 한 행. NAV 구성이 아니라 holdings_items 에서 빠져 있다.
+  const fxPos = data.fx_positions ?? [];
+
   // 07G04 예외(사용자 지정 2026-07-02): look-through 해제 시 상단 스택바의 모펀드
   // 버킷을 수익추구/인컴추구 모펀드별 세그먼트로 분해해 혼합 비율을 표기.
   const motherShort = (nm: string) =>
@@ -331,6 +334,25 @@ export default function HoldingsTab({ fundCode }: Props) {
                     <td className="num gd">{ds?.ytm_overall == null ? "—" : num(ds.ytm_overall, 2)}</td>
                     <td className="num gd" style={{ whiteSpace: "nowrap" }}>{fundInception ?? "—"}</td>
                   </tr>
+                  {/* FX 포지션 — 합계 **아래** 한 행 (2026-08-07 사용자 지시).
+                      NAV 구성이 아니라 포지션(notional)이라 위 100% 에는 안 들어간다.
+                      라벨·비중·평가액·최초편입일을 같은 행에 둔다. */}
+                  {fxPos.map((p) => (
+                    <tr key={`fx-${p.item_cd}`}>
+                      <td className="l">
+                        <span className="gn">FX 포지션 - {p.item_nm}({p.is_short ? "매도" : "매수"})</span>
+                      </td>
+                      <td className="wbl" />
+                      <td>
+                        <span className="gw num">{p.is_short ? "−" : "+"}{pct1(p.weight)}</span>
+                      </td>
+                      <td className="wbr" />
+                      <td className="num gd">{eok(p.evl_amt)}</td>
+                      <td className="num gd">—</td>
+                      <td className="num gd">—</td>
+                      <td className="num gd" style={{ whiteSpace: "nowrap" }}>{p.first_date ?? "—"}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>

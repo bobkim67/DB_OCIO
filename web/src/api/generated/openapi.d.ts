@@ -415,6 +415,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/research-wiki": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Research Wiki */
+        get: operations["get_research_wiki_api_admin_research_wiki_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/market-seed": {
         parameters: {
             query?: never;
@@ -522,7 +539,7 @@ export interface paths {
         };
         /**
          * Download Report Excel
-         * @description 4JM12 월간 DB생명 데이터 엑셀 다운로드 (보고서 생성 시 산출).
+         * @description 보고서 단계 산출물 다운로드 — `_EXCEL_SPECS` 등록 펀드(엑셀/PPT).
          */
         get: operations["download_report_excel_api_admin_funds__fund__report_excel_get"];
         put?: never;
@@ -1679,6 +1696,111 @@ export interface components {
              */
             evidence_refs: number[];
         };
+        /** ClaimRowDTO */
+        ClaimRowDTO: {
+            /** Claim Id */
+            claim_id: string;
+            /** Text */
+            text: string;
+            /**
+             * Stance
+             * @default
+             */
+            stance: string;
+            /**
+             * Direction
+             * @default
+             */
+            direction: string;
+            /**
+             * Horizon
+             * @default
+             */
+            horizon: string;
+            /**
+             * Confidence
+             * @default 0
+             */
+            confidence: number;
+            /**
+             * Salience
+             * @default 0
+             */
+            salience: number;
+            /**
+             * Source Type
+             * @default
+             */
+            source_type: string;
+            /**
+             * Broker
+             * @default
+             */
+            broker: string;
+            /**
+             * Adopted
+             * @default false
+             */
+            adopted: boolean;
+            /**
+             * Rank
+             * @default 0
+             */
+            rank: number;
+            /**
+             * Sources
+             * @default []
+             */
+            sources: components["schemas"]["ClaimSourceDTO"][];
+            /**
+             * Rationale
+             * @default
+             */
+            rationale: string;
+            /**
+             * Risk Factor
+             * @default
+             */
+            risk_factor: string;
+            /**
+             * Causal Chain
+             * @default []
+             */
+            causal_chain: string[];
+        };
+        /** ClaimSourceDTO */
+        ClaimSourceDTO: {
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+            /**
+             * Date
+             * @default
+             */
+            date: string;
+            /**
+             * Broker
+             * @default
+             */
+            broker: string;
+            /**
+             * Lane
+             * @default
+             */
+            lane: string;
+            /**
+             * Url
+             * @default
+             */
+            url: string;
+            /**
+             * Attachments
+             * @default
+             */
+            attachments: string;
+        };
         /**
          * ClientReportEnrichmentDTO
          * @description Client viewer (`/api/market-report`, `/api/funds/{fund}/report`) 응답에 들어가는
@@ -2214,6 +2336,11 @@ export interface components {
             asset_class_weights: components["schemas"]["HoldingAssetClassDTO"][];
             /** Holdings Items */
             holdings_items: components["schemas"]["HoldingItemDTO"][];
+            /**
+             * Fx Positions
+             * @default []
+             */
+            fx_positions: components["schemas"]["HoldingItemDTO"][];
             fx_hedge?: components["schemas"]["FxHedgeSummaryDTO"] | null;
             duration_summary?: components["schemas"]["WeightedDurationDTO"] | null;
             portfolio_mix?: components["schemas"]["PortfolioMixSummaryDTO"] | null;
@@ -2747,22 +2874,7 @@ export interface components {
             s6?: components["schemas"]["S6CommentDTO"] | null;
         };
         /** PptCommentsSaveBodyDTO */
-        "PptCommentsSaveBodyDTO-Input": {
-            /** S4 File */
-            s4_file?: string | null;
-            s4?: components["schemas"]["S4CommentDTO"] | null;
-            /** S6 File */
-            s6_file?: string | null;
-            s6?: components["schemas"]["S6CommentDTO"] | null;
-            /** Fund Code */
-            fund_code?: string | null;
-            /** End Date */
-            end_date?: string | null;
-            /** Start Date */
-            start_date?: string | null;
-        };
-        /** PptCommentsSaveBodyDTO */
-        "PptCommentsSaveBodyDTO-Output": {
+        PptCommentsSaveBodyDTO: {
             /** S4 File */
             s4_file?: string | null;
             s4?: components["schemas"]["S4CommentDTO"] | null;
@@ -2900,6 +3012,51 @@ export interface components {
         ReportFinalResponseDTO: {
             meta: components["schemas"]["BaseMeta"];
             data: components["schemas"]["ReportFinalDTO"];
+        };
+        /** ResearchWikiDTO */
+        ResearchWikiDTO: {
+            /** Period */
+            period: string;
+            /**
+             * Asset
+             * @default
+             */
+            asset: string;
+            /**
+             * Assets
+             * @default []
+             */
+            assets: string[];
+            /**
+             * Page Md
+             * @default
+             */
+            page_md: string;
+            /**
+             * Page Generated At
+             * @default
+             */
+            page_generated_at: string;
+            /**
+             * Page Stale
+             * @default false
+             */
+            page_stale: boolean;
+            /**
+             * Claims Total
+             * @default 0
+             */
+            claims_total: number;
+            /**
+             * Adopted Total
+             * @default 0
+             */
+            adopted_total: number;
+            /**
+             * Claims
+             * @default []
+             */
+            claims: components["schemas"]["ClaimRowDTO"][];
         };
         /** S4BlockDTO */
         S4BlockDTO: {
@@ -3209,10 +3366,6 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
-            /** Input */
-            input?: unknown;
-            /** Context */
-            ctx?: Record<string, never>;
         };
         /**
          * ValidationSummaryDTO
@@ -3552,6 +3705,11 @@ export interface components {
              * @default false
              */
             excel_ready: boolean;
+            /**
+             * Build Warnings
+             * @default []
+             */
+            build_warnings: string[];
         };
     };
     responses: never;
@@ -4245,6 +4403,38 @@ export interface operations {
             };
         };
     };
+    get_research_wiki_api_admin_research_wiki_get: {
+        parameters: {
+            query: {
+                period: string;
+                asset?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchWikiDTO"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_market_seed_api_admin_market_seed_get: {
         parameters: {
             query: {
@@ -4703,7 +4893,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PptCommentsSaveBodyDTO-Input"];
+                "application/json": components["schemas"]["PptCommentsSaveBodyDTO"];
             };
         };
         responses: {
@@ -4713,7 +4903,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PptCommentsSaveBodyDTO-Output"];
+                    "application/json": components["schemas"]["PptCommentsSaveBodyDTO"];
                 };
             };
             /** @description Validation Error */

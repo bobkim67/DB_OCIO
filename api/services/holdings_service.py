@@ -863,7 +863,11 @@ def build_holdings(
         hedge_ratio=(usd_short_w / usd_asset_w) if usd_asset_w > 0 else None,
     )
 
-    # 4.6) FX(달러선물 등)는 포지션(notional)이지 NAV 구성이 아니므로 제외 (2026-06-24 사용자 확정)
+    # 4.6) FX(달러선물 등)는 포지션(notional)이지 NAV 구성이 아니므로 **합계에서 제외**
+    #      (2026-06-24 사용자 확정). 다만 화면에서 아예 안 보이면 포지션을 놓친다
+    #      → `fx_positions` 로 따로 내보내 편입종목 표의 **펀드 합계 아래**에 참고 행으로
+    #        붙인다 (2026-08-07 사용자 지시). 100% 구성은 그대로 유지된다.
+    fx_positions = [it for it in items if it.asset_class == "FX"]
     items = [it for it in items if it.asset_class != "FX"]
 
     def _load_payable_rows(fc: str, asof) -> list[tuple[str, float]]:
@@ -984,10 +988,13 @@ def build_holdings(
         warnings.append(f"듀레이션 fetch 실패: {type(exc).__name__}")
 
     # 8.5) 최초 편입일 join (DWPM10530 전이력 MIN)
+    #      FX 포지션도 포함 — 화면에 편입일을 같이 찍는다 (2026-08-07 사용자 지시).
+    #      달러선물은 월물이 바뀌므로 **그 월물의 진입일**이 나온다.
     try:
-        first_map = _load_first_dates(fund_code, [it.item_cd for it in items])
+        _fd_targets = items + fx_positions
+        first_map = _load_first_dates(fund_code, [it.item_cd for it in _fd_targets])
         if first_map:
-            for it in items:
+            for it in _fd_targets:
                 fd = first_map.get(it.item_cd)
                 if fd:
                     it.first_date = fd
@@ -1031,6 +1038,7 @@ def build_holdings(
         opng_amt=opng,
         asset_class_weights=asset_class_weights,
         holdings_items=items,
+        fx_positions=fx_positions,
         fx_hedge=fx_hedge,
         duration_summary=duration_summary,
         portfolio_mix=portfolio_mix,

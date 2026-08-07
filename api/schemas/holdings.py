@@ -147,6 +147,10 @@ class HoldingsResponseDTO(BaseModel):
     opng_amt: float | None = None
     asset_class_weights: list[HoldingAssetClassDTO]
     holdings_items: list[HoldingItemDTO]
+    # FX(달러선물 등) — **NAV 구성이 아니라 포지션(notional)** 이라 holdings_items 와
+    # 자산군 비중에서는 빠진다(2026-06-24 확정). 화면에서 통째로 사라지면 포지션을
+    # 놓치므로 별도로 실어 **펀드 합계 아래 참고 행**으로 표시한다 (2026-08-07).
+    fx_positions: list[HoldingItemDTO] = []
     fx_hedge: FxHedgeSummaryDTO | None = None
     duration_summary: WeightedDurationDTO | None = None
     portfolio_mix: PortfolioMixSummaryDTO | None = None
