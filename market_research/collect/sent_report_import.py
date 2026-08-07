@@ -143,34 +143,51 @@ def run(root: Path, replace: bool, dry_run: bool) -> dict:
             if not fp:
                 continue                                  # _inbox_*, '새 폴더' 등
             f_period, f_kind = fp
+            # (펀드폴더, 그 안의 파일) + **기간폴더 직하 파일**.
+            # ⚠ 종전엔 펀드 하위폴더만 훑어서, 정리가 덜 된 달의 루트 직하 파일이
+            #   `skipped_*` 에도 안 잡히고 **통째로 사라졌다** (2026-07 실측: 08K88·
+            #   08N33·08P22·4JM12 4건). 루트 직하는 파일명 파서로 펀드를 정한다 —
+            #   메일 교차검증은 그대로 걸리므로 오수집 위험은 늘지 않는다.
+            scan: list[tuple[str | None, Path]] = [
+                (None, p) for p in sorted((base / folder).iterdir()) if p.is_file()
+            ]
             for fund_dir in sorted(p for p in (base / folder).iterdir() if p.is_dir()):
-                fund = fund_dir.name
-                if fund not in funds:
+                if fund_dir.name not in funds:
                     continue                              # 대시보드 11펀드만
-                for src in sorted(p for p in fund_dir.iterdir() if p.is_file()):
-                    fn = src.name
-                    if not fn.lower().endswith(_DOC_EXT):
+                scan += [(fund_dir.name, p)
+                         for p in sorted(fund_dir.iterdir()) if p.is_file()]
+
+            for fund_hint, src in scan:
+                fn = src.name
+                if not fn.lower().endswith(_DOC_EXT) or fn.startswith('~$'):
+                    continue                          # Office 잠금 파일(~$) 제외
+                fund = fund_hint
+                if fund is None:
+                    # 루트 직하 — 파일명에서 펀드를 못 뽑으면 건너뛴다
+                    _np = name_period(fn, datetime.now())
+                    fund = _np[0] if _np else None
+                    if fund not in funds:
                         continue
-                    cat = categorize(fn)
-                    if cat is None:
-                        skipped_cat.append(f'{fund}/{folder}/{fn}')
-                        continue
-                    meta = mail.get(fn)
-                    if meta is None:
-                        skipped_nomail.append(f'{fund}/{folder}/{fn}')
-                        continue
-                    np = name_period(fn, datetime.strptime(meta['mail_date'], '%Y-%m-%d'))
-                    period = np[1] if np else f_period
-                    key = (fund, period, fn)
-                    if key in picked:
-                        continue                          # 여러 폴더에 중복 배치된 동일본
-                    picked[key] = {
-                        'fund': fund, 'period': period, 'filename': fn,
-                        'rel_path': f'{fund}/{period}/{fn}', 'kind': f_kind,
-                        'category': cat, 'mail_date': meta['mail_date'],
-                        'mail_subject': meta['mail_subject'], 'mail_source': meta['source'],
-                        'src': str(src), 'text_extracted': False, 'preview_pages': 0,
-                    }
+                cat = categorize(fn)
+                if cat is None:
+                    skipped_cat.append(f'{fund}/{folder}/{fn}')
+                    continue
+                meta = mail.get(fn)
+                if meta is None:
+                    skipped_nomail.append(f'{fund}/{folder}/{fn}')
+                    continue
+                np = name_period(fn, datetime.strptime(meta['mail_date'], '%Y-%m-%d'))
+                period = np[1] if np else f_period
+                key = (fund, period, fn)
+                if key in picked:
+                    continue                          # 여러 폴더에 중복 배치된 동일본
+                picked[key] = {
+                    'fund': fund, 'period': period, 'filename': fn,
+                    'rel_path': f'{fund}/{period}/{fn}', 'kind': f_kind,
+                    'category': cat, 'mail_date': meta['mail_date'],
+                    'mail_subject': meta['mail_subject'], 'mail_source': meta['source'],
+                    'src': str(src), 'text_extracted': False, 'preview_pages': 0,
+                }
 
     # 수동 포함 — 정리 폴더 밖이거나 발송 기록이 없어 교차검증을 통과 못 하는 건
     for m in load_manual():

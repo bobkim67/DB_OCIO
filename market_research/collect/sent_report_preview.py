@@ -410,7 +410,13 @@ def _export_excel(xapp, papp, path: Path, out_dir: Path, fund: str = '') -> int:
                                    lambda s: s.Shapes.Paste())
                 if ok:
                     n += 1
-            except Exception:
+            except Exception as exc:
+                # ⚠ 종전엔 그냥 continue 라 **실패가 0p 로만 보였다** (2026-08-07:
+                #   7월분 엑셀 4건이 전부 0p 인데 이유가 안 찍혀 원인 추적이 막혔다).
+                #   Word 경로는 예외가 밖으로 나가 FAIL 로 찍히는데 여기만 조용했다.
+                #   실제 원인은 클립보드에 그림이 안 실리는 것 — 문서보안(DRM)이
+                #   보호 문서의 클립보드 반출을 막으면 이 경로가 통째로 죽는다.
+                print(f'    sheet "{ws.Name}" 캡쳐 실패: {exc}')
                 continue
         return n
     finally:
@@ -492,13 +498,21 @@ def build_previews(force: bool = False) -> dict:
                 elif ext in ('.xls', '.xlsx'):
                     if xapp is None:
                         xapp = win32com.client.DispatchEx('Excel.Application')
+                        # ⚠ `Range.CopyPicture` 는 **클립보드에 이미지를 만드는** API 라
+                        #   그래픽 컨텍스트가 필요하다. 잠금/비대화형 세션에서 돌리면
+                        #   xlScreen·xlPrinter 둘 다 "CopyPicture 메서드에 오류" 로 죽고,
+                        #   엑셀·워드 캡쳐가 통째로 0p 가 된다 (2026-08-07 실측).
+                        #   Visible=True 로 바꿔도 해결되지 않아 되돌렸다 — DRM 도 무관
+                        #   (openpyxl 이 만든 클린 파일에서도 동일 실패, Range.Copy 는 OK).
+                        #   PPT 는 slide.Export 파일 렌더라 영향을 받지 않는다.
+                        #   → 화면이 잠기지 않은 상태에서 재실행할 것.
                         xapp.Visible = False
                         xapp.DisplayAlerts = False
                     n = _export_excel(xapp, papp, src, out_dir, fund=str(e.get('fund') or ''))
                 else:
                     if wapp is None:
                         wapp = win32com.client.DispatchEx('Word.Application')
-                        wapp.Visible = False
+                        wapp.Visible = False    # 위 Excel 주석의 클립보드 이슈 동일 적용
                         wapp.DisplayAlerts = False
                     n = _export_word(wapp, papp, src, out_dir)
                 clean = _clean_png_count(out_dir, n)
