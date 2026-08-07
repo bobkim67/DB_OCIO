@@ -860,10 +860,16 @@ def generate_fund_comment_and_save(
     #   이는 R 산출물 중 **YTD(2026-01-01~) 파일** 값이었다. 해당 월(7월) 실제값은 +0.03%
     #   으로 부호가 반대. 기간·방법·FX 옵션 3축으로 파일이 갈려 있어 사람이 헷갈리기 쉽다.
     #   → 기간에 맞는 값을 표로 주입하고, 이 표 밖의 부호 서술을 금지한다.
+    #   ⚠ 창은 **PA 와 같은 `pa_start_dt`(전월말+1)** 를 써야 한다 (2026-08-07 수정).
+    #     종전엔 raw `start_dt`(전월말)를 넘겨 전월 마지막 영업일 하루가 섞였다 —
+    #     위 §3 과 똑같은 off-by-one 이다. 실측(4JM12 2026-07):
+    #       6/30~7/31 → 펀드 -2.31% / BM -1.65% / 초과 -0.66%p   ← 코멘트에 나가던 값
+    #       7/01~7/31 → 펀드 -2.90% / BM -2.20% / 초과 -0.70%p   ← 기준가·엑셀과 일치
+    #     LLM 이 지어낸 게 아니라 표 자체가 틀린 기간이었다.
     brinson_blk = None
-    if start_dt and end_dt:
+    if pa_start_dt and end_dt:
         try:
-            blk = _brinson_factor_block(fund_code, start_dt, end_dt)
+            blk = _brinson_factor_block(fund_code, pa_start_dt, end_dt)
             if blk:
                 additional_parts.append(blk)
                 brinson_blk = blk
