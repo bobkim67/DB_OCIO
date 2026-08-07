@@ -173,7 +173,7 @@ def test_plan_rule_flags_numbers_names_adverbs():
     v = check_block_rules('2JM23', '계획',
                           'ACE 200 비중을 11.1%에서 27.7%로 대폭 확대하였습니다.')
     joined = ' | '.join(v)
-    assert '숫자' in joined and '정도부사' in joined and '종목명' in joined
+    assert '정량 표기' in joined and '정도부사' in joined and '종목명' in joined
 
 
 # 사용자 확정본 (2026-08-06). 문체·인과 밀도의 기준이자 검증기 통과 기준.
@@ -224,8 +224,8 @@ def test_plan_rule_is_injected_into_prompt_spec():
     """금지 목록 + **긍정 구조 + 모범 예시**가 모두 프롬프트에 들어가야 한다."""
     from market_research.report.comment_engine import BLOCK_EXTRA_RULES
     rule = BLOCK_EXTRA_RULES[('2JM23', '계획')]
-    for token in ('숫자', '종목명', '대폭',        # 금지
-                  '판단 근거', '재원', '2문장',     # 구조
+    for token in ('비중·수익률·금액', '종목명', '대폭',   # 금지
+                  '판단 근거', '재원', '2~4문장',   # 구조 (발송본이 4문장 222자)
                   '순매도로 찍힌 자산군만',          # 사실 고정
                   '과매도라고 판단해'):             # 모범 예시(앵커)
         assert token in rule, token

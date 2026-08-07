@@ -73,7 +73,7 @@ def test_market_para_cap_is_250():
 
 def test_plan_rule_registered():
     rule = BLOCK_EXTRA_RULES[('4JM12', '운용계획')]
-    for token in ('숫자', '종목명', '대폭', '판단 근거'):
+    for token in ('비중·수익률·금액', '종목명', '대폭', '판단 근거'):
         assert token in rule, token
 
 
@@ -90,7 +90,7 @@ def test_plan_rule_flags_numbers_and_tickers():
         '4JM12', '운용계획',
         'ACE 200 비중을 11.1%에서 27.7%로 대폭 확대할 계획입니다. '
         '나머지는 그대로 가져갑니다.'))
-    assert '숫자' in v and '정도부사' in v and '종목명' in v
+    assert '정량 표기' in v and '정도부사' in v and '종목명' in v
 
 
 def test_perf_block_bans_factor_listing():

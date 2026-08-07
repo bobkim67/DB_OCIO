@@ -351,9 +351,18 @@ def get_status(period: str, fund_code: str,
                *, target_suffix: str | None = None) -> str:
     suffix = sanitize_target_suffix(target_suffix)
     final = load_final(period, fund_code, target_suffix=suffix)
-    if final and final.get('approved'):
-        return STATUS_APPROVED
     draft = load_draft(period, fund_code, target_suffix=suffix)
+    if final and final.get('approved'):
+        # ★ 승인 뒤 draft 를 재생성·수정하면 **그 내용은 미승인**이다 (2026-08-07 수정).
+        #   종전엔 final 만 보고 무조건 '승인' 을 돌려줘서, 재생성해도 화면 배지가
+        #   승인으로 남았다(사용자 신고: 08K88 미승인인데 승인 카드).
+        #   `approve_and_save_final` 이 draft_comment 를 **그대로** final_comment 로
+        #   복사하므로, 본문이 다르면 승인 이후에 손댄 것이다 — 본문 비교가 정확하다.
+        d_txt = str((draft or {}).get('draft_comment') or '').strip()
+        f_txt = str(final.get('final_comment') or '').strip()
+        if d_txt and d_txt != f_txt:
+            return (draft or {}).get('status') or STATUS_EDITED
+        return STATUS_APPROVED
     if draft:
         return draft.get('status', STATUS_DRAFT)
     return STATUS_NOT_GENERATED
