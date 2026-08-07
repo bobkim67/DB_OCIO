@@ -27,6 +27,8 @@ const EXCEL_SPEC: Record<string, { label: string; on: "generate" | "approve" }> 
   "08K88": { label: "월간운용보고서 엑셀", on: "approve" },
   // 발송본 PPT 표에 블록 복사로 붙여넣는 데이터 시트 (Comment + 자산배분현황)
   "2JM23": { label: "신한라이프 엑셀", on: "approve" },
+  // 발송본 워드 표에 블록 복사로 붙여넣는 데이터 시트 (표 + 서술)
+  "07G07": { label: "KB 워드 엑셀", on: "approve" },
 };
 
 const ST_LABEL: Record<string, string> = {

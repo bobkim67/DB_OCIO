@@ -101,6 +101,28 @@ def test_override_blocks_are_known_keys():
         assert not unknown, f'{period}: {unknown}'
 
 
+def test_frontend_excel_spec_matches_backend():
+    """프론트 `EXCEL_SPEC` 키 == 백엔드 `_EXCEL_SPECS` 키.
+
+    ⚠ 다운로드 버튼 노출은 **프론트의 별도 하드코딩 목록**이 결정한다. 백엔드만
+      등록하면 API 는 200 을 주는데 버튼이 안 보인다 — 2026-08-07 07G07 에서 실제로
+      겪었다(백엔드 excel_ready=True, 화면엔 버튼 없음).
+    """
+    import re
+    from pathlib import Path
+
+    from api.routers.admin_funds import _EXCEL_SPECS
+
+    src = (Path(__file__).resolve().parents[2] / 'web' / 'src' / 'tabs'
+           / 'AdminCommentWorkflowPanel.tsx').read_text(encoding='utf-8')
+    block = re.search(r'const EXCEL_SPEC[^{]*\{(.*?)\n\};', src, re.S)
+    assert block, 'EXCEL_SPEC 선언을 찾지 못했습니다 (프론트 구조가 바뀌었나요?)'
+    front = set(re.findall(r'"([0-9A-Z]{5})"\s*:\s*\{', block.group(1)))
+    assert front == set(_EXCEL_SPECS), (
+        f'프론트에만: {front - set(_EXCEL_SPECS)} / '
+        f'백엔드에만: {set(_EXCEL_SPECS) - front}')
+
+
 def test_check_flags_factor_sum_mismatch():
     """표3 안에서 두 기준(마스터 PA / 기준가)이 섞이면 경고해야 한다.
 
