@@ -472,12 +472,18 @@ def _hedge_ratio_block(prev_eom: str, cur_eom: str) -> str | None:
         return None
     if not a or not b or a[2] is None or b[2] is None:
         return None
+    from tools.dblife_monthly_excel import BM_HEDGE_W, BM_OVERSEAS_W
+    bm_exp = BM_OVERSEAS_W - BM_HEDGE_W          # BM 환노출(순자산 대비)
     return (
-        '[환헤지 비율 (사실 — 이 값만 인용)]\n'
-        f'- 전월말: 헤지 {a[0]:.1f}% / 해외자산 {a[1]:.1f}% → 헤지비율 {a[2]:.1f}%\n'
-        f'- 당월말: 헤지 {b[0]:.1f}% / 해외자산 {b[1]:.1f}% → 헤지비율 {b[2]:.1f}%\n'
-        f'- BM 헤지비율: {BM_HEDGE_RATIO:.1f}% (BM 해외 45% 중 절반만 환헤지)\n'
-        '  ※ 헤지비율이 BM 보다 높으면 오버헤지(환노출 축소), 낮으면 언더헤지다.'
+        '[환헤지 (사실 — 이 값만 인용)]\n'
+        f'- 전월말: 헤지 {a[0]:.1f}% / 해외자산 {a[1]:.1f}% → 헤지비율 {a[2]:.1f}% '
+        f'· 환노출(순자산 대비) {a[1] - a[0]:+.1f}%\n'
+        f'- 당월말: 헤지 {b[0]:.1f}% / 해외자산 {b[1]:.1f}% → 헤지비율 {b[2]:.1f}% '
+        f'· 환노출(순자산 대비) {b[1] - b[0]:+.1f}%\n'
+        f'- BM: 헤지 {BM_HEDGE_W:.1f}% / 해외자산 {BM_OVERSEAS_W:.1f}% → '
+        f'헤지비율 {BM_HEDGE_RATIO:.1f}% · 환노출 {bm_exp:+.1f}%\n'
+        f'  ※ 당월말 환노출은 BM 대비 {b[1] - b[0] - bm_exp:+.1f}%p 다. '
+        '**BM 대비 방향**으로 서술하고, 전월 대비 증감만 쓰지 말 것.'
     )
 
 

@@ -159,7 +159,7 @@ def test_gyeonggwa_flags_security_names():
 def test_gyeonggwa_rule_demands_purpose_and_source():
     """매매 나열이 아니라 목적→재원→환포지션 서사를 요구해야 한다."""
     rule = BLOCK_EXTRA_RULES[('4JM12', '운용경과')]
-    for token in ('주 목적', '재원', '순매도로 찍힌 자산군만', 'BM 대비로 서술',
+    for token in ('주 목적', '재원', '순매도로 찍힌 자산군은 하나도 빠뜨리지 말고', 'BM 대비로 서술',
                   '환 익스포저', '금리 전망과 묶어'):
         assert token in rule, token
 

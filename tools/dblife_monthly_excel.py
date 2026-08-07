@@ -178,6 +178,10 @@ def bucket_of(row) -> str:
 #   → 환헤지비율 = 22.5 / 45 = 50.0%   (해외 절반만 헤지)
 BM_OVERSEAS_W = 45.0
 BM_HEDGE_RATIO = 50.0
+# 순자산 대비 BM 헤지 포지션 = 45% × 50% = 22.5%
+# (2026-08-07 사용자 지시로 3p 표1 분모를 해외자산 → **순자산**으로 바꿨다.
+#  두 표가 같은 분모를 쓰게 되어 비교가 명확해진다.)
+BM_HEDGE_W = BM_OVERSEAS_W * BM_HEDGE_RATIO / 100
 
 
 _OVERSEAS_KW = ('미국', 'VANGUARD', 'FTSE', 'DEVELOPED', '글로벌', '해외',
@@ -475,13 +479,13 @@ def build(month: str, out_path: Path) -> dict:
     ap_usd_exp = round(ovs_w, 1)
     # 발송본과 같은 **가로 2x2**. 종전엔 세로 2행이라 블록 복사가 안 됐다.
     # 값에 % 기호를 붙이는 것도 발송본 표기 그대로다.
-    r = section(ws, r, '해외자산 환헤지 비율(FX헤지 포지션/해외자산)'
+    r = section(ws, r, '해외자산 환헤지 비율(FX헤지 포지션/순자산)'
                        '  ※ 발송본 3p 표에 A:B 2x2 블록 붙여넣기')
     put(ws, r, 1, 'BM', bold=True, fill=H_FILL, align=C)
     put(ws, r, 2, 'AP', bold=True, fill=H_FILL, align=C)
     r += 1
-    put(ws, r, 1, f'{BM_HEDGE_RATIO:.1f}%', align=C)
-    put(ws, r, 2, f'{ap_hedge_ratio:.1f}%' if ap_hedge_ratio is not None else '', align=C)
+    put(ws, r, 1, f'{BM_HEDGE_W:.1f}%', align=C)
+    put(ws, r, 2, f'{hedge_w:.1f}%', align=C)
     r += 2
     r = section(ws, r, 'USD Exposure(해외자산/순자산)'
                        '  ※ 발송본 3p 표에 A:B 2x2 블록 붙여넣기')
@@ -678,9 +682,11 @@ def build(month: str, out_path: Path) -> dict:
         'BM수익률': {k: round(v, 2) for k, v in bm_ret.items() if v is not None},
         '자산구성': {'채권형': round(comp.get('채권형', 0), 1),
                      '주식형': round(comp.get('주식형', 0), 1), '유동성': round(liq, 1)},
-        '환헤지': {'헤지/순자산': round(hedge_w, 1),
-                   '해외자산환헤지비율': {'BM': BM_HEDGE_RATIO, 'AP': ap_hedge_ratio},
-                   'USDExposure': {'BM': BM_OVERSEAS_W, 'AP': ap_usd_exp}},
+        '환헤지': {'헤지비율(헤지/해외자산)': ap_hedge_ratio,
+                   '해외자산환헤지비율(헤지/순자산)': {'BM': BM_HEDGE_W,
+                                                    'AP': round(hedge_w, 1)},
+                   'USDExposure(해외자산/순자산)': {'BM': BM_OVERSEAS_W,
+                                                  'AP': ap_usd_exp}},
         'out': str(out_path),
         'warnings': warns,
     }
