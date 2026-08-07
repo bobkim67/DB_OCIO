@@ -288,6 +288,13 @@ _EXCEL_SPECS = {
     # 같아야 한다(빌더가 자기 경로에 쓰고 여기서는 그 경로를 읽는다). 테스트가 고정.
     '2JM23': {'kind': '월간', 'on': 'approve', 'label': '신한라이프 엑셀',
               'name': '한국투자신탁운용_신한라이프_운용보고서(글로벌자산배분B형)_{ym}_데이터.xlsx'},
+    # KB국민은행 투자풀 월간 **워드** 보고 붙여넣기용 (표 + 서술 2시트, 2026-08-07).
+    # 신한 PPT 와 같은 전환 — Word COM 치환기(tools.kb_monthly_report.build_docx)는
+    # 쓰지 않고 이 엑셀에서 블록 복사 → 워드 표에 붙여넣는다.
+    # ⚠ 07G07 은 FactSheet 엑셀도 매월 나간다 — 그쪽은 별개 산출물이고 여기서 안 만든다.
+    # name 은 `tools.kb_monthly_excel.OUT_NAME` 과 반드시 같아야 한다(테스트가 고정).
+    '07G07': {'kind': '월간', 'on': 'approve', 'label': 'KB 워드 엑셀',
+              'name': 'KB국민은행_07G07_월간워드_데이터_{ym}.xlsx'},
 }
 
 
@@ -340,6 +347,10 @@ def _build_excel(fund: str, period: str, xp) -> list[str]:
             raise RuntimeError('펀드 코멘트 승인본 없음 (Comment 시트 소스)')
         from tools.shinhan_monthly_excel import build as build_shinhan_xlsx
         return list(build_shinhan_xlsx(period, xp).get('warnings') or [])
+    if fund == '07G07':
+        # 서술 시트는 LLM 1회를 태운다 — 승인 응답이 그만큼 늦어진다(수십 초).
+        from tools.kb_monthly_excel import build as build_kb_xlsx
+        return list(build_kb_xlsx(period, xp).get('warnings') or [])
     _spec = _EXCEL_SPECS.get(fund) or {}
     _bo = _spec.get('brinson')
     if _bo:
