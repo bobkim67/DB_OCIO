@@ -637,7 +637,14 @@ def _brinson_factor_block(fund_code: str, start_dt, end_dt) -> str | None:
 
 
 def _sub_portfolio_returns(fund_code: str, start_dt, end_dt) -> dict | None:
-    """모펀드의 서브 포트폴리오 기간수익률(%) — 기준가 기준. 없으면 None."""
+    """모펀드의 서브 포트폴리오 기간수익률(%) — 기준가 기준. 없으면 None.
+
+    ⚠ `start_dt` 는 **기초일(전월말)** 이다 — 그 날 종가가 분모다. 하루를 더 빼면
+      [[reference_pa_period_start_offbyone]] 과 같은 off-by-one 이 된다 (2026-08-07 수정).
+      실측 07G07 2026-07: 기초 6/29 → -6.68% / 기초 **6/30 → -7.34%**(= PA 값).
+      07G02 -5.42 vs -5.94 · 07G03 -7.80 vs -8.60 으로 서브도 같이 어긋났다.
+      아래 §서브 블록이 TypeError 로 통째로 버려지고 있어 드러나지 않았다.
+    """
     from market_research.core.constants import FUND_CONFIGS
     subs = (FUND_CONFIGS.get(fund_code) or {}).get('sub_portfolios') or {}
     if not subs:
@@ -651,8 +658,7 @@ def _sub_portfolio_returns(fund_code: str, start_dt, end_dt) -> dict | None:
         df = pd.read_sql(
             f"SELECT FUND_CD, STD_DT, MOD_STPR FROM DWPM10510 WHERE FUND_CD IN ({ph}) "
             "AND STD_DT IN (%s, %s)", conn,
-            params=[(start_dt - timedelta(days=1)).strftime('%Y%m%d'),
-                    end_dt.strftime('%Y%m%d')])
+            params=[start_dt.strftime('%Y%m%d'), end_dt.strftime('%Y%m%d')])
     finally:
         conn.close()
     if df.empty:
@@ -896,12 +902,17 @@ def generate_fund_comment_and_save(
             data_warnings.append(f'환헤지 비율 블록 생성 실패: {e}')
 
     # 모펀드 서브 포트폴리오 수익률 (07G04/07G07 — "인컴추구 …%, 수익추구 …%" 문장용)
+    # ⚠ `fund_ret` 는 `_adapt_compute_single_port_pa` 가 주는 **float(%)** 다 (dict 아님).
+    #   종전엔 여기서 `dict(fund_ret or {})` 로 감쌌는데 float 이라 TypeError 가 나고
+    #   except 가 삼켜서 **서브 블록이 프롬프트에 아예 안 들어갔다**. 게다가 포맷 K 는
+    #   아래 §sub_line 에서 `fund_ret.get()` 을 호출해 07G07 생성이 500 으로 죽었다
+    #   (2026-08-07 수정). → fund_ret 은 건드리지 않고 별도 지역변수로 들고 간다.
+    sub_returns: dict = {}
     if start_dt and end_dt:
         try:
             subs = _sub_portfolio_returns(fund_code, start_dt, end_dt)
             if subs:
-                fund_ret = dict(fund_ret or {})
-                fund_ret['sub_returns'] = subs
+                sub_returns = subs
                 additional_parts.append(
                     '[서브 포트폴리오 기간수익률 (사실 — 이 값만 인용)]\n'
                     + '\n'.join(f'- {k} 포트폴리오 {v:+.2f}%' for k, v in subs.items()))
@@ -1020,10 +1031,9 @@ def generate_fund_comment_and_save(
             if '펀드성과' in blocks:
                 _check_perf_numbers(blocks['펀드성과'], brinson_blk or '', data_warnings)
             sub_line = ''
-            if fmt == 'K' and (fund_ret or {}).get('sub_returns'):
-                subs = fund_ret['sub_returns']
+            if fmt == 'K' and sub_returns:
                 sub_line = ('{who}의 비중은 {r} 수준으로 유지하였습니다.'.format(
-                    who='와 '.join(f'{l}포트폴리오' for l in subs),
+                    who='와 '.join(f'{l}포트폴리오' for l in sub_returns),
                     r=(_FC.get(fund_code) or {}).get('sub_ratio', 'N/A')))
             # 포맷 E(DB생명) 환헤지 문장 — 전월 승계 + 레인지만 기간말 환율 기준 제안
             hedge_line = ''

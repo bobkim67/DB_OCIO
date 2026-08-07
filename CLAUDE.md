@@ -1088,6 +1088,35 @@ AP 헤지를 BM 해외비중으로 나눈 혼합 비율이라 무엇과 무엇�
 
 ---
 
+## ★ 07G07(포맷 K) 서브 포트폴리오 — `fund_ret` 는 float 이다 (2026-08-07)
+
+07G07 코멘트 생성이 **500** 으로 죽고 있었다. 결함 둘이 겹쳐 있었고, 앞의 것이
+뒤의 것을 가려서 2026-08-05 draft 까지 아무도 눈치채지 못했다.
+
+| | 증상 | 결과 |
+|---|---|---|
+| ① 타입 | `fund_ret = dict(fund_ret or {})` — 그런데 `_adapt_compute_single_port_pa` 는 **float(%)** 를 준다 | `TypeError: 'float' object is not iterable` → `except` 가 삼킴 → **서브 블록이 프롬프트에 아예 안 들어감** |
+| ② 크래시 | 포맷 K 만 `(fund_ret or {}).get('sub_returns')` 를 호출 | `AttributeError: 'float' object has no attribute 'get'` → 생성 500 |
+| ③ 기초일 | `_sub_portfolio_returns` 가 `start_dt - 1일` 을 분모로 사용 | ①이 결과를 버려서 **한 번도 드러나지 않았다** |
+
+`fund_ret` 은 float 그대로 두고 **`sub_returns` 지역변수**로 분리했다 —
+`build_perf_sentence`·`data_snapshot`·`build_report_prompt`(이미
+`isinstance(fund_ret, dict)` 가드) 가 전부 float 을 전제한다.
+
+★ ③은 [[reference_pa_period_start_offbyone]] 과 **같은 off-by-one** 이다.
+`start_dt` 는 **기초일(전월말)** 이고 그 날 종가가 분모다:
+
+| 07G07 2026-07 | 기초 6/29 (구) | 기초 **6/30** (정) |
+|---|---|---|
+| 07G07 | -6.68% | **-7.34%** ← PA·기준가 일치 |
+| 07G02 인컴추구 | -5.42% | **-5.94%** |
+| 07G03 수익추구 | -7.80% | **-8.60%** |
+
+`test_sub_portfolio_returns.py` 가 고정한다 — fake `read_sql` 이 **params 로 거른다**.
+안 그러면 기초일이 틀려도 수익률 단언이 통과해 회귀를 못 잡는다(실측 확인).
+
+---
+
 ## DB생명(4JM12) 코멘트 — 포맷 E 6슬롯 (2026-08-06 사용자 스펙)
 
 발송본 s6 구조가 2JM23(포맷 D)과 달라 **포맷 E** 를 신설했다
