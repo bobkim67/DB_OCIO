@@ -4,7 +4,7 @@ status: draft
 promoted_to_canonical: false
 latest_period: 2026-08
 latest_phase: P1
-updated_at: 2026-08-03T08:44:34
+updated_at: 2026-08-10T09:10:00
 ---
 
 # Transmission Paths — Summary
