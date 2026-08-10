@@ -29,6 +29,24 @@ def _iso_to_yyyymmdd(s: str) -> str:
     return s.replace("-", "")
 
 
+def _no_benchmark_funds() -> frozenset:
+    """벤치마크 미표시 펀드(AP 단독). 조회 실패 시 빈 집합 = 종전 동작."""
+    try:
+        from config.funds import FUND_NO_BENCHMARK
+        return frozenset(FUND_NO_BENCHMARK)
+    except Exception:
+        return frozenset()
+
+
+def _last_bday(d: date) -> date:
+    """d 이하의 마지막 한국 영업일. 조회 실패 시 d 그대로(= 경고 조건 종전과 동일)."""
+    try:
+        from modules.data_loader import last_kr_business_day
+        return last_kr_business_day(d).date()
+    except Exception:
+        return d
+
+
 def _inception_base(fund_code: str) -> float:
     """설정후 분모 = 기준가 base 1000 (4JM12 등 승계펀드는 _FUND_INCEPTION_BASE, 절대 유지).
 
@@ -518,6 +536,11 @@ def build_overview(
         bm_df = _load_saa_series(fund_code, _start, as_of)
         if bm_df is not None and len(bm_df) > 0:
             benchmark_kind, benchmark_label = "SAA", "SAA"
+        elif fund_code in _no_benchmark_funds():
+            # 2JM23 — 벤치마크 없음이 **설계**다(사모 OCIO, SAA 는 사후 부여된
+            # 참조선이라 장기 비교가 성립하지 않음. 2026-07-29 사용자 확정).
+            # _load_saa_series 가 의도적으로 None 을 주는 경로라 '실패'가 아니다.
+            benchmark_kind, benchmark_label = "none", None
         else:
             warnings.append("SAA 로딩 실패")
             sources.append(SourceBreakdown(
@@ -602,7 +625,14 @@ def build_overview(
     # 기준가·AUM·NAV 차트·MDD 는 최신일 유지 (_returns_window 주석 참조).
     ret_nav_df, returns_as_of, bm_as_of = _returns_window(nav_df, bm_df)
     ret_last_nav = float(ret_nav_df["MOD_STPR"].iloc[-1])
-    if returns_as_of is not None and as_of is not None and returns_as_of < as_of:
+    # ★ 비교 기준은 as_of 가 아니라 **마지막 영업일**이다. 기준가(DWPM10510)는 주말·
+    # 공휴일 행도 적재되므로(보수 일할만 반영) as_of 를 그대로 쓰면 주말·월요일마다
+    # 오탐이 뜬다. 앵커 로직(_returns_window)은 그대로 두고 경고 조건만 조인다.
+    bm_lag = bool(
+        returns_as_of is not None and as_of is not None
+        and returns_as_of < min(as_of, _last_bday(as_of))
+    )
+    if bm_lag:
         warnings.append(
             f"벤치마크 미적재 — 기간수익률은 BM 최종일({returns_as_of}) 기준, "
             f"기준가/AUM 은 최신({as_of}) 기준",
@@ -757,6 +787,7 @@ def build_overview(
         bm_equity_weight=bm_equity_weight,
         returns_as_of=returns_as_of,
         bm_as_of=bm_as_of,
+        bm_lag=bm_lag,
         bm_source_notes=_bm_source_notes(
             fund_code, benchmark_kind, bm_src, as_of, _start,
         ),

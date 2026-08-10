@@ -101,6 +101,28 @@ def test_overview_bmless_saa_unavailable_08P22(client, monkeypatch):
         assert p.get("excess") is None
 
 
+def test_overview_no_benchmark_fund_is_not_a_failure_2JM23(client):
+    """2JM23 은 벤치마크 **없음이 설계** — '실패'로 표기하지 않는다 (2026-08-10).
+
+    `_load_saa_series` 가 FUND_NO_BENCHMARK 를 의도적으로 차단해 None 을 주는데,
+    종전엔 그걸 "SAA 로딩 실패" 경고 + bm mock 소스로 잡아 meta.source 가 'mixed'
+    (MetaBadge 앰버)로 떴다. 08P22 등 진짜 SAA 펀드의 실패 경고는 그대로 유지된다.
+    """
+    r = client.get("/api/funds/2JM23/overview")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["bm_configured"] is False
+    if body["meta"]["is_fallback"]:
+        return
+    assert body["benchmark_kind"] == "none"
+    assert "SAA 로딩 실패" not in body["meta"]["warnings"]
+    assert [s for s in body["meta"]["sources"] if s["component"] == "bm"] == []
+    assert body["meta"]["source"] == "db"
+    # 벤치마크 계열은 여전히 비어 있어야 한다(AP 단독 표시).
+    for p in body["nav_series"]:
+        assert p.get("bm") is None and p.get("excess") is None
+
+
 def test_overview_bmless_saa_filled_08N33(client):
     """08N33은 등록 SAA 펀드 → benchmark_kind='SAA', nav_series.bm 일부 채워짐."""
     r = client.get("/api/funds/08N33/overview")

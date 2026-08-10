@@ -88,8 +88,10 @@ export default function OverviewTab({ fundCode }: Props) {
   const tbmpr = prq.data?.bm_period_returns ?? bmpr;
   const tEnd = prq.data?.end_date ?? asof;
   // 벤치마크 적재 지연 여부 — 지연 시 백엔드가 수익률 앵커를 BM 최종일로 당긴다.
+  // ★ 여기서 returns_as_of < asof 를 직접 비교하면 안 된다: 기준가는 주말 행도
+  // 적재돼(보수 일할만 반영) 주말·월요일마다 오탐이 뜬다. 영업일 판정은 백엔드가 한다.
   const returnsAsOf = data.returns_as_of ?? asof;
-  const bmLag = !!(returnsAsOf && asof && returnsAsOf < asof);
+  const bmLag = !!data.bm_lag;
 
   // 목표 누적수익률 (기간별 일수 환산). anchor 미지정 시 최신 as_of, 표는 조회 종료일 앵커.
   const TARGET_DAYS: Record<string, number> = { "1W": 7, "1M": 30.44, "3M": 91.31, "6M": 182.62, "1Y": 365.25 };

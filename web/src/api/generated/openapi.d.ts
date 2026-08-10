@@ -2704,6 +2704,11 @@ export interface components {
             returns_as_of?: string | null;
             /** Bm As Of */
             bm_as_of?: string | null;
+            /**
+             * Bm Lag
+             * @default false
+             */
+            bm_lag: boolean;
             /** Bm Source Notes */
             bm_source_notes?: string[];
         };
@@ -2874,7 +2879,22 @@ export interface components {
             s6?: components["schemas"]["S6CommentDTO"] | null;
         };
         /** PptCommentsSaveBodyDTO */
-        PptCommentsSaveBodyDTO: {
+        "PptCommentsSaveBodyDTO-Input": {
+            /** S4 File */
+            s4_file?: string | null;
+            s4?: components["schemas"]["S4CommentDTO"] | null;
+            /** S6 File */
+            s6_file?: string | null;
+            s6?: components["schemas"]["S6CommentDTO"] | null;
+            /** Fund Code */
+            fund_code?: string | null;
+            /** End Date */
+            end_date?: string | null;
+            /** Start Date */
+            start_date?: string | null;
+        };
+        /** PptCommentsSaveBodyDTO */
+        "PptCommentsSaveBodyDTO-Output": {
             /** S4 File */
             s4_file?: string | null;
             s4?: components["schemas"]["S4CommentDTO"] | null;
@@ -3366,6 +3386,10 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
         /**
          * ValidationSummaryDTO
@@ -4893,7 +4917,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PptCommentsSaveBodyDTO"];
+                "application/json": components["schemas"]["PptCommentsSaveBodyDTO-Input"];
             };
         };
         responses: {
@@ -4903,7 +4927,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PptCommentsSaveBodyDTO"];
+                    "application/json": components["schemas"]["PptCommentsSaveBodyDTO-Output"];
                 };
             };
             /** @description Validation Error */

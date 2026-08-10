@@ -529,6 +529,28 @@ def get_bm_fallback_notes() -> list:
     return sorted(_BM_FALLBACK_USED.values(), key=lambda d: d['note'])
 
 
+def last_kr_business_day(on_or_before=None) -> pd.Timestamp:
+    """`on_or_before` 이하의 마지막 한국 영업일 (DWCI10220 hldy_yn='N').
+
+    ★ 기준가(DWPM10510)는 **주말·공휴일 행도 적재**된다(보수 일할만 반영). 그 날짜를
+    그대로 '최신일'로 삼아 지수 적재 상태와 비교하면 주말·월요일마다 오탐이 난다
+    (2026-08-10 월요일 실측: 전 11개 펀드 기준가 최신 = 8/9 일요일, 지수 = 8/7 금요일).
+    캘린더 조회 실패 시 pandas BDay 로 근사(공휴일 미반영).
+    """
+    ts = (pd.Timestamp(on_or_before).normalize() if on_or_before is not None
+          else pd.Timestamp.today().normalize())
+    try:
+        bdays = get_business_days(load_holiday_calendar())
+        prior = bdays[bdays <= ts]
+        if len(prior):
+            return pd.Timestamp(prior.max()).normalize()
+    except Exception:
+        pass
+    if ts.weekday() >= 5:
+        return (ts - pd.tseries.offsets.BDay(1)).normalize()
+    return ts
+
+
 def bm_component_source_status(components: list, end_date=None) -> list:
     """BM/SAA 구성지수별 소스 신선도 — 캐시 여부와 무관하게 DB 상태만 보고 판정.
 
@@ -540,8 +562,9 @@ def bm_component_source_status(components: list, end_date=None) -> list:
     """
     if not components:
         return []
-    target = (pd.Timestamp(end_date).normalize() if end_date
-              else pd.Timestamp.today().normalize())
+    # 목표일 = 마지막 영업일. 주말 as_of(기준가 주말 행)를 그대로 쓰면 국내 지수가
+    # 통째로 stale 로 잡힌다 — 해외(ex_KR)만 -1BDay 허용이 있어 우연히 통과했었다.
+    target = last_kr_business_day(end_date)
     out = []
     for comp in components:
         try:

@@ -85,5 +85,9 @@ class OverviewResponseDTO(BaseModel):
     # meta.as_of_date(기준가·AUM·차트 최신일) 와 다르면 UI 에 분리 표기.
     returns_as_of: date | None = None
     bm_as_of: date | None = None
+    # bm_lag: BM 이 **영업일 기준으로** 실제 뒤처졌는지. returns_as_of < as_of 만으로
+    # 판정하면 안 된다 — 기준가는 주말 행도 적재돼 주말·월요일마다 오탐이 뜬다
+    # (2026-08-10 실측: 기준가 8/9(일) vs 지수 8/7(금)). 프론트는 이 플래그만 본다.
+    bm_lag: bool = False
     # BM 구성지수 대체 소스 발동 목록 (Bloomberg 피드 정지 대응)
     bm_source_notes: list[str] = Field(default_factory=list)
