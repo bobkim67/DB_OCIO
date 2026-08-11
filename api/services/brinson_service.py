@@ -533,6 +533,21 @@ def _build_bm_meta(fund_code: str, method: str, as_of=None,
 _H8_TO_BRINSON = {"대체투자": "대체", "유동성": "유동성및기타", "모펀드": "유동성및기타"}
 
 
+def _prev_business_day(d: date):
+    """d 직전 한국 영업일(= 기초일). 캘린더 조회 실패 시 None → 토글 비활성.
+
+    ⚠ `d` 자신은 제외한다 — 표0 '시작일' 토글의 기준은 기간 손익이 쌓이기 **직전**
+    시점이라야 비중 변화가 PA 기여도와 같은 창을 본다
+    ([[reference_pa_period_start_offbyone]], 2026-08-11 사용자 확정).
+    """
+    try:
+        from modules.data_loader import last_kr_business_day
+        prev = last_kr_business_day(d - timedelta(days=1))
+        return prev.date() if prev is not None else None
+    except Exception:
+        return None
+
+
 def _build_ap_composition(hold, method: str) -> list[BrinsonApCompositionDTO]:
     """표0 AP비중 = 기말 보유 스냅샷(build_holdings 결과, FX 제외·현금/환매미지급금 포함) → 자산군 구성.
 
@@ -724,6 +739,21 @@ def build_brinson(
     except Exception:
         pass
 
+    # 표0 '시작일' 토글 = 기초일(start_date 직전 영업일) 스냅샷. 기말과 **같은 경로**로
+    # 만들어야 1:1 비교가 성립한다. 실패는 무시 — 프론트가 빈 리스트면 토글을 감춘다.
+    base_date = _prev_business_day(start_date)
+    ap_composition_base: list[BrinsonApCompositionDTO] = []
+    if base_date is not None:
+        try:
+            from .holdings_service import build_holdings
+            _hold_b = build_holdings(
+                fund_code, lookthrough=True, as_of_date=base_date.isoformat())
+            ap_composition_base = _build_ap_composition(_hold_b, method)
+        except Exception:
+            pass
+    if not ap_composition_base:
+        base_date = None
+
     return BrinsonResponseDTO(
         meta=BaseMeta(
             as_of_date=end_date,
@@ -737,6 +767,7 @@ def build_brinson(
         fund_name=str((FUND_META.get(fund_code, {}) or {}).get("name", fund_code)),
         start_date=start_date,
         end_date=end_date,
+        base_date=base_date,
         mapping_method=method,
         pa_method=pa_method,
         fx_split=fx_split,
@@ -757,6 +788,7 @@ def build_brinson(
         asset_rows=_to_asset_rows(pa_df),
         sec_contrib=_to_sec_rows(raw.get("sec_contrib")),
         ap_composition=ap_composition,
+        ap_composition_base=ap_composition_base,
         daily_brinson=_to_daily_rows(raw.get("daily_brinson")),
         daily_class=_to_daily_class_rows(_dc_df),
     )

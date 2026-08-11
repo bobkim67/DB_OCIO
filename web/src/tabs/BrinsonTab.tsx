@@ -190,6 +190,8 @@ export default function BrinsonTab({ fundCode }: Props) {
   const [preset, setPreset] = useState<BnPreset>("YTD");
   // 펼치기(공통): 벤치마크 구성 표(표0)의 토글 하나로 표0·표1 둘 다 종목 펼침/접힘.
   const [tbl0Expanded, setTbl0Expanded] = useState(false);
+  // 표0 좌측 기준 — "bm"=BM/SAA 목표비중(기본) / "start"=기초일 AP 비중 (2026-08-11)
+  const [tbl0Basis, setTbl0Basis] = useState<"bm" | "start">("bm");
   // 표1 지표: 기여(=배분비중×수익률, 합=포트수익률) / Normalized(=자산군 수익률, 배분비중 미반영)
   const [tbl1Metric, setTbl1Metric] = useState<"contrib" | "norm">("contrib");
   // 수익률 분석 패널 모드/선택 자산군 (controlled) — 하단 기간 효과표와 공유.
@@ -537,16 +539,66 @@ export default function BrinsonTab({ fundCode }: Props) {
     if (hasEtc0) keep.push({ label: "기타", weight: etcW0 });
     apByClass0.set("유동성및기타", keep);
   }
+  // ── 표0 '시작일' 토글 — 좌측 열을 기초일(base_date) AP 스냅샷으로 교체 ──
+  // 기말(ap_composition)과 **완전히 같은 경로**(build_holdings→_build_ap_composition)로
+  // 만들어진 값이라 1:1 비교가 성립한다. 유동성 collapse 도 기말과 같은 규칙을 적용해야
+  // 좌우 종목 라인이 어긋나지 않는다.
+  const apBase0 = data.ap_composition_base ?? [];
+  const hasBase0 = apBase0.length > 0;
+  const isStartBasis = tbl0Basis === "start" && hasBase0;
+  const apBaseByClass0 = new Map<string, { label: string; weight: number }[]>();
+  const apBaseSub0 = new Map<string, number>();
+  for (const c of apBase0) {
+    const g = normCls1(c.asset_class);
+    apBaseByClass0.set(g, c.items.map((it) => ({ label: it.item_nm, weight: it.weight_pct })));
+    apBaseSub0.set(g, (apBaseSub0.get(g) ?? 0) + c.weight_pct);
+  }
+  {
+    const liqB = apBaseByClass0.get("유동성및기타");
+    if (liqB) {
+      const keep: { label: string; weight: number }[] = [];
+      let etcW = 0, hasEtc = false;
+      for (const x of liqB) {
+        if (isLiqKeep(x.label)) keep.push(x);
+        else { etcW += x.weight; hasEtc = true; }
+      }
+      if (hasEtc) keep.push({ label: "기타", weight: etcW });
+      apBaseByClass0.set("유동성및기타", keep);
+    }
+  }
+  // 한쪽에만 있는 종목(기간 중 신규편입·전량편출)도 0% 행으로 채워 좌우를 같은 줄에 맞춘다.
+  if (isStartBasis) {
+    for (const g of new Set([...apByClass0.keys(), ...apBaseByClass0.keys()])) {
+      const end = apByClass0.get(g) ?? [];
+      const base = apBaseByClass0.get(g) ?? [];
+      for (const x of end) {
+        if (!base.some((b) => b.label === x.label)) base.push({ label: x.label, weight: 0 });
+      }
+      for (const x of base) {
+        if (!end.some((e) => e.label === x.label)) end.push({ label: x.label, weight: 0 });
+      }
+      base.sort((a, b) => b.weight - a.weight);
+      end.sort((a, b) => b.weight - a.weight);
+      apBaseByClass0.set(g, base);
+      apByClass0.set(g, end);
+    }
+  }
+
   // 소계: 스냅샷이면 ap_composition, 아니면 asset_rows(period). BM 소계는 항상 asset_rows.
   const subByClass0 = new Map(enrichedRows.map((r) => [r.asset_class, r]));
-  // 자산군 합집합(FX 제외) → ROW_ORDER 순
-  const classes0 = [...new Set([...saaByClass0.keys(), ...apByClass0.keys()])]
+  // 자산군 합집합(FX 제외) → ROW_ORDER 순. 시작일 모드면 기초일 전용 자산군도 포함.
+  const classes0 = [...new Set([
+    ...saaByClass0.keys(), ...apByClass0.keys(),
+    ...(isStartBasis ? apBaseByClass0.keys() : []),
+  ])]
     .filter((g) => g !== "FX")
     .sort((a, b) => (ROW_ORDER_MAP.get(a) ?? 99) - (ROW_ORDER_MAP.get(b) ?? 99));
   const bmComps0 = new Map(classes0.map((g) => [g,
     (saaByClass0.get(g) ?? [])
       .filter((s) => s.label && s.label !== "—")
       .sort((a, b) => b.weight - a.weight)]));
+  // 좌측 표가 실제로 그리는 행 — 모드에 따라 BM 지수 ↔ 기초일 AP 종목
+  const leftComps0 = isStartBasis ? apBaseByClass0 : bmComps0;
 
   // ── 상세 행수 공유(패널 간 표0↔표1 + 패널 내 좌↔우 라인 정렬) ──
   // 펼침 시 자산군별 행수 = max(표0 BM 지수, 표0 AP 종목, 표1 AP 종목+잔차, 표1 BM 지수) —
@@ -555,7 +607,7 @@ export default function BrinsonTab({ fundCode }: Props) {
   if (tbl0Expanded) {
     const allCls = new Set<string>([...classes0, ...enrichedRows.map((r) => r.asset_class)]);
     for (const g of allCls) {
-      const n0 = Math.max((bmComps0.get(g) ?? []).length, (apByClass0.get(g) ?? []).length);
+      const n0 = Math.max((leftComps0.get(g) ?? []).length, (apByClass0.get(g) ?? []).length);
       const secs = apSecByClass1.get(g) ?? [];
       let n1 = secs.length;
       const r = enrichedRows.find((x) => x.asset_class === g);
@@ -848,15 +900,45 @@ export default function BrinsonTab({ fundCode }: Props) {
             const classes = classes0;
             const detail0 = detailShared;
 
+            const baseLabel = data.base_date ?? "기초일";
             return (
               <div className="bn-card bn-sec">
                 <div className="bn-head2">
                   <h3>{isBM ? "벤치마크(BM) 구성" : "전략적 자산배분(SAA) 구성"}</h3>
-                  <span className="sub">목표 셋팅 vs AP 기말 보유 (현금 포함·FX 제외)</span>
+                  <span className="sub">
+                    {isStartBasis
+                      ? `${baseLabel} 보유 vs AP 기말 보유 (현금 포함·FX 제외)`
+                      : "목표 셋팅 vs AP 기말 보유 (현금 포함·FX 제외)"}
+                  </span>
                   <div className="right">
                     <button type="button" className="bn-tgl" onClick={() => setTbl0Expanded((v) => !v)}>
                       {tbl0Expanded ? "▲ 접기" : "▼ 종목 펼치기"}
                     </button>
+                    {/* 좌측 기준 토글 — 기초일 스냅샷이 없으면(설정일 이전 등) 감춘다 */}
+                    {hasBase0 && (
+                      <span className="bn-seg">
+                        {(
+                          [
+                            ["bm", isBM ? "BM" : "SAA"],
+                            ["start", "시작일"],
+                          ] as const
+                        ).map(([m, label]) => (
+                          <button
+                            key={m}
+                            type="button"
+                            className={tbl0Basis === m ? "on" : ""}
+                            onClick={() => setTbl0Basis(m)}
+                            title={
+                              m === "bm"
+                                ? (isBM ? "BM 목표비중 대비" : "SAA 목표비중 대비")
+                                : `${baseLabel}(조회 시작일 직전 영업일) 보유비중 대비`
+                            }
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </span>
+                    )}
                   </div>
                 </div>
                 {/* 좌=BM / 우=AP 분리 테이블 (사용자 지정 2026-07-02) */}
@@ -869,27 +951,33 @@ export default function BrinsonTab({ fundCode }: Props) {
                     <thead>
                       <tr>
                         <th>자산군</th>
-                        <th className="r">{isBM ? "BM비중" : "SAA비중"}</th>
+                        <th className="r" title={isStartBasis ? `${baseLabel} 보유비중` : undefined}>
+                          {isStartBasis ? "시작일비중" : isBM ? "BM비중" : "SAA비중"}
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {classes.flatMap((g) => {
                         const saa = saaByClass.get(g) ?? [];
                         const sub = subByClass.get(g);
-                        const bmSub = sub?.bm_weight ?? saa.reduce((s, x) => s + x.weight, 0);
-                        // 접힘: 자산군 소계만. 펼침: 지수(티커)별 개별 행 + 각 비중 (AP 측과 동일 패턴)
+                        // 좌측 소계: 시작일 모드 = 기초일 스냅샷 합, 아니면 BM/SAA 목표비중
+                        const leftSub = isStartBasis
+                          ? (apBaseSub0.get(g) ?? 0)
+                          : (sub?.bm_weight ?? saa.reduce((s, x) => s + x.weight, 0));
+                        const leftShown = isStartBasis || hasBm;
+                        // 접힘: 자산군 소계만. 펼침: 지수(티커)/종목별 개별 행 (AP 측과 동일 패턴)
                         const rows: ReactNode[] = [
                           <tr key={`${g}-bm`} className="clsrow">
                             <td>{g}</td>
-                            <td className="r">{hasBm ? fmtWeight(bmSub, 1) : "—"}</td>
+                            <td className="r">{leftShown ? fmtWeight(leftSub, 1) : "—"}</td>
                           </tr>,
                         ];
                         if (tbl0Expanded) {
-                          const comps = bmComps0.get(g) ?? [];
+                          const comps = leftComps0.get(g) ?? [];
                           for (let i = 0; i < comps.length; i++) {
                             rows.push(
                               <tr key={`${g}-bmi-${i}`}>
-                                <td className="ind">{comps[i].label}</td>
+                                <td className="ind" title={comps[i].label}>{comps[i].label}</td>
                                 <td className="r">{fmtWeight(comps[i].weight, 1)}</td>
                               </tr>,
                             );
@@ -912,7 +1000,14 @@ export default function BrinsonTab({ fundCode }: Props) {
                       <tr>
                         <th>AP</th>
                         <th className="r">AP비중</th>
-                        <th className="r" title="AP비중 − BM비중 (%p)">차이</th>
+                        <th
+                          className="r"
+                          title={isStartBasis
+                            ? `AP비중 − ${baseLabel} 비중 (%p) = 기간 중 비중 변화`
+                            : `AP비중 − ${isBM ? "BM" : "SAA"}비중 (%p)`}
+                        >
+                          {isStartBasis ? "변화" : "차이"}
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -921,13 +1016,17 @@ export default function BrinsonTab({ fundCode }: Props) {
                         const ap = apByClass.get(g) ?? [];
                         const sub = subByClass.get(g);
                         const apSub = useSnapshot ? (apSnapSub.get(g) ?? 0) : (sub?.ap_weight ?? ap.reduce((s, x) => s + x.weight, 0));
-                        const bmSub = sub?.bm_weight ?? saa.reduce((s, x) => s + x.weight, 0);
-                        const diff = apSub - bmSub;
+                        // 시작일 모드는 기초일 스냅샷 대비 — BM 미설정 펀드(2JM23)도 값이 나온다.
+                        const cmpSub = isStartBasis
+                          ? (apBaseSub0.get(g) ?? 0)
+                          : (sub?.bm_weight ?? saa.reduce((s, x) => s + x.weight, 0));
+                        const diff = apSub - cmpSub;
+                        const diffShown = isStartBasis || hasBm;
                         const rows: ReactNode[] = [
                           <tr key={`${g}-cls`} className="clsrow">
                             <td>{g}</td>
                             <td className="r">{fmtWeight(apSub, 1)}</td>
-                            {hasBm ? (
+                            {diffShown ? (
                               <td className={`r b ${diff >= 0 ? "ok" : "brw"}`}>
                                 {diff >= 0 ? "+" : ""}{diff.toFixed(1)}%p
                               </td>
@@ -938,12 +1037,22 @@ export default function BrinsonTab({ fundCode }: Props) {
                         ];
                         // 펼침 시 AP 종목 행 + 좌측(BM)과 행수 맞춤 패딩
                         if (tbl0Expanded) {
+                          // 시작일 모드는 좌우가 같은 종목이라 종목별 변화(%p)도 채운다.
+                          const baseItems = isStartBasis ? (apBaseByClass0.get(g) ?? []) : [];
                           for (let i = 0; i < ap.length; i++) {
+                            const bw = baseItems.find((b) => b.label === ap[i].label)?.weight;
+                            const d = bw === undefined ? null : ap[i].weight - bw;
                             rows.push(
                               <tr key={`${g}-ap-${i}`}>
                                 <td className="ind" title={ap[i].label}>{ap[i].label}</td>
                                 <td className="r">{fmtWeight(ap[i].weight, 1)}</td>
-                                <td className="r" />
+                                {d === null ? (
+                                  <td className="r" />
+                                ) : (
+                                  <td className={`r ${d >= 0 ? "ok" : "brw"}`}>
+                                    {d >= 0 ? "+" : ""}{d.toFixed(1)}%p
+                                  </td>
+                                )}
                               </tr>,
                             );
                           }
@@ -954,7 +1063,12 @@ export default function BrinsonTab({ fundCode }: Props) {
                     </tbody>
                   </table>
                 </div>
-                {data.bm_source === "none" ? (
+                {isStartBasis ? (
+                  <div className="bn-note">
+                    ※ {baseLabel}(조회 시작일 직전 영업일) 보유 대비 — 기간 중 비중 변화.
+                    가격효과와 매매가 모두 반영된 값입니다(매매만의 결과가 아닙니다).
+                  </div>
+                ) : data.bm_source === "none" ? (
                   <div className="bn-note">※ 벤치마크 미설정 펀드 — BM 관련 값은 표기하지 않습니다(AP 단독).</div>
                 ) : !isBM && (
                   data.bm_components.some((c) => c.name && c.name !== c.asset_class) ? (

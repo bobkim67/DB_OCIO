@@ -1589,6 +1589,8 @@ export interface components {
              * Format: date
              */
             end_date: string;
+            /** Base Date */
+            base_date?: string | null;
             /** Mapping Method */
             mapping_method: string;
             /** Pa Method */
@@ -1635,6 +1637,11 @@ export interface components {
              * @default []
              */
             ap_composition: components["schemas"]["BrinsonApCompositionDTO"][];
+            /**
+             * Ap Composition Base
+             * @default []
+             */
+            ap_composition_base: components["schemas"]["BrinsonApCompositionDTO"][];
             /** Daily Brinson */
             daily_brinson: components["schemas"]["BrinsonDailyPointDTO"][];
             /**

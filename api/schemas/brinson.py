@@ -96,6 +96,9 @@ class BrinsonResponseDTO(BaseModel):
     fund_name: str
     start_date: date
     end_date: date
+    # 표0 '시작일' 토글 기준일 = start_date 직전 영업일(기초일). PA 창 (기초일, 기간말]
+    # 과 같은 시점이라 비중 변화가 기여도·수익률과 정확히 대응한다 (2026-08-11 사용자 확정).
+    base_date: date | None = None
     mapping_method: str        # "방법1"|"방법2"|"방법3"|"방법4"
     pa_method: str             # "8"|"5"
     fx_split: bool             # FX 분리 토글 echo
@@ -125,6 +128,10 @@ class BrinsonResponseDTO(BaseModel):
     sec_contrib: list[BrinsonSecContribDTO]
     # 표0 AP 구성 = 기말 보유 스냅샷(현금 포함). 빈 리스트=fallback(프론트가 period 비중 사용)
     ap_composition: list[BrinsonApCompositionDTO] = []
+    # 표0 '시작일' 토글용 = base_date(기초일) 보유 스냅샷. ap_composition 과 **완전히 같은
+    # 경로**(build_holdings→_build_ap_composition)라 기말과 1:1 비교가 성립한다.
+    # 빈 리스트면 프론트가 토글 자체를 감춘다(설정일 이전 등 스냅샷 부재).
+    ap_composition_base: list[BrinsonApCompositionDTO] = []
     # 일별 누적 Brinson (수익률 비교 차트용)
     daily_brinson: list[BrinsonDailyPointDTO]
     # 자산군별 일별 시계열 (B4: AP비중 추이 + 자산군 누적기여)
