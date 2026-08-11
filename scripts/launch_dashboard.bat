@@ -30,10 +30,6 @@ REM ----- naver_research PDF: always skip (2026-07-27 user decision) -----
 REM PDF text is never parsed downstream; only size-based band tier-up is lost.
 set "OCIO_NAVER_PDF=N"
 
-REM ===== watchdog pause flag: keep ocio_watchdog.ps1 from racing us during build =====
-if not exist ".cache" mkdir ".cache"
-type nul > ".cache\launcher_active.flag"
-
 REM ===== restart: stop ONLY the server holding %PORT% (other ports / apps untouched) =====
 echo Restarting LAN server on port %PORT% ^(other ports left running^) ...
 for /f "delims=" %%p in ('powershell -NoProfile -Command "(Get-NetTCPConnection -LocalPort %PORT% -State Listen -ErrorAction SilentlyContinue).OwningProcess | Select-Object -First 1"') do taskkill /F /PID %%p >nul 2>&1
@@ -91,8 +87,6 @@ start "" powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep 6; Star
 
 echo [4/4] Starting server (host 0.0.0.0:%PORT%) ...
 title DB OCIO Monitor (8020)
-REM release watchdog pause right before bind (watchdog double-checks with 5s delay)
-del ".cache\launcher_active.flag" 2>nul
 REM server warms its caches in the background on startup (OCIO_WARMUP_ON_STARTUP default on)
 REM --log-config: timestamps + rotating file log (logs\server.log, 10MB x5)
 api\.venv\Scripts\python.exe -m uvicorn api.main:app --host 0.0.0.0 --port %PORT% --log-config scripts\uvicorn_logging.json
