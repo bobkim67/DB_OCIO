@@ -33,6 +33,8 @@ from ..schemas.brinson import (
     BrinsonApCompositionDTO,
     BrinsonAssetRowDTO,
     BrinsonBmComponentDTO,
+    BrinsonBmEquitySplitDTO,
+    BrinsonBmEquitySplitRowDTO,
     BrinsonDailyClassDTO,
     BrinsonDailyPointDTO,
     BrinsonPeriodDTO,
@@ -527,6 +529,78 @@ def _build_bm_meta(fund_code: str, method: str, as_of=None,
     return "none", [], None
 
 
+# TAA 자산군_소 → ACWI 4분할 버킷키 (config/taa_classification.py 라벨)
+_TAA_SO_TO_BUCKET = {
+    "미국 성장주": "growth",
+    "미국 가치주": "value",
+    "선진국 주식": "dm_int",
+    "신흥국 주식": "em",
+}
+
+
+def _order_split_rows(rows, isins):
+    """BM 4분할 행을 **AP 보유 표시 순서**에 맞춘다 (2026-08-24 사용자 지정).
+
+    08K88 실측: AP 가 성장·가치·EM·선진 순인데 BM 은 성장·가치·선진·EM 이라 좌우 짝이
+    눈으로 어긋났다. 한 버킷에 종목이 여러 개인 펀드(4JM12)는 **첫 등장 순서**를 쓴다.
+    AP 에 없는 버킷은 원래 순서 그대로 뒤에 붙인다(sorted 안정 정렬).
+    """
+    try:
+        from config.taa_classification import classify_taa
+    except Exception:
+        return rows
+    order: list[str] = []
+    for isin in isins:
+        cls = classify_taa(str(isin))
+        b = _TAA_SO_TO_BUCKET.get(cls[3]) if cls else None
+        if b and b not in order:
+            order.append(b)
+    if not order:
+        return rows
+    idx = {b: i for i, b in enumerate(order)}
+    return sorted(rows, key=lambda r: idx.get(r.bucket, len(order)))
+
+
+def _build_bm_equity_split(components, as_of):
+    """BM 해외주식(ACWI) 레그 → 스타일·지역 4분할 (표0 펼치기 표시 전용).
+
+    ★ 레그가 여러 개면(4JM12 환노출 22.5 + 환헤지 22.5) **합쳐서 4행**으로 내고
+      헤지 구성은 hedge_note 로 따로 표기한다 (2026-08-24 사용자 지정).
+    ★ Brinson 수식에는 관여하지 않는다 — BrinsonBmEquitySplitDTO 주석 참조.
+    """
+    from modules.data_loader import load_acwi_equity_split
+
+    # 자산군을 하드코딩하지 않는다 — 방법1/2 에서는 ACWI 가 '주식'으로 매핑된다.
+    legs = [c for c in components if "ACWI" in str(c.name).upper()]
+    total = round(sum(float(c.weight) for c in legs), 4)
+    if not legs or total <= 0:
+        return None
+    try:
+        rows, ref_date = load_acwi_equity_split(as_of)
+    except Exception:
+        return None
+    if not rows or not ref_date:
+        return None
+    note = ""
+    if len(legs) > 1:
+        note = " + ".join(
+            f"{'환헤지' if c.hedged else '환노출'} {float(c.weight):g}%" for c in legs)
+    # 반올림 잔차는 최대 행에 흡수 — 안 하면 펼친 4행 합이 부모 행과 어긋난다
+    # (실측 4JM12: 14.15+14.42+11.10+5.34 = 45.01 vs 부모 45.00).
+    out = [[n, b, round(w * total, 2)] for n, b, w in rows]
+    diff = round(total - sum(x[2] for x in out), 2)
+    if diff:
+        out[max(range(len(out)), key=lambda i: out[i][2])][2] += diff
+    return BrinsonBmEquitySplitDTO(
+        asset_class=str(legs[0].asset_class or "해외주식"),
+        rows=[BrinsonBmEquitySplitRowDTO(name=n, bucket=b, weight=round(w, 2))
+              for n, b, w in out],
+        total_weight=round(total, 2),
+        as_of=str(ref_date),
+        hedge_note=note,
+    )
+
+
 # -------------------- public --------------------
 
 # build_holdings 8class → 표0(Brinson) 자산군. FX 는 build_holdings 가 이미 NAV 제외.
@@ -617,6 +691,8 @@ def build_brinson(
         fund_code, method, _to_yyyymmdd(end_date),
         saa_mode=saa_mode, start_yyyymmdd=_to_yyyymmdd(start_date))
 
+    bm_equity_split = _build_bm_equity_split(bm_components, _to_yyyymmdd(end_date))
+
     sources: list[SourceBreakdown] = []
     warnings: list[str] = []
     is_fallback = False
@@ -668,6 +744,7 @@ def build_brinson(
             rf_period=rf_period,
             bm_source=bm_source,
             bm_components=bm_components,
+        bm_equity_split=bm_equity_split,
             asset_rows=[],
             sec_contrib=[],
             daily_brinson=[],
@@ -733,6 +810,17 @@ def build_brinson(
         from .holdings_service import build_holdings
         _hold = build_holdings(fund_code, lookthrough=True, as_of_date=end_date.isoformat())
         ap_composition = _build_ap_composition(_hold, method)
+        # BM 4분할 행을 AP 보유 표시 순서(비중 내림차순)에 맞춘다 (2026-08-24 사용자 지정).
+        # 한 버킷에 종목이 여럿인 펀드(4JM12)는 그 버킷의 **최상위 종목 위치**가 순서를 정한다.
+        if bm_equity_split is not None:
+            from modules.data_loader import _collapse_asset_class
+            _eq = [(it.item_cd, it.weight) for it in _hold.holdings_items
+                   if _collapse_asset_class(
+                       _H8_TO_BRINSON.get(it.asset_class, it.asset_class), method)
+                   == bm_equity_split.asset_class]
+            _eq.sort(key=lambda x: -x[1])
+            bm_equity_split.rows = _order_split_rows(
+                bm_equity_split.rows, [c for c, _ in _eq])
         data_pending = _hold.data_pending
         if _hold.data_note:
             data_note = _hold.data_note
@@ -785,6 +873,7 @@ def build_brinson(
         rf_period=rf_period,
         bm_source=bm_source,
         bm_components=bm_components,
+        bm_equity_split=bm_equity_split,
         asset_rows=_to_asset_rows(pa_df),
         sec_contrib=_to_sec_rows(raw.get("sec_contrib")),
         ap_composition=ap_composition,

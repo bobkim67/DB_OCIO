@@ -597,6 +597,14 @@ export default function BrinsonTab({ fundCode }: Props) {
     (saaByClass0.get(g) ?? [])
       .filter((s) => s.label && s.label !== "—")
       .sort((a, b) => b.weight - a.weight)]));
+  // 해외주식 BM(MSCI ACWI) → 스타일·지역 4분할로 교체 (2026-08-24 사용자 지정).
+  // 4JM12 처럼 ACWI 레그가 2개면 백엔드가 **합쳐서 4행**으로 주고 헤지 구성은 hedge_note 로 온다.
+  // 비중 표시만 바뀌며 Brinson 수식·표1 은 건드리지 않는다(ACWI 한 행 유지).
+  const eqSplit0 = data.bm_equity_split ?? null;
+  if (eqSplit0 && !isStartBasis && bmComps0.has(eqSplit0.asset_class)) {
+    bmComps0.set(eqSplit0.asset_class,
+      eqSplit0.rows.map((r) => ({ label: r.name, weight: r.weight })));
+  }
   // 좌측 표가 실제로 그리는 행 — 모드에 따라 BM 지수 ↔ 기초일 AP 종목
   const leftComps0 = isStartBasis ? apBaseByClass0 : bmComps0;
 
@@ -941,48 +949,43 @@ export default function BrinsonTab({ fundCode }: Props) {
                     )}
                   </div>
                 </div>
-                {/* 좌=BM / 우=AP 분리 테이블 (사용자 지정 2026-07-02) */}
+                {/* 좌=AP / 우=BM(+차이) — AP·BM 위치 교대, 차이는 최우측 유지
+                    (2026-08-24 사용자 지정. 구 배치 좌=BM/우=AP 는 2026-07-02) */}
                 <div className="bn-split">
                   <table className="bn-tbl">
                     <colgroup>
                       <col />
-                      <col style={{ width: 96 }} />
+                      <col style={{ width: 112 }} />
                     </colgroup>
                     <thead>
                       <tr>
                         <th>자산군</th>
-                        <th className="r" title={isStartBasis ? `${baseLabel} 보유비중` : undefined}>
-                          {isStartBasis ? "시작일비중" : isBM ? "BM비중" : "SAA비중"}
-                        </th>
+                        <th className="r">AP비중</th>
                       </tr>
                     </thead>
                     <tbody>
                       {classes.flatMap((g) => {
-                        const saa = saaByClass.get(g) ?? [];
+                        const ap = apByClass.get(g) ?? [];
                         const sub = subByClass.get(g);
-                        // 좌측 소계: 시작일 모드 = 기초일 스냅샷 합, 아니면 BM/SAA 목표비중
-                        const leftSub = isStartBasis
-                          ? (apBaseSub0.get(g) ?? 0)
-                          : (sub?.bm_weight ?? saa.reduce((s, x) => s + x.weight, 0));
-                        const leftShown = isStartBasis || hasBm;
-                        // 접힘: 자산군 소계만. 펼침: 지수(티커)/종목별 개별 행 (AP 측과 동일 패턴)
+                        const apSub = useSnapshot
+                          ? (apSnapSub.get(g) ?? 0)
+                          : (sub?.ap_weight ?? ap.reduce((s, x) => s + x.weight, 0));
                         const rows: ReactNode[] = [
-                          <tr key={`${g}-bm`} className="clsrow">
+                          <tr key={`${g}-cls`} className="clsrow">
                             <td>{g}</td>
-                            <td className="r">{leftShown ? fmtWeight(leftSub, 1) : "—"}</td>
+                            <td className="r">{fmtWeight(apSub, 1)}</td>
                           </tr>,
                         ];
                         if (tbl0Expanded) {
-                          const comps = leftComps0.get(g) ?? [];
-                          for (let i = 0; i < comps.length; i++) {
+                          for (let i = 0; i < ap.length; i++) {
                             rows.push(
-                              <tr key={`${g}-bmi-${i}`}>
-                                <td className="ind" title={comps[i].label}>{comps[i].label}</td>
-                                <td className="r">{fmtWeight(comps[i].weight, 1)}</td>
+                              <tr key={`${g}-ap-${i}`}>
+                                <td className="ind" title={ap[i].label}>{ap[i].label}</td>
+                                <td className="r">{fmtWeight(ap[i].weight, 1)}</td>
                               </tr>,
                             );
                           }
-                          rows.push(...padRows(`${g}-bml`, (detail0.get(g) ?? 0) - comps.length, 2));
+                          rows.push(...padRows(`${g}-apl`, (detail0.get(g) ?? 0) - ap.length, 2));
                         }
                         return rows;
                       })}
@@ -991,15 +994,16 @@ export default function BrinsonTab({ fundCode }: Props) {
                   <table className="bn-tbl">
                     <colgroup>
                       <col />
-                      {/* AP비중 112 / 차이 102 — 자산군별 기여 표(112/84)와 시각적 갭 일치.
-                          차이 값(+63.6%p)이 초과기여(+1.10%)보다 넓어 컬럼폭을 더 줌 (2026-07-10) */}
                       <col style={{ width: 112 }} />
+                      {/* 차이 102 — 값(+63.6%p)이 초과기여(+1.10%)보다 넓어 더 준다 (2026-07-10) */}
                       <col style={{ width: 102 }} />
                     </colgroup>
                     <thead>
                       <tr>
-                        <th>AP</th>
-                        <th className="r">AP비중</th>
+                        <th>{isStartBasis ? baseLabel : isBM ? "BM" : "SAA"}</th>
+                        <th className="r" title={isStartBasis ? `${baseLabel} 보유비중` : undefined}>
+                          {isStartBasis ? "시작일비중" : isBM ? "BM비중" : "SAA비중"}
+                        </th>
                         <th
                           className="r"
                           title={isStartBasis
@@ -1015,18 +1019,20 @@ export default function BrinsonTab({ fundCode }: Props) {
                         const saa = saaByClass.get(g) ?? [];
                         const ap = apByClass.get(g) ?? [];
                         const sub = subByClass.get(g);
-                        const apSub = useSnapshot ? (apSnapSub.get(g) ?? 0) : (sub?.ap_weight ?? ap.reduce((s, x) => s + x.weight, 0));
-                        // 시작일 모드는 기초일 스냅샷 대비 — BM 미설정 펀드(2JM23)도 값이 나온다.
+                        const apSub = useSnapshot
+                          ? (apSnapSub.get(g) ?? 0)
+                          : (sub?.ap_weight ?? ap.reduce((s, x) => s + x.weight, 0));
+                        // 비교기준 소계: 시작일 모드 = 기초일 스냅샷 합, 아니면 BM/SAA 목표비중
                         const cmpSub = isStartBasis
                           ? (apBaseSub0.get(g) ?? 0)
                           : (sub?.bm_weight ?? saa.reduce((s, x) => s + x.weight, 0));
+                        const shown = isStartBasis || hasBm;
                         const diff = apSub - cmpSub;
-                        const diffShown = isStartBasis || hasBm;
                         const rows: ReactNode[] = [
-                          <tr key={`${g}-cls`} className="clsrow">
+                          <tr key={`${g}-bm`} className="clsrow">
                             <td>{g}</td>
-                            <td className="r">{fmtWeight(apSub, 1)}</td>
-                            {diffShown ? (
+                            <td className="r">{shown ? fmtWeight(cmpSub, 1) : "—"}</td>
+                            {shown ? (
                               <td className={`r b ${diff >= 0 ? "ok" : "brw"}`}>
                                 {diff >= 0 ? "+" : ""}{diff.toFixed(1)}%p
                               </td>
@@ -1035,17 +1041,18 @@ export default function BrinsonTab({ fundCode }: Props) {
                             )}
                           </tr>,
                         ];
-                        // 펼침 시 AP 종목 행 + 좌측(BM)과 행수 맞춤 패딩
                         if (tbl0Expanded) {
                           // 시작일 모드는 좌우가 같은 종목이라 종목별 변화(%p)도 채운다.
-                          const baseItems = isStartBasis ? (apBaseByClass0.get(g) ?? []) : [];
-                          for (let i = 0; i < ap.length; i++) {
-                            const bw = baseItems.find((b) => b.label === ap[i].label)?.weight;
-                            const d = bw === undefined ? null : ap[i].weight - bw;
+                          const comps = leftComps0.get(g) ?? [];
+                          for (let i = 0; i < comps.length; i++) {
+                            const aw = isStartBasis
+                              ? ap.find((a) => a.label === comps[i].label)?.weight
+                              : undefined;
+                            const d = aw === undefined ? null : aw - comps[i].weight;
                             rows.push(
-                              <tr key={`${g}-ap-${i}`}>
-                                <td className="ind" title={ap[i].label}>{ap[i].label}</td>
-                                <td className="r">{fmtWeight(ap[i].weight, 1)}</td>
+                              <tr key={`${g}-bmi-${i}`}>
+                                <td className="ind" title={comps[i].label}>{comps[i].label}</td>
+                                <td className="r">{fmtWeight(comps[i].weight, 1)}</td>
                                 {d === null ? (
                                   <td className="r" />
                                 ) : (
@@ -1056,13 +1063,21 @@ export default function BrinsonTab({ fundCode }: Props) {
                               </tr>,
                             );
                           }
-                          rows.push(...padRows(`${g}-apl`, (detail0.get(g) ?? 0) - ap.length, 3));
+                          rows.push(...padRows(`${g}-bml`, (detail0.get(g) ?? 0) - comps.length, 3));
                         }
                         return rows;
                       })}
                     </tbody>
                   </table>
                 </div>
+                {tbl0Expanded && eqSplit0 && !isStartBasis && (
+                  <div className="bn-note">
+                    ※ 해외주식 BM(MSCI ACWI {fmtWeight(eqSplit0.total_weight, 1)}
+                    {eqSplit0.hedge_note ? ` · ${eqSplit0.hedge_note}` : ""})은 스타일·지역
+                    4분할로 표기했습니다 — MSCI 시가총액 {eqSplit0.as_of} 기준.
+                    비중 표기만 분해한 것이며 수익률·기여 분해는 ACWI 단일 지수 기준입니다.
+                  </div>
+                )}
                 {isStartBasis ? (
                   <div className="bn-note">
                     ※ {baseLabel}(조회 시작일 직전 영업일) 보유 대비 — 기간 중 비중 변화.
@@ -1115,66 +1130,17 @@ export default function BrinsonTab({ fundCode }: Props) {
                 </span>
               </div>
             </div>
-            {/* 좌=BM / 우=AP 분리 테이블 (사용자 지정 2026-07-02) */}
+            {/* 좌=AP / 우=BM(+초과기여) — AP·BM 위치 교대, 초과는 최우측 유지
+                (2026-08-24 사용자 지정. 구 배치 좌=BM/우=AP 는 2026-07-02) */}
             <div className="bn-split">
               <table className="bn-tbl">
                 <colgroup>
                   <col />
-                  <col style={{ width: tbl1Metric === "norm" ? 134 : 96 }} />
+                  <col style={{ width: tbl1Metric === "norm" ? 134 : 112 }} />
                 </colgroup>
                 <thead>
                   <tr>
                     <th>자산군</th>
-                    <th className="r">{tbl1Metric === "norm" ? `${BM_LBL}수익률(Norm.)` : `${BM_LBL}수익률`}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {enrichedRows.flatMap((r) => {
-                    const names = bmNamesByClass1.get(r.asset_class) ?? [];
-                    const bmVal = tbl1Metric === "norm" ? r.bm_return : r.bm_contrib;
-                    // 지수 컬럼 없음 — 펼침 시 지수를 자산군 컬럼 하위(들여쓰기) 행으로 표기 (사용자 지정 2026-07-03)
-                    const rows: ReactNode[] = [
-                      <tr key={r.asset_class} className="clsrow">
-                        <td>{r.asset_class}</td>
-                        {hasBm
-                          ? <td className={`r ${rc(bmVal)}`}>{fmtPct(bmVal)}</td>
-                          : <td className="r muted">—</td>}
-                      </tr>,
-                    ];
-                    if (tbl0Expanded) {
-                      for (let i = 0; i < names.length; i++) {
-                        const cv = tbl1Metric === "norm" ? names[i].ret : names[i].contrib;
-                        rows.push(
-                          <tr key={`${r.asset_class}-bmn-${i}`}>
-                            <td className="muted ind" title={names[i].name}>{names[i].name}</td>
-                            <td className={`r ${cv != null ? rc(cv) : ""}`}>{cv != null ? fmtPct(cv) : ""}</td>
-                          </tr>,
-                        );
-                      }
-                      rows.push(...padRows(`${r.asset_class}-bm1`,
-                        (detailShared.get(r.asset_class) ?? 0) - names.length, 2));
-                    }
-                    return rows;
-                  })}
-                  {tbl1Metric !== "norm" && (
-                    <tr className="tot">
-                      <td>합계</td>
-                      {hasBm
-                        ? <td className={`r ${rc(sumBmContrib)}`}>{fmtPct(sumBmContrib)}</td>
-                        : <td className="r muted">—</td>}
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-              <table className="bn-tbl">
-                <colgroup>
-                  <col />
-                  <col style={{ width: tbl1Metric === "norm" ? 134 : 112 }} />
-                  {tbl1Metric !== "norm" && <col style={{ width: 84 }} />}
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th>AP</th>
                     <th
                       className="r"
                       title="금액가중(money-weighted) 수익률로, 기간 중 매매·포지션 사이징이 반영됩니다."
@@ -1182,23 +1148,16 @@ export default function BrinsonTab({ fundCode }: Props) {
                       {tbl1Metric === "norm" ? "AP수익률(Norm.)" : "AP수익률"}
                       <span className="muted" style={{ fontWeight: 400, marginLeft: 3 }}>ⓘ</span>
                     </th>
-                    {tbl1Metric !== "norm" && <th className="r">초과기여</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {enrichedRows.flatMap((r) => {
                     const isNorm = tbl1Metric === "norm";
-                    const showExcess = !isNorm;   // 열은 유지, BM 없으면 값만 "—"
                     const apVal = isNorm ? r.ap_return : r.contrib_return;
                     const rows: ReactNode[] = [
                       <tr key={r.asset_class} className="clsrow">
                         <td>{r.asset_class}</td>
                         <td className={`r b ${rc(apVal)}`}>{fmtPct(apVal)}</td>
-                        {showExcess && (
-                          hasBm
-                            ? <td className={`r b ${xc(r.excess_contrib)}`}>{fmtPct(r.excess_contrib)}</td>
-                            : <td className="r muted">—</td>
-                        )}
                       </tr>,
                     ];
                     // 펼침 시 AP 종목 행 — 표0 과 동일 행수, 표0 토글과 연동
@@ -1210,7 +1169,6 @@ export default function BrinsonTab({ fundCode }: Props) {
                           <tr key={`${r.asset_class}-sec-${i}`}>
                             <td className="ind" title={secs[i].item_nm}>{secs[i].item_nm}</td>
                             <td className={`r ${rc(secVal)}`}>{fmtPct(secVal)}</td>
-                            {showExcess && <td className="r" />}
                           </tr>,
                         );
                       }
@@ -1225,14 +1183,13 @@ export default function BrinsonTab({ fundCode }: Props) {
                             <tr key={`${r.asset_class}-resid`}>
                               <td className="resid">기타(잔차)</td>
                               <td className={`r ${rc(resid)}`}>{fmtPct(resid)}</td>
-                              {showExcess && <td className="r" />}
                             </tr>,
                           );
                         }
                       }
-                      // 좌측(BM 지수 행)이 더 많으면 빈 행 패딩 → 자산군 라인 좌우 일치
+                      // 우측(BM 지수 행)이 더 많으면 빈 행 패딩 → 자산군 라인 좌우 일치
                       rows.push(...padRows(`${r.asset_class}-ap1`,
-                        (detailShared.get(r.asset_class) ?? 0) - (rows.length - 1), showExcess ? 3 : 2));
+                        (detailShared.get(r.asset_class) ?? 0) - (rows.length - 1), 2));
                     }
                     return rows;
                   })}
@@ -1240,6 +1197,65 @@ export default function BrinsonTab({ fundCode }: Props) {
                     <tr className="tot">
                       <td>합계</td>
                       <td className={`r ${rc(sumApContrib)}`}>{fmtPct(sumApContrib)}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+              <table className="bn-tbl">
+                <colgroup>
+                  <col />
+                  <col style={{ width: tbl1Metric === "norm" ? 134 : 96 }} />
+                  {tbl1Metric !== "norm" && <col style={{ width: 84 }} />}
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>{BM_LBL}</th>
+                    <th className="r">{tbl1Metric === "norm" ? `${BM_LBL}수익률(Norm.)` : `${BM_LBL}수익률`}</th>
+                    {tbl1Metric !== "norm" && <th className="r">초과기여</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {enrichedRows.flatMap((r) => {
+                    const names = bmNamesByClass1.get(r.asset_class) ?? [];
+                    const isNorm = tbl1Metric === "norm";
+                    const showExcess = !isNorm;   // 열은 유지, BM 없으면 값만 "—"
+                    const bmVal = isNorm ? r.bm_return : r.bm_contrib;
+                    // 지수 컬럼 없음 — 펼침 시 지수를 자산군 컬럼 하위(들여쓰기) 행으로 표기 (사용자 지정 2026-07-03)
+                    const rows: ReactNode[] = [
+                      <tr key={r.asset_class} className="clsrow">
+                        <td>{r.asset_class}</td>
+                        {hasBm
+                          ? <td className={`r ${rc(bmVal)}`}>{fmtPct(bmVal)}</td>
+                          : <td className="r muted">—</td>}
+                        {showExcess && (
+                          hasBm
+                            ? <td className={`r b ${xc(r.excess_contrib)}`}>{fmtPct(r.excess_contrib)}</td>
+                            : <td className="r muted">—</td>
+                        )}
+                      </tr>,
+                    ];
+                    if (tbl0Expanded) {
+                      for (let i = 0; i < names.length; i++) {
+                        const cv = isNorm ? names[i].ret : names[i].contrib;
+                        rows.push(
+                          <tr key={`${r.asset_class}-bmn-${i}`}>
+                            <td className="muted ind" title={names[i].name}>{names[i].name}</td>
+                            <td className={`r ${cv != null ? rc(cv) : ""}`}>{cv != null ? fmtPct(cv) : ""}</td>
+                            {showExcess && <td className="r" />}
+                          </tr>,
+                        );
+                      }
+                      rows.push(...padRows(`${r.asset_class}-bm1`,
+                        (detailShared.get(r.asset_class) ?? 0) - names.length, showExcess ? 3 : 2));
+                    }
+                    return rows;
+                  })}
+                  {tbl1Metric !== "norm" && (
+                    <tr className="tot">
+                      <td>합계</td>
+                      {hasBm
+                        ? <td className={`r ${rc(sumBmContrib)}`}>{fmtPct(sumBmContrib)}</td>
+                        : <td className="r muted">—</td>}
                       {hasBm
                         ? <td className={`r ${xc(sumExcessContrib)}`}>{fmtPct(sumExcessContrib)}</td>
                         : <td className="r muted">—</td>}

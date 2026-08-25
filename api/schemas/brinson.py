@@ -45,6 +45,28 @@ class BrinsonBmComponentDTO(BaseModel):
     ret: float | None = None
 
 
+class BrinsonBmEquitySplitRowDTO(BaseModel):
+    """BM 해외주식(ACWI) 4분할 한 행."""
+    name: str                  # 지수명 (MSCI USA Growth 등)
+    weight: float              # 펀드 BM 기준 비중 (%)
+    bucket: str = ""           # growth | value | dm_int | em — AP 종목과 짝짓는 안정 키
+
+
+class BrinsonBmEquitySplitDTO(BaseModel):
+    """BM 해외주식(MSCI ACWI) 레그의 스타일·지역 4분할 — 표0 종목펼치기 **표시 전용**.
+
+    ★ Brinson 수식/BM 총수익률/초과성과에는 일절 관여하지 않는다. 비중만 보여준다.
+      (4개 지수를 실제 BM 컴포넌트로 쪼개면 합성 수익률이 ACWI 단일 지수와 달라져
+       BM 총수익률이 +0.43%p 움직인다 — 실측 08K88 YTD 18.10% → 18.53%.)
+    시총 항등식이 정확히 성립하므로(load_acwi_equity_split 주석) 4행 합 = total_weight.
+    """
+    asset_class: str = "해외주식"
+    rows: list[BrinsonBmEquitySplitRowDTO]
+    total_weight: float        # ACWI 레그 합계 비중 (%)
+    as_of: str                 # 시총 기준일 (YYYY-MM-DD)
+    hedge_note: str = ""       # 레그 2개 이상일 때 "환노출 22.5% + 환헤지 22.5%"
+
+
 class BrinsonSecContribDTO(BaseModel):
     """compute_brinson_attribution_v2['sec_contrib'] 한 행 (전체 종목)."""
     asset_class: str           # 자산군
@@ -122,6 +144,8 @@ class BrinsonResponseDTO(BaseModel):
     # BM/SAA 구성 (item4: BM 셋팅 vs AP 비교 표). bm_source: "BM"|"SAA"|"none"
     bm_source: str
     bm_components: list[BrinsonBmComponentDTO]
+    # BM 해외주식(ACWI) 4분할 — 표0 펼치기 표시 전용 (없으면 None)
+    bm_equity_split: BrinsonBmEquitySplitDTO | None = None
     # 자산군별
     asset_rows: list[BrinsonAssetRowDTO]
     # 종목별 기여 (top 20)

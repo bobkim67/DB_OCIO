@@ -835,73 +835,133 @@ def build_brinson_export_xlsx(
                 _b_ret = (float(v) / bench_base[c] - 1.0) * 100
                 ts.write_number(rr, rc0 + 1 + c, _b_ret, fmts["num_s"])
                 ts.write_number(rr, ec0 + c, _ap_ret - _b_ret, fmts["num_s"])
+    # ── 4-bis) 조회구간 리베이스 블록 (2026-08-24 사용자 지정) ──
+    # 위 수익률 컬럼은 **설정일** 기준이라 조회구간 차트에 그대로 쓰면 누적 레벨(예: +200%)이
+    # 찍힌다. 조회 기초일(br.start_date)을 0% 로 다시 잡은 별도 블록을 만들어 차트가 참조한다.
+    # 조회기간이 설정후와 같으면(_p_i0 == 0) 블록·차트 모두 만들지 않는다 — 같은 그림 2개 금지.
+    _pc0 = ec0 + nb + 1        # 조회구간 수익률 블록 (갭 1열)
+    _pe0 = _pc0 + nb + 1       # 조회구간 초과(%p) 블록
+    _p_i0 = _p_i1 = None
+    for _i, _p in enumerate(ov.nav_series):
+        if _p.date_ <= br.start_date:
+            _p_i0 = _i
+        if _p.date_ <= br.end_date:
+            _p_i1 = _i
+    # ★ 설정후 판정은 **설정일 기준**. nav 시계열 첫 행은 설정일 T-1 합성행(base 1000)이라
+    #   `_p_i0 > 0` 만 보면 설정후 조회에서도 _p_i0=1 이 되어 같은 차트가 2개 나온다.
+    try:
+        _inc_date = datetime.strptime(inc_str, "%Y%m%d").date()
+    except ValueError:
+        _inc_date = None
+    _period_chart = (_p_i0 is not None and _p_i1 is not None and _p_i0 > 0 and _p_i1 > _p_i0
+                     and not (_inc_date and br.start_date <= _inc_date))
+    _chart_lbl = (_lbl1 if _lbl1 != "기간"
+                  else f"{br.start_date:%Y-%m-%d}~{br.end_date:%Y-%m-%d}")
+    if _period_chart:
+        ts.write(0, _pc0, f"AP 수익률({_chart_lbl}, %)", fmts["head"])
+        for c, (nm, _) in enumerate(bench_cols):
+            ts.write(0, _pc0 + 1 + c, f"{nm} 수익률({_chart_lbl}, %)", fmts["head"])
+        for c, (nm, _) in enumerate(bench_cols):
+            ts.write(0, _pe0 + c, f"AP-{nm} 초과({_chart_lbl}, %p)", fmts["head"])
+        _nav_b = float(ov.nav_series[_p_i0].nav)
+        # 벤치 기준값 = 기초일 값. 결측이면 구간 내 첫 유효값(합류 시점부터 0%)
+        _bb = []
+        for _, ser in bench_cols:
+            _v = ser.iloc[_p_i0:_p_i1 + 1].dropna()
+            _b = float(ser.iloc[_p_i0]) if not pd.isna(ser.iloc[_p_i0]) else (
+                float(_v.iloc[0]) if len(_v) else None)
+            _bb.append(_b if _b else None)
+        for _i in range(_p_i0, _p_i1 + 1):
+            rr = _i + 1
+            _ap_r = (float(ov.nav_series[_i].nav) / _nav_b - 1.0) * 100 if _nav_b else 0.0
+            ts.write_number(rr, _pc0, _ap_r, fmts["num_s"])
+            for c, (_, ser) in enumerate(bench_cols):
+                v = ser.iloc[_i]
+                if pd.isna(v) or not _bb[c]:
+                    continue
+                _b_r = (float(v) / _bb[c] - 1.0) * 100
+                ts.write_number(rr, _pc0 + 1 + c, _b_r, fmts["num_s"])
+                ts.write_number(rr, _pe0 + c, _ap_r - _b_r, fmts["num_s"])
+
     ts.set_column(0, 0, 12)
     ts.set_column(1, 1 + nb, 13)
     ts.set_column(2 + nb, 2 + nb, 1.5)  # 갭: 레벨 | 수익률
     ts.set_column(rc0, rc0 + nb, 14)
     ts.set_column(ec0, ec0 + max(nb - 1, 0), 16)
+    if _period_chart:
+        ts.set_column(ec0 + nb, ec0 + nb, 1.5)  # 갭: 설정후 | 조회구간
+        ts.set_column(_pc0, _pe0 + max(nb - 1, 0), 18)
     ts.freeze_panes(1, 0)
 
     # ── Overview 차트 (시계열 수익률 컬럼 참조, Y축=수익률%) — 기간별 수익률 표 하단, 가로 배치 ──
     # 초과수익률(AP−벤치) = 옅은 회색 영역, 보조축 (2026-07-03 사용자 지정).
     # xlsxwriter 는 보조축 시리즈가 combine 되는 쪽에 있어야 secondary axis 가 생성됨 —
     # 라인(기본) + 영역(combine, y2). 영역이 위에 그려지므로 투명도 50%로 라인 가시성 유지.
-    ins_col = 0
-    for c, (name, _) in enumerate(bench_cols):
+    def _ov_chart(name, ret_col, bench_col, exc_col, r0, r1, title, xfmt):
+        """Overview 라인차트 1개. name=None 이면 펀드 단독(벤치 없는 펀드)."""
         ch = wb.add_chart({"type": "line"})
         ch.add_series({
             "name": "펀드",
-            "categories": [_TS_SHEET, 1, 0, n, 0],
-            "values": [_TS_SHEET, 1, rc0, n, rc0],
+            "categories": [_TS_SHEET, r0, 0, r1, 0],
+            "values": [_TS_SHEET, r0, ret_col, r1, ret_col],
             "line": {"color": _C_AP, "width": 1.5},
         })
-        ch.add_series({
-            "name": name,
-            "categories": [_TS_SHEET, 1, 0, n, 0],
-            "values": [_TS_SHEET, 1, rc0 + 1 + c, n, rc0 + 1 + c],
-            "line": {"color": _C_BENCH if name != "proxy" else _C_PROXY, "width": 1.25},
-        })
-        ar = wb.add_chart({"type": "area"})
-        ar.add_series({
-            "name": "초과수익률",
-            "categories": [_TS_SHEET, 1, 0, n, 0],
-            "values": [_TS_SHEET, 1, ec0 + c, n, ec0 + c],
-            "y2_axis": True,
-            "fill": {"color": "#D9D9D9", "transparency": 50},
-            "line": {"none": True},
-        })
-        # 결합 차트의 보조축 서식은 보조 차트 객체에 설정해야 반영됨.
-        # 레이블 = 메인축과 동일 폰트/포맷(%) (2026-07-03 사용자 지정)
-        ar.set_y2_axis({"num_font": {"size": 8, "name": _FN}, "num_format": '0"%"',
-                        "major_gridlines": {"visible": False}})
-        ch.combine(ar)
-        ch.set_title({"name": f"펀드 vs {name} (수익률, 설정후)",
-                      "name_font": {"size": 11, "name": _FN}})
+        if name is not None:
+            ch.add_series({
+                "name": name,
+                "categories": [_TS_SHEET, r0, 0, r1, 0],
+                "values": [_TS_SHEET, r0, bench_col, r1, bench_col],
+                "line": {"color": _C_BENCH if name != "proxy" else _C_PROXY, "width": 1.25},
+            })
+            ar = wb.add_chart({"type": "area"})
+            ar.add_series({
+                "name": "초과수익률(우)",
+                "categories": [_TS_SHEET, r0, 0, r1, 0],
+                "values": [_TS_SHEET, r0, exc_col, r1, exc_col],
+                "y2_axis": True,
+                "fill": {"color": "#D9D9D9", "transparency": 50},
+                "line": {"none": True},
+            })
+            # 결합 차트의 보조축 서식은 보조 차트 객체에 설정해야 반영됨.
+            # 레이블 = 메인축과 동일 폰트/포맷(%) (2026-07-03 사용자 지정)
+            ar.set_y2_axis({"num_font": {"size": 8, "name": _FN}, "num_format": '0"%"',
+                            "major_gridlines": {"visible": False}})
+            ch.combine(ar)
+        ch.set_title({"name": title, "name_font": {"size": 11, "name": _FN}})
         ch.set_legend({"position": "bottom", "font": {"size": 9, "name": _FN}})
-        ch.set_x_axis({"num_font": {"size": 8, "name": _FN}, "num_format": "yy-mm",
+        ch.set_x_axis({"num_font": {"size": 8, "name": _FN}, "num_format": xfmt,
                        "label_position": "low"})
         # 가로 눈금선 제거 + Y축 레이블 낮은쪽(2026-07-03 사용자 지정)
         ch.set_y_axis({"num_font": {"size": 8, "name": _FN}, "num_format": '0"%"',
                        "major_gridlines": {"visible": False}, "label_position": "low"})
         ch.set_size({"width": 560, "height": 300})
-        ws.insert_chart(chart_row, ins_col, ch)
+        return ch
+
+    ins_col = 0
+    for c, (name, _) in enumerate(bench_cols):
+        ws.insert_chart(chart_row, ins_col, _ov_chart(
+            name, rc0, rc0 + 1 + c, ec0 + c, 1, n,
+            f"펀드 vs {name} (수익률, 설정후)", "yy-mm"))
         ins_col += 8
     if not bench_cols:
-        ch = wb.add_chart({"type": "line"})
-        ch.add_series({
-            "name": "펀드",
-            "categories": [_TS_SHEET, 1, 0, n, 0],
-            "values": [_TS_SHEET, 1, rc0, n, rc0],
-            "line": {"color": _C_AP, "width": 1.5},
-        })
-        ch.set_title({"name": "펀드 수익률 (설정후)", "name_font": {"size": 11, "name": _FN}})
-        ch.set_legend({"position": "bottom", "font": {"size": 9, "name": _FN}})
-        ch.set_x_axis({"num_font": {"size": 8, "name": _FN}, "num_format": "yy-mm",
-                       "label_position": "low"})
-        ch.set_y_axis({"num_font": {"size": 8, "name": _FN}, "num_format": '0"%"',
-                       "major_gridlines": {"visible": False}, "label_position": "low"})
-        ch.set_size({"width": 560, "height": 300})
-        ws.insert_chart(chart_row, 0, ch)
+        ws.insert_chart(chart_row, ins_col, _ov_chart(
+            None, rc0, None, None, 1, n, "펀드 수익률 (설정후)", "yy-mm"))
+        ins_col += 8
+    # 우측 = 조회구간 차트 (설정후와 구간이 같으면 생략)
+    if _period_chart:
+        _r0, _r1 = _p_i0 + 1, _p_i1 + 1
+        # 1년 이하 구간은 월 단위 축이 뭉개진다 → 일자까지 표기
+        _xf = "yy-mm" if (br.end_date - br.start_date).days > 400 else "yy-mm-dd"
+        for c, (name, _) in enumerate(bench_cols):
+            ws.insert_chart(chart_row, ins_col, _ov_chart(
+                name, _pc0, _pc0 + 1 + c, _pe0 + c, _r0, _r1,
+                f"펀드 vs {name} (수익률, {_chart_lbl})", _xf))
+            ins_col += 8
+        if not bench_cols:
+            ws.insert_chart(chart_row, ins_col, _ov_chart(
+                None, _pc0, None, None, _r0, _r1,
+                f"펀드 수익률 ({_chart_lbl})", _xf))
+            ins_col += 8
 
     wb.close()
     fname = f"brinson_{fund_code}_{br.start_date.strftime('%Y%m%d')}_{br.end_date.strftime('%Y%m%d')}.xlsx"

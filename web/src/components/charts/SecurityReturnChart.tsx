@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Plot from "react-plotly.js";
 import type {
   SecurityReturnPointDTO,
@@ -53,6 +53,7 @@ export default function SecurityReturnChart({
   const [yRange, setYRange] = useState<[number, number] | null>(null);
   const [measure, setMeasure] =
     useState<{ x0: string; x1: string; y0: number; y1: number; pct: number } | null>(null);
+  const lastDown = useRef<{ t: number; x: number; y: number } | null>(null);
   useEffect(() => { setXr(null); setYRange(null); setMeasure(null); }, [instanceKey]);
   // markup 모드를 끄면 측정 표시 제거
   useEffect(() => { if (!markupMode) setMeasure(null); }, [markupMode]);
@@ -275,8 +276,12 @@ export default function SecurityReturnChart({
 
   // 드래그 줌(markup off) → x범위 갱신 + y auto-fit. 더블클릭(autorange) → 리셋.
   const onRelayout = (e: Record<string, unknown>) => {
-    if (markupMode) return;
-    if (e["xaxis.autorange"]) { setXr(null); setYRange(null); return; }
+    // ★ 리셋(더블클릭)은 markup 모드에서도 처리한다 (2026-08-24 사용자 리포트).
+    // 여기서 먼저 early-return 하면 ON 상태에서 더블클릭이 먹지 않아 줌이 고정되고,
+    // Plotly 내부적으로만 autorange 된 뒤 **다음 렌더에서 묵은 xr 이 재적용**되어
+    // OFF 에서 줌을 풀어도 ON 으로 돌아가면 줌 상태가 되살아난다.
+    if (e["xaxis.autorange"]) { setXr(null); setYRange(null); setMeasure(null); return; }
+    if (markupMode) return;  // select 드래그는 축 범위를 바꾸지 않는다
     const x0 = e["xaxis.range[0]"], x1 = e["xaxis.range[1]"];
     if (x0 !== undefined && x1 !== undefined) {
       setXr([String(x0).slice(0, 10), String(x1).slice(0, 10)]);
@@ -290,6 +295,7 @@ export default function SecurityReturnChart({
     if (!markupMode || !hasPrice || !e?.range?.x) return;
     const [a, b] = e.range.x;
     const p0 = nearest(a), p1 = nearest(b);
+    if (p0.date === p1.date) return;  // 폭 0 선택(더블클릭 부산물) → 측정 아님
     const pct = p0.value ? (p1.value / p0.value - 1) * 100 : 0;
     setMeasure({ x0: p0.date, x1: p1.date, y0: p0.value, y1: p1.value, pct });
   };
@@ -336,7 +342,29 @@ export default function SecurityReturnChart({
         ? { yaxis: retYAxis }
         : { yaxis: { ...weightAxis, side: "left" as const } };
 
+  // ★ 더블클릭 = 줌 리셋. Plotly 에 맡길 수 없어 직접 판정한다 (2026-08-24 사용자 리포트).
+  // 실측으로 확인한 제약 2개:
+  //  ① select 모드(변화율 ON)에서 Plotly 는 더블클릭을 '선택 해제'로 소비하고
+  //     plotly_relayout / plotly_doubleclick 을 **하나도 내보내지 않는다**(이벤트 0건).
+  //  ② Plotly 드래그 레이어가 mousedown 에 preventDefault 를 걸어 **native dblclick 자체가
+  //     발생하지 않는다** — document capture 단계에서도 안 잡힌다. onDoubleClick 은 무용.
+  // 그래서 살아있는 mousedown 2회의 간격·좌표로 직접 판정한다. 축 범위의 단일 소스는
+  // xr/yRange state 이므로 이걸 비우는 게 유일하게 확실한 리셋 경로다.
+  const onMouseDownCapture = (e: React.MouseEvent) => {
+    if ((e.target as Element | null)?.closest?.(".legend")) return;  // 범례는 계열 isolate 용
+    const prev = lastDown.current;
+    lastDown.current = { t: e.timeStamp, x: e.clientX, y: e.clientY };
+    if (prev && e.timeStamp - prev.t < 400
+        && Math.abs(e.clientX - prev.x) < 6 && Math.abs(e.clientY - prev.y) < 6) {
+      lastDown.current = null;
+      setXr(null);
+      setYRange(null);
+      setMeasure(null);
+    }
+  };
+
   return (
+    <div style={{ width: "100%", height: "100%" }} onMouseDownCapture={onMouseDownCapture}>
     <Plot
       key={instanceKey ?? ""}
       data={traces}
@@ -364,5 +392,6 @@ export default function SecurityReturnChart({
       useResizeHandler
       style={{ width: "100%", height: "100%" }}
     />
+    </div>
   );
 }

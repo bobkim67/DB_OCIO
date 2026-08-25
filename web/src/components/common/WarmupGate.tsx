@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 
 import { useWarmupStatus } from "../../hooks/useWarmupStatus";
 
@@ -12,8 +12,13 @@ import { useWarmupStatus } from "../../hooks/useWarmupStatus";
  * - fail-open: warmup endpoint 가 없거나(구버전 백엔드) 에러면 막지 않는다.
  * - idle(워밍업 비활성: OCIO_WARMUP_ON_STARTUP=false) 도 막지 않는다.
  */
+// 완료 알림을 띄워 두는 시간. 워밍업 실패 스텝은 해당 탭 진입 시 자동 로드되므로
+// 지나고 나면 알릴 내용이 없다.
+const _NOTICE_TTL_MS = 5 * 60 * 1000;
+
 export default function WarmupGate() {
   const { data, isError } = useWarmupStatus();
+  const [dismissed, setDismissed] = useState(false);
 
   // 첫 응답 전(data undefined)에도 잠깐 막는다 → 진입 직후 클릭 방지.
   // endpoint 자체가 에러면 막지 않는다(fail-open).
@@ -67,12 +72,31 @@ export default function WarmupGate() {
   }
 
   // 완료됐지만 일부 실패가 있으면 결과만 알린다 (조작은 허용).
+  // ★ 서버 status 는 **재기동 전까지 done_with_errors 로 남는다** — 조건 없이 그리면
+  //   하루 종일 빨간 띠가 붙어 있는다(2026-08-25 사용자 리포트). 실패 스텝은 해당 탭
+  //   진입 시 자동 로드되므로, 완료 직후 잠깐만 띄우고 닫을 수 있게 한다.
   if (data && (data.status === "done_with_errors" || data.status === "error")) {
+    const finished = data.finished_at ? Date.parse(data.finished_at) : NaN;
+    const fresh = Number.isNaN(finished) || Date.now() - finished < _NOTICE_TTL_MS;
+    if (dismissed || !fresh) return null;
     const msg =
       data.status === "done_with_errors"
         ? `미리 불러오기 완료 — 일부 실패 ${data.error_count}건 (해당 탭 접속 시 자동 재시도)`
         : "미리 불러오기 중단됨 — 각 탭은 접속 시 개별 로드됩니다";
-    return <div style={errorStrip}>{msg}</div>;
+    return (
+      <div style={errorStrip}>
+        <span>{msg}</span>
+        <button
+          type="button"
+          onClick={() => setDismissed(true)}
+          style={closeBtn}
+          aria-label="알림 닫기"
+          title="닫기"
+        >
+          ×
+        </button>
+      </div>
+    );
   }
 
   return null;
@@ -127,6 +151,20 @@ const errorStrip: CSSProperties = {
   borderRadius: 8,
   padding: "8px 12px",
   marginBottom: 12,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+};
+
+const closeBtn: CSSProperties = {
+  background: "none",
+  border: "none",
+  color: "inherit",
+  cursor: "pointer",
+  fontSize: 16,
+  lineHeight: 1,
+  padding: "0 2px",
 };
 
 const indeterminateKeyframes = `

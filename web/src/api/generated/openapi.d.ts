@@ -1462,6 +1462,48 @@ export interface components {
             ret?: number | null;
         };
         /**
+         * BrinsonBmEquitySplitDTO
+         * @description BM 해외주식(MSCI ACWI) 레그의 스타일·지역 4분할 — 표0 종목펼치기 **표시 전용**.
+         *
+         *     ★ Brinson 수식/BM 총수익률/초과성과에는 일절 관여하지 않는다. 비중만 보여준다.
+         *       (4개 지수를 실제 BM 컴포넌트로 쪼개면 합성 수익률이 ACWI 단일 지수와 달라져
+         *        BM 총수익률이 +0.43%p 움직인다 — 실측 08K88 YTD 18.10% → 18.53%.)
+         *     시총 항등식이 정확히 성립하므로(load_acwi_equity_split 주석) 4행 합 = total_weight.
+         */
+        BrinsonBmEquitySplitDTO: {
+            /**
+             * Asset Class
+             * @default 해외주식
+             */
+            asset_class: string;
+            /** Rows */
+            rows: components["schemas"]["BrinsonBmEquitySplitRowDTO"][];
+            /** Total Weight */
+            total_weight: number;
+            /** As Of */
+            as_of: string;
+            /**
+             * Hedge Note
+             * @default
+             */
+            hedge_note: string;
+        };
+        /**
+         * BrinsonBmEquitySplitRowDTO
+         * @description BM 해외주식(ACWI) 4분할 한 행.
+         */
+        BrinsonBmEquitySplitRowDTO: {
+            /** Name */
+            name: string;
+            /** Weight */
+            weight: number;
+            /**
+             * Bucket
+             * @default
+             */
+            bucket: string;
+        };
+        /**
          * BrinsonDailyClassDTO
          * @description 자산군별 일별 시계열 (B4: AP비중 추이 + 자산군 누적기여).
          */
@@ -1628,6 +1670,7 @@ export interface components {
             bm_source: string;
             /** Bm Components */
             bm_components: components["schemas"]["BrinsonBmComponentDTO"][];
+            bm_equity_split?: components["schemas"]["BrinsonBmEquitySplitDTO"] | null;
             /** Asset Rows */
             asset_rows: components["schemas"]["BrinsonAssetRowDTO"][];
             /** Sec Contrib */
@@ -2886,22 +2929,7 @@ export interface components {
             s6?: components["schemas"]["S6CommentDTO"] | null;
         };
         /** PptCommentsSaveBodyDTO */
-        "PptCommentsSaveBodyDTO-Input": {
-            /** S4 File */
-            s4_file?: string | null;
-            s4?: components["schemas"]["S4CommentDTO"] | null;
-            /** S6 File */
-            s6_file?: string | null;
-            s6?: components["schemas"]["S6CommentDTO"] | null;
-            /** Fund Code */
-            fund_code?: string | null;
-            /** End Date */
-            end_date?: string | null;
-            /** Start Date */
-            start_date?: string | null;
-        };
-        /** PptCommentsSaveBodyDTO */
-        "PptCommentsSaveBodyDTO-Output": {
+        PptCommentsSaveBodyDTO: {
             /** S4 File */
             s4_file?: string | null;
             s4?: components["schemas"]["S4CommentDTO"] | null;
@@ -3393,10 +3421,6 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
-            /** Input */
-            input?: unknown;
-            /** Context */
-            ctx?: Record<string, never>;
         };
         /**
          * ValidationSummaryDTO
@@ -4924,7 +4948,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PptCommentsSaveBodyDTO-Input"];
+                "application/json": components["schemas"]["PptCommentsSaveBodyDTO"];
             };
         };
         responses: {
@@ -4934,7 +4958,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PptCommentsSaveBodyDTO-Output"];
+                    "application/json": components["schemas"]["PptCommentsSaveBodyDTO"];
                 };
             };
             /** @description Validation Error */

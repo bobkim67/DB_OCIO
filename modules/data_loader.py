@@ -786,6 +786,78 @@ def _load_fallback_donor(fb: dict, start_date: str = None,
     return load_scip_bm_prices(fb['to'][0], fb['to'][1], start_date, currency)
 
 
+# ── MSCI ACWI 주식 4분할 (사내 SCIP `/reports/bm-wts` 와 동일 매핑, 2026-08-24 사용자 제공) ──
+# dataset_id 는 SCIP.back_dataset. **표준(standard) MSCI 이며 IMI 가 아니다.**
+# 비중 소스 = dataseries_id 36 'FG Market Value'(시가총액).
+#
+# ★ 근사가 아니라 **정확 분해**다. MSCI 스타일 지수가 모지수 시총을 분할하므로
+#     USA Growth + USA Value + World ex-USA = WORLD,  + EM = ACWI
+#   가 성립한다. 실측 검증(2025-12-01~2026-08-21, 190영업일 전수):
+#   WORLD 항등식 오차 0.00000% · EM 대조(dt.MI_DJISU 891800) 오차 0.00000%.
+#   → 4행 합이 ACWI 목표비중과 어긋나지 않는다(잔차 행 불필요).
+#
+# ⚠ 로보어드바이저 테이블(`solution.roboadvisorAPI_equitybenchmarkweights`)은 **다른 파생본**이다.
+#   같은 FG Market Value 에서 나와 성장/가치는 소수 둘째 자리까지 같지만 DM_INT/EM 경계가
+#   달라 EM 이 9.35% 로 나온다(실측 2026-08-21, 정상값 11.87%). BM 분해에 쓰지 말 것.
+# dataset_id → (지수명, 버킷키). 버킷키는 AP 종목과 짝짓는 안정 식별자
+# (표시명이 바뀌어도 정렬이 깨지지 않게).
+_ACWI_SPLIT_DATASETS = {
+    250: ('MSCI USA Growth', 'growth'),
+    251: ('MSCI USA Value', 'value'),
+    252: ('MSCI World ex-USA', 'dm_int'),
+    231: ('MSCI EM', 'em'),
+}
+
+
+def load_acwi_equity_split(as_of: str = None) -> tuple:
+    """ACWI 주식 4분할 비중 — 기준일 이하 최신 스냅샷.
+
+    Args:
+        as_of: 'YYYYMMDD' 또는 'YYYY-MM-DD' (None=최신)
+    Returns:
+        (rows, 기준일) — rows = [(지수명, 버킷키, 비중 0~1), ...] 합 1.0, 실패 시 (None, None)
+    """
+    _ids = ','.join(str(i) for i in _ACWI_SPLIT_DATASETS)
+    sql = (f"SELECT dataset_id, DATE(timestamp_observation) d, data FROM back_datapoint "
+           f"WHERE dataset_id IN ({_ids}) AND dataseries_id = 36")
+    params = []
+    if as_of:
+        _a = str(as_of).replace('-', '')
+        sql += " AND timestamp_observation <= %s"
+        params.append(f"{_a[:4]}-{_a[4:6]}-{_a[6:8]} 23:59:59")
+    # 최신 스냅샷만 필요 — 4개 dataset 이 모두 있는 마지막 날짜를 찾는다
+    sql += " AND timestamp_observation >= %s ORDER BY d DESC"
+    params.append('2004-01-01' if not as_of else
+                  (pd.Timestamp(f"{_a[:4]}-{_a[4:6]}-{_a[6:8]}") - pd.Timedelta(days=30)).strftime('%Y-%m-%d'))
+    try:
+        conn = get_pandas_connection('SCIP')
+        df = pd.read_sql(sql, conn, params=params)
+        conn.close()
+    except Exception as exc:
+        logger.warning(f"[ACWI split] 조회 실패: {exc}")
+        return None, None
+    if df.empty:
+        return None, None
+
+    def _val(blob):
+        v = parse_data_blob(blob)
+        return float(v.get('USD')) if isinstance(v, dict) else float(v)
+
+    df['v'] = df['data'].apply(_val)
+    piv = df.pivot_table(index='d', columns='dataset_id', values='v')
+    piv = piv.reindex(columns=list(_ACWI_SPLIT_DATASETS)).dropna()
+    if piv.empty:
+        return None, None
+    last = piv.index.max()
+    mv = piv.loc[last]
+    tot = float(mv.sum())
+    if tot <= 0:
+        return None, None
+    rows = [(_ACWI_SPLIT_DATASETS[i][0], _ACWI_SPLIT_DATASETS[i][1], float(mv[i]) / tot)
+            for i in _ACWI_SPLIT_DATASETS]
+    return rows, str(last)
+
+
 def load_bm_component_prices(dataset_id: int, dataseries_id: int,
                              start_date: str = None, currency: str = None,
                              end_date: str = None) -> pd.DataFrame:
