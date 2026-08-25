@@ -497,12 +497,13 @@ export default function BrinsonTab({ fundCode }: Props) {
   // 자산군별 AP — 기말 보유 스냅샷(ap_composition, 현금·미수금 포함) 우선, 없으면 period sec_contrib.
   const apComp0 = data.ap_composition ?? [];
   const useSnapshot0 = apComp0.length > 0;
-  const apByClass0 = new Map<string, { label: string; weight: number }[]>();
+  // bucket = ACWI 4분할 버킷키(해외주식만). BM 세부지수와 행 맞추는 데 쓴다.
+  const apByClass0 = new Map<string, { label: string; weight: number; bucket?: string }[]>();
   const apSnapSub0 = new Map<string, number>();
   if (useSnapshot0) {
     for (const c of apComp0) {
       const g = normCls1(c.asset_class);
-      apByClass0.set(g, c.items.map((it) => ({ label: it.item_nm, weight: it.weight_pct })));
+      apByClass0.set(g, c.items.map((it) => ({ label: it.item_nm, weight: it.weight_pct, bucket: it.bucket ?? "" })));
       apSnapSub0.set(g, (apSnapSub0.get(g) ?? 0) + c.weight_pct);
     }
   } else {
@@ -510,7 +511,7 @@ export default function BrinsonTab({ fundCode }: Props) {
       if (s.asset_class === "FX") continue;
       const g = normCls1(s.asset_class);
       const arr = apByClass0.get(g) ?? [];
-      arr.push({ label: s.item_nm, weight: s.weight_pct });
+      arr.push({ label: s.item_nm, weight: s.weight_pct, bucket: s.bucket ?? "" });
       apByClass0.set(g, arr);
     }
     for (const arr of apByClass0.values()) arr.sort((a, b) => b.weight - a.weight);
@@ -523,7 +524,7 @@ export default function BrinsonTab({ fundCode }: Props) {
       if (s.item_nm === s.asset_class) continue; // 잔차/집계 행 제외
       const g = normCls1(s.asset_class);
       const arr = apByClass0.get(g) ?? [];
-      if (!arr.some((x) => x.label === s.item_nm)) arr.push({ label: s.item_nm, weight: 0 });
+      if (!arr.some((x) => x.label === s.item_nm)) arr.push({ label: s.item_nm, weight: 0, bucket: s.bucket ?? "" });
       apByClass0.set(g, arr);
     }
   }
@@ -600,10 +601,27 @@ export default function BrinsonTab({ fundCode }: Props) {
   // 해외주식 BM(MSCI ACWI) → 스타일·지역 4분할로 교체 (2026-08-24 사용자 지정).
   // 4JM12 처럼 ACWI 레그가 2개면 백엔드가 **합쳐서 4행**으로 주고 헤지 구성은 hedge_note 로 온다.
   // 비중 표시만 바뀌며 Brinson 수식·표1 은 건드리지 않는다(ACWI 한 행 유지).
+  // 각 세부지수를 **같은 버킷의 첫 AP 종목과 같은 줄**에 놓는다 — 사이는 빈 행으로 채운다
+  // (2026-08-25 사용자 지정). 4JM12 처럼 한 버킷에 종목이 여럿이면 그냥 순서만 맞춰선
+  // EM 이 한 칸 밀린다: AP = 성장·가치·선진·가치·EM·… 이라 EM 의 첫 등장이 5번째다.
+  // AP 에 없는 버킷은 뒤에 이어 붙인다.
   const eqSplit0 = data.bm_equity_split ?? null;
   if (eqSplit0 && !isStartBasis && bmComps0.has(eqSplit0.asset_class)) {
-    bmComps0.set(eqSplit0.asset_class,
-      eqSplit0.rows.map((r) => ({ label: r.name, weight: r.weight })));
+    const apItems = apByClass0.get(eqSplit0.asset_class) ?? [];
+    const FAR = Number.MAX_SAFE_INTEGER;
+    const placed = eqSplit0.rows
+      .map((r) => ({
+        row: { label: r.name, weight: r.weight, bucket: r.bucket },
+        at: apItems.findIndex((a) => !!a.bucket && a.bucket === r.bucket),
+      }))
+      .sort((x, y) => (x.at < 0 ? FAR : x.at) - (y.at < 0 ? FAR : y.at));
+    const slots: { label: string; weight: number; bucket: string }[] = [];
+    for (const { row, at } of placed) {
+      const target = at < 0 ? slots.length : at;
+      while (slots.length < target) slots.push({ label: "", weight: 0, bucket: "" });
+      slots.push(row);
+    }
+    bmComps0.set(eqSplit0.asset_class, slots);
   }
   // 좌측 표가 실제로 그리는 행 — 모드에 따라 BM 지수 ↔ 기초일 AP 종목
   const leftComps0 = isStartBasis ? apBaseByClass0 : bmComps0;
@@ -1049,11 +1067,12 @@ export default function BrinsonTab({ fundCode }: Props) {
                               ? ap.find((a) => a.label === comps[i].label)?.weight
                               : undefined;
                             const d = aw === undefined ? null : aw - comps[i].weight;
+                            const blank = !comps[i].label;   // 행 맞춤용 빈 슬롯
                             rows.push(
                               <tr key={`${g}-bmi-${i}`}>
                                 <td className="ind" title={comps[i].label}>{comps[i].label}</td>
-                                <td className="r">{fmtWeight(comps[i].weight, 1)}</td>
-                                {d === null ? (
+                                <td className="r">{blank ? "" : fmtWeight(comps[i].weight, 1)}</td>
+                                {blank || d === null ? (
                                   <td className="r" />
                                 ) : (
                                   <td className={`r ${d >= 0 ? "ok" : "brw"}`}>

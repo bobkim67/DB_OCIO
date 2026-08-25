@@ -1396,6 +1396,11 @@ export interface components {
             item_nm: string;
             /** Weight Pct */
             weight_pct: number;
+            /**
+             * Bucket
+             * @default
+             */
+            bucket: string;
         };
         /**
          * BrinsonApCompositionDTO
@@ -1700,6 +1705,11 @@ export interface components {
         BrinsonSecContribDTO: {
             /** Asset Class */
             asset_class: string;
+            /**
+             * Bucket
+             * @default
+             */
+            bucket: string;
             /** Item Nm */
             item_nm: string;
             /** Weight Pct */

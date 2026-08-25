@@ -228,6 +228,7 @@ def _to_sec_rows(sec_df: pd.DataFrame | None) -> list[BrinsonSecContribDTO]:
             continue
         out.append(BrinsonSecContribDTO(
             asset_class=str(r.get("자산군", "")),
+            bucket=_bucket_by_name(nm),
             item_nm=nm,
             weight_pct=w,
             return_pct=ret,
@@ -538,6 +539,35 @@ _TAA_SO_TO_BUCKET = {
 }
 
 
+_TAA_BUCKET_BY_NAME: dict[str, str] | None = None
+
+
+def _bucket_by_isin(isin) -> str:
+    """ISIN → ACWI 4분할 버킷키. 미매핑/비해당은 ""."""
+    try:
+        from config.taa_classification import classify_taa
+        cls = classify_taa(str(isin))
+    except Exception:
+        return ""
+    return _TAA_SO_TO_BUCKET.get(cls[3], "") if cls else ""
+
+
+def _bucket_by_name(name) -> str:
+    """종목명 → 버킷키. sec_contrib 에는 ISIN 이 없어 이름으로 찾는다(기말 미보유 종목용)."""
+    global _TAA_BUCKET_BY_NAME
+    if _TAA_BUCKET_BY_NAME is None:
+        try:
+            from config.taa_classification import TAA_CLASSIFICATION
+            _TAA_BUCKET_BY_NAME = {}
+            for v in TAA_CLASSIFICATION.values():
+                b = _TAA_SO_TO_BUCKET.get(v[3])
+                if b:
+                    _TAA_BUCKET_BY_NAME[str(v[0]).strip()] = b
+        except Exception:
+            _TAA_BUCKET_BY_NAME = {}
+    return _TAA_BUCKET_BY_NAME.get(str(name).strip(), "")
+
+
 def _order_split_rows(rows, isins):
     """BM 4분할 행을 **AP 보유 표시 순서**에 맞춘다 (2026-08-24 사용자 지정).
 
@@ -545,14 +575,9 @@ def _order_split_rows(rows, isins):
     눈으로 어긋났다. 한 버킷에 종목이 여러 개인 펀드(4JM12)는 **첫 등장 순서**를 쓴다.
     AP 에 없는 버킷은 원래 순서 그대로 뒤에 붙인다(sorted 안정 정렬).
     """
-    try:
-        from config.taa_classification import classify_taa
-    except Exception:
-        return rows
     order: list[str] = []
     for isin in isins:
-        cls = classify_taa(str(isin))
-        b = _TAA_SO_TO_BUCKET.get(cls[3]) if cls else None
+        b = _bucket_by_isin(isin)
         if b and b not in order:
             order.append(b)
     if not order:
@@ -631,7 +656,7 @@ def _build_ap_composition(hold, method: str) -> list[BrinsonApCompositionDTO]:
         from collections import defaultdict
         from modules.data_loader import _collapse_asset_class
         w_by: dict[str, float] = defaultdict(float)
-        items_by: dict[str, list[tuple[str, float]]] = defaultdict(list)
+        items_by: dict[str, list[tuple[str, str, float]]] = defaultdict(list)
         for it in hold.holdings_items:
             if it.asset_class == "FX":
                 continue
@@ -639,11 +664,12 @@ def _build_ap_composition(hold, method: str) -> list[BrinsonApCompositionDTO]:
             if not bc or bc == "FX":
                 continue
             w_by[bc] += it.weight
-            items_by[bc].append((it.item_nm, it.weight))
+            items_by[bc].append((it.item_cd, it.item_nm, it.weight))
         out: list[BrinsonApCompositionDTO] = []
         for bc, w in w_by.items():
-            items = [BrinsonApCompItemDTO(item_nm=nm, weight_pct=round(wt * 100, 2))
-                     for nm, wt in sorted(items_by[bc], key=lambda x: -x[1])]
+            items = [BrinsonApCompItemDTO(item_nm=nm, weight_pct=round(wt * 100, 2),
+                                         bucket=_bucket_by_isin(cd))
+                     for cd, nm, wt in sorted(items_by[bc], key=lambda x: -x[2])]
             out.append(BrinsonApCompositionDTO(
                 asset_class=bc, weight_pct=round(w * 100, 2), items=items))
         return out

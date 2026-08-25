@@ -70,6 +70,7 @@ class BrinsonBmEquitySplitDTO(BaseModel):
 class BrinsonSecContribDTO(BaseModel):
     """compute_brinson_attribution_v2['sec_contrib'] 한 행 (전체 종목)."""
     asset_class: str           # 자산군
+    bucket: str = ""           # ACWI 4분할 버킷키 — 기말 미보유 종목도 행 맞춤에 쓰인다
     item_nm: str               # 종목명
     weight_pct: float          # 비중(%)
     return_pct: float          # 수익률(%)
@@ -80,6 +81,7 @@ class BrinsonApCompItemDTO(BaseModel):
     """표0 AP 구성 — 기말 보유 스냅샷(현금 포함) 종목."""
     item_nm: str
     weight_pct: float          # 순자산대비 비중(%)
+    bucket: str = ""           # ACWI 4분할 버킷키 — BM 세부지수와 행 맞추기용(해외주식만)
 
 
 class BrinsonApCompositionDTO(BaseModel):
