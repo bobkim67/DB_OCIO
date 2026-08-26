@@ -77,6 +77,8 @@ function RetCell({ v, bm, isBM, strong }: { v?: number; bm?: number; isBM: boole
 // 컴플 미니게이지 — 편입종목 가이드 카드 축소판:
 //   현재값(편입비중)=핀 바로 위, 가이드라인 레이블=음영 경계선 위 (카드와 동일 위치 규칙).
 const ST_HEX: Record<string, string> = { breach: "#C0392B", warn: "#C8862B", ok: "#2E9E7B", none: "#557EAA" };
+// 타이틀 옆 상태 표기 (2026-08-26 사용자 지시). none=SAA 참고선이라 판정이 아닌 '비교'.
+const ST_TXT: Record<string, string> = { breach: "위험", warn: "주의", ok: "적정", none: "비교" };
 const pc0 = (v: number) => `${(v * 100).toFixed(0)}%`;
 function MiniGauge({ c }: { c: ComplianceItemDTO }) {
   const lo = c.band_low, hi = c.band_high, V = c.value;
@@ -94,12 +96,18 @@ function MiniGauge({ c }: { c: ComplianceItemDTO }) {
     : clamp((x / axisMax) * 100);
   const cp = (x: number) => Math.min(92, Math.max(8, P(x)));  // 라벨 위치 클램프
   const col = ST_HEX[c.status] ?? ST_HEX.none;
-  const G = "#d8efe0", R = "#fbe1de";
+  const G = "#d8efe0", R = "#fbe1de", N = "#e4eaf2";   // N = SAA 참고선 중립 음영
   const zones: CSSProperties[] = [];
   const marks: { x: number; label: string }[] = [];
-  if (kind === "max" || kind === "ref") {
+  if (kind === "max") {
     zones.push({ left: 0, width: `${P(hi!)}%`, background: G }, { left: `${P(hi!)}%`, right: 0, background: R });
-    marks.push({ x: hi!, label: kind === "ref" ? `SAA ${pc0(hi!)}` : `≤${pc0(hi!)}` });
+    marks.push({ x: hi!, label: `≤${pc0(hi!)}` });
+  } else if (kind === "ref") {
+    // SAA 는 한도가 아니라 참고선 — 위반 판정을 안 해(status="none", 핀=파랑) 초록/빨강 존을
+    // 칠하면 핀은 파랑인데 존은 빨강이라 위반처럼 읽힌다 → 중립 음영 1색 + SAA 눈금
+    // (2026-08-26 사용자 지시)
+    zones.push({ left: 0, right: 0, background: N });
+    marks.push({ x: hi!, label: `SAA ${pc0(hi!)}` });
   } else if (kind === "min") {
     zones.push({ left: 0, width: `${P(lo!)}%`, background: R }, { left: `${P(lo!)}%`, right: 0, background: G });
     marks.push({ x: lo!, label: `≥${pc0(lo!)}` });
@@ -111,7 +119,9 @@ function MiniGauge({ c }: { c: ComplianceItemDTO }) {
   }
   return (
     <div style={{ flex: "1 1 0", minWidth: 150, maxWidth: 460 }}>
-      <div style={{ fontSize: 11.5, color: "#5b626d", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginBottom: 3 }}>{c.label}</div>
+      <div style={{ fontSize: 11.5, color: "#5b626d", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginBottom: 3 }}>
+        {c.label}<span style={{ color: col, fontWeight: 700 }}>({ST_TXT[c.status] ?? "—"})</span>
+      </div>
       {/* 현재값 — 핀 바로 위 */}
       <div style={{ position: "relative", height: 15 }}>
         <span style={{ position: "absolute", left: `${cp(V)}%`, transform: "translateX(-50%)", ...NUMFONT, fontSize: 12, fontWeight: 700, color: col, whiteSpace: "nowrap" }}>{pc0(V)}</span>
@@ -119,6 +129,7 @@ function MiniGauge({ c }: { c: ComplianceItemDTO }) {
       {/* 트랙 */}
       <div style={{ position: "relative", height: 9, background: "#eef0f3", borderRadius: 3, overflow: "hidden" }}>
         {zones.map((z, i) => <div key={i} style={{ position: "absolute", top: 0, bottom: 0, ...z }} />)}
+        {kind === "ref" && <div style={{ position: "absolute", top: 0, bottom: 0, left: `${P(hi!)}%`, width: 2, background: "#9FB1C6", transform: "translateX(-1px)" }} />}
         <div style={{ position: "absolute", top: -1, bottom: -1, left: `${P(V)}%`, width: 2, background: col, transform: "translateX(-1px)" }} />
       </div>
       {/* 가이드라인 레이블 — 음영 경계선 아래(하단) */}

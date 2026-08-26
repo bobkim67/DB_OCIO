@@ -557,8 +557,9 @@ function Gauge({ c, setTip }: { c: ComplianceItemDTO; setTip: (t: Tip) => void }
         {kind === "max" && (<><div className="zone ok" style={{ left: 0, width: pp(hi!) }} /><div className="zone bad" style={{ left: pp(hi!), right: 0 }} /></>)}
         {kind === "min" && (<><div className="zone bad" style={{ left: 0, width: pp(lo!) }} /><div className="zone ok" style={{ left: pp(lo!), right: 0 }} /></>)}
         {kind === "band" && (<><div className="zone bad" style={{ left: 0, width: pp(lo!) }} /><div className="zone ok" style={{ left: pp(lo!), width: `${P(hi!) - P(lo!)}%` }} /><div className="zone bad" style={{ left: pp(hi!), right: 0 }} /></>)}
-        {/* ref(SAA 비교) — 판정 없이 시각 음영만: SAA 이하=초록, 초과=빨강 (2026-07-09 사용자 지정) */}
-        {kind === "ref" && (<><div className="zone ok" style={{ left: 0, width: pp(hi!) }} /><div className="zone bad" style={{ left: pp(hi!), right: 0 }} /></>)}
+        {/* ref(SAA 비교) — 판정을 안 하므로(status="none", 핀=파랑) 초록/빨강 존을 쓰지 않는다.
+            중립 음영 1색 + SAA 위치 눈금만 (2026-08-26 사용자 지시, 구 07-09 초록/빨강 대체) */}
+        {kind === "ref" && (<><div className="zone ref" style={{ left: 0, right: 0 }} /><div className="rmk" style={{ left: pp(hi!) }} /></>)}
         {/* 현재 비중 = 상태색 세로 핀 (전 종류 공통, 2026-07-07 통일).
             가이드 기준선(검정)은 제거 — 존 색 경계 + 경계 위 라벨로 표시 */}
         <div className="vmk" style={{ left: pp(V), background: stColor }} />
@@ -574,10 +575,15 @@ function Gauge({ c, setTip }: { c: ComplianceItemDTO; setTip: (t: Tip) => void }
           <div className="mkrow"><span className="mklab" style={{ left: `${mkLeft}%` }}>{mkLabel}</span></div>
         )
       )}
-      {kind !== "none" && (
+      {kind === "ref" ? (
+        /* SAA 는 판정이 아닌 참고선 — 허용/초과 레전드 대신 기준선 표기만 (2026-08-26) */
         <div className="mleg">
-          <span className="li"><span className="zsw zok" />{kind === "ref" ? "SAA 이하" : "허용 구간"}</span>
-          <span className="li"><span className="zsw zbad" />{kind === "ref" ? "SAA 초과" : "초과 구간"}</span>
+          <span className="li"><span className="zsw zref" />SAA 목표 기준선</span>
+        </div>
+      ) : kind !== "none" && (
+        <div className="mleg">
+          <span className="li"><span className="zsw zok" />허용 구간</span>
+          <span className="li"><span className="zsw zbad" />초과 구간</span>
         </div>
       )}
     </div>
