@@ -1070,8 +1070,12 @@ export default function BrinsonTab({ fundCode }: Props) {
                             const blank = !comps[i].label;   // 행 맞춤용 빈 슬롯
                             rows.push(
                               <tr key={`${g}-bmi-${i}`}>
-                                <td className="ind" title={comps[i].label}>{comps[i].label}</td>
-                                <td className="r">{blank ? "" : fmtWeight(comps[i].weight, 1)}</td>
+                                {/* ★ 빈 슬롯에는 **nbsp**( )를 넣는다 — 셀이 전부 ""면 tr 이 13px 로
+                                    접혀 아래 행이 통째로 위로 밀린다. 실측(2026-08-27, 07G03):
+                                    MSCI EM 이 짝인 VWO 보다 19px 위에 그려졌다.
+                                    ⚠ 일반 공백(" ")은 collapse 돼서 높이가 안 살아난다(실측 13px 그대로). */}
+                                <td className="ind" title={comps[i].label}>{comps[i].label || " "}</td>
+                                <td className="r">{blank ? " " : fmtWeight(comps[i].weight, 1)}</td>
                                 {blank || d === null ? (
                                   <td className="r" />
                                 ) : (
