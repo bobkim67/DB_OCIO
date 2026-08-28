@@ -79,7 +79,15 @@ function RetCell({ v, bm, isBM, strong }: { v?: number; bm?: number; isBM: boole
 const ST_HEX: Record<string, string> = { breach: "#C0392B", warn: "#C8862B", ok: "#2E9E7B", none: "#557EAA" };
 // 타이틀 옆 상태 표기 (2026-08-26 사용자 지시). none=SAA 참고선이라 판정이 아닌 '비교'.
 const ST_TXT: Record<string, string> = { breach: "위험", warn: "주의", ok: "적정", none: "비교" };
-const pc0 = (v: number) => `${(v * 100).toFixed(0)}%`;
+// ★ 현재값은 **항상 1자리**. 0자리로 찍던 시절 2JM23 유동성 1.52%(≥2% 미달, breach)가
+// 한도와 똑같은 "2%" 로 보여 핀만 왼쪽에 떨어진 것처럼 읽혔다 (2026-08-28 사용자 리포트).
+const pc1 = (v: number) => `${(v * 100).toFixed(1)}%`;
+// 가이드 눈금은 정수 한도(≤80% · 44/68 …)를 그대로 두고, 계산 한도만 1자리로 —
+// 07G04/07G07 서브펀드 가중한도, 4JM12 환헤지 한도(해외자산+10%p)가 정수가 아니다.
+const pcG = (v: number) => {
+  const x = v * 100;
+  return Math.abs(x - Math.round(x)) < 1e-6 ? `${Math.round(x)}%` : `${x.toFixed(1)}%`;
+};
 function MiniGauge({ c }: { c: ComplianceItemDTO }) {
   const lo = c.band_low, hi = c.band_high, V = c.value;
   const isRef = c.status === "none" && hi != null;
@@ -101,21 +109,21 @@ function MiniGauge({ c }: { c: ComplianceItemDTO }) {
   const marks: { x: number; label: string }[] = [];
   if (kind === "max") {
     zones.push({ left: 0, width: `${P(hi!)}%`, background: G }, { left: `${P(hi!)}%`, right: 0, background: R });
-    marks.push({ x: hi!, label: `≤${pc0(hi!)}` });
+    marks.push({ x: hi!, label: `≤${pcG(hi!)}` });
   } else if (kind === "ref") {
     // SAA 는 한도가 아니라 참고선 — 위반 판정을 안 해(status="none", 핀=파랑) 초록/빨강 존을
     // 칠하면 핀은 파랑인데 존은 빨강이라 위반처럼 읽힌다 → 중립 음영 1색 + SAA 눈금
     // (2026-08-26 사용자 지시)
     zones.push({ left: 0, right: 0, background: N });
-    marks.push({ x: hi!, label: `SAA ${pc0(hi!)}` });
+    marks.push({ x: hi!, label: `SAA ${pcG(hi!)}` });
   } else if (kind === "min") {
     zones.push({ left: 0, width: `${P(lo!)}%`, background: R }, { left: `${P(lo!)}%`, right: 0, background: G });
-    marks.push({ x: lo!, label: `≥${pc0(lo!)}` });
+    marks.push({ x: lo!, label: `≥${pcG(lo!)}` });
   } else if (kind === "band") {
     zones.push({ left: 0, width: `${P(lo!)}%`, background: R },
       { left: `${P(lo!)}%`, width: `${P(hi!) - P(lo!)}%`, background: G },
       { left: `${P(hi!)}%`, right: 0, background: R });
-    marks.push({ x: lo!, label: pc0(lo!) }, { x: hi!, label: pc0(hi!) });
+    marks.push({ x: lo!, label: pcG(lo!) }, { x: hi!, label: pcG(hi!) });
   }
   return (
     <div style={{ flex: "1 1 0", minWidth: 150, maxWidth: 460 }}>
@@ -124,7 +132,7 @@ function MiniGauge({ c }: { c: ComplianceItemDTO }) {
       </div>
       {/* 현재값 — 핀 바로 위 */}
       <div style={{ position: "relative", height: 15 }}>
-        <span style={{ position: "absolute", left: `${cp(V)}%`, transform: "translateX(-50%)", ...NUMFONT, fontSize: 12, fontWeight: 700, color: col, whiteSpace: "nowrap" }}>{pc0(V)}</span>
+        <span style={{ position: "absolute", left: `${cp(V)}%`, transform: "translateX(-50%)", ...NUMFONT, fontSize: 12, fontWeight: 700, color: col, whiteSpace: "nowrap" }}>{pc1(V)}</span>
       </div>
       {/* 트랙 */}
       <div style={{ position: "relative", height: 9, background: "#eef0f3", borderRadius: 3, overflow: "hidden" }}>
