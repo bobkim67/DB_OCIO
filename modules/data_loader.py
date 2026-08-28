@@ -240,7 +240,7 @@ def load_fund_holdings(fund_code: str, date: str = None) -> pd.DataFrame:
         sql = """
             SELECT STD_DT, FUND_CD, FUND_NM, ITEM_CD, ITEM_NM,
                    AST_CLSF_CD_NM, CURR_DS_CD, POS_DS_CD,
-                   EVL_AMT, NAST_TAMT_AGNST_WGH, AST_AGNST_WGH,
+                   EVL_AMT, FC_EVL_AMT, NAST_TAMT_AGNST_WGH, AST_AGNST_WGH,
                    EVL_ERN_RT, QTY, ACQ_AMT, DUR, MOD_DUR
             FROM DWPM10530
             WHERE FUND_CD = %s AND STD_DT = %s
@@ -1502,6 +1502,10 @@ def _load_fund_holdings_lookthrough_cached(fund_code: str, date: str = None) -> 
                 if child_total_evl > 0:
                     scale = mother_evl / child_total_evl
                     child_df['EVL_AMT'] = child_df['EVL_AMT'] * scale
+                    # 외화 평가액도 같은 배수로 — 안 하면 자펀드 원금액이 그대로 남아
+                    # 모펀드 지분만큼 축소된 원화액과 짝이 안 맞는다.
+                    if 'FC_EVL_AMT' in child_df.columns:
+                        child_df['FC_EVL_AMT'] = child_df['FC_EVL_AMT'] * scale
                     child_df['평가금액(억)'] = (child_df['EVL_AMT'] / 1e8).round(1)
                 expanded_rows.append(child_df)
                 continue
@@ -1525,6 +1529,8 @@ def _load_fund_holdings_lookthrough_cached(fund_code: str, date: str = None) -> 
         agg_dict['EVL_AMT'] = 'sum'
         if 'QTY' in result.columns:
             agg_dict['QTY'] = 'sum'
+        if 'FC_EVL_AMT' in result.columns:
+            agg_dict['FC_EVL_AMT'] = 'sum'   # 같은 종목 = 같은 통화라 단순합
         grp = result.groupby(['ITEM_CD', '자산군'], as_index=False).agg(agg_dict)
     else:
         grp = result

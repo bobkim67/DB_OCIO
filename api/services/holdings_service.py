@@ -524,6 +524,25 @@ def _val(row: pd.Series, *names: str, default: Any = None) -> Any:
     return default
 
 
+def _fc_amount(row: pd.Series) -> tuple[str | None, float | None]:
+    """외화표시 종목의 (통화, 원통화 평가액). 원화·미상이면 (None, None).
+
+    DWPM10530 은 원화 EVL_AMT 와 별도로 FC_EVL_AMT(원통화)를 준다 — 환산이 아니라
+    원장값이라 환율 가정이 끼지 않는다. KRW 행은 FC_EVL_AMT 가 0/결측이라 걸러낸다.
+    """
+    ccy = str(_val(row, "CURR_DS_CD", "curr_ds_cd", default="") or "").strip().upper()
+    if not ccy or ccy == "KRW":
+        return None, None
+    raw = _val(row, "FC_EVL_AMT", "fc_evl_amt")
+    if raw is None:
+        return ccy, None
+    try:
+        amt = float(raw)
+    except (TypeError, ValueError):
+        return ccy, None
+    return ccy, (amt if amt != 0 else None)
+
+
 def _extract_as_of(df: pd.DataFrame) -> date | None:
     if "STD_DT" in df.columns:
         s = df["STD_DT"].iloc[0]
@@ -832,12 +851,15 @@ def build_holdings(
         ac_final = _reclassify_fx_deposit(item_cd_s, item_nm_s, str(ac_raw))
         pos_raw = _val(row, "POS_DS_CD", "pos_ds_cd", default="")
         is_short = "매도" in str(pos_raw)
+        ccy, fc_amt = _fc_amount(row)
         items.append(HoldingItemDTO(
             item_cd=item_cd_s,
             item_nm=item_nm_s,
             asset_class=ac_final,
             weight=weight,
             evl_amt=evl_f,
+            currency=ccy,
+            fc_evl_amt=fc_amt,
             sub_fund_cd=(
                 str(_val(row, "SUB_FUND_CD", "sub_fund_cd"))
                 if _val(row, "SUB_FUND_CD", "sub_fund_cd") is not None

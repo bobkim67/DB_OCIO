@@ -27,6 +27,13 @@ const STATUS_LABEL: Record<string, string> = { ok: "적합", warn: "주의", bre
 const pct1 = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? "—" : `${(v * 100).toFixed(1)}%`);
 const eok =(v: number | null | undefined) => (v == null || !Number.isFinite(v) ? "—" : `${(v / 1e8).toLocaleString("ko-KR", { maximumFractionDigits: 1 })}억`);
 const num = (v: number | null | undefined, d = 1, s = "") => (v == null || !Number.isFinite(v) ? "—" : v.toFixed(d) + s);
+// 종목 카드 평가액 — 억 반올림이 아니라 **원단위 원장값** (2026-08-28 사용자 지시)
+const won = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? "—" : `${Math.round(v).toLocaleString("ko-KR")}원`);
+// 외화표시 종목(USD DEPOSIT 등)은 원통화 평가액을 병기 — 원장 FC_EVL_AMT 라 환율 가정 없음
+const fcAmt = (it: HoldingItemDTO | undefined) =>
+  it?.currency && it.fc_evl_amt != null && Number.isFinite(it.fc_evl_amt)
+    ? `${it.currency} ${it.fc_evl_amt.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : null;
 // 로컬 타임존 기준 오늘 YYYY-MM-DD (기준일 date input max용)
 const todayStr = () => {
   const d = new Date();
@@ -426,11 +433,26 @@ export default function HoldingsTab({ fundCode }: Props) {
                 </div>
               ) : (
                 <div>
-                  <div className="hd-bsum">
-                    <div><div className="k">종목</div><div className="v" style={{ fontSize: 13 }}>{sel.nm}</div></div>
-                    <div><div className="k">비중</div><div className="v num">{pct1(items.find((it) => it.item_cd === sel.cd)?.weight)}</div></div>
-                    <div><div className="k">자산군</div><div className="v" style={{ fontSize: 13 }}>{items.find((it) => it.item_cd === sel.cd)?.asset_class ?? "—"}</div></div>
-                  </div>
+                  {/* 카드 순서 = 자산군 · 종목 · 비중 · 평가액 (2026-08-28 사용자 지시).
+                      평가액은 원단위 원장값이고, 외화표시 종목은 원통화를 아래 줄에 병기한다. */}
+                  {(() => {
+                    const selIt = items.find((it) => it.item_cd === sel.cd);
+                    const fc = fcAmt(selIt);
+                    return (
+                      <div className="hd-bsum">
+                        <div><div className="k">자산군</div><div className="v" style={{ fontSize: 13 }}>{selIt?.asset_class ?? "—"}</div></div>
+                        <div><div className="k">종목</div><div className="v" style={{ fontSize: 13 }}>{sel.nm}</div></div>
+                        <div><div className="k">비중</div><div className="v num">{pct1(selIt?.weight)}</div></div>
+                        <div>
+                          <div className="k">평가액</div>
+                          <div className="v num" style={{ fontSize: 13 }}>
+                            {won(selIt?.evl_amt)}
+                            {fc && <div style={{ fontSize: 11, fontWeight: 400, color: "var(--ace-ink-3)" }}>{fc}</div>}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {secRetQ.isLoading ? (
                     <div style={{ padding: 40, color: "var(--ace-ink-3)", textAlign: "center" }}>로딩 중…</div>
                   ) : (

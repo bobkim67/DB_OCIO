@@ -18,7 +18,11 @@ class HoldingItemDTO(BaseModel):
     item_nm: str
     asset_class: str
     weight: float                   # 순자산대비 비중 raw ratio
-    evl_amt: float                  # 평가금액
+    evl_amt: float                  # 평가금액 (원화, DWPM10530.EVL_AMT)
+    # 외화표시 종목(DWPM10530.CURR_DS_CD != KRW)의 원통화 평가액 — 원화와 병기용.
+    # USD DEPOSIT 처럼 "몇 달러인지"가 원화액보다 직관적인 라인이 있다(2026-08-28 사용자 지시).
+    currency: str | None = None     # 'USD' 등. 원화/미상이면 None
+    fc_evl_amt: float | None = None # DWPM10530.FC_EVL_AMT (look-through 시 지분 배수 적용)
     sub_fund_cd: str | None = None  # look-through 적용 시 원 하위 펀드코드
     is_short: bool = False          # 매도 포지션 여부 (DWPM10530 POS_DS_CD='매도')
     duration: float | None = None   # 모듈 duration_fetcher 매핑 종목만 채움
