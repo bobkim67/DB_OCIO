@@ -64,6 +64,10 @@ const ASSET_ORDER: Record<string, number> = {
   국내주식: 0, 해외주식: 1, 국내채권: 2, 해외채권: 3,
   대체투자: 4, "금·대체": 4, FX: 5, 모펀드: 6, 유동성: 7,
 };
+// 설정/해지(DWPM12880)는 자산군이 아니라 부모펀드 자금 유출입이라, 세부내역 필터에서
+// **'자산군 전체' 와 섞지 않고 별도 항목**으로 뺀다 (2026-08-28 사용자 지시).
+// 거래 행의 asset_class 는 _classify_6class 산출물이라 이 값과 절대 겹치지 않는다.
+const CASHFLOW_AC = "설정/해지";
 
 export default function TransactionsTab({ fundCode }: Props) {
   // 종료일 디폴트 = 전일 (다른 탭과 동일, 2026-07-31 사용자 지시). 로컬 타임존 기준 —
@@ -237,16 +241,22 @@ export default function TransactionsTab({ fundCode }: Props) {
     const set = new Set(txnRows.map((r) => r.asset_class));
     return [...set].sort((a, b) => (ASSET_ORDER[a] ?? 99) - (ASSET_ORDER[b] ?? 99));
   }, [txnRows]);
+  const hasCashflows = (txnQ.data?.cashflows?.length ?? 0) > 0;
   useEffect(() => {
+    if (detailAsset === CASHFLOW_AC) {
+      if (!hasCashflows) setDetailAsset("");   // 기간에 설정/해지가 없으면 전체로 복귀
+      return;                                  // 자산군 옵션 목록에는 없는 값이라 아래 검사 제외
+    }
     if (detailAsset && !detailAssetOptions.includes(detailAsset)) setDetailAsset("");
-  }, [detailAssetOptions, detailAsset]);
+  }, [detailAssetOptions, detailAsset, hasCashflows]);
   const filteredDetailRows = useMemo(
     () => (detailAsset ? sortedRows.filter((r) => r.asset_class === detailAsset) : sortedRows),
     [sortedRows, detailAsset],
   );
 
-  // 세부내역 = 거래 + 펀드 설정/해지 현금흐름(자산군 필터 없을 때만). 날짜 내림차순 병합.
-  // 설정/해지는 자산군 무관(부모펀드 자금 유출입)이라 자산군 필터 적용 시 제외.
+  // 세부내역 = 거래 **또는** 펀드 설정/해지 현금흐름. 날짜 내림차순.
+  // 필터가 CASHFLOW_AC 면 현금흐름만, 그 외(전체 포함)는 거래만 — 둘을 섞지 않는다.
+  // (거래 행은 asset_class 가 CASHFLOW_AC 일 수 없어 filteredDetailRows 가 자동으로 빈다.)
   type DetailEntry = {
     date: string; fund_code: string; asset_class: string;
     item_nm: string; side: string; amount_eok: number; kind: "trade" | "cashflow";
@@ -256,10 +266,10 @@ export default function TransactionsTab({ fundCode }: Props) {
       date: r.date, fund_code: r.fund_code, asset_class: r.asset_class,
       item_nm: r.item_nm, side: r.side, amount_eok: r.amount_eok, kind: "trade",
     }));
-    const cf: DetailEntry[] = detailAsset
+    const cf: DetailEntry[] = detailAsset !== CASHFLOW_AC
       ? []
       : (txnQ.data?.cashflows ?? []).map((c) => ({
-          date: c.date.replace(/-/g, ""), fund_code: fundCode, asset_class: "설정/해지",
+          date: c.date.replace(/-/g, ""), fund_code: fundCode, asset_class: CASHFLOW_AC,
           item_nm: c.side === "설정" ? "펀드 설정 (자금 유입)" : "펀드 해지 (자금 유출)",
           side: c.side, amount_eok: c.amount_eok, kind: "cashflow",
         }));
@@ -441,15 +451,11 @@ export default function TransactionsTab({ fundCode }: Props) {
             <div>
               <div className="tx-coltitle">
                 세부내역 ({detailEntries.length}건)
-                {!detailAsset && (txnQ.data?.cashflows?.length ?? 0) > 0 && (
-                  <span className="muted" style={{ fontWeight: 400, marginLeft: 6 }}>
-                    · 설정/해지 {txnQ.data?.cashflows?.length}건 포함
-                  </span>
-                )}
                 <select className="tx-flt" value={detailAsset}
                   onChange={(e) => setDetailAsset(e.target.value)} title="자산군 필터">
                   <option value="">자산군 전체</option>
                   {detailAssetOptions.map((ac) => <option key={ac} value={ac}>{ac}</option>)}
+                  {hasCashflows && <option value={CASHFLOW_AC}>{CASHFLOW_AC}</option>}
                 </select>
                 <button className="tx-btn" onClick={() => setDetailExpanded((o) => !o)}>
                   {detailExpanded ? "접기" : "펼치기"}
