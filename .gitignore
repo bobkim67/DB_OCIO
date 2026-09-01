@@ -129,3 +129,9 @@ dist_package/
 data/memos.json
 
 output/
+
+# Debug — 하위 폴더 md 도 제외 (debug/*.md 는 1단계만 걸린다)
+debug/**/*.md
+
+# 루트에 떨어진 스크린샷 (작업 중 캡쳐, 저장소 자산 아님)
+/*.png
