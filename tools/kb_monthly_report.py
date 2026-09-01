@@ -38,6 +38,11 @@ FUND = '07G07'
 _FS_NAV_COL = 8            # H열 = 한국투자OCIO알아서
 _XL_EPOCH = date(1899, 12, 30)
 
+# FactSheet 자산군 6분류 — 양식 C2:H2 순서 그대로. 라벨이 아니라 **순서가 곧 정확도**다.
+FS_ASSETS = ('국내주식', '해외주식', '국내채권', '해외채권', '대체투자', '유동성')
+# FactSheet 운용수익률 행의 다기간 열(I~N). 설정후(O)는 ret['si'] 를 쓴다.
+FS_TRAIL = ('3M', '6M', '12M', '18M', '24M', '30M')
+
 
 # ══════════════════════════════════════════
 # 1) 데이터 수집
@@ -90,6 +95,140 @@ def _pa_weights(start: date, end: date) -> dict:
         g[k] += float(a.ap_weight)
     g['유동성'] = max(0.0, 100.0 - g['주식'] - g['채권'] - g['대체'])
     return g
+
+
+def _pa_weights6(start: date, end: date) -> dict:
+    """FactSheet A3:H3 — 같은 PA 비중을 **6분류**로. 워드 표5(4분류)와 값 출처는 같다.
+
+    워드는 주식/채권을 국내·해외 묶어서 쓰고 FactSheet 는 갈라 쓴다.
+    ★ **방법3** 이라야 6분류가 나온다 — 방법1 은 주식/채권으로 접혀서(국내·해외 구분이
+      없어) FactSheet C3~F3 을 채울 수 없다. FactSheet 자산군 수익률도 방법3 이라
+      비중·수익률이 같은 매핑 위에 놓인다. 실측(2026-07): 21.39/18.54/59.28/0.00 =
+      발송본 C3:F3 과 일치.
+    유동성은 여기서도 잔여(100 − Σ) — 현금·예금이 MA000410 에 없다.
+    """
+    from api.services.brinson_service import build_brinson
+    b = build_brinson(FUND, start_date=start, end_date=end,
+                      fx_split=False, mapping_method='방법3')
+    g = {k: 0.0 for k in FS_ASSETS}
+    for a in b.asset_rows:
+        ac = a.asset_class
+        if ac.startswith('유동성'):
+            continue                      # 잔여로 채운다
+        k = '대체투자' if '대체' in ac else ac
+        if k in g:
+            g[k] += float(a.ap_weight)
+    g['유동성'] = max(0.0, 100.0 - sum(g[k] for k in FS_ASSETS[:-1]))
+    return g
+
+
+def _bm_series(start_date: str):
+    """BM 기준가 시계열 — 대시보드와 같은 소스(DT BM 우선 → SCIP composite)."""
+    import pandas as pd
+    from api.services.overview_service import _load_bm_series
+
+    df, _src = _load_bm_series(FUND, start_date)
+    if df is None or len(df) == 0 or 'value' not in df.columns:
+        return None
+    df = df.sort_values('기준일자')
+    return pd.Series(df['value'].astype(float).values,
+                     index=pd.to_datetime(df['기준일자']))
+
+
+def _bm_metrics(end: date, periods: list[str]) -> dict:
+    """FactSheet BM 행(I16~N16 · W16 · X16) — 다기간 수익률 + 변동성/수정샤프.
+
+    ⚠ 대시보드의 `overview_service._compute_bm_period_returns` 는 1M/3M/6M/1Y/YTD/SI
+      만 낸다. FactSheet 는 **18M/24M/30M 과 BM 변동성·수정샤프**까지 필요한데, 그
+      함수의 키 집합은 `api/tests/test_overview_smoke.py` 가 고정하고 있다(늘리면
+      대시보드 계약이 바뀐다) → 같은 BM 시계열에 펀드와 **같은 주간수익률 규약**
+      (`_build_weekly_returns` · `_calc_ref_dates`)을 적용해 여기서 따로 계산한다.
+
+    반환: {'ret': {기간: %}, 'vol': %, 'sharpe': float}
+    """
+    import numpy as np
+    import pandas as pd
+    from modules.data_loader import (
+        _build_weekly_returns, _calc_ref_dates, _lookup_price,
+        compute_adjusted_sharpe_ratio, compute_rf_annualized_metrics,
+        compute_sharpe_ratio, get_business_days, load_holiday_calendar,
+        load_korea_holidays_weekday,
+    )
+
+    s = _bm_series('20190101')
+    if s is None or len(s) == 0:
+        return {}
+    end_dt = pd.Timestamp(end)
+    s = s[s.index <= end_dt]
+    if len(s) == 0:
+        return {}
+
+    bdays = get_business_days(load_holiday_calendar())
+    weekly = _build_weekly_returns(nav_series=s, dates=pd.DatetimeIndex(s.index),
+                                   korea_holidays=load_korea_holidays_weekday())
+    price_df = weekly[['기준일자', '기준가']].drop_duplicates(
+        '기준일자').set_index('기준일자')
+    end_price = _lookup_price(price_df, end_dt)
+    refs = _calc_ref_dates(end_dt, list(periods), bdays)
+
+    out: dict = {'ret': {}}
+    for name, ref in refs.items():
+        if pd.isna(ref):
+            continue
+        ref_price = _lookup_price(price_df, ref)
+        if np.isnan(ref_price) or np.isnan(end_price) or ref_price == 0:
+            continue
+        out['ret'][name] = (end_price / ref_price - 1.0) * 100.0
+
+    # 변동성·수정샤프 = 연초이후 주간수익률 기준 (양식 ※ 주석과 동일 규약)
+    ytd_ref = refs.get('YTD')
+    if ytd_ref is not None and not pd.isna(ytd_ref):
+        from modules.data_loader import _return_first_weekly_date
+        first_w = _return_first_weekly_date(ytd_ref, end_dt, bdays)
+        m = ((weekly['기준일자'] <= end_dt) & (weekly['기준일자'] >= first_w)
+             & (weekly['weekday'] == end_dt.weekday()))
+        rets = weekly[m]['주간수익률'].dropna().values
+        if len(rets) > 1:
+            vol = float(np.std(rets, ddof=1) * np.sqrt(52))
+            days = (end_dt - ytd_ref).days
+            ann = ((1 + out['ret']['YTD'] / 100.0) ** (365.25 / days) - 1.0
+                   if days > 0 else np.nan)
+            rf = compute_rf_annualized_metrics(
+                end_dt.strftime('%Y%m%d'), periods=['YTD'],
+            )['annualized_return'].get('YTD', np.nan)
+            out['vol'] = vol * 100.0
+            out['sharpe'] = compute_sharpe_ratio(ann, vol, rf)          # 참고(일반)
+            out['sharpe_adj'] = compute_adjusted_sharpe_ratio(ann, vol, rf)
+    return out
+
+
+def _duration_hedge(end: date, bond_w: float) -> dict:
+    """FactSheet Y9·Z9(듀레이션) · AA9~AD9(환헤지비율) — 보유 스냅샷 기준.
+
+    ★ 펀드듀레이션(Y9)은 holdings 의 `duration_overall` 이 **아니다**.
+      7월 발송본 10.49300 = 채권듀레이션(**반올림 17.7**) × 국내채권 **PA 비중**
+      (59.2825%). holdings 쪽은 보유 스냅샷 비중(58.55%)으로 눌러 10.356 이 나온다
+      — 표 안에서 비중 기준이 갈리므로 PA 비중으로 통일한다(비중 칸과 같은 소스).
+    """
+    from api.services.holdings_service import build_holdings
+
+    h = build_holdings(FUND, lookthrough=True, as_of_date=end.isoformat())
+    ds = getattr(h, 'duration_summary', None)
+    fx = getattr(h, 'fx_hedge', None)
+    bond = round(float(ds.duration_bond), 1) if ds and ds.duration_bond else None
+    return {
+        'bond': bond,
+        'fund': (bond * bond_w / 100.0) if bond is not None else None,
+        'hedge_all': (float(fx.hedge_ratio) * 100.0) if fx else None,
+    }
+
+
+def _adj_sharpe(st: dict) -> float:
+    """stats 한 기간의 성분(연환산·위험·무위험)으로 **수정샤프**를 낸다."""
+    from modules.data_loader import compute_adjusted_sharpe_ratio
+    return compute_adjusted_sharpe_ratio(
+        st.get('annualized_return'), st.get('annualized_risk'),
+        st.get('rf_annualized_return'))
 
 
 def _prev_month_end(d: date) -> date:
@@ -146,6 +285,13 @@ def collect(period: str) -> dict:
     _ps = _prev_month_end(s)
     w_now = _pa_weights(s, e)
     w_prev = _pa_weights(_ps.replace(day=1), _ps)
+    w6 = _pa_weights6(s, e)                      # FactSheet 비중 (6분류)
+    bm_ext = _bm_metrics(e, list(FS_TRAIL) + ['YTD'])   # FactSheet BM 행
+    # 설정후 BM(O16)은 `_calc_ref_dates` 가 다루지 않는 앵커 기준 —
+    # 펀드 O9(ret['si'])와 같은 소스인 build_period_returns 의 SI 를 쓴다.
+    if bm.get('SI') is not None:
+        bm_ext.setdefault('ret', {})['SI'] = float(bm['SI']) * 100.0
+    dur = _duration_hedge(e, w6['국내채권'])
     saa = {'주식': 0.0, '채권': 0.0, '대체': 0.0, '유동성': 0.0}
     for c in (b1.bm_components or []):
         k = ('주식' if '주식' in c.asset_class else '채권' if '채권' in c.asset_class
@@ -168,9 +314,14 @@ def collect(period: str) -> dict:
         'factors': factors, 'factor_total': tot, 'contrib': contrib,
         'weights': w_now, 'weights_prev': w_prev, 'saa': saa,
         'multi': {k: (v.get('period_return') or 0.0) * 100.0 for k, v in stats.items()},
+        # ★ FactSheet W/X 열은 '수정샤프' — 초과가 음수면 위험을 **곱한다**(R 정의).
+        #   일반 샤프는 대조용으로만 남긴다(크기가 전혀 다르다).
         'risk': {'vol': (stats['YTD'].get('annualized_risk') or 0.0) * 100.0,
-                 'sharpe': stats['YTD'].get('sharpe_ratio')},
+                 'sharpe': stats['YTD'].get('sharpe_ratio'),
+                 'sharpe_adj': _adj_sharpe(stats['YTD'])},
         'fs_1m': fs_1m, 'fs_ytd': fs_ytd,
+        # FactSheet 전용 — 워드 쪽은 쓰지 않는다(추가만, 기존 키 불변)
+        'weights6': w6, 'bm_ext': bm_ext, 'duration': dur,
     }
 
 

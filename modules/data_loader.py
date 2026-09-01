@@ -5582,11 +5582,94 @@ def _calc_ref_dates(end_date: pd.Timestamp, periods: list,
     return ref
 
 
-def load_rf_index_from_db(start_date: str = None, end_date: str = None) -> pd.DataFrame:
+@_ttl_cache()
+def _load_rf_index_ecos(start_date: str = None, end_date: str = None) -> pd.DataFrame:
+    """무위험 지수 = **ECOS CD(91일) 일할복리지수**. R 프로덕션과 같은 소스.
+
+    R `module_00_Function_v3.R::return_rf_index("010502000")` 재현:
+        ecos::statSearch(stat_code="817Y002", item_code1="010502000", cycle="D")
+        → pad_by_time(.fill_na_direction="down", .by="day")
+        → 일별수익률 = Rf_Return/100/365
+        → data_cum   = 1000 * cumprod(1 + 일별수익률)
+    `return_res_tables` 의 기본값이 `rf_dataset_id="CD(91일)"` 라 시스템 표의 무위험이
+    이 계열이다. 지수 레벨은 fetch 시작점에 따라 달라지지만 쓰는 건 **두 시점의 비**뿐이라
+    무관 — 그래도 호출처마다 레벨이 갈리지 않게 **항상 전체 이력을 받아** 지수를 만들고
+    마지막에 start 로 자른다.
+
+    ⚠ 종전 KIS CD Index 총수익(SCIP 194/33)에서 2026-09-01 교체했다. "0.01~0.02bp 차이로
+      실무상 동일"이라던 종전 주석이 틀렸다 — 1W 만 0.01bp 고 실측은 YTD 1.20bp · 1M 19.6bp
+      어긋난다. 07G07 2026-07 발송 FactSheet 수정샤프 0.0166377 이 ECOS 로는 0.016641
+      (+4e-6)로 재현되고 KIS 로는 0.015617 로 어긋나는 것으로 확정했다.
+      실패 시 `_load_rf_index_kis` 로 폴백한다(값이 살짝 어긋나도 리포트는 나가야 한다).
     """
-    무위험수익률 지수 (KIS CD Index 총수익) 로드.
-    SCIP.back_datapoint dataset_id=194, dataseries_id=33
-    blob의 totRtnIndex 사용 (10000 기준 → 1000 리베이스).
+    import requests
+    _use_os_truststore()   # 사내 프록시 self-signed CA → OS 신뢰 저장소로 검증(끄지 않음)
+
+    ed = (str(end_date).replace('-', '')[:8] if end_date
+          else pd.Timestamp.now().strftime('%Y%m%d'))
+    # ★ 디스크 캐시가 **소스 교체보다 먼저**다. ECOS 가 순간적으로 죽었다고 KIS 로
+    #   떨어지면 같은 달 리포트 안에서 무위험이 갈린다(YTD 1.2bp·1M 19.6bp).
+    #   실측: 같은 세션에서도 간헐적으로 'StatisticSearch' 키가 빠진 응답이 온다.
+    cache = Path(__file__).resolve().parents[1] / '.cache' / 'rf_ecos_cd91.csv'
+    api_key = os.environ.get('ECOS_API_KEY', '')
+    rows = None
+    if api_key:
+        url = (f"https://ecos.bok.or.kr/api/StatisticSearch/{api_key}/json/kr/"
+               f"1/99999/817Y002/D/19900101/{ed}/010502000")
+        try:
+            rows = requests.get(url, timeout=20).json()['StatisticSearch']['row']
+        except Exception as e:
+            logger.warning(f"[ECOS CD91] 로드 실패({e}) → 디스크 캐시 시도")
+            rows = None
+    else:
+        logger.warning("[ECOS CD91] ECOS_API_KEY 미설정 → 디스크 캐시 시도")
+
+    if rows:
+        df = pd.DataFrame(rows)[['TIME', 'DATA_VALUE']].copy()
+        try:
+            cache.parent.mkdir(parents=True, exist_ok=True)
+            df.to_csv(cache, index=False, encoding='utf-8')
+        except Exception as e:
+            logger.warning(f"[ECOS CD91] 캐시 쓰기 실패(무시): {e}")
+    elif cache.exists():
+        df = pd.read_csv(cache, dtype=str)
+        logger.warning(f"[ECOS CD91] 캐시 사용: {cache}")
+    else:
+        logger.warning("[ECOS CD91] 캐시도 없음 → KIS CD Index fallback (무위험이 어긋납니다)")
+        return pd.DataFrame()
+
+    df['기준일자'] = pd.to_datetime(df['TIME'].astype(str), format='%Y%m%d')
+    df['금리'] = df['DATA_VALUE'].astype(str).str.replace(',', '').astype(float)
+    df = df[df['기준일자'] <= pd.Timestamp(ed)].sort_values('기준일자')
+    if df.empty:
+        return pd.DataFrame()
+
+    full = pd.date_range(df['기준일자'].min(), df['기준일자'].max(), freq='D')
+    rate = df.set_index('기준일자')['금리'].reindex(full).ffill()
+    out = pd.DataFrame({'기준일자': full,
+                        '기준가': 1000.0 * (1 + rate / 100 / 365).cumprod().to_numpy()})
+    if start_date:
+        s = str(start_date).replace('-', '')[:8]
+        out = out[out['기준일자'] >= pd.Timestamp(s)]
+    return out.reset_index(drop=True)
+
+
+def load_rf_index_from_db(start_date: str = None, end_date: str = None) -> pd.DataFrame:
+    """무위험수익률 지수 로드 — **ECOS CD(91일) 우선**, 실패 시 KIS CD Index 폴백.
+
+    ⚠ 이름은 남겨 뒀지만(호출처 보존) 정상 경로는 DB 가 아니라 ECOS API 다.
+    """
+    df = _load_rf_index_ecos(start_date, end_date)
+    if df is not None and not df.empty:
+        return df
+    return _load_rf_index_kis(start_date, end_date)
+
+
+def _load_rf_index_kis(start_date: str = None, end_date: str = None) -> pd.DataFrame:
+    """폴백 — KIS CD Index 총수익 (SCIP.back_datapoint 194/33).
+
+    blob 의 totRtnIndex 사용 (10000 기준 → 1000 리베이스).
+    ECOS 대비 YTD 1.2bp·1M 19.6bp 어긋나므로 **ECOS 실패 시에만** 쓴다.
     """
     conn = get_pandas_connection('SCIP')
     try:
@@ -5638,11 +5721,16 @@ def compute_rf_annualized_metrics(end_date: str, start_date: str = None,
     결과6: 무위험 연율화수익률 계산.
     R: weekly_calculation_Risk_free + annualized_geometric_return
 
-    소스 = **KIS CD Index 총수익지수**(`load_rf_index_from_db`, SCIP dataset 194/ds 33)
+    소스 = **ECOS CD(91일) 일할복리지수**(`load_rf_index_from_db` → `_load_rf_index_ecos`)
     → 주간수익률 → 연율화. 펀드와 동일 파이프라인(공휴일 NA·pad·요일 group).
-    ⚠ 종전 주석은 'ECOS CD(91일) 복리지수'였으나 실제 로드 경로와 달라 정정(2026-08-04).
-      ECOS CD(91일) 대비 0.01~0.02bp 차이로 실무상 동일해 KIS 를 채택한 것이며
-      (KAP CD 총수익지수 300 은 ~12bp 차이로 부적합), 'CD 91일 기준' 이라는 성격은 같다.
+
+    ★ 2026-09-01 KIS CD Index(SCIP 194/33) → ECOS CD(91일) 교체. R 프로덕션
+      (`return_res_tables(rf_dataset_id="CD(91일)")`)과 같은 소스로 맞춘 것이고,
+      시스템 표(07G04_BM, 분석종료일 2026-08-31)와 **0.000bp** 로 일치한다:
+        1W 3.128490 · 1M 3.016515 · 18M 2.774480 · 30M 3.062706 · YTD 2.885989
+      종전 KIS 는 같은 행에서 1W -0.01bp / **1M -19.6bp** / YTD -1.20bp 어긋났다
+      (직전 주석의 '0.01~0.02bp 차이로 실무상 동일' 은 1W 만 보고 일반화한 오류).
+      KAP CD 총수익지수 300 은 ~12bp 차이로 여전히 부적합.
     """
     if periods is None:
         periods = ['누적', '1M', '3M', '6M', '1Y', 'YTD']
@@ -5747,6 +5835,30 @@ def compute_sharpe_ratio(annualized_return: float, annualized_risk: float,
     if any(np.isnan(x) for x in [annualized_return, rf_annualized_return]):
         return np.nan
     return (annualized_return - rf_annualized_return) / annualized_risk
+
+
+def compute_adjusted_sharpe_ratio(annualized_return: float, annualized_risk: float,
+                                  rf_annualized_return: float) -> float:
+    """**수정샤프지수** — 초과수익이 음수면 나누지 않고 **곱한다**.
+
+    R `module_00_Function_v3.R:1619` 그대로:
+        if_else(ann - rf > 0, (ann - rf)/risk, (ann - rf)*risk)
+
+    초과가 음수일 때 위험으로 나누면 '변동성이 큰 펀드가 덜 나빠 보이는' 역전이 생겨
+    순위가 뒤집힌다 — 그래서 음수 구간은 곱해서 위험이 클수록 더 나쁘게 만든다.
+    ⚠ 일반 샤프(`compute_sharpe_ratio`)와 **부호는 같고 크기가 전혀 다르다**.
+      실측(07G07 2026-08 YTD): 일반 -0.008618 vs 수정 -0.000242957.
+      KB FactSheet W/X 열 라벨이 '수정샤프'라 이쪽을 쓴다.
+
+    시스템(General_Backtest) 표 07G07 2026-08-31 13개 기간 중 12개가 이 식으로
+    소수 9자리까지 재현된다(YTD 셀만 표기 스케일이 100배 — 유효숫자는 동일).
+    """
+    if annualized_risk is None or np.isnan(annualized_risk) or annualized_risk == 0:
+        return np.nan
+    if any(np.isnan(x) for x in [annualized_return, rf_annualized_return]):
+        return np.nan
+    excess = annualized_return - rf_annualized_return
+    return excess / annualized_risk if excess > 0 else excess * annualized_risk
 
 
 def compute_full_performance_stats(fund_code: str, end_date: str,

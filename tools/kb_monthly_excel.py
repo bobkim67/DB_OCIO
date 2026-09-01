@@ -1,5 +1,11 @@
 # -*- coding: utf-8 -*-
-"""KB국민은행 투자풀(07G07) 월간 워드 보고 — 붙여넣기용 데이터 엑셀 (2026-08-07 사용자 지시).
+"""KB국민은행 투자풀(07G07) 월간 보고 — 붙여넣기용 데이터 엑셀 (2026-08-07 사용자 지시).
+
+시트 3장: `표`·`서술`(워드용) + `FactSheet`(2026-09-01 추가).
+07G07 은 매월 **워드 + FactSheet 2종**이 나가는데, 다운로드 배선이 펀드당 산출물
+1개만 지원해서(엔드포인트·프론트 버튼 각 1개) FactSheet 를 같은 워크북에 시트로 얹었다.
+⚠ 두 시트는 **표기 규약이 반대**다 — 워드용은 문자열, FactSheet 는 숫자. 각 함수의
+  도크스트링 참조.
 
 ★ **Word COM 치환기(`kb_monthly_report.build_docx`)는 쓰지 않는다.** 발송본 워드는
   그대로 열어 두고, 이 엑셀에서 **표 블록을 복사 → 워드 표에 붙여넣기** 한다.
@@ -46,6 +52,8 @@ from pathlib import Path
 BASE = Path(__file__).resolve().parent.parent
 FUND = '07G07'
 FUND_NAME = '한국투자OCIO 알아서'
+# FactSheet 는 펀드명을 정식 명칭으로 쓴다(워드 표의 축약명과 다르다) — 발송본 A3/A9 그대로.
+FUND_FULL_NAME = '한국투자OCIO알아서증권자투자신탁(채권혼합-재간접형)'
 COMPANY = '한투운용'
 OUT_NAME = 'KB국민은행_07G07_월간워드_데이터_{ym}.xlsx'
 
@@ -111,6 +119,21 @@ _BLOCKS: tuple[tuple[str, str, int], ...] = (
     ('계획_대체투자',   '2. 향후 운용계획 ㅇ 대체투자',            30),
     ('계획_환헷지',     '2. 향후 운용계획 ㅇ 환헷지',             110),
 )
+
+# FactSheet W/X 열의 '수정샤프'는 **일반 샤프가 아니다** (2026-09-01 확정).
+# R `module_00_Function_v3.R:1619` 의 adjusted_sharpe_ratio 정의:
+#     초과 = 연환산수익률 − 무위험연환산
+#     초과 > 0  →  초과 / 연율화위험      (일반 샤프와 같음)
+#     초과 ≤ 0  →  초과 × 연율화위험      ← 나누지 않고 **곱한다**
+# 음수 구간에서 위험으로 나누면 변동성 큰 펀드가 덜 나빠 보이는 역전이 생겨서다.
+# 시스템 표(07G07, 2026-08-31) 13개 기간 중 12개가 이 식으로 소수 9자리까지 재현된다.
+#
+# ★ 이 정의가 그동안의 두 미스터리를 동시에 설명한다:
+#   · 2026-07 발송본 X9(+0.0166377)  — 초과가 **양수**라 나눗셈 → 일반 샤프와 같아 일치했다
+#   · 2026-07 발송본 X16(-0.000466) — BM 초과가 **음수**라 곱셈 → 일반 샤프(-0.16)와
+#     자릿수가 통째로 달랐다. 곱셈 분기로 계산하면 -0.00048 로 맞는다.
+# 무위험은 ECOS CD(91일)로 맞춰(`data_loader._load_rf_index_ecos`) 시스템 RF 행과
+# 0.000bp 일치하고, 연환산수익률·연율화위험도 시스템 표와 소수 6자리까지 일치한다.
 
 # ★ 운용역이 직접 쓴 문장 — **원문 그대로** 넣고 LLM 이 못 건드리게 한다.
 #   매크로·전망은 외부 정보와 운용역 판단이라 LLM 이 쓰면 창작이 된다(2026-08-06 결정).
@@ -325,6 +348,18 @@ def _check(d: SheetData) -> None:
     if missing:
         d.warnings.append(f"성과요인분해에 {', '.join(missing)} 행이 없습니다 — "
                           '워드 표 행 수와 어긋납니다')
+    # ── FactSheet 시트 ──
+    w6 = d.raw.get('weights6') or {}
+    s6 = sum(w6.get(k, 0.0) for k in ('국내주식', '해외주식', '국내채권', '해외채권',
+                                      '대체투자', '유동성'))
+    if w6 and abs(s6 - 100.0) > 0.05:
+        d.warnings.append(f'FactSheet 비중 6분류 합이 {s6:.2f}% 입니다 — 100% 와 어긋납니다')
+    if w6 and abs((w6.get('국내주식', 0.0) + w6.get('해외주식', 0.0))
+                  - d.raw['weights']['주식']) > 0.05:
+        d.warnings.append('FactSheet 비중(6분류)과 워드 표5(4분류)의 주식 합이 다릅니다 — '
+                          '같은 PA 비중을 갈라 쓴 것이라 일치해야 합니다')
+    if (d.raw.get('risk') or {'sharpe_adj': 0}).get('sharpe_adj') is None:
+        d.warnings.append('FactSheet 수정샤프(X9) 미산출 — 위험지표 성분을 확인하세요')
 
 
 # ══════════════════════════════════════════════════════════════
@@ -486,6 +521,208 @@ def _write_tables_sheet(ws, d: SheetData) -> None:
             min(max(widths.get(c, 0) + 2, 9), 26)
 
 
+def _fs_asset(src: dict, key: str) -> float:
+    """FactSheet 자산군 칸 — 브린슨 라벨(`유동성및기타`)을 양식 라벨(`유동성`)로."""
+    if key == '유동성':
+        return float(src.get('유동성및기타') or 0.0)
+    return float(src.get(key) or 0.0)
+
+
+def _write_factsheet_sheet(ws, d: SheetData) -> None:
+    """FactSheet 시트 — 발송 양식과 **셀 주소가 1:1**.
+
+    양식(`(한국투자신탁운용) KB OCIO펀드 FactSheet_{YYYY}년 {M}월_양식.xlsx`)의
+    Factsheet 시트 격자를 그대로 재현한다 → 같은 주소 범위를 골라 복사·붙여넣기.
+
+        A3:H3    자산군별 투자비중
+        A9:AD9   운용수익률
+        A16:X16  벤치마크수익률
+        A24:V24  벤치마크수익률(펀드와 동일수준 환헤지 가정)
+
+    ⚠ 워드용 `표` 시트와 달리 **숫자로 쓴다.** 양식이 raw float 을 담고 있어(B3=100,
+      C3=21.3911…) 문자열로 넣으면 붙여넣은 칸이 텍스트가 되어 이후 계산이 깨진다.
+      워드 표는 반대로 문자열이라야 한다 — 두 시트의 규약이 서로 다르니 섞지 말 것.
+
+    ★ 미채움 칸은 비워 둔다(0 으로 채우지 않는다) — 0 은 '헤지 없음'처럼 유효한 값이라
+      산출 실패와 구분되지 않는다.
+    """
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    from tools.kb_monthly_report import FS_ASSETS, FS_TRAIL
+
+    thin = Side(style='thin', color='B0B0B0')
+    box = Border(left=thin, right=thin, top=thin, bottom=thin)
+    head_f = Font(bold=True, color='FFFFFF')
+    head_fill = PatternFill('solid', fgColor='44546A')
+    center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    note_f = Font(size=9, color='806000')
+
+    raw = d.raw
+    r_, m_, risk = raw['ret'], raw['multi'], raw['risk']
+    w6, bx, du = raw['weights6'], raw['bm_ext'], raw['duration']
+    f1, fy = raw['fs_1m'], raw['fs_ytd']
+    bm_ret = bx.get('ret') or {}
+    y, mth = raw['end'].year, raw['end'].month
+
+    def put(row, col, val, *, fmt='0.0000'):
+        c = ws.cell(row=row, column=col, value=val)
+        c.border = box
+        c.alignment = Alignment(horizontal='right', vertical='center')
+        if isinstance(val, (int, float)):
+            c.number_format = fmt
+        return c
+
+    def head(row, col, val):
+        c = ws.cell(row=row, column=col, value=val)
+        c.font, c.fill, c.alignment, c.border = head_f, head_fill, center, box
+        return c
+
+    def title(row, text):
+        ws.cell(row=row, column=1, value=text).font = Font(bold=True, size=12)
+
+    def note(row, text):
+        ws.cell(row=row, column=1, value=text).font = note_f
+
+    # ── □ 자산군별 투자비중(%) — A2:H3 ──
+    title(1, f'□ 자산군별 투자비중(%)   [양식 A3:H3 에 붙여넣기]')
+    head(2, 1, '펀드명')
+    head(2, 2, '합계')
+    for i, k in enumerate(FS_ASSETS):
+        head(2, 3 + i, k)
+    put(3, 1, FUND_FULL_NAME).alignment = Alignment(horizontal='left')
+    put(3, 2, 100.0, fmt='0.0')
+    for i, k in enumerate(FS_ASSETS):
+        put(3, 3 + i, w6[k])
+    note(4, '※ 비중 = PA 비중(브린슨 방법3)이고 유동성은 잔여(100 − Σ)입니다. '
+            '워드 표5(4분류)와 같은 값을 6분류로 가른 것입니다.')
+
+    # ── □ 운용수익률(%) — A7:AD9 ──
+    title(6, f'□ 운용수익률(%)   [양식 A9:AD9 에 붙여넣기]')
+    head(7, 1, '펀드명')
+    head(7, 2, '1M')
+    for i, k in enumerate(FS_TRAIL):
+        head(7, 9 + i, k)
+    head(7, 15, '설정후')
+    head(7, 16, '연초이후')
+    head(7, 23, '변동성')
+    head(7, 24, '수정샤프')
+    head(7, 25, '펀드\n듀레이션')
+    head(7, 26, '채권\n듀레이션')
+    head(7, 27, '환헤지비율')
+    head(8, 2, '합계')
+    for i, k in enumerate(FS_ASSETS):
+        head(8, 3 + i, k)          # 1M 자산군별 C~H
+        head(8, 17 + i, k)         # 연초이후 자산군별 Q~V
+    for i, k in enumerate(('해외주식', '해외채권', '대체투자')):
+        head(8, 28 + i, k)         # 환헤지비율 AB~AD
+
+    put(9, 1, FUND_FULL_NAME + '(C-F)').alignment = Alignment(horizontal='left')
+    put(9, 2, r_['m1'])
+    for i, k in enumerate(FS_ASSETS):
+        put(9, 3 + i, _fs_asset(f1, k))
+    for i, k in enumerate(FS_TRAIL):
+        put(9, 9 + i, m_.get(k))
+    put(9, 15, r_['si'])
+    put(9, 16, r_['ytd'])
+    for i, k in enumerate(FS_ASSETS):
+        put(9, 17 + i, _fs_asset(fy, k))
+    put(9, 23, risk['vol'])
+    put(9, 24, risk.get('sharpe_adj'), fmt='0.000000')
+    put(9, 25, du.get('fund'))
+    put(9, 26, du.get('bond'), fmt='0.0')
+    put(9, 27, du.get('hedge_all'), fmt='0.0')
+    for i in range(3):
+        put(9, 28 + i, du.get('hedge_all'), fmt='0.0')
+    note(10, '※ 변동성·수정샤프는 연초 이후 주간수익률 기준 연환산(무위험 = 3개월 CD). '
+             '펀드듀레이션 = 채권듀레이션 × 국내채권 PA비중 — 발송본과 같은 정의입니다.')
+
+    # ── □ 벤치마크수익률(%) — A14:X16 ──
+    title(13, f'□ 벤치마크수익률(%)   [양식 A16:X16 에 붙여넣기]')
+    head(14, 1, '펀드명')
+    head(14, 2, '1M')
+    for i, k in enumerate(FS_TRAIL):
+        head(14, 9 + i, k)
+    head(14, 15, '설정후')
+    head(14, 16, '연초이후')
+    head(14, 23, '변동성')
+    head(14, 24, '수정샤프')
+    for i, k in enumerate(FS_ASSETS):
+        head(15, 3 + i, k)
+        head(15, 17 + i, k)
+
+    put(16, 1, FUND_FULL_NAME).alignment = Alignment(horizontal='left')
+    put(16, 2, r_['bm_m1'])
+    for i, k in enumerate(FS_ASSETS):
+        put(16, 3 + i, _fs_asset(f1.get('_bm') or {}, k))
+    for i, k in enumerate(FS_TRAIL):
+        put(16, 9 + i, bm_ret.get(k))
+    put(16, 15, bm_ret.get('SI'))
+    put(16, 16, r_['bm_ytd'])
+    for i, k in enumerate(FS_ASSETS):
+        put(16, 17 + i, _fs_asset(fy.get('_bm') or {}, k))
+    put(16, 23, bx.get('vol'))
+    put(16, 24, bx.get('sharpe_adj'), fmt='0.000000')
+    note(17, '※ BM 다기간·변동성은 대시보드와 같은 BM 시계열에 펀드와 같은 주간수익률 '
+             '규약을 적용해 산출합니다.')
+
+    # ── □ 동일수준 환헤지 가정 BM — A22:V24 ──
+    title(21, '□ 벤치마크수익률(%) - 펀드와 동일수준 환헤지 가정 시   '
+              '[양식 A24:V24 에 붙여넣기]')
+    head(22, 1, '펀드명')
+    head(22, 2, '1M')
+    for i, k in enumerate(FS_TRAIL):
+        head(22, 9 + i, k)
+    head(22, 15, '설정후')
+    head(22, 16, '연초이후')
+    for i, k in enumerate(FS_ASSETS):
+        head(23, 3 + i, k)
+        head(23, 17 + i, k)
+    # 환헤지비율 0 → '동일수준 헤지' = 무헤지 = 위 BM 과 같은 값.
+    # 7월 발송본도 B24:V24 가 B16:V16 과 완전히 동일했다(실측).
+    for c in list(range(2, 9)) + list(range(9, 17)) + list(range(17, 23)):
+        put(24, c, ws.cell(row=16, column=c).value,
+            fmt=ws.cell(row=16, column=c).number_format)
+    put(24, 1, FUND_FULL_NAME).alignment = Alignment(horizontal='left')
+
+    ws.column_dimensions['A'].width = 46
+    for c in range(2, 31):
+        ws.column_dimensions[get_column_letter(c)].width = 11
+
+    # ── 발송 전 확인 ──
+    r = 27
+    ws.cell(row=r, column=1, value='── 발송 전 확인 ──').font = Font(bold=True)
+    for i, line in enumerate(_fs_notes(d), start=r + 1):
+        ws.cell(row=i, column=1, value=line).font = note_f
+
+
+def _fs_notes(d: SheetData) -> list[str]:
+    """FactSheet 시트 하단 안내 — 값이 비거나 발송본과 규약이 갈리는 칸만."""
+    out = ['· 붙여넣기는 값만(선택하여 붙여넣기 → 값). 양식은 DRM 이라 열어 둔 채 '
+           '이 시트에서 블록을 복사하세요.']
+    du = d.raw['duration']
+    if du.get('bond') is None:
+        out.append('· 채권듀레이션(Z9) 미산출 — 보유 듀레이션 fetch 실패. 수기 확인 필요.')
+    if (du.get('hedge_all') or 0.0) != 0.0:
+        out.append('· 환헤지비율이 0 이 아닙니다 — 동일헤지 가정 BM(24행)을 일반 BM 그대로 '
+                   '복사했으니 별도 산출이 필요한지 확인하세요.')
+    bx = d.raw['bm_ext'] or {}
+    if not (bx.get('ret') or {}):
+        out.append('· BM 다기간(I16:O16) 미산출 — BM 시계열 로드 실패.')
+    out.append(f"· 수정샤프(X9·X16)는 **초과수익 부호로 분기**합니다 — 초과>0 이면 ÷위험, "
+               f"아니면 ×위험(R 정의). 일반 샤프와 크기가 다릅니다"
+               f"(펀드: 수정 {d.raw['risk'].get('sharpe_adj'):.6f} / 일반 "
+               f"{d.raw['risk']['sharpe']:.6f}).")
+    out.append('· 변동성(W9·W16)은 시스템 연율화위험 행과 소수 6자리까지 일치합니다.')
+    out.append('· 유동성 수익률(H9·V9)은 브린슨에 손익 라인이 없어 0 입니다 '
+               '(2026-07 발송본은 0.03058·0.035 를 수기 기재).')
+    out.append('· 해외주식 연초이후(R9)는 2026-07 발송본 11.42 vs 재현 10.12 로 '
+               '1.3%p 어긋난 이력이 있습니다 — YTD 기초일(12/31·1/1·1/2)을 바꿔도 '
+               '10.12~10.15 로 창(window) 문제가 아니고, 같은 칸의 BM(R16)은 일치합니다. '
+               '발송 전 해외주식 AP 를 확인하세요.')
+    return out
+
+
 def _write_narrative_sheet(ws, d: SheetData) -> None:
     """서술 시트 — 워드 위치별 1셀. 셀 하나를 통째로 복사해 문단에 붙여넣는다."""
     from openpyxl.styles import Alignment, Font, PatternFill
@@ -556,6 +793,9 @@ def build(period: str, out_path: str | Path | None = None,
     _write_tables_sheet(wb.active, d)
     wb.active.title = '표'
     _write_narrative_sheet(wb.create_sheet('서술'), d)
+    # FactSheet 는 워드와 **별개 발송본**이지만 산출 소스가 같아 같은 파일에 시트로 얹는다
+    # (다운로드 버튼은 하나 — `_EXCEL_SPECS['07G07']`).
+    _write_factsheet_sheet(wb.create_sheet('FactSheet'), d)
 
     if out_path is None:
         out_path = BASE / 'output' / OUT_NAME.format(ym=period.replace('-', ''))

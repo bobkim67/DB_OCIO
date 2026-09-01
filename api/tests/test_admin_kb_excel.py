@@ -144,3 +144,137 @@ def test_check_flags_factor_sum_mismatch():
     d = SheetData(period='2026-05', raw=raw)
     _check(d)
     assert any('어긋납니다' in w for w in d.warnings), d.warnings
+
+
+# ══════════════════════════════════════════════════════════════
+# FactSheet 시트 (2026-09-01) — 워드 엑셀과 같은 파일에 시트로 얹었다
+# ══════════════════════════════════════════════════════════════
+
+def test_factsheet_asset_order_matches_form():
+    """자산군 6분류 순서 = 양식 C2:H2. 순서가 어긋나면 값이 엉뚱한 칸에 붙는다."""
+    from tools.kb_monthly_report import FS_ASSETS, FS_TRAIL
+    assert FS_ASSETS == ('국내주식', '해외주식', '국내채권', '해외채권',
+                         '대체투자', '유동성')
+    assert FS_TRAIL == ('3M', '6M', '12M', '18M', '24M', '30M')
+
+
+def _fake_factsheet_raw():
+    from datetime import date
+    a6 = {'국내주식': 21.39, '해외주식': 18.54, '국내채권': 59.28,
+          '해외채권': 0.0, '대체투자': 0.0, '유동성': 0.79}
+    ret_by_asset = {'국내주식': -23.23, '해외주식': -9.83, '국내채권': -2.23,
+                    '해외채권': 0.0, '유동성및기타': 0.0}
+    return {
+        'period': '2026-07', 'start': date(2026, 7, 1), 'end': date(2026, 7, 31),
+        'ret': {'m1': -7.3413, 'ytd': 1.7928, 'si': 30.1466, 'm1_ex': -3.72,
+                'ytd_ex': 0.64, 'bm_m1': -3.6214, 'bm_ytd': 1.1509},
+        'multi': {'3M': -3.78, '6M': 0.59, '12M': 7.71, '18M': 9.11,
+                  '24M': 14.05, '30M': 24.42, 'YTD': 1.79},
+        'risk': {'vol': 14.53, 'sharpe': 0.0156, 'sharpe_adj': -0.000243},
+        'weights6': a6,
+        'weights': {'주식': 39.93, '채권': 59.28, '대체': 0.0, '유동성': 0.79},
+        # `_check` 가 워드 표3 정합도 같이 보므로 최소 키를 채워 둔다 (요인 합계 = m1_ex)
+        'factors': {k: {'alloc': 0.0, 'select': 0.0, 'other': 0.0, 'sum': 0.0}
+                    for k in ('주식', '채권', 'FX', '유동성 및 비용')},
+        'factor_total': {'alloc': 0.0, 'select': 0.0, 'other': 0.0, 'sum': -3.72},
+        'fs_1m': dict(ret_by_asset, _bm=dict(ret_by_asset)),
+        'fs_ytd': dict(ret_by_asset, _bm=dict(ret_by_asset)),
+        'bm_ext': {'ret': {'3M': -0.52, '6M': 0.70, '12M': 4.12, '18M': 7.08,
+                           '24M': 14.41, '30M': 22.22, 'SI': 24.49},
+                   'vol': 5.44, 'sharpe': -0.16, 'sharpe_adj': -0.000565},
+        'duration': {'bond': 17.7, 'fund': 10.4926, 'hedge_all': 0.0},
+    }
+
+
+def test_factsheet_grid_matches_form_addresses():
+    """양식 격자와 **셀 주소가 1:1**. 2026-07 발송본 실측 주소로 고정한다.
+
+    A3:H3(비중) · A9:AD9(운용수익률) · A16:X16(BM) · A24:V24(동일헤지 BM).
+    좌표가 밀리면 붙여넣기가 통째로 어긋나는데 눈으로는 잘 안 보인다.
+    """
+    from openpyxl import Workbook
+
+    from tools.kb_monthly_excel import SheetData, _write_factsheet_sheet
+    ws = Workbook().active
+    _write_factsheet_sheet(ws, SheetData(period='2026-07',
+                                         raw=_fake_factsheet_raw()))
+    # 비중
+    assert ws['B3'].value == 100.0
+    assert (ws['C3'].value, ws['D3'].value, ws['E3'].value) == (21.39, 18.54, 59.28)
+    assert ws['H3'].value == 0.79
+    # 운용수익률 — 1M 합계/자산군, 다기간, 설정후, 연초이후, 위험, 듀레이션
+    assert ws['B9'].value == -7.3413 and ws['C9'].value == -23.23
+    assert (ws['I9'].value, ws['N9'].value) == (-3.78, 24.42)
+    assert ws['O9'].value == 30.1466 and ws['P9'].value == 1.7928
+    assert ws['W9'].value == 14.53 and ws['X9'].value == -0.000243
+    assert ws['Y9'].value == 10.4926 and ws['Z9'].value == 17.7
+    # BM
+    assert ws['B16'].value == -3.6214 and ws['O16'].value == 24.49
+    assert ws['W16'].value == 5.44 and ws['X16'].value == -0.000565
+    # 동일헤지 가정 BM = 일반 BM 복사 (환헤지비율 0)
+    for col in ('B', 'D', 'I', 'O', 'P', 'R'):
+        assert ws[f'{col}24'].value == ws[f'{col}16'].value
+
+
+def test_factsheet_writes_numbers_not_strings():
+    """FactSheet 는 **숫자**로 쓴다 — 워드 표(문자열)와 규약이 반대다.
+
+    양식이 raw float 을 담고 있어 문자열로 넣으면 붙여넣은 칸이 텍스트가 되고
+    이후 계산이 깨진다.
+    """
+    from openpyxl import Workbook
+
+    from tools.kb_monthly_excel import SheetData, _write_factsheet_sheet
+    ws = Workbook().active
+    _write_factsheet_sheet(ws, SheetData(period='2026-07',
+                                         raw=_fake_factsheet_raw()))
+    for addr in ('C3', 'B9', 'O9', 'Y9', 'B16', 'X16', 'B24'):
+        assert isinstance(ws[addr].value, (int, float)), addr
+
+
+def test_factsheet_leaves_missing_cells_blank():
+    """산출 실패 칸은 0 이 아니라 **빈칸** — 0 은 '헤지 없음'처럼 유효한 값이다."""
+    from openpyxl import Workbook
+
+    from tools.kb_monthly_excel import SheetData, _write_factsheet_sheet
+    raw = _fake_factsheet_raw()
+    raw['bm_ext'] = {}                       # BM 시계열 로드 실패
+    raw['duration'] = {'bond': None, 'fund': None, 'hedge_all': None}
+    ws = Workbook().active
+    _write_factsheet_sheet(ws, SheetData(period='2026-07', raw=raw))
+    for addr in ('I16', 'O16', 'W16', 'X16', 'Y9', 'Z9', 'AA9'):
+        assert ws[addr].value is None, addr
+
+
+def test_adjusted_sharpe_branches_on_excess_sign():
+    """수정샤프 = 초과>0 이면 ÷위험, 아니면 **×위험** (R module_00_Function_v3.R:1619).
+
+    시스템 표(07G07 2026-08-31) 실측으로 고정한다 — 두 분기 모두.
+    """
+    from modules.data_loader import (compute_adjusted_sharpe_ratio,
+                                     compute_sharpe_ratio)
+    # 음수 분기 — 1M: 초과 -0.02752925 × 위험 0.114588951
+    got = compute_adjusted_sharpe_ratio(0.002635904, 0.114588951, 0.030165154)
+    assert abs(got - (-0.003154548)) < 1e-9
+    # 양수 분기 — 18M: 초과 0.025395818 ÷ 위험 0.124306837 (일반 샤프와 동일)
+    got = compute_adjusted_sharpe_ratio(0.053140615, 0.124306837, 0.027744797)
+    assert abs(got - 0.204299444) < 1e-8
+    assert abs(got - compute_sharpe_ratio(0.053140615, 0.124306837,
+                                          0.027744797)) < 1e-12
+    # 음수 분기는 일반 샤프와 **부호만 같고 크기가 다르다**
+    adj = compute_adjusted_sharpe_ratio(0.027412896, 0.167904292, 0.028859891)
+    plain = compute_sharpe_ratio(0.027412896, 0.167904292, 0.028859891)
+    assert adj < 0 and plain < 0 and abs(adj) < abs(plain) / 10
+
+
+def test_factsheet_writes_adjusted_sharpe():
+    """X9·X16 에는 **수정샤프**(sharpe_adj)가 들어간다 — 일반 샤프가 아니다."""
+    from openpyxl import Workbook
+
+    from tools.kb_monthly_excel import SheetData, _write_factsheet_sheet
+    raw = _fake_factsheet_raw()
+    ws = Workbook().active
+    _write_factsheet_sheet(ws, SheetData(period='2026-08', raw=raw))
+    assert ws['X9'].value == raw['risk']['sharpe_adj']
+    assert ws['X16'].value == raw['bm_ext']['sharpe_adj']
+    assert ws['X9'].value != raw['risk']['sharpe']       # 일반 샤프가 새면 안 된다
