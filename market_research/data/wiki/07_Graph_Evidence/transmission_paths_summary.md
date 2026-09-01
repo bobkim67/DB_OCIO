@@ -2,9 +2,9 @@
 type: graph_evidence_summary
 status: draft
 promoted_to_canonical: false
-latest_period: 2026-08
+latest_period: 2026-09
 latest_phase: P1
-updated_at: 2026-08-24T08:50:41
+updated_at: 2026-09-01T11:12:51
 ---
 
 # Transmission Paths — Summary
@@ -14,10 +14,10 @@ updated_at: 2026-08-24T08:50:41
 
 ## Latest snapshot
 
-- **Period**: 2026-08
+- **Period**: 2026-09
 - **Phase**: P1
 - **Total paths**: 0
-- **Unique triggers**: 0 / 6 (coverage 0%)
+- **Unique triggers**: 0 / 7 (coverage 0%)
 - **Unique targets**: 0 / 6 (coverage 0%)
 - **Avg confidence**: 0.000
 - **Graph size**: ? nodes / ? edges
@@ -36,6 +36,7 @@ updated_at: 2026-08-24T08:50:41
 - `유동성_크레딧`
 - `지정학`
 - `테크_AI_반도체`
+- `통화정책`
 
 ## Unmatched targets
 
@@ -50,13 +51,14 @@ updated_at: 2026-08-24T08:50:41
 
 | Month | Phase | Paths | Triggers | Targets | Avg Conf |
 |-------|-------|-------|----------|---------|----------|
-| 2026-02 | P1 | 4 | 3/6 | 3/6 | 0.342 |
-| 2026-03 | P1 | 11 | 4/6 | 5/6 | 0.642 |
-| 2026-04 | P1 | 4 | 3/6 | 3/6 | 0.359 |
-| 2026-05 | P1 | 3 | 3/6 | 3/6 | 0.697 |
-| 2026-06 | P1 | 2 | 2/6 | 2/6 | 0.948 |
-| 2026-07 | P1 | 3 | 3/6 | 3/6 | 0.172 |
-| 2026-08 | P1 | 0 | 0/6 | 0/6 | 0.000 |
+| 2026-02 | P1 | 4 | 3/7 | 3/6 | 0.342 |
+| 2026-03 | P1 | 11 | 4/7 | 5/6 | 0.642 |
+| 2026-04 | P1 | 4 | 3/7 | 3/6 | 0.359 |
+| 2026-05 | P1 | 3 | 3/7 | 3/6 | 0.697 |
+| 2026-06 | P1 | 2 | 2/7 | 2/6 | 0.948 |
+| 2026-07 | P1 | 3 | 3/7 | 3/6 | 0.172 |
+| 2026-08 | P1 | 0 | 0/7 | 0/6 | 0.000 |
+| 2026-09 | P1 | 0 | 0/7 | 0/6 | 0.000 |
 
 ## Guardrails
 
