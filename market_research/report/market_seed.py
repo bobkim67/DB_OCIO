@@ -191,12 +191,22 @@ _RULES = """## 규칙 (반드시 준수)
      다루고, `대체` 문장의 주어로 삼지 마세요.
    - 즉 `대체` 문장의 주어는 항상 "금은 …" 입니다.
 6. 특정 펀드/당사의 액션 금지 ("비중을 확대", "듀레이션을 축소" 등).
-7. 근거가 없는 자산군은 **빈 문자열**로 두세요. 지어내지 마세요."""
+7. 근거가 없는 자산군은 **빈 문자열**로 두세요. 지어내지 마세요.
+8. ★ **`FX` 문장은 원화가 왜 그렇게 움직였는지를 반드시 담으세요.**
+   - 주어는 "달러/원은 …". 방향만 쓰고 끝내면 실패입니다.
+   - **달러 요인과 원화 고유 요인을 구분**하세요. 달러지수(DXY) 변동폭과 원화
+     변동폭을 견줘, 원화가 달러지수보다 크게 움직였으면 그 차이를 만든 **원화
+     쪽 요인**(수출, 외국인 자금, 한은 정책 등)을 짚어야 합니다.
+   - ⚠ 2026-08 실패 사례: 원화가 4.0% 절상됐는데 달러지수는 -0.4%뿐이었습니다.
+     그런데 시드는 "달러인덱스 소폭 약세 … 소강 흐름"이라고만 써서, 10배 차이를
+     만든 원화 고유 요인이 통째로 빠졌습니다. 4% 절상을 '소강'이라 쓰지 마세요.
+   - 원인은 아래 [자산군별 movement] 의 drivers·인과경로에서 가져옵니다."""
 
 
 def _build_prompt(market_body: str, next_label: str,
                   consensus: list, tail_risks: list,
-                  have_outlook: bool, period_label: str) -> str:
+                  have_outlook: bool, period_label: str,
+                  movement: list | None = None) -> str:
     m_lo, m_hi, _ = BUDGET['market']['cls']
     t_lo, t_hi, _ = BUDGET['market']['total']
     rules = _RULES.format(cls_lo=m_lo, cls_hi=m_hi, tot_lo=t_lo, tot_hi=t_hi)
@@ -220,6 +230,24 @@ def _build_prompt(market_body: str, next_label: str,
         extra += '\n## 합의 포인트\n' + '\n'.join(f'- {c}' for c in consensus[:5])
     if tail_risks:
         extra += '\n\n## Tail Risk\n' + '\n'.join(f'- {t}' for t in tail_risks[:3])
+    # ★ debate 의 asset_movement_commentary — 원문 본문이 놓친 **원인**이 여기 있다.
+    #   2026-08 실측: 본문은 환율을 "소강 흐름"으로만 썼는데 movement 의 drivers 에는
+    #   '외인 자금 유입'·'한은 인상 기조'가 들어 있었다(2026-09-01 사용자 지적).
+    #   종전엔 시드가 final_comment 만 받아 이 원인이 통째로 유실됐다.
+    if movement:
+        _m = ['\n\n## 자산군별 movement (원인 — 본문에 없으면 여기서 가져오세요)']
+        for it in movement[:6]:
+            it = it or {}
+            ac = it.get('asset_class', '?')
+            drv = ', '.join(it.get('drivers') or [])
+            pth = ' / '.join(it.get('causal_paths') or [])
+            line = f'- [{ac}] {it.get("past_movement", "")}'
+            if drv:
+                line += f' · 원인: {drv}'
+            if pth:
+                line += f' · 인과경로: {pth}'
+            _m.append(line)
+        extra += '\n'.join(_m)
 
     return f"""당신은 DB형 퇴직연금 OCIO 운용보고서 코멘트 작성자입니다.
 아래 {period_label} 시장 브리핑을 **자산군별 문장으로 분해**하세요.
@@ -446,6 +474,7 @@ def build_seed(period: str, market_payload: dict,
         market_payload.get('consensus_points') or [],
         market_payload.get('tail_risks') or [],
         have_outlook, period_label,
+        market_payload.get('asset_movement_commentary') or [],
     )
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)

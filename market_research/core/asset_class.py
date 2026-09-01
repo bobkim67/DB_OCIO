@@ -78,7 +78,16 @@ def active_classes(holdings: dict | None, trades: dict | None,
         except (TypeError, ValueError):
             pass
         held.add(c)
-    return held | normalize_keys(trades)
+    out = held | normalize_keys(trades)
+    # ★ FX 는 **보유 자산군이 아니라 파생 노출**이다 — holdings/trades 에 'FX' 라인이
+    #   없어 종전에는 항상 active 에서 빠졌고, 그 결과 시드의 환율 문장이 `assemble()`
+    #   에서 통째로 버려졌다. 2026-08 07G07 실측: 원화가 4.0% 절상해 환 기여가
+    #   -0.70%p 였는데 코멘트에 환이 한 줄도 없었다(2026-09-01 사용자 지적).
+    #   → 해외 자산군을 보유/거래했으면 환노출이 있으므로 FX 를 active 로 본다.
+    #     (환헤지 100% 라도 '헤지했다'는 서술 자체가 필요하다.)
+    if out & {'해외주식', '해외채권'}:
+        out = out | {'FX'}
+    return out
 
 
 def excluded_classes(holdings: dict | None, trades: dict | None,

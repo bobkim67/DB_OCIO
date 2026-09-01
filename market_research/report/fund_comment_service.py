@@ -104,6 +104,90 @@ def _market_comment_to_inputs(market_payload: dict) -> dict:
 # 펀드 데이터 요약 (프롬프트용)
 # ══════════════════════════════════════════
 
+def _build_fx_facts(fund_code: str, start_dt, end_dt) -> dict:
+    """환 사실 — 환 기여(절대) · 환 자산배분(BM 대비) · 원화/DXY 변화 · 헤지비율.
+
+    코멘트 PA 는 `fx_split=False` 라 환이 해외 자산군에 접혀 보이지 않는다.
+    여기서만 `fx_split=True` 로 한 번 더 돌려 **환 행**을 따로 뽑는다.
+    """
+    import pandas as _pd
+    from api.services.brinson_service import build_brinson
+
+    # ⚠ 호출자는 datetime.date 를 준다(Timestamp 가 아니다) — 2026-09-01 실측으로
+    #   `.date()` 가 AttributeError 를 내며 환 사실이 통째로 비었다. 양쪽 다 받는다.
+    start_dt = _pd.Timestamp(start_dt)
+    end_dt = _pd.Timestamp(end_dt)
+
+    b = build_brinson(fund_code, start_date=start_dt.date(), end_date=end_dt.date(),
+                      fx_split=True, mapping_method='방법1')
+    out = {}
+    for a in b.asset_rows:
+        if a.asset_class != 'FX':
+            continue
+        out.update({
+            'fx_contrib': float(a.contrib_return),      # 절대 기여(%p)
+            'fx_alloc': float(a.alloc_effect),          # BM 대비 자산배분 효과(%p)
+            'fx_select': float(a.select_effect),
+            'fx_ap_return': float(a.ap_return),
+            'fx_bm_return': float(a.bm_return),
+            'fx_weight': float(a.ap_weight),
+        })
+    # 원화·달러지수 월간 변화 — 원화 강세가 '달러 약세'인지 '원화 고유'인지 가른다.
+    # SCIP 직접 조회. USDKRW=31/6(blob "USD" 키), DXY=105/48.
+    try:
+        import json as _json
+
+        import pandas as _pd
+        from modules.data_loader import get_pandas_connection
+
+        def _px(blob, key=None):
+            t = blob.decode('utf-8') if isinstance(blob, (bytes, bytearray)) else str(blob)
+            t = t.strip()
+            if t.startswith('{'):
+                o = _json.loads(t)
+                if key and key in o:
+                    return float(o[key])
+                return float(list(o.values())[0])
+            return float(t.replace(',', ''))
+
+        conn = get_pandas_connection('SCIP')
+        try:
+            # 기초일(전월말) 값을 잡으려면 창을 넉넉히 앞에서 연다.
+            warm = (start_dt - _pd.Timedelta(days=40)).strftime('%Y-%m-%d')
+            sql = ("SELECT dataset_id, DATE(timestamp_observation) d, data "
+                   "FROM back_datapoint WHERE (dataset_id=31 AND dataseries_id=6) "
+                   "OR (dataset_id=105 AND dataseries_id=48) "
+                   f"AND timestamp_observation >= '{warm}' "
+                   "ORDER BY timestamp_observation")
+            df = _pd.read_sql(sql, conn)
+        finally:
+            conn.close()
+        df = df[_pd.to_datetime(df['d']) >= _pd.Timestamp(warm)]
+        for ds, key, out_key in ((31, 'USD', 'usdkrw_chg'), (105, None, 'dxy_chg')):
+            sub = df[df['dataset_id'] == ds]
+            if sub.empty:
+                continue
+            sv = _pd.Series({_pd.Timestamp(r['d']): _px(r['data'], key)
+                             for _, r in sub.iterrows()}).sort_index()
+            a_ = sv[sv.index < _pd.Timestamp(start_dt)]
+            b_ = sv[sv.index <= _pd.Timestamp(end_dt)]
+            if len(a_) and len(b_):
+                out[out_key] = (float(b_.iloc[-1]) / float(a_.iloc[-1]) - 1.0) * 100.0
+    except Exception:
+        pass
+    # 펀드 환헤지비율 (0 이면 해외자산이 환에 그대로 노출)
+    try:
+        from api.services.holdings_service import build_holdings
+        h = build_holdings(fund_code, lookthrough=True,
+                           as_of_date=str(end_dt.date()))
+        fx = getattr(h, 'fx_hedge', None)
+        if fx is not None and getattr(fx, 'hedge_ratio', None) is not None:
+            out['hedge_ratio'] = float(fx.hedge_ratio) * 100.0
+    except Exception:
+        pass
+    return out
+
+
 def _adapt_compute_single_port_pa(pa_result: dict) -> dict:
     """compute_single_port_pa 의 새 schema (asset_summary DataFrame) 를
     fund_comment_service 가 사용하는 구버전 형태로 변환 (Q-FIX-2, 2026-05-06).
@@ -924,8 +1008,23 @@ def generate_fund_comment_and_save(
     if additional_parts:
         inputs['additional'] = inputs.get('additional', '') + '\n\n' + '\n\n'.join(additional_parts)
 
+    # 7.9. 환(FX) 사실 — 코멘트 PA 는 fx_split=False(환효과를 해외 자산군에 접음)라
+    #      LLM 이 **환 숫자를 아예 못 본다.** 2026-08 07G07 실측: 원화가 한 달 -4.0%
+    #      절상(DXY 는 -0.5%)해 환 기여가 -0.70%p 였는데 코멘트에 환 언급이 한 줄도
+    #      없었다(2026-09-01 사용자 지적). → 같은 창을 fx_split=True 로 한 번 더 돌려
+    #      환 행만 뽑고, USDKRW·DXY 월간 변화를 붙여 사실로 넣는다.
+    #      ⚠ 절대 기여(환 손익)와 BM 대비 효과(환 자산배분)는 **부호가 반대일 수 있다**
+    #        — 둘을 따로 준다. 섞어 쓰면 인과가 꼬인다(4JM12 규칙과 같은 함정).
+    fx_facts = {}
+    if pa_start_dt and end_dt:
+        try:
+            fx_facts = _build_fx_facts(fund_code, pa_start_dt, end_dt)
+        except Exception as e:
+            data_warnings.append(f'환 사실 로드 실패: {e}')
+
     # 8. data_ctx 구성
     data_ctx = {
+        'fx_facts': fx_facts,
         'bm': bm,
         'fund_ret': fund_ret,
         'pa': pa,
