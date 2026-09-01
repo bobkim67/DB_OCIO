@@ -26,6 +26,21 @@ echo.
 "%~dp0..\..\.venv\Scripts\python.exe" -m market_research.pipeline.daily_update %PDF_FLAG%
 set RC=%errorlevel%
 
+REM ====================================================================
+REM  wiki weekly batch commit -- only after a CLEAN run (rc=0).
+REM  A failed run can leave half-written wiki artifacts; committing those
+REM  is exactly what the batch policy exists to prevent.
+REM  --min-age-days 7 keeps it a WEEKLY batch even if daily_update runs
+REM  every day. Manual runs (no flag) commit regardless of age.
+REM  Never fatal: a git failure must not mask the daily_update result.
+REM ====================================================================
+if %RC% equ 0 (
+    echo.
+    echo [wiki] weekly batch commit check ...
+    "%~dp0..\..\.venv\Scripts\python.exe" tools\weekly_wiki_commit.py --min-age-days 7
+    if errorlevel 1 echo   [WARN] wiki commit skipped - see message above
+)
+
 echo.
 echo ====================================
 if %RC% equ 0 (
