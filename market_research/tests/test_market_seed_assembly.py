@@ -236,3 +236,79 @@ def test_format_K_bullets_and_sub_line():
 def test_unknown_format_raises():
     with pytest.raises(ValueError):
         assemble_seeded_comment('Z', 'm', 'o', {})
+
+
+# ──────────────── 5. 시장 레벨 사실 주입 (2026-09-01) ────────────────
+# ★ 회귀 방어: 규칙 4 가 "레벨로 쓰라"고 권하는데 debate 본문에는 변동률만 있어
+#   모델이 레벨을 지어냈다 — 8월말 달러/원 1,368.60 을 "1,530원대", KOSPI 월중
+#   최고 6,977.9 를 "7,200 터치"로 썼다. DB 실측 레벨을 사실로 주입해 막는다.
+
+def test_period_bounds_covers_all_period_kinds():
+    import datetime as dt
+
+    from market_research.report.market_seed import _period_bounds
+
+    # 월간 — 기초는 **전월 말일**(기간 시작 하루 전이 아니라 직전 기간의 끝)
+    assert _period_bounds('2026-08') == (dt.date(2026, 7, 31), dt.date(2026, 8, 31))
+    assert _period_bounds('2026-01') == (dt.date(2025, 12, 31), dt.date(2026, 1, 31))
+    # 분기 — Q1 의 기초는 전년 말
+    assert _period_bounds('2026-Q2') == (dt.date(2026, 3, 31), dt.date(2026, 6, 30))
+    assert _period_bounds('2026-Q1')[0] == dt.date(2025, 12, 31)
+    # TD 계열은 종료일이 오늘 (미래 월말을 잡으면 안 된다)
+    today = dt.date.today()
+    assert _period_bounds('2026-Q3.QTD') == (dt.date(2026, 6, 30), today)
+    assert _period_bounds('2026-H2.HTD') == (dt.date(2026, 6, 30), today)
+    assert _period_bounds('2026-H1.HTD')[0] == dt.date(2025, 12, 31)
+    assert _period_bounds('2026-YTD') == (dt.date(2025, 12, 31), today)
+    # 알 수 없는 키는 None — 호출부가 블록 없이 진행한다
+    assert _period_bounds('헛소리') is None
+    assert _period_bounds('') is None
+
+
+def test_month_bound_is_clamped_to_today():
+    """진행 중인 달은 종료일이 미래 월말이 아니라 오늘이다."""
+    import datetime as dt
+
+    from market_research.report.market_seed import _period_bounds
+
+    today = dt.date.today()
+    cur = f'{today.year:04d}-{today.month:02d}'
+    assert _period_bounds(cur)[1] == today
+
+
+def test_level_facts_go_into_prompt_and_absence_is_safe():
+    from market_research.report.market_seed import _build_prompt
+
+    facts = ['- KOSPI: 6,595.45 (07/31) → 6,820.02 (08/31) = +3.40%',
+             '- 달러/원: 1,425.70 (07/31) → 1,368.60 (08/31) = -4.01%']
+    kw = dict(market_body='본문', next_label='9월', consensus=[], tail_risks=[],
+              have_outlook=True, period_label='2026년 8월')
+    with_facts = _build_prompt(levels=facts, **kw)
+    assert '## 시장 레벨' in with_facts
+    for f in facts:
+        assert f in with_facts
+    # 사실이 없으면 블록도 없다 — 규칙이 "레벨을 쓰지 말라"로 받는다
+    without = _build_prompt(levels=None, **kw)
+    assert '## 시장 레벨' not in without
+    assert '레벨을 아예 쓰지 말고' in without
+
+
+def test_level_facts_fail_open_when_db_is_down(monkeypatch):
+    """DB 가 죽어도 시드 생성은 계속된다 (블록만 빠진다)."""
+    import market_research.report.market_seed as ms
+
+    def boom(*a, **k):
+        raise RuntimeError('DB down')
+
+    monkeypatch.setattr('modules.data_loader.get_pandas_connection', boom)
+    assert ms._market_level_facts('2026-08') is None
+
+
+def test_level_sql_parenthesizes_the_or():
+    """⚠ OR 를 안 묶으면 AND 가 먼저 걸려 한쪽 시리즈가 전 이력을 긁어온다."""
+    import inspect
+
+    import market_research.report.market_seed as ms
+
+    src = inspect.getsource(ms._market_level_facts)
+    assert 'WHERE ({pairs})' in src

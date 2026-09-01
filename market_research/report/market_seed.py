@@ -185,6 +185,11 @@ _RULES = """## 규칙 (반드시 준수)
 4. **시장 서술은 정성적으로**. 퍼센트 등락률을 쓰지 말고 방향과 레벨로 쓰세요.
    허용: "KOSPI가 장중 5,200포인트 선까지 밀리는", "달러/원이 1,420원대까지 급락"
    금지: "KOSPI -22.1%", "7월 14일 -8.95%"
+   ★ **레벨 숫자는 아래 [시장 레벨 — DB 실측] 블록에 있는 것만** 쓰세요.
+   브리핑 본문에는 보통 변동률만 있고 레벨이 없어, 이 규칙이 없는 레벨을
+   지어내게 만듭니다. 블록이 없으면 레벨을 아예 쓰지 말고 방향으로만 쓰세요.
+   ⚠ 2026-09-01 실측 — 시드가 8월말 달러/원을 "1,530원대"(실제 1,368.60),
+   KOSPI 를 "7,200포인트 터치"(월중 최고 6,977.9)로 썼습니다. 레벨의 정본은 DB 입니다.
 5. ★ **`대체` 는 금(金)만 다루세요.** 리츠·유가·원자재·인프라는 쓰지 마세요.
    - 리츠는 대체 문장에 넣지 않습니다 (2026-08-05 사용자 지시).
    - 유가·원자재는 펀드 보유자산이 아니라 매크로 드라이버이므로 `_총론` 에서
@@ -203,10 +208,122 @@ _RULES = """## 규칙 (반드시 준수)
    - 원인은 아래 [자산군별 movement] 의 drivers·인과경로에서 가져옵니다."""
 
 
+# ══════════════════════════════════════════
+# 시장 레벨 사실 — 레벨의 정본은 DB (SCIP)
+# ══════════════════════════════════════════
+# 규칙 4 가 "레벨로 쓰라"고 권하는데 debate 본문에는 변동률만 있는 경우가 많아
+# 모델이 없는 레벨을 지어낸다(2026-09-01 실측: 8월말 달러/원 1,368.60원을
+# "1,530원대"로, KOSPI 는 월중 최고 6,977.9 인데 "7,200 터치"로 썼다).
+# → 기초·기말·기간중 고저를 사실로 주입한다. 실패하면 블록 없이 진행 —
+# 규칙 8 이 "사실 블록이 없으면 레벨을 쓰지 말라"고 지시하므로 무중단이다.
+_LEVEL_SERIES = (
+    (253, 15, 'KRW', 'KOSPI', 2),
+    (31, 6, 'USD', '달러/원', 2),
+    (105, 48, None, '달러지수(DXY)', 2),
+)
+
+
+def _period_bounds(period: str):
+    """period 키 → (기초일, 기말일) 달력 경계. 기초 = 직전 기간의 마지막 날."""
+    import datetime as _dt
+    import re as _r
+    from calendar import monthrange
+
+    def eom(y, m):
+        return _dt.date(y, m, monthrange(y, m)[1])
+
+    s_ = (period or '').strip()
+    today = _dt.date.today()
+    m = _r.fullmatch(r'(\d{4})-(\d{2})', s_)
+    if m:
+        y, mo = int(m[1]), int(m[2])
+        prev = eom(y - 1, 12) if mo == 1 else eom(y, mo - 1)
+        return prev, min(eom(y, mo), today)
+    m = _r.fullmatch(r'(\d{4})-Q([1-4])(\.QTD)?', s_)
+    if m:
+        y, q = int(m[1]), int(m[2])
+        start = eom(y - 1, 12) if q == 1 else eom(y, (q - 1) * 3)
+        end = today if m[3] else eom(y, q * 3)
+        return start, min(end, today)
+    m = _r.fullmatch(r'(\d{4})-H([12])\.HTD', s_)
+    if m:
+        y, h = int(m[1]), int(m[2])
+        return (eom(y - 1, 12) if h == 1 else eom(y, 6)), today
+    m = _r.fullmatch(r'(\d{4})-YTD', s_)
+    if m:
+        return eom(int(m[1]) - 1, 12), today
+    return None
+
+
+def _market_level_facts(period: str) -> list | None:
+    """['- KOSPI: 6,821.32 (07/31) → 6,820.02 (08/31) · 기간중 5,593.6~6,977.9', …]."""
+    try:
+        bounds = _period_bounds(period)
+        if not bounds:
+            return None
+        start, end = bounds
+        import json as _json
+
+        import pandas as _pd
+
+        from modules.data_loader import get_pandas_connection
+
+        def _px(blob, key=None):
+            t = blob.decode('utf-8') if isinstance(blob, (bytes, bytearray)) else str(blob)
+            t = t.strip()
+            if t.startswith('{'):
+                o = _json.loads(t)
+                return float(o[key]) if key and key in o else float(list(o.values())[0])
+            return float(t.replace(',', ''))
+
+        # ⚠ OR 는 반드시 괄호로 묶는다 — 안 묶으면 AND 가 먼저 걸려 한쪽 시리즈가
+        #   날짜 필터 없이 전 이력을 긁어온다.
+        warm = (_pd.Timestamp(start) - _pd.Timedelta(days=40)).strftime('%Y-%m-%d')
+        pairs = ' OR '.join(f'(dataset_id={d} AND dataseries_id={sid})'
+                            for d, sid, *_ in _LEVEL_SERIES)
+        sql = (f"SELECT dataset_id, DATE(timestamp_observation) d, data "
+               f"FROM back_datapoint WHERE ({pairs}) "
+               f"AND timestamp_observation >= '{warm}' "
+               f"AND timestamp_observation <= '{end:%Y-%m-%d}' "
+               f"ORDER BY timestamp_observation")
+        conn = get_pandas_connection('SCIP')
+        try:
+            df = _pd.read_sql(sql, conn)
+        finally:
+            conn.close()
+        if df.empty:
+            return None
+
+        out = []
+        for ds, _sid, key, label, nd in _LEVEL_SERIES:
+            sub = df[df['dataset_id'] == ds]
+            if sub.empty:
+                continue
+            sv = _pd.Series({_pd.Timestamp(r['d']): _px(r['data'], key)
+                             for _, r in sub.iterrows()}).sort_index()
+            a = sv[sv.index <= _pd.Timestamp(start)]
+            b = sv[sv.index <= _pd.Timestamp(end)]
+            if a.empty or b.empty:
+                continue
+            v0, v1 = float(a.iloc[-1]), float(b.iloc[-1])
+            chg = (v1 / v0 - 1) * 100 if v0 else 0.0
+            # 기간 중 고저 — "장중 …까지 밀리는" 식 서술의 근거.
+            win = sv[(sv.index > _pd.Timestamp(start)) & (sv.index <= _pd.Timestamp(end))]
+            line = (f'- {label}: {v0:,.{nd}f} ({a.index[-1]:%m/%d}) → '
+                    f'{v1:,.{nd}f} ({b.index[-1]:%m/%d}) = {chg:+.2f}%')
+            if not win.empty:
+                line += f' · 기간중 {win.min():,.{nd}f}~{win.max():,.{nd}f}'
+            out.append(line)
+        return out or None
+    except Exception:
+        return None
+
+
 def _build_prompt(market_body: str, next_label: str,
                   consensus: list, tail_risks: list,
                   have_outlook: bool, period_label: str,
-                  movement: list | None = None) -> str:
+                  movement: list | None = None,
+                  levels: list | None = None) -> str:
     m_lo, m_hi, _ = BUDGET['market']['cls']
     t_lo, t_hi, _ = BUDGET['market']['total']
     rules = _RULES.format(cls_lo=m_lo, cls_hi=m_hi, tot_lo=t_lo, tot_hi=t_hi)
@@ -248,6 +365,9 @@ def _build_prompt(market_body: str, next_label: str,
                 line += f' · 인과경로: {pth}'
             _m.append(line)
         extra += '\n'.join(_m)
+    if levels:
+        extra += ('\n\n## 시장 레벨 — DB 실측 (레벨은 여기 숫자만 인용)\n'
+                  + '\n'.join(levels))
 
     return f"""당신은 DB형 퇴직연금 OCIO 운용보고서 코멘트 작성자입니다.
 아래 {period_label} 시장 브리핑을 **자산군별 문장으로 분해**하세요.
@@ -475,6 +595,7 @@ def build_seed(period: str, market_payload: dict,
         market_payload.get('tail_risks') or [],
         have_outlook, period_label,
         market_payload.get('asset_movement_commentary') or [],
+        _market_level_facts(period),
     )
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
