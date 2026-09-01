@@ -8,7 +8,7 @@ node_count: ?
 edge_count: ?
 source_of_truth: graph_rag.precompute_transmission_paths
 phase: P0
-updated_at: 2026-08-10T09:10:00
+updated_at: 2026-08-24T08:50:41
 ---
 
 # Transmission Paths (DRAFT) — 2026-08

@@ -9,7 +9,7 @@ top_topics: ["환율_FX", "달러_글로벌유동성"]
 primary_asset: 환율
 is_milestone: false
 source_of_truth: pipeline_refine
-updated_at: 2026-08-10T08:35:09
+updated_at: 2026-08-24T08:09:50
 ---
 
 # Event event_57ffe4cd8c
