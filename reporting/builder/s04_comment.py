@@ -86,12 +86,18 @@ def _load_final(period):
 
 
 def _llm_qualitative(end_date, rankings, table_digest,
-                     start_date=None, plabel=None):
+                     start_date=None, plabel=None, market_text=None):
     from market_research.core.constants import ANTHROPIC_API_KEY, LLM_MODEL
     import anthropic
-    y, m = end_date[:4], int(end_date[5:7])
-    month_c = _load_final(f'{y}-{m:02d}')
-    q_c = _load_final(f'{y}-Q{(m - 1) // 3 + 1}')
+    # ★ market_text 가 있으면 **구간 전체**를 덮는 시장 코멘트다 (라우터가
+    #   `market_payload.resolve_market_for_window` 로 해석해 넘긴다). 없을 때만
+    #   종전처럼 종료월/종료분기 승인본을 직접 읽는다 — 기능 무중단 폴백.
+    if market_text:
+        month_c, q_c = market_text, None
+    else:
+        y, m = end_date[:4], int(end_date[5:7])
+        month_c = _load_final(f'{y}-{m:02d}')
+        q_c = _load_final(f'{y}-Q{(m - 1) // 3 + 1}')
     if not month_c and not q_c:
         raise RuntimeError('승인된 _market.final 없음')
     from .period_label import span_block
@@ -132,7 +138,7 @@ def _llm_qualitative(end_date, rankings, table_digest,
 
 
 def build_manual(data, end_date, use_llm=True, tag='',
-                 start_date=None, plabel=None):
+                 start_date=None, plabel=None, market_text=None):
     """s4 manual dict {'headline','comments'} 생성 + 캐시. 캐시 파일 수동 편집 가능.
 
     tag: 커스텀 구간 시작일 등 캐시 구분자 (YTD 기본은 빈 문자열).
@@ -149,7 +155,8 @@ def build_manual(data, end_date, use_llm=True, tag='',
     if use_llm:
         try:
             qual = _llm_qualitative(end_date, rk, digest,
-                                    start_date=start_date, plabel=plabel)
+                                    start_date=start_date, plabel=plabel,
+                                    market_text=market_text)
         except Exception as e:            # noqa: BLE001 — LLM 실패 시 순위 문장만
             print(f'[s4-comment] LLM 생략: {e}')
     _b = lambda xs: [x if x.startswith('·') else f'· {x}' for x in xs]   # 불릿 머리 정규화

@@ -79,7 +79,7 @@ def _trade_digest(fund_code, start_iso, end_iso):
 
 
 def build_s6_bullets(fund_code, start_iso, end_iso, use_llm=True, tag='',
-                     plabel=None):
+                     plabel=None, market_text=None):
     """s6 불릿 3개 + 캐시. 캐시 파일 수동 편집 가능.
 
     tag: 커스텀 구간 시작일 등 **캐시 구분자** (YTD 기본은 빈 문자열 — s4 와 동일 규약).
@@ -94,8 +94,12 @@ def build_s6_bullets(fund_code, start_iso, end_iso, use_llm=True, tag='',
         return json.loads(cache.read_text(encoding='utf-8'))['bullets']
     digest = _trade_digest(fund_code, start_iso, end_iso)
     y, m = end_iso[:4], int(end_iso[5:7])
-    month_c = _load_final(f'{y}-{m:02d}') or ''
-    q_c = _load_final(f'{y}-Q{(m - 1) // 3 + 1}') or ''
+    # market_text = 구간 전체를 덮는 시장 코멘트 (라우터 해석). 없으면 종전 폴백.
+    if market_text:
+        month_c, q_c = market_text, ''
+    else:
+        month_c = _load_final(f'{y}-{m:02d}') or ''
+        q_c = _load_final(f'{y}-Q{(m - 1) // 3 + 1}') or ''
     fund_q = _load_fund_final(fund_code, f'{y}-Q{(m - 1) // 3 + 1}') or ''
     fund_m = _load_fund_final(fund_code, f'{y}-{m:02d}') or ''
     from market_research.core.constants import ANTHROPIC_API_KEY, LLM_MODEL

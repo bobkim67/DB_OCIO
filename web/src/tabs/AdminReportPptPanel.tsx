@@ -16,13 +16,58 @@ type PptComments = { s4_file: string; s4: S4 | null; s6_file: string; s6: S6 | n
 type PptFile = { file: string; size_kb: number; mtime: string };
 type ArcEntry = { file: string; saved_at: string; fund_code: string; end_date: string; start_date?: string | null };
 
-type Preset = "1M" | "3M" | "6M" | "YTD" | "custom";
+/** 기간 유형 — 달력 기간은 **코멘트 생성·관리와 같은 period 키**를 만들어 보낸다.
+ *  그래야 거기서 승인한 시장 코멘트가 PPT 에 그대로 반영된다 (2026-09-02).
+ *  롤링(3M·6M)·직접입력은 달력 기간이 아니라 키가 없다 → 날짜창으로 해석된다. */
+type Preset = "월간" | "분기" | "QTD" | "HTD" | "YTD" | "설정이후" | "3M" | "6M" | "custom";
 const PRESETS: { key: Preset; label: string }[] = [
-  { key: "1M", label: "1개월" },
-  { key: "3M", label: "3개월" },
-  { key: "6M", label: "6개월" },
+  { key: "월간", label: "월간" },
+  { key: "분기", label: "분기" },
+  { key: "QTD", label: "분기누계" },
+  { key: "HTD", label: "반기누계" },
   { key: "YTD", label: "연초이후" },
+  { key: "설정이후", label: "설정이후" },
+  { key: "3M", label: "3개월(롤링)" },
+  { key: "6M", label: "6개월(롤링)" },
 ];
+
+/** endDate 기준 period 키. 롤링·직접입력은 null (백엔드가 날짜창으로 병합). */
+function periodKeyOf(preset: Preset, endDate: string): string | null {
+  const y = Number(endDate.slice(0, 4));
+  const m = Number(endDate.slice(5, 7));
+  const q = Math.floor((m - 1) / 3) + 1;
+  const h = m <= 6 ? 1 : 2;
+  switch (preset) {
+    case "월간": return `${y}-${String(m).padStart(2, "0")}`;
+    case "분기": return `${y}-Q${q}`;
+    case "QTD": return `${y}-Q${q}.QTD`;
+    case "HTD": return `${y}-H${h}.HTD`;
+    case "YTD": return `${y}-YTD`;
+    case "설정이후": return `${y}-SI`;
+    default: return null;
+  }
+}
+
+/** 유형별 구간 시작(기초일). ''=백엔드가 앵커를 잡는다(YTD=전년말 / 설정이후=설정일). */
+function startOf(preset: Preset, endDate: string, customStart: string): string {
+  const y = Number(endDate.slice(0, 4));
+  const m = Number(endDate.slice(5, 7));
+  const eom = (yy: number, mm: number) => iso(new Date(yy, mm, 0));
+  switch (preset) {
+    case "월간": return m === 1 ? eom(y - 1, 12) : eom(y, m - 1);
+    case "분기":
+    case "QTD": {
+      const q = Math.floor((m - 1) / 3) + 1;
+      return q === 1 ? eom(y - 1, 12) : eom(y, (q - 1) * 3);
+    }
+    case "HTD": return m <= 6 ? eom(y - 1, 12) : eom(y, 6);
+    case "YTD": return "";
+    case "설정이후": return "";       // 백엔드가 FUND_META.inception 으로 잡는다
+    case "3M": return monthsBack(endDate, 3);
+    case "6M": return monthsBack(endDate, 6);
+    case "custom": return customStart;
+  }
+}
 
 function iso(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -50,15 +95,9 @@ export default function AdminReportPptPanel() {
   const [preset, setPreset] = useState<Preset>("YTD");
   const [endDate, setEndDate] = useState(prevMonthEnd());
   const [customStart, setCustomStart] = useState("");
-  const startDate = useMemo(() => {           // ''=YTD(빌더가 전년말 앵커)
-    switch (preset) {
-      case "YTD": return "";
-      case "1M": return monthsBack(endDate, 1);
-      case "3M": return monthsBack(endDate, 3);
-      case "6M": return monthsBack(endDate, 6);
-      case "custom": return customStart;
-    }
-  }, [preset, endDate, customStart]);
+  const startDate = useMemo(
+    () => startOf(preset, endDate, customStart), [preset, endDate, customStart]);
+  const period = useMemo(() => periodKeyOf(preset, endDate), [preset, endDate]);
   const dispStart = startDate || prevYearEnd(endDate);   // 인풋 표시용 (YTD=전년말)
 
   const [busy, setBusy] = useState("");
@@ -119,6 +158,7 @@ export default function AdminReportPptPanel() {
 
   const periodBody = () => ({
     fund_code: fund, end_date: endDate, start_date: startDate || null,
+    period,                       // 달력 기간이면 코멘트 화면과 같은 키
   });
 
   // ---- 코멘트 재생성 (LLM — 캐시 삭제 후 생성. 생성분은 즉시 캐시 저장됨) ----

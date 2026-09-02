@@ -27,7 +27,7 @@ def add(prs, ctx, page_label='6'):
         bullets = build_s6_bullets(
             ctx['fund_code'], ctx['period_start'], ctx['asof'],
             tag='' if ctx.get('is_ytd', True) else ctx.get('period_start', ''),
-            plabel=ctx.get('plabel'))
+            plabel=ctx.get('plabel'), market_text=ctx.get('market_text'))
     except Exception as e:                # noqa: BLE001
         print(f'[s6] 거래 코멘트 생성 실패 → 수치 불릿 폴백: {e}')
     if not bullets:

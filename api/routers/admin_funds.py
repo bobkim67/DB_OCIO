@@ -124,10 +124,13 @@ _PERIOD_PATTERNS = {
     'QTD': (r'(\d{4})-Q([1-4])\.QTD', 'QTD'),
     'HTD': (r'(\d{4})-H([1-2])\.HTD', 'HTD'),
     'YTD': (r'(\d{4})-YTD', 'YTD'),
+    # 설정이후 — 펀드마다 설정일이 달라 **펀드 코멘트 전용**이다. 시장 코멘트
+    # (`_market`)는 펀드 무관이라 SI 라는 개념이 성립하지 않는다(아래 주석 참조).
+    '설정이후': (r'(\d{4})-SI', 'SI'),
 }
 
 # workflow/조회 엔드포인트가 받는 period 문자열 (위 5종 전부)
-PERIOD_RE = (r'^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4]|H[1-2]|Q[1-4]\.QTD|H[1-2]\.HTD|YTD)$')
+PERIOD_RE = (r'^\d{4}-(?:0[1-9]|1[0-2]|Q[1-4]|H[1-2]|Q[1-4]\.QTD|H[1-2]\.HTD|YTD|SI)$')
 
 
 def _parse_period(kind: str, period: str) -> tuple[str, int, int]:
@@ -141,108 +144,20 @@ def _parse_period(kind: str, period: str) -> tuple[str, int, int]:
     raise HTTPException(
         status_code=400,
         detail='kind/period 조합 오류 (월간=YYYY-MM, 분기=YYYY-QN, '
-               'QTD=YYYY-QN.QTD, HTD=YYYY-HN.HTD, YTD=YYYY-YTD)')
+               'QTD=YYYY-QN.QTD, HTD=YYYY-HN.HTD, YTD=YYYY-YTD, '
+               '설정이후=YYYY-SI)')
 
 
-def _market_source_periods(mode: str, year: int, num: int) -> tuple[str | None, list[str]]:
-    """TD 기간의 시장 코멘트 소스 — (기간 전체를 덮는 상위 키, 기간 내 월간 키들).
-
-    TD 기간 자체로는 시장 debate 를 돌리지 않으므로(사용자 확정, 2026-07-31)
-    이미 승인된 시장 코멘트를 재사용한다. 상위 키(분기/반기) 승인본이 있으면
-    그것 단독, 없으면 기간 내 월간 승인본을 시간순으로 묶는다.
-    """
-    if mode == 'QTD':
-        return f'{year}-Q{num}', [f'{year}-{(num - 1) * 3 + 1 + i:02d}' for i in range(3)]
-    if mode == 'HTD':
-        base = 1 if num == 1 else 7
-        return f'{year}-H{num}', [f'{year}-{base + i:02d}' for i in range(6)]
-    if mode == 'YTD':
-        return None, [f'{year}-{m:02d}' for m in range(1, 13)]
-    return None, []
-
-
-def _merge_market_payloads(items: list[tuple[str, dict]]) -> dict | None:
-    """여러 기간 시장 코멘트 → 단일 payload.
-
-    본문은 기간 라벨을 붙여 시간순으로 잇는다. [ref:N] 은 기간마다 독립 번호라
-    합치면 충돌하고 병합본 기준 evidence 도 없어 복원이 불가능하므로 제거한다.
-    전망성 항목(합의/쟁점/테일리스크/자산군 코멘트)은 가장 최근 기간 것을 쓴다.
-    """
-    if not items:
-        return None
-    if len(items) == 1:
-        return items[0][1]
-
-    from market_research.report.evidence_trace import strip_refs
-    parts, claims, seen = [], [], set()
-    for label, p in items:
-        body = (p.get('final_comment') or p.get('draft_comment')
-                or p.get('customer_comment') or '').strip()
-        if body:
-            parts.append(f'[{label}]\n{strip_refs(body)}')
-        for cl in (p.get('claims') or []):
-            try:
-                key = json.dumps(cl, sort_keys=True, ensure_ascii=False)
-            except TypeError:
-                key = str(cl)
-            if key not in seen:
-                seen.add(key)
-                claims.append(cl)
-
-    last = items[-1][1]
-    merged = {
-        'final_comment': '\n\n'.join(parts),
-        'claims': claims,
-        'merged_from': [label for label, _ in items],
-    }
-    for k in ('consensus_points', 'tail_risks', 'disagreements',
-              'asset_movement_commentary', 'asset_movement_anchors'):
-        if last.get(k):
-            merged[k] = last[k]
-    return merged
-
-
-def _resolve_market_payload(period: str, mode: str, year: int, num: int) -> dict | None:
-    """생성에 쓸 시장 코멘트 payload — 같은 기간 승인본 우선, TD 는 재사용 병합."""
-    from market_research.report.report_store import load_final
-    exact = load_final(period, '_market')
-    if exact:
-        return exact
-    if mode not in ('QTD', 'HTD', 'YTD'):
-        return None
-    umbrella, months = _market_source_periods(mode, year, num)
-    if umbrella:
-        up = load_final(umbrella, '_market')
-        if up:
-            return up
-    items = [(mp, load_final(mp, '_market')) for mp in months]
-    merged = _merge_market_payloads([(mp, p) for mp, p in items if p])
-    return _compact_market_payload(merged)
-
-
-def _compact_market_payload(merged: dict | None) -> dict | None:
-    """병합 본문이 길면 기간 내러티브 1본으로 압축 (2026-07-31 사용자 지시).
-
-    월별 나열을 그대로 넘기면 6~12개월치가 1.3~2.6만자라 펀드 코멘트 프롬프트를
-    압도한다. 임계 미만이거나 압축 실패면 원문 병합본을 그대로 쓴다(기능 무중단).
-    """
-    if not merged or not merged.get('merged_from'):
-        return merged
-    from market_research.report.market_digest import build_market_digest
-    body = merged.get('final_comment') or ''
-    digest = build_market_digest(body, merged['merged_from'])
-    if not digest:
-        return merged
-    out = dict(merged)
-    out['final_comment'] = digest['text']
-    out['market_digest'] = {
-        'model': digest['model'],
-        'source_chars': digest['source_chars'],
-        'digest_chars': len(digest['text']),
-        'source_periods': digest.get('source_periods') or merged['merged_from'],
-        'cached': digest.get('cached', False),
-    }
-    return out
+# ── 시장 코멘트 payload 해석 ──
+# ★ 구현은 `market_research/report/market_payload.py` 로 옮겼다 (2026-09-02).
+#   운용보고 PPT(`reporting/builder/*`)가 같은 스킴을 써야 하는데 라우터를 import 할
+#   수 없어서다. 여기서는 **기존 이름 그대로 재노출**만 한다 — 동작·테스트 불변.
+from market_research.report.market_payload import (  # noqa: E402
+    compact_market_payload as _compact_market_payload,
+    market_source_periods as _market_source_periods,
+    merge_market_payloads as _merge_market_payloads,
+    resolve_market_payload as _resolve_market_payload,
+)
 
 
 # ── 보고서 단계에 딸린 데이터 엑셀 (펀드별) ──

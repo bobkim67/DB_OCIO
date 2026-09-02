@@ -32,6 +32,10 @@ class PptBuildBodyDTO(BaseModel):
     end_date: str                       # YYYY-MM-DD
     start_date: str | None = None       # None=전년말 YTD
     regen_comments: bool = False        # True=코멘트 캐시 삭제 후 빌드(LLM 재생성)
+    # Admin 코멘트 화면과 **같은 기간 키** (YYYY-MM / YYYY-QN[.QTD] / YYYY-HN.HTD /
+    # YYYY-YTD / YYYY-SI). 주면 시장 코멘트를 그 키로 해석한다 — 승인본이 그대로
+    # PPT 에 반영된다. 없으면 날짜창(start~end)으로 월간 승인본을 병합한다.
+    period: str | None = None
 
 
 class S4BlockDTO(BaseModel):
@@ -139,7 +143,8 @@ def build_ppt(body: PptBuildBodyDTO) -> PptBuildResponseDTO:
         t0 = time.time()
         from reporting.builder.build import build_report
         try:
-            out_path = build_report(body.fund_code, body.end_date, body.start_date)
+            out_path = build_report(body.fund_code, body.end_date,
+                                    body.start_date, period=body.period)
         except Exception as e:            # noqa: BLE001 — DB/LLM/데이터 실패를 메시지로 전달
             raise HTTPException(500, f"PPT 빌드 실패: {e}") from e
         return PptBuildResponseDTO(
@@ -216,12 +221,19 @@ def generate_ppt_comments(body: PptBuildBodyDTO) -> PptCommentsDTO:
             from reporting.builder.s04 import compute_rows
             from reporting.builder.s04_comment import build_manual
             from reporting.builder.s06_comment import build_s6_bullets
+            from reporting.builder.build import resolve_market_text
             ctx = get_fund_data(body.fund_code, body.end_date, body.start_date)
             is_ytd = ctx.get("is_ytd", True)
+            mtext = resolve_market_text(body.period, ctx.get("period_start"),
+                                        body.end_date)
             data = compute_rows(body.end_date, None if is_ytd else ctx["period_start"])
             build_manual(data, body.end_date, use_llm=True,
-                         tag="" if is_ytd else ctx["period_start"])
-            build_s6_bullets(body.fund_code, ctx["period_start"], body.end_date)
+                         tag="" if is_ytd else ctx["period_start"],
+                         start_date=ctx.get("period_start"),
+                         plabel=ctx.get("plabel"), market_text=mtext)
+            build_s6_bullets(body.fund_code, ctx["period_start"], body.end_date,
+                             tag="" if is_ytd else ctx["period_start"],
+                             plabel=ctx.get("plabel"), market_text=mtext)
         except Exception as e:            # noqa: BLE001 — DB/LLM 실패를 메시지로 전달
             raise HTTPException(500, f"코멘트 생성 실패: {e}") from e
         return _load_comments(body.fund_code, body.end_date, body.start_date)

@@ -620,12 +620,18 @@ def _perf_period_label(mode: str, end_dt, quarter: int) -> str:
     return f'{end_dt.month}월 중' if end_dt is not None else '당 기간'
 
 
-def _resolve_dates(mode: str, year: int, period_num: int):
+def _resolve_dates(mode: str, year: int, period_num: int, fund_code: str = None):
     """기간 유형에 따른 영업일 범위 계산.
 
-    mode : '월별' | '분기' | 'QTD' | 'HTD' | 'YTD'
+    mode : '월별' | '분기' | 'QTD' | 'HTD' | 'YTD' | 'SI'
       - QTD/HTD/YTD : 직전 분기말/반기말/연말부터 **현재까지**(to-date)
-      - period_num  : 월(1~12) / 분기(1~4) / 반기(1~2) / YTD 는 미사용(0)
+      - SI          : **설정일부터** 현재까지 (fund_code 필수 — 펀드마다 설정일이 다르다)
+      - period_num  : 월(1~12) / 분기(1~4) / 반기(1~2) / YTD·SI 는 미사용(0)
+
+    ★ SI 만 `prev_last` 규약이 다르다. 다른 모드의 prev_last 는 **기초일**(전월말)인데
+      SI 는 **설정일 그 자체**다 — 설정후 수익률은 설정일 당일 등락을 포함해야 하고
+      (`[[reference_inception_base_1000]]`), Brinson 도 `start_date=설정일` 로 첫날을
+      인식한다. 실측(08N33): start=설정일 → SAA 5.9133% 로 대시보드 카드와 일치.
 
     진행 중인 기간(당월 MTD 포함)은 종료일을 최신 적재일로 clamp 한다 —
     영업일 캘린더(DWCI10220)에는 미래 영업일도 있어서 clamp 없이는 데이터
@@ -647,6 +653,14 @@ def _resolve_dates(mode: str, year: int, period_num: int):
         quarter = 2 if period_num == 1 else 4
     elif mode == 'YTD':
         bdays = {'prev_month_last': _month_last_bday(year - 1, 12),
+                 'cur_month_last': _month_last_bday(year, 12)}
+        quarter = 4
+    elif mode == 'SI':
+        from config.funds import FUND_META
+        inc = str((FUND_META.get(fund_code) or {}).get('inception') or '').strip()
+        if len(inc) != 8 or not inc.isdigit():
+            return None, None, None, None, 4
+        bdays = {'prev_month_last': int(inc),
                  'cur_month_last': _month_last_bday(year, 12)}
         quarter = 4
     else:
@@ -785,7 +799,8 @@ def generate_fund_comment_and_save(
     data_warnings = []
 
     # 1. 영업일 범위
-    prev_last, cur_last, start_dt, end_dt, quarter = _resolve_dates(mode, year, period_num)
+    prev_last, cur_last, start_dt, end_dt, quarter = _resolve_dates(
+        mode, year, period_num, fund_code=fund_code)
     if not cur_last:
         data_warnings.append(f'{period_key} 영업일 데이터 없음')
 

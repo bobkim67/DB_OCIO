@@ -87,7 +87,7 @@ function StBadge({ s }: { s: string }) {
 }
 
 /** 기간 유형. TD 계열은 "직전 기간말 ~ 최신 적재일" 누계 (2026-07-31 사용자 지시). */
-const KINDS = ["월간", "분기", "QTD", "HTD", "YTD"] as const;
+const KINDS = ["월간", "분기", "QTD", "HTD", "YTD", "설정이후"] as const;
 type Kind = (typeof KINDS)[number];
 
 const KIND_HINT: Record<Kind, string> = {
@@ -96,6 +96,7 @@ const KIND_HINT: Record<Kind, string> = {
   QTD: "직전 분기말 ~ 최신 적재일",
   HTD: "직전 반기말 ~ 최신 적재일",
   YTD: "전년말 ~ 최신 적재일",
+  설정이후: "설정일 ~ 최신 적재일 (펀드마다 설정일이 다름)",
 };
 
 type PeriodOpt = { value: string; label: string };
@@ -112,6 +113,7 @@ function buildPeriodOpts(kind: Kind): PeriodOpt[] {
   if (kind === "QTD") return [{ value: `${y}-Q${q}.QTD`, label: `${y}-Q${q} 분기누계 (${(q - 1) * 3 + 1}/1~최신)` }];
   if (kind === "HTD") return [{ value: `${y}-H${h}.HTD`, label: `${y}-H${h} 반기누계 (${h === 1 ? 1 : 7}/1~최신)` }];
   if (kind === "YTD") return [{ value: `${y}-YTD`, label: `${y} 연초누계 (1/1~최신)` }];
+  if (kind === "설정이후") return [{ value: `${y}-SI`, label: `설정후 (설정일~최신)` }];
 
   const out: PeriodOpt[] = [];
   if (kind === "분기") {

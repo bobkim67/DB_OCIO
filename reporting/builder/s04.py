@@ -251,7 +251,8 @@ def add(prs, ctx, page_label='4'):
             manual = build_manual(
                 data, end,
                 tag='' if ctx.get('is_ytd', True) else ctx.get('period_start', ''),
-                start_date=ctx.get('period_start'), plabel=ctx.get('plabel'))
+                start_date=ctx.get('period_start'), plabel=ctx.get('plabel'),
+                market_text=ctx.get('market_text'))
         except Exception as e:            # noqa: BLE001
             print(f'[s4] 코멘트 자동생성 실패 → 참조 JSON 폴백: {e}')
             manual = _default_manual()

@@ -14,10 +14,63 @@ from .data_valuation import load_valuation
 from . import s_static, s04, s06, s07, s09, s10, s11, s12, s13, s14, s16
 
 
+def resolve_market_text(period, start_iso, end_iso):
+    """구간(또는 기간 키)을 덮는 시장 코멘트 본문. 실패하면 None → 종전 폴백.
+
+    ★ 기간 키(period)가 오면 **Admin 코멘트 화면과 같은 스킴**으로 해석한다
+      (같은 키 승인본 → 상위 키 → 기간 내 월간 병합 → 압축). 키가 없으면
+      (롤링 3M/6M·설정후) 날짜창이 덮는 월간 승인본을 병합한다. 2026-09-02 이전에는
+      **종료월 하나만** 읽어서 설정이후 PPT 와 하반기 PPT 의 시장 코멘트가 같았다.
+    """
+    try:
+        import re as _re
+
+        from market_research.report.market_payload import (
+            resolve_market_for_window, resolve_market_payload,
+        )
+        payload = None
+        if period:
+            m = _re.fullmatch(r'(\d{4})-(?:(0[1-9]|1[0-2])|Q([1-4])(\.QTD)?'
+                              r'|H([1-2])\.HTD|(YTD)|(SI))', str(period))
+            if m:
+                y = int(m.group(1))
+                if m.group(2):
+                    payload = resolve_market_payload(period, '월별', y, int(m.group(2)))
+                elif m.group(3):
+                    mode = 'QTD' if m.group(4) else '분기'
+                    payload = resolve_market_payload(period, mode, y, int(m.group(3)))
+                elif m.group(5):
+                    payload = resolve_market_payload(period, 'HTD', y, int(m.group(5)))
+                elif m.group(6):
+                    payload = resolve_market_payload(period, 'YTD', y, 0)
+                # SI 는 펀드별 설정일이라 시장 코멘트에 키가 없다 → 날짜창으로 푼다
+        if payload is None and start_iso and end_iso:
+            payload = resolve_market_for_window(start_iso, end_iso)
+        if not payload:
+            return None
+        import re as _re2
+        body = (payload.get('final_comment') or payload.get('draft_comment') or '')
+        return _re2.sub(r'\[(?:ref|claim):[^\]]+\]', '', body).strip() or None
+    except Exception as exc:            # noqa: BLE001 — 해석 실패는 폴백으로 흡수
+        print(f'[ppt] 시장 코멘트 해석 실패 → 종료월 폴백: {exc}')
+        return None
+
+
 def build_report(fund_code: str, end_date: str, start_date: str | None = None,
-                 out_path=None) -> str:
-    """start_date: 보고 구간 시작 (None=전년말 YTD). s4/s6/s7 에 반영, s9~16 은 종료일만."""
+                 out_path=None, period: str | None = None) -> str:
+    """start_date: 보고 구간 시작 (None=전년말 YTD). s4/s6/s7 에 반영, s9~16 은 종료일만.
+
+    period: Admin 코멘트 화면과 같은 기간 키(YYYY-MM / YYYY-QN[.QTD] / YYYY-HN.HTD /
+      YYYY-YTD / YYYY-SI). 주면 시장 코멘트를 그 키로 해석한다.
+    """
+    # 설정이후(YYYY-SI)는 프론트가 설정일을 모른다 → 여기서 FUND_META 로 잡는다.
+    if not start_date and str(period or '').endswith('-SI'):
+        from config.funds import FUND_META
+        _inc = str((FUND_META.get(fund_code) or {}).get('inception') or '').strip()
+        if len(_inc) == 8 and _inc.isdigit():
+            start_date = f'{_inc[:4]}-{_inc[4:6]}-{_inc[6:8]}'
     ctx = get_fund_data(fund_code, end_date, start_date)
+    ctx['market_text'] = resolve_market_text(period, ctx.get('period_start'), end_date)
     ctx['regime'] = fetch_regime(end_date)
     ctx['valuation'] = load_valuation(end_date)
     # Brinson 엔진은 start '당일 수익 포함'(base=전영업일) 규약 — 커스텀 구간은
