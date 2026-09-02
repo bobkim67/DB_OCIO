@@ -85,7 +85,8 @@ def _load_final(period):
     return re.sub(r'\[(?:ref|claim):[^\]]+\]', '', fc)
 
 
-def _llm_qualitative(end_date, rankings, table_digest):
+def _llm_qualitative(end_date, rankings, table_digest,
+                     start_date=None, plabel=None):
     from market_research.core.constants import ANTHROPIC_API_KEY, LLM_MODEL
     import anthropic
     y, m = end_date[:4], int(end_date[5:7])
@@ -93,7 +94,10 @@ def _llm_qualitative(end_date, rankings, table_digest):
     q_c = _load_final(f'{y}-Q{(m - 1) // 3 + 1}')
     if not month_c and not q_c:
         raise RuntimeError('승인된 _market.final 없음')
+    from .period_label import span_block
     prompt = f"""아래는 판매사 발송용 운용보고 PPT 4페이지(자산군별 기간수익률 표) 우측 코멘트 작성 작업이다.
+
+{span_block(start_date, end_date, plabel)}
 
 [좌측 표 요약 (기간수익률)]
 {table_digest}
@@ -127,7 +131,8 @@ def _llm_qualitative(end_date, rankings, table_digest):
     return json.loads(txt)
 
 
-def build_manual(data, end_date, use_llm=True, tag=''):
+def build_manual(data, end_date, use_llm=True, tag='',
+                 start_date=None, plabel=None):
     """s4 manual dict {'headline','comments'} 생성 + 캐시. 캐시 파일 수동 편집 가능.
 
     tag: 커스텀 구간 시작일 등 캐시 구분자 (YTD 기본은 빈 문자열).
@@ -143,7 +148,8 @@ def build_manual(data, end_date, use_llm=True, tag=''):
     qual = {'주식': [], '채권': [], '대체통화': []}
     if use_llm:
         try:
-            qual = _llm_qualitative(end_date, rk, digest)
+            qual = _llm_qualitative(end_date, rk, digest,
+                                    start_date=start_date, plabel=plabel)
         except Exception as e:            # noqa: BLE001 — LLM 실패 시 순위 문장만
             print(f'[s4-comment] LLM 생략: {e}')
     _b = lambda xs: [x if x.startswith('·') else f'· {x}' for x in xs]   # 불릿 머리 정규화

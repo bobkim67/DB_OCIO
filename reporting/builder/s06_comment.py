@@ -78,8 +78,18 @@ def _trade_digest(fund_code, start_iso, end_iso):
     return '\n\n'.join(out)
 
 
-def build_s6_bullets(fund_code, start_iso, end_iso, use_llm=True):
-    cache = OUT / f's6_manual_{fund_code}_{end_iso.replace("-", "")}.json'
+def build_s6_bullets(fund_code, start_iso, end_iso, use_llm=True, tag='',
+                     plabel=None):
+    """s6 불릿 3개 + 캐시. 캐시 파일 수동 편집 가능.
+
+    tag: 커스텀 구간 시작일 등 **캐시 구분자** (YTD 기본은 빈 문자열 — s4 와 동일 규약).
+      ★ 종전에는 캐시명이 `s6_manual_{fund}_{end}.json` 이라 종료일만 같으면
+        설정이후 PPT 와 하반기 PPT 가 **같은 파일을 공유**했다. 두 번째 빌드는
+        LLM 을 타지도 않고 첫 빌드의 불릿을 그대로 재사용했다(08N33 실측:
+        캐시 파일이 딱 1개). s4 는 이미 tag 로 분리돼 있었는데 s6 만 빠져 있었다.
+    """
+    suffix = f'_{str(tag).replace("-", "")}' if tag else ''
+    cache = OUT / f's6_manual_{fund_code}_{end_iso.replace("-", "")}{suffix}.json' 
     if cache.exists():
         return json.loads(cache.read_text(encoding='utf-8'))['bullets']
     digest = _trade_digest(fund_code, start_iso, end_iso)
@@ -90,8 +100,11 @@ def build_s6_bullets(fund_code, start_iso, end_iso, use_llm=True):
     fund_m = _load_fund_final(fund_code, f'{y}-{m:02d}') or ''
     from market_research.core.constants import ANTHROPIC_API_KEY, LLM_MODEL
     import anthropic
+    from .period_label import span_block
     prompt = f"""판매사 발송용 운용보고 PPT '운용 경과' 페이지 상단 불릿 3개를 작성하라.
 내용 = 보고구간({start_iso}~{end_iso}) 중 실제 운용(매매·비중조절)을 시장상황과 연결해 서술.
+
+{span_block(start_iso, end_iso, plabel)}
 
 [승인된 펀드 운용 코멘트 — 당분기 (거래·운용 서술의 정본, 최우선 참고)]
 {fund_q[:2200] or '(없음)'}
