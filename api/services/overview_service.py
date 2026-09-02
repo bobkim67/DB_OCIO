@@ -144,6 +144,80 @@ def _try_compute_stats(fund_code: str, end_date: date) -> dict[str, Any] | None:
         return None
 
 
+def _saa_versioned_series(
+    fund_code: str, versions: list, start_yyyymmdd: str, as_of: "date | None",
+) -> "pd.DataFrame | None":
+    """SAA 리밸 버전이 2개 이상일 때 **구간별 비중**으로 합성지수를 이어붙인다.
+
+    ★ 비중을 기간말 하나로 고정하면 구 구성 구간이 통째로 잘못 가중된다 —
+      Brinson 은 `_load_bm_daily_returns_versioned` 로 이미 구간별을 쓰는데
+      이 경로만 `load_saa_components(as_of)` 의 **최신 셋 하나**를 전 기간에
+      적용해, 같은 화면의 카드와 표가 갈렸다(08N33 설정후 5.30 vs 5.91,
+      2026-09-02 사용자 리포트). 구간 경계는 Brinson 과 동일 규약:
+      첫 버전이 유효일 이전(설정일~)까지 커버하고, 각 버전은 다음 버전
+      유효일 전날까지.
+
+    절대 레벨은 무의미하다(호출부가 비율로만 쓴다) — 1000 에서 출발시킨다.
+    """
+    import pandas as pd
+
+    from modules.data_loader import load_composite_bm_prices
+
+    sd = pd.Timestamp(f"{start_yyyymmdd[:4]}-{start_yyyymmdd[4:6]}-{start_yyyymmdd[6:8]}")
+    ed = pd.Timestamp(as_of) if as_of else None
+
+    segs = []
+    for i, (eff, info) in enumerate(versions):
+        if not info or not info.get("components"):
+            continue
+        s = sd if (eff is None or i == 0) else max(sd, pd.Timestamp(eff))
+        if i == len(versions) - 1:
+            e = ed
+        else:
+            nxt = pd.Timestamp(versions[i + 1][0]) - pd.Timedelta(days=1)
+            e = nxt if ed is None else min(ed, nxt)
+        if e is not None and s > e:
+            continue
+        segs.append((s, e, info))
+    if len(segs) <= 1:
+        return None
+
+    # 각 구간의 일별수익률을 모아 하나의 지수로 이어붙인다.
+    # 첫 구간은 워밍업 구간(설정일 이전)도 그대로 살린다 — 설정일 당일 등락을
+    # 살리려면 호출부가 설정일 **직전** 값을 SI 분모로 써야 하기 때문이다
+    # ([[reference_inception_base_1000]] — 첫 관측값 분모는 1일차를 잃는다).
+    rets = []
+    for k, (s, e, info) in enumerate(segs):
+        warm = (s - timedelta(days=30)).strftime("%Y%m%d")
+        try:
+            comp = load_composite_bm_prices(info["components"], warm,
+                                            fund_code=fund_code)
+        except Exception:
+            return None
+        if comp is None or len(comp) == 0 or "value" not in comp.columns:
+            return None
+        ser = pd.Series(comp["value"].astype(float).values,
+                        index=pd.to_datetime(comp["기준일자"])).sort_index()
+        r = ser.pct_change()
+        lo = None if k == 0 else s          # 첫 구간만 워밍업분을 남긴다
+        m = pd.Series(True, index=r.index)
+        if lo is not None:
+            m &= r.index >= lo
+        if e is not None:
+            m &= r.index <= e
+        if k == 0 and e is not None:
+            m &= r.index <= e
+        rets.append(r[m])
+    if not rets:
+        return None
+    allr = pd.concat(rets).sort_index()
+    allr = allr[~allr.index.duplicated(keep="last")].dropna()
+    if allr.empty:
+        return None
+    idx = 1000.0 * (1.0 + allr).cumprod()
+    return pd.DataFrame({"기준일자": idx.index, "value": idx.values})
+
+
 def _load_saa_series(
     fund_code: str, start_yyyymmdd: str, as_of: date | None,
 ) -> "pd.DataFrame | None":
@@ -162,6 +236,18 @@ def _load_saa_series(
         )
     except Exception:
         return None
+    # ★ 리밸 버전이 2개 이상이면 **구간별 비중**으로 이어붙인다 (단일 버전은
+    #   아래 기존 경로 그대로 — 수치 불변).
+    try:
+        from modules.data_loader import load_bm_versions
+        _vers = load_bm_versions(fund_code)
+    except Exception:
+        _vers = []
+    if len(_vers or []) > 1:
+        _chained = _saa_versioned_series(fund_code, _vers, start_yyyymmdd, as_of)
+        if _chained is not None and len(_chained) > 0:
+            return _chained
+
     info = None
     try:
         info = load_saa_components(
@@ -872,6 +958,14 @@ def _period_returns_cached(
         if not _valid.empty and float(_valid.iloc[0]) != 0:
             _si_base = _FUND_BM_INCEPTION_BASE.get(fund_code) or (
                 1000.0 if bm_src == "dt" else None)
+            # SAA 합성지수는 절대 base 가 없다 — 첫 관측값을 분모로 쓰면 **설정일
+            # 당일 등락이 통째로 빠진다**([[reference_inception_base_1000]] 과 같은
+            # 함정, 08N33 설정후에서 실측 0.39%p). 설정일 **직전** 값이 있으면
+            # 그걸 분모로 써 Brinson(첫 수익 인식일=설정일)과 규약을 맞춘다.
+            if _si_base is None and benchmark_kind == "SAA":
+                _prev = bm_series[bm_series.index < nav_dates.iloc[0]]
+                if len(_prev) and float(_prev.iloc[-1]) != 0:
+                    _si_base = float(_prev.iloc[-1])
             bm_period_returns = _compute_bm_period_returns(
                 bm_aligned, si_base=_si_base,
             )
