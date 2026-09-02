@@ -274,8 +274,15 @@ def sanitize_customer_comment(text: str, indicators: dict = None,
                       f'2Y({ust_2y}) < 10Y({ust_10y})이면 정상 스프레드, 역전 아님',
                       severity='critical')
 
-    text = re.sub(r'\s{2,}', ' ', text).strip()
-    text = re.sub(r'\s+([.,])', r'\1', text)
+    # ⚠ 종전 `\s{2,}` → ' ' 는 **문단 구분(\n\n)까지 공백 하나로 뭉갰다**.
+    #   프롬프트는 "문단 사이에 반드시 빈 줄을 넣으라"고 지시하는데 사후처리가 그걸
+    #   지워서, 승인본이 늘 한 덩어리 텍스트로 나왔다(2026-08 실측: 개행 0개).
+    #   자산군별 문단 구조(2026-09-02)에서는 문단 경계가 곧 자산군 경계라 치명적이다.
+    #   → 가로 공백만 접고 개행은 보존한다. 3줄 이상 빈 줄만 2줄로 정규화.
+    text = re.sub(r'[ \t]{2,}', ' ', text)
+    text = re.sub(r'[ \t]*\n[ \t]*', '\n', text)
+    text = re.sub(r'\n{3,}', '\n\n', text).strip()
+    text = re.sub(r'[ \t]+([.,])', r'\1', text)
     return text, warnings
 
 

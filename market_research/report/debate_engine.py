@@ -677,6 +677,26 @@ def _parse_synth_page(text: str) -> tuple[dict, str]:
     return fm, body.strip()
 
 
+def _cut_at_sentence(text: str, cap: int) -> str:
+    """cap 이하로 자르되 **문장 경계에서** 끊는다.
+
+    종전엔 `[:cap]` 하드컷이라 09 §3(리스크) 끝이 문장 중간에서 잘렸다
+    (2026-08 실측: 8개 자산군 전부 100~300자를 문장 도중에 잃음). 잘린 조각은
+    LLM 이 오독할 수 있고, 무엇보다 마지막 리스크 항목이 반쪽만 전달된다.
+    경계를 못 찾으면(=cap 안에 문장 끝이 없으면) 종전대로 하드컷.
+    """
+    t = (text or '').strip()
+    if len(t) <= cap:
+        return t
+    head = t[:cap]
+    # 한국어 종결('다.') 우선, 없으면 일반 마침표/줄바꿈
+    for mark in ('다.', '.', '\n'):
+        i = head.rfind(mark)
+        if i > cap * 0.5:            # 너무 앞에서 끊기면 차라리 하드컷
+            return head[:i + len(mark)].strip()
+    return head.strip()
+
+
 def _extract_synth_sections(body: str, char_cap: int) -> str:
     """body 에서 §1~§3 (컨센서스/이견/리스크) synthesis prose 만 발췌. fallback=앞부분."""
     lines = body.splitlines()
@@ -690,8 +710,8 @@ def _extract_synth_sections(body: str, char_cap: int) -> str:
             kept.append(ln)
     out = '\n'.join(kept).strip()
     if not out:                      # 헤더 패턴 불일치 → 본문 앞부분 fallback
-        out = body[:char_cap].strip()
-    return out[:char_cap].strip()
+        out = body.strip()
+    return _cut_at_sentence(out, char_cap)
 
 
 def _extract_synth_claims(body: str, char_cap: int) -> str:
@@ -713,7 +733,16 @@ def _extract_synth_claims(body: str, char_cap: int) -> str:
         if in_claim and st.startswith('- '):
             kept.append(ln)
     out = '\n'.join(kept).strip()
-    return out[:char_cap].strip()
+    # claim 은 줄 단위라 **줄 경계**에서 끊는다 — 반쪽 claim 을 남기지 않는다.
+    if len(out) > char_cap:
+        kept2, n = [], 0
+        for ln in out.splitlines():
+            if n + len(ln) + 1 > char_cap:
+                break
+            kept2.append(ln)
+            n += len(ln) + 1
+        out = '\n'.join(kept2).strip()
+    return out
 
 
 def _consensus_trend_block(synth_dir, periods: list[str],
@@ -1814,6 +1843,8 @@ def _run_agent(agent_type: str, context: dict) -> dict:
 
 def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> dict:
     """4인 에이전트 결과 -> Opus 2단계 종합 -> 이중 출력"""
+    # 자산군 축은 코멘트 체인 전체가 공유한다 (시장코멘트 문단 순서 = 시드 조립 순서).
+    from market_research.core.asset_class import CANONICAL_CLASSES, MARKET_ORDER
 
     debate_summary = []
     for agent_type, resp in agent_responses.items():
@@ -1846,6 +1877,26 @@ def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> 
     # 반기 vs 분기 vs 월별 판단
     is_quarterly = bool(context.get('_quarterly'))
     half = context.get('_half')  # 1=상반기 / 2=하반기 (반기 모드에서만 설정)
+
+    # ── 시장 레벨 사실 (DB) ──
+    # 규칙 3 이 "레벨은 이 블록 숫자만" 이라고 지시하므로 블록이 실제로 있어야 한다.
+    # 없으면 규칙이 "레벨을 쓰지 말라"로 받는다 — fail-open (시드와 같은 규약).
+    # ⚠ 시드(market_seed)와 **같은 함수**를 쓴다. 한쪽만 고치면 같은 달 보고서 안에서
+    #    레벨이 갈린다 → core/market_levels.py 단일 소스.
+    try:
+        from market_research.core.market_levels import level_block
+        _y = int(context['year'])
+        if is_quarterly and half:
+            _period_key = f'{_y}-H{half}'
+        elif is_quarterly:
+            _period_key = f'{_y}-Q{int(context.get("_quarter") or 0)}'
+        else:
+            _period_key = f'{_y}-{int(context["month"]):02d}'
+        level_block_text = level_block(_period_key)
+    except Exception as _exc:
+        level_block_text = ''
+        _log('market_levels_failed', error=str(_exc))
+
     if is_quarterly and half:
         months_in_q = context.get('_quarterly_months', [])
         target_period = f'{context["year"]}년 {"상" if half == 1 else "하"}반기'
@@ -1885,12 +1936,26 @@ def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> 
             f'반드시 "{target_period}" 기준으로 작성하세요. 다른 월을 언급하지 마세요.\n'
             '특정 펀드의 운용보고가 아닌, 글로벌/국내 거시환경 분석문입니다.\n'
         )
+        # ★ 2026-09-02 사용자 지시 — 테마 기준 3~4문단 → **총론 + 자산군별** 로 전환.
+        # 배경: 09_Research_Synthesis 는 이미 자산군별인데 이 구조가 산문으로 평탄화하고,
+        # 하류의 market_seed 가 그 산문에서 자산군을 다시 재구성했다. 축이 두 번 깨져
+        # 09 의 자산군별 세부가 중간에 유실됐다("내용이 너무 산개되어 있다" — 사용자).
+        # 이제 09 → 시장코멘트 → 시드가 같은 자산군 축을 공유한다.
+        _order = ' → '.join(MARKET_ORDER)
         structure_instruction = (
-            '## 문단 구조 (반드시 이 순서로 3~4문단 작성)\n'
-            '1문단: 월중 핵심 변화 — 시장을 움직인 가장 큰 변수 1~2개, 주요 자산 반응\n'
-            '2문단: 안도와 리스크의 공존 — 단기 완화 요인과 중기 구조적 불확실성 균형 서술\n'
-            '3문단: 금리/환율/유동성 해석 — 통화정책 딜레마, 금리 구조, 환율 방향성\n'
-            '4문단: 향후 체크포인트 — 확인해야 할 변수 나열로 마무리 (투자 액션 금지)\n\n'
+            '## 문단 구조 (반드시 이 순서)\n'
+            '1문단 [총론]: 이번 달 시장을 지배한 매크로 드라이버 1~2개와 그 전파 경로. '
+            '특정 자산군에 속하지 않는 배경(지정학·유가·통화정책 등)을 인과로 서술하고, '
+            '자산군 나열은 하지 마세요.\n'
+            f'이후 [자산군별]: 아래 순서로 **자산군마다 한 문단**씩.\n'
+            f'  {_order}\n'
+            '  - 각 문단의 주어는 해당 자산군입니다.\n'
+            '  - 근거가 없는 자산군은 **문단을 통째로 생략**하세요. 지어내지 마세요.\n'
+            '  - 문단마다 총론의 드라이버와 어떻게 연결되는지가 한 번은 드러나야 합니다.\n'
+            '마지막 문단 [향후 관찰 변수]: 확인해야 할 변수로 마무리 (투자 액션 금지)\n'
+            '★ 위 대괄호 라벨([총론]·[해외주식] 등)은 **구조 설명용이며 본문에 쓰지 마세요.**\n'
+            '  고객이 읽는 문서이므로 라벨·머리표 없이 자연스러운 문단으로만 쓰고, '
+            '문단은 빈 줄(\\n\\n)로 구분하세요.\n\n'
         )
 
     # P3: synthesis 단계에도 graph/wiki context 주입
@@ -1911,6 +1976,7 @@ def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> 
         '4명의 분석가가 각각 다른 시각에서 시장을 분석했습니다.\n\n'
         + (wiki_primary_block + '\n' if wiki_primary_block else '')
         + (research_synth_block + '\n\n' if research_synth_block else '')
+        + (level_block_text + '\n\n' if level_block_text else '')
         + raw_heading
         + f'## 분석가별 의견\n{debate_text}\n\n'
         f'## 뉴스 evidence\n{evidence_block}\n\n'
@@ -1924,8 +1990,18 @@ def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> 
         f'{structure_instruction}'
         '## 작성 규칙\n'
         '1. 기관 고객용 전문적이고 절제된 톤, 경어체.\n'
-        '2. 크로스 자산 인과관계로 연결 (자산별 개별 나열 금지).\n'
-        '3. 숫자 사용 시 반드시 단위와 의미를 명확히 (%, 달러, 원, bp 등).\n'
+        '2. 자산군 문단은 단순 나열이 아니라 "무엇 때문에 그렇게 움직였는가"를 씁니다. '
+        '총론에서 제시한 매크로 드라이버와의 연결을 각 문단에서 한 번은 드러내세요.\n'
+        '3. ★ **수치는 최소화합니다.** 원칙적으로 숫자를 쓰지 말고 방향과 맥락으로 서술하세요.\n'
+        '   - 허용: 위 "시장 레벨" 블록의 레벨·기간중 고저, 그리고 정책금리처럼 '
+        '제도적으로 확정된 수치.\n'
+        '   - 금지: 뉴스 evidence 카드에서 온 **특정 시점 수치** — 일간 등락률, 개별 기업 '
+        '실적치·수주잔고, 특정일 발표치 등. 사실 자체는 서술하되 **숫자는 빼세요**.\n'
+        '   - ⚠ 제공되는 고저는 **종가 기준**입니다. 사내 DB 에 장중 고저가 없으므로 '
+        '"장중 …선까지" 같은 표현에 이 숫자를 붙이지 마세요.\n'
+        '   - 숫자를 쓸 때는 단위와 의미를 명확히 (%, 달러, 원, bp 등).\n'
+        '   ⚠ 실측(2026-08): 코멘트 2,517자에 수치 23개가 들어갔고 그중 14개가 evidence '
+        '카드에서 온 시점 수치였습니다. 월간 리포트에는 맞지 않습니다.\n'
         '4. 분석가 의견이 상충하면 한쪽을 채택하지 말고 조건부 문장으로 서술.\n'
         '   예: "단기 안도와 중기 불확실성이 병존하는 구도"\n'
         '5. 마지막 문단은 반드시 "향후 관찰 변수"로 끝낼 것. 투자 액션으로 끝내지 말 것.\n'
@@ -1962,19 +2038,29 @@ def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> 
         '- "유동성 버퍼가 약화되고 있다"\n'
         '- "포트폴리오 리밸런싱 수요가 관측된다"\n\n'
         '## 좋은 코멘트 예시 (구조와 톤만 참고, 내용은 현재 월 데이터로 작성)\n'
-        '> 4월 글로벌 시장은 미국-이란 간 2주 휴전 합의를 계기로 지정학적 리스크 프리미엄이 '
-        '빠르게 완화되는 흐름을 보였습니다. 주요국 증시는 일제히 반등하여 미국 성장주와 해외 '
-        '주식시장이 월중 뚜렷한 회복세를 기록하였고, KOSPI는 +14.4%, KOSPI200은 +16.3% 상승하며 '
-        '국내 시장도 강한 안도 랠리를 보였습니다[ref:2].\n\n'
-        '위 예시의 특징: 내부 지표 없음, 펀드 액션 없음, 수치에 단위와 맥락 포함, ref 태그 정확.\n'
+        '> 4월 글로벌 시장은 미국-이란 간 2주 휴전 합의를 계기로 지정학적 리스크 '
+        '프리미엄이 빠르게 완화되는 흐름을 보였습니다[ref:2]. 유가가 되돌려지면서 인플레이션 '
+        '기대가 진정되었고, 이것이 장기금리 부담을 덜어 위험자산 전반의 할인율 환경을 '
+        '개선시키는 경로가 관측되었습니다.\n'
+        '>\n'
+        '> 해외주식은 할인율 부담 완화가 성장주에 우선적으로 반영되며 회복세를 '
+        '보였습니다. 다만 상승이 실적 개선보다 리스크 프리미엄 축소에 기댄 것이어서 '
+        '되돌림 성격이라는 시각도 병존합니다.\n'
+        '>\n'
+        '> 국내주식은 KOSPI가 기간중 종가 기준 6,977선까지 회복하며 강한 안도 랠리를 '
+        '보였으나, 반도체 쏠림 구조가 지수 변동성을 키우는 국면이 이어졌습니다.\n\n'
+        '위 예시의 특징: **총론이 인과를 깔고 자산군 문단이 그 위에 붙는다** · '
+        '**대괄호 라벨 없음**(문단 첫머리가 곧 자산군) · 문단 사이 빈 줄 · '
+        '내부 지표 없음 · 펀드 액션 없음 · 수치는 레벨 블록에서 온 것 하나뿐 · ref 태그 정확.\n'
         '이 구조를 따르되 반드시 현재 월의 실제 데이터와 분석가 의견으로 작성하세요.\n\n'
         '## 필수: 출처 태그\n'
         '뉴스에서 가져온 사실을 언급할 때 해당 문장 끝에 [ref:N] 태그를 붙이세요.\n'
         '위 "주요 뉴스" 목록에 [ref:1], [ref:2], ... 식별자가 이미 붙어 있습니다.\n'
         '해당 식별자를 그대로 복사하세요. 번호를 재해석하거나 임의 부여하지 마세요.\n'
         '목록에 없는 ref 번호를 만들지 마세요.\n'
-        '기사에서 직접 확인 가능한 사실(수치, 이벤트, 발언)을 서술할 때 반드시 ref를 붙이세요.\n'
-        '수치가 포함된 사실 서술(%, 달러, 원, 포인트 등)에는 가급적 해당 ref를 명시하세요.\n'
+        '기사에서 직접 확인 가능한 사실(이벤트, 발언, 정책 결정)을 서술할 때 반드시 ref를 붙이세요.\n'
+        '⚠ ref 를 붙이려고 기사의 수치를 끌어오지 마세요 — 규칙 3 이 우선합니다. '
+        'ref 는 사실의 출처 표시이지 수치 인용의 근거가 아닙니다.\n'
         '특정 1~2개 토픽에만 ref가 몰리지 않도록, 다양한 토픽의 evidence를 활용하세요.\n'
         '위 뉴스 evidence 목록에서 각 토픽의 핵심 기사를 최소 1건씩 인용하는 것을 목표로 하세요.\n\n'
         '순수 텍스트만 출력하세요.\n'
@@ -2055,10 +2141,11 @@ def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> 
     # 새로 써서 미세한 편차가 생겼다. 전망도 시장 판단이므로 **시장 단계에서
     # 한 번 쓰고 한 번 승인**한 뒤, 펀드는 보유 자산군만 골라 조립한다.
     #
-    # 본문(customer_comment) 구조는 건드리지 않는다 — structure_instruction 은
-    # 골든이고 client 시장 리포트가 그대로 노출하는 텍스트다. 별도 필드로 낸다.
-    from market_research.core.asset_class import CANONICAL_CLASSES
-
+    # 전망은 본문(customer_comment)과 **별도 필드**로 낸다 — 본문은 client 시장
+    # 리포트가 그대로 노출하는 텍스트라 구조가 다르다.
+    # (2026-09-02: 본문 structure_instruction 도 자산군별로 바뀌어 이제 두 산출물이
+    #  같은 자산군 축을 공유한다. 그래도 필드는 계속 분리한다 — 본문은 서술문이고
+    #  이쪽은 시드 조립용 JSON 이라 용도가 다르다.)
     if is_quarterly and half:
         next_label = (f'{context["year"]}년 하반기' if half == 1
                       else f'{context["year"] + 1}년 상반기')
@@ -2070,9 +2157,15 @@ def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> 
         _mo = int(context['month'])
         next_label = f'{_mo + 1}월' if _mo < 12 else '1월'
 
+    # ★ 2026-09-02 — 09_Research_Synthesis 를 전망 단계에 **직접** 공급한다.
+    # 종전에는 입력이 (브리핑 본문 + debate + 합의 + tail risk) 뿐이라, 09 의 자산군별
+    # consensus stance·인과경로가 이미 압축된 본문을 통해서만 간접 전달됐다. 전망은
+    # 펀드 코멘트의 '향후 시장전망' 원천이므로 여기서 09 가 빠지면 하류에서 복구 불가다.
     outlook_prompt = (
         f'아래는 방금 작성한 {target_period} 시장 브리핑과 4인 분석가 의견입니다.\n\n'
-        f'## {target_period} 시장 브리핑\n{customer_comment}\n\n'
+        + (research_synth_block + '\n\n' if research_synth_block else '')
+        + (level_block_text + '\n\n' if level_block_text else '')
+        + f'## {target_period} 시장 브리핑\n{customer_comment}\n\n'
         f'## 분석가별 의견\n{debate_text}\n\n'
         f'## 합의 포인트\n' + '\n'.join(f'- {p}' for p in analysis.get('consensus_points', [])) + '\n\n'
         f'## Tail Risk\n' + '\n'.join(f'- {t}' for t in analysis.get('tail_risks', [])) + '\n\n'
@@ -2087,7 +2180,12 @@ def _synthesize_debate(agent_responses: dict, fund_code: str, context: dict) -> 
         '   - 각 문장은 **단독으로 읽어도 완결**되어야 합니다 (앞 문장 지시어 "이에", "또한" 금지).\n'
         '4. 회고가 아니라 전망입니다. 지난 기간 서술로 시작하지 마세요.\n'
         '5. 상방·하방 요인을 함께 담아 조건부로 서술하세요. 단정 금지.\n'
-        '6. 근거가 약한 자산군은 짧게 "방향성 제한" 정도로만 쓰고 지어내지 마세요.\n\n'
+        '6. 근거가 약한 자산군은 짧게 "방향성 제한" 정도로만 쓰고 지어내지 마세요.\n'
+        '7. ★ **수치는 쓰지 마세요.** 전망은 방향과 조건으로 서술합니다. '
+        '레벨을 꼭 언급해야 하면 위 "시장 레벨" 블록의 숫자만 쓰고, 그 블록이 없으면 '
+        '레벨 없이 쓰세요. 뉴스에서 본 시점 수치(일간 등락, 개별 실적치)는 금지입니다.\n'
+        '8. 각 자산군의 스탠스는 위 "09 Research Synthesis" 의 consensus 와 이견을 '
+        '근거로 잡되, 컨센서스를 그대로 옮기지 말고 상·하방을 함께 담아 조건부로 쓰세요.\n\n'
         '반드시 유효한 JSON 객체 하나만 출력. 설명 텍스트 금지. 문자열 안 줄바꿈 금지.\n'
         '{' + ','.join(f'"{c}":"{c} {next_label} 전망 문장"' for c in CANONICAL_CLASSES) + '}'
     )

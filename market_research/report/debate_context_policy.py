@@ -73,7 +73,10 @@ class DebateContextPolicy:
     graph_confidence_threshold: float = 0.3
     wiki_context_max_pages: int = 12
     # 09_Research_Synthesis (Phase 2)
-    research_synthesis_max_assets: int = 8      # 자산군 페이지 상한
+    # ⚠ 2026-09-02: 8 → 12. 2026-08 의 09 파일이 정확히 8개(국내주식·국내채권·기타·
+    #   대체·유동성·해외주식·해외채권·환율FX)라 상한과 딱 맞물려 있었다. 자산군이
+    #   하나만 늘어도 sorted() 마지막인 **환율FX 가 조용히 통째로 누락**된다.
+    research_synthesis_max_assets: int = 12     # 자산군 페이지 상한
     research_synthesis_asset_chars: int = 900   # 자산군별 §1~§3 synthesis 발췌 char 상한
     # Phase 2.7 — 08_Claims 제외 보완: 09 §4/§5 원자 claim 을 debate 에 직접 공급.
     research_synthesis_include_claims: bool = False

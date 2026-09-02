@@ -212,131 +212,29 @@ _RULES = """## 규칙 (반드시 준수)
 
 
 # ══════════════════════════════════════════
-# 시장 레벨 사실 — 레벨의 정본은 DB (SCIP)
+# 시장 레벨 사실 — core/market_levels.py 로 이전 (2026-09-02)
 # ══════════════════════════════════════════
-# 규칙 4 가 "레벨로 쓰라"고 권하는데 debate 본문에는 변동률만 있는 경우가 많아
-# 모델이 없는 레벨을 지어낸다. 2026-09-02 실측 — 규칙 8 추가 후 재생성 시드가
-# 달러/원을 "1,530원대"로 썼다(실제 월말 1,368.60). scratch 에서만 나왔고 운영
-# 산출물에는 없다 — 나가기 전에 잡았다.
-# ⚠ 같은 날 2026-08 운영 시드의 KOSPI "7,200포인트 터치"도 환각으로 판정했다가
-#   **철회했다**: 근거로 쓴 6,977.94 는 월중 최고 **종가**이고, 사용자 확인 결과
-#   그 서술은 **장중** 얘기다. DB 에 장중 고저가 없어 종가 시계열로는 반증되지
-#   않는다 — "검증 불가"가 정확한 상태다.
-# → 기초·기말·기간중 고저를 사실로 주입한다. 실패하면 블록 없이 진행 —
-# 규칙 8 이 "사실 블록이 없으면 레벨을 쓰지 말라"고 지시하므로 무중단이다.
-_LEVEL_SERIES = (
-    (253, 15, 'KRW', 'KOSPI', 2),
-    (31, 6, 'USD', '달러/원', 2),
-    (105, 48, None, '달러지수(DXY)', 2),
+# 시드만 레벨을 지어내는 게 아니라 **시장 debate synthesis 도 같은 자리에서**
+# 지어낼 수 있어서, 같은 블록을 양쪽에 공급하려고 core 로 올렸다. 한쪽만 고치면
+# 같은 달 보고서 안에서 레벨이 갈린다. 배경·확정 규약(고저=종가 기준, 장중 고저
+# 부재, period_bounds 를 period_window 와 합치지 말 것)은 그 모듈 docstring 참조.
+#
+# 아래 별칭은 기존 호출부·회귀가드(test_market_seed_assembly.py)를 그대로 살리기
+# 위한 re-export 다. 신규 코드는 core.market_levels 를 직접 import 할 것.
+from market_research.core.market_levels import (  # noqa: E402
+    LEVEL_BLOCK_HEADING,
+    LEVEL_SERIES as _LEVEL_SERIES,
+    market_level_facts as _market_level_facts,
+    period_bounds as _period_bounds,
 )
-
-
-def _period_bounds(period: str):
-    """period 키 → (기초일, 기말일) 달력 경계. 기초 = 직전 기간의 마지막 날."""
-    import datetime as _dt
-    import re as _r
-    from calendar import monthrange
-
-    def eom(y, m):
-        return _dt.date(y, m, monthrange(y, m)[1])
-
-    s_ = (period or '').strip()
-    today = _dt.date.today()
-    m = _r.fullmatch(r'(\d{4})-(\d{2})', s_)
-    if m:
-        y, mo = int(m[1]), int(m[2])
-        prev = eom(y - 1, 12) if mo == 1 else eom(y, mo - 1)
-        return prev, min(eom(y, mo), today)
-    m = _r.fullmatch(r'(\d{4})-Q([1-4])(\.QTD)?', s_)
-    if m:
-        y, q = int(m[1]), int(m[2])
-        start = eom(y - 1, 12) if q == 1 else eom(y, (q - 1) * 3)
-        end = today if m[3] else eom(y, q * 3)
-        return start, min(end, today)
-    m = _r.fullmatch(r'(\d{4})-H([12])\.HTD', s_)
-    if m:
-        y, h = int(m[1]), int(m[2])
-        return (eom(y - 1, 12) if h == 1 else eom(y, 6)), today
-    m = _r.fullmatch(r'(\d{4})-YTD', s_)
-    if m:
-        return eom(int(m[1]) - 1, 12), today
-    return None
-
-
-def _market_level_facts(period: str) -> list | None:
-    """['- KOSPI: 6,595.45 (07/31) → 6,820.02 (08/31) = +3.40% · 기간중 종가 저~고 …', …].
-
-    ⚠ 고저는 **종가 기준**이다 — DB 에 장중 고저가 없다.
-    """
-    try:
-        bounds = _period_bounds(period)
-        if not bounds:
-            return None
-        start, end = bounds
-        import json as _json
-
-        import pandas as _pd
-
-        from modules.data_loader import get_pandas_connection
-
-        def _px(blob, key=None):
-            t = blob.decode('utf-8') if isinstance(blob, (bytes, bytearray)) else str(blob)
-            t = t.strip()
-            if t.startswith('{'):
-                o = _json.loads(t)
-                return float(o[key]) if key and key in o else float(list(o.values())[0])
-            return float(t.replace(',', ''))
-
-        # ⚠ OR 는 반드시 괄호로 묶는다 — 안 묶으면 AND 가 먼저 걸려 한쪽 시리즈가
-        #   날짜 필터 없이 전 이력을 긁어온다.
-        warm = (_pd.Timestamp(start) - _pd.Timedelta(days=40)).strftime('%Y-%m-%d')
-        pairs = ' OR '.join(f'(dataset_id={d} AND dataseries_id={sid})'
-                            for d, sid, *_ in _LEVEL_SERIES)
-        sql = (f"SELECT dataset_id, DATE(timestamp_observation) d, data "
-               f"FROM back_datapoint WHERE ({pairs}) "
-               f"AND timestamp_observation >= '{warm}' "
-               f"AND timestamp_observation <= '{end:%Y-%m-%d}' "
-               f"ORDER BY timestamp_observation")
-        conn = get_pandas_connection('SCIP')
-        try:
-            df = _pd.read_sql(sql, conn)
-        finally:
-            conn.close()
-        if df.empty:
-            return None
-
-        out = []
-        for ds, _sid, key, label, nd in _LEVEL_SERIES:
-            sub = df[df['dataset_id'] == ds]
-            if sub.empty:
-                continue
-            sv = _pd.Series({_pd.Timestamp(r['d']): _px(r['data'], key)
-                             for _, r in sub.iterrows()}).sort_index()
-            a = sv[sv.index <= _pd.Timestamp(start)]
-            b = sv[sv.index <= _pd.Timestamp(end)]
-            if a.empty or b.empty:
-                continue
-            v0, v1 = float(a.iloc[-1]), float(b.iloc[-1])
-            chg = (v1 / v0 - 1) * 100 if v0 else 0.0
-            # 기간 중 고저 — ★**종가 기준**이다. 사내 DB(SCIP 253 = ds 9/15/48,
-            #   dt.MI_DJISU/BMJISU/MI_DSJISU)에 지수 **장중 고저가 없다**(2026-09-02 전수확인).
-            #   그래서 "장중 …선까지" 서술의 근거로는 못 쓴다 — 라벨에 종가임을 박는다.
-            win = sv[(sv.index > _pd.Timestamp(start)) & (sv.index <= _pd.Timestamp(end))]
-            line = (f'- {label}: {v0:,.{nd}f} ({a.index[-1]:%m/%d}) → '
-                    f'{v1:,.{nd}f} ({b.index[-1]:%m/%d}) = {chg:+.2f}%')
-            if not win.empty:
-                line += f' · 기간중 종가 저~고 {win.min():,.{nd}f}~{win.max():,.{nd}f}'
-            out.append(line)
-        return out or None
-    except Exception:
-        return None
 
 
 def _build_prompt(market_body: str, next_label: str,
                   consensus: list, tail_risks: list,
                   have_outlook: bool, period_label: str,
                   movement: list | None = None,
-                  levels: list | None = None) -> str:
+                  levels: list | None = None,
+                  synth: str | None = None) -> str:
     m_lo, m_hi, _ = BUDGET['market']['cls']
     t_lo, t_hi, _ = BUDGET['market']['total']
     rules = _RULES.format(cls_lo=m_lo, cls_hi=m_hi, tot_lo=t_lo, tot_hi=t_hi)
@@ -379,8 +277,13 @@ def _build_prompt(market_body: str, next_label: str,
             _m.append(line)
         extra += '\n'.join(_m)
     if levels:
-        extra += ('\n\n## 시장 레벨 — DB 실측 (레벨은 여기 숫자만 인용)\n'
-                  + '\n'.join(levels))
+        extra += '\n\n' + LEVEL_BLOCK_HEADING + '\n' + '\n'.join(levels)
+    # ★ 2026-09-02 — 09_Research_Synthesis 원문을 시드에 **직접** 공급한다.
+    #   종전엔 시드가 `final_comment`(압축된 브리핑)만 봤다. 규칙이 "원문에 있는
+    #   사실만 쓰라"고 막고 있어서, 브리핑 압축에서 탈락한 09 의 자산군별 세부는
+    #   구조적으로 복구 불가였다. 이제 브리핑과 09 **둘 다**가 '원문'이다.
+    if synth:
+        extra += '\n\n' + synth
 
     return f"""당신은 DB형 퇴직연금 OCIO 운용보고서 코멘트 작성자입니다.
 아래 {period_label} 시장 브리핑을 **자산군별 문장으로 분해**하세요.
@@ -394,8 +297,9 @@ def _build_prompt(market_body: str, next_label: str,
 {extra}
 
 ## 작업
-**작업 1 — 시장동향**: 위 원문을 자산군별로 압축하세요. 원문에 있는 사실만 쓰고
-   새 사실을 넣지 마세요. `_총론`에는 특정 자산군에 속하지 않는 그 기간의
+**작업 1 — 시장동향**: 위 원문을 자산군별로 압축하세요. **브리핑 원문과
+   [09 Research Synthesis] 에 있는 사실만** 쓰고 새 사실을 넣지 마세요.
+   브리핑이 짧게 다룬 자산군은 09 의 해당 자산군 컨센서스·리스크에서 보충하세요. `_총론`에는 특정 자산군에 속하지 않는 그 기간의
    지배적 내러티브(지정학·유가·정책 등 매크로 드라이버)를 2문장으로 쓰세요.
 {outlook_task}
 {rules}
@@ -405,6 +309,41 @@ def _build_prompt(market_body: str, next_label: str,
 
 반드시 유효한 JSON 객체 하나만 출력. 설명 텍스트 금지. 문자열 안 줄바꿈 금지.
 {{"market":{{"{TOTAL_KEY}":"",{cls_json}}}{outlook_spec}}}"""
+
+
+def _research_synthesis_for(period: str) -> str:
+    """기간의 09_Research_Synthesis 블록 (자산군별 §1 컨센서스 + §3 리스크).
+
+    debate 와 **같은 빌더**를 쓴다 — 09 발췌 규칙(§2/§5 제외, 문장 경계 컷,
+    자산군 상한)이 두 벌이 되면 같은 달 안에서 시드와 브리핑의 근거가 갈린다.
+    claim bullet(§4)은 빼고 산문만 쓴다 — 시드는 문장을 압축하는 단계라
+    `[claim:...]` 태그가 들어가면 규칙 3(마크다운·태그 금지)과 충돌한다.
+
+    실패는 fail-open(빈 문자열) — 09 가 없으면 종전대로 브리핑만 보고 압축한다.
+    """
+    try:
+        from dataclasses import replace
+
+        from market_research.report.debate_context_policy import RESEARCH_ONLY_POLICY
+        from market_research.report.debate_engine import build_research_synthesis_context
+
+        bounds = _period_bounds(period)
+        if not bounds:
+            return ''
+        start, end = bounds
+        months, y, m = [], start.year, start.month
+        # 기초일은 직전 기간의 마지막 날이므로 그 다음 달부터가 대상 구간이다.
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+        while (y, m) <= (end.year, end.month):
+            months.append(f'{y}-{m:02d}')
+            y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+        if not months:
+            return ''
+        pol = replace(RESEARCH_ONLY_POLICY, research_synthesis_include_claims=False)
+        return build_research_synthesis_context(
+            int(months[-1][:4]), int(months[-1][5:7]), policy=pol, months=months) or ''
+    except Exception:
+        return ''
 
 
 def _clean(v) -> str:
@@ -609,6 +548,7 @@ def build_seed(period: str, market_payload: dict,
         have_outlook, period_label,
         market_payload.get('asset_movement_commentary') or [],
         _market_level_facts(period),
+        _research_synthesis_for(period),
     )
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
