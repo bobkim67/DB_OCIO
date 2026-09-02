@@ -549,7 +549,8 @@ def _write_factsheet_sheet(ws, d: SheetData) -> None:
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
 
-    from tools.kb_monthly_report import FS_ASSETS, FS_TRAIL
+    from tools.kb_monthly_report import (
+        FS_ASSETS, FS_BOND_HEDGE_PCT, FS_TRAIL)
 
     thin = Side(style='thin', color='B0B0B0')
     box = Border(left=thin, right=thin, top=thin, bottom=thin)
@@ -632,8 +633,13 @@ def _write_factsheet_sheet(ws, d: SheetData) -> None:
     put(9, 25, du.get('fund'))
     put(9, 26, du.get('bond'), fmt='0.0')
     put(9, 27, du.get('hedge_all'), fmt='0.0')
-    for i in range(3):
-        put(9, 28 + i, du.get('hedge_all'), fmt='0.0')
+    # AB~AD = 자산군별 환헤지비율(해외주식·해외채권·대체투자).
+    # ★ 전체 비율(AA)을 세 칸에 복사하면 안 된다 — 07G07 은 전부 0 이라 우연히
+    #   맞았을 뿐이다. **해외채권은 편입하면 전액 환헤지**가 운용 규약이라
+    #   비중과 무관하게 상수 100 이다 (2026-09-02 사용자 확정).
+    for i, v in enumerate((du.get('hedge_all'), FS_BOND_HEDGE_PCT,
+                           du.get('hedge_all'))):
+        put(9, 28 + i, v, fmt='0.0')
     note(10, '※ 변동성·수정샤프는 연초 이후 주간수익률 기준 연환산(무위험 = 3개월 CD). '
              '펀드듀레이션 = 채권듀레이션 × 국내채권 PA비중 — 발송본과 같은 정의입니다.')
 
@@ -713,7 +719,17 @@ def _fs_notes(d: SheetData) -> list[str]:
                f"아니면 ×위험(R 정의). 일반 샤프와 크기가 다릅니다"
                f"(펀드: 수정 {d.raw['risk'].get('sharpe_adj'):.6f} / 일반 "
                f"{d.raw['risk']['sharpe']:.6f}).")
-    out.append('· 변동성(W9·W16)은 시스템 연율화위험 행과 소수 6자리까지 일치합니다.')
+    out.append('· 변동성/수정샤프 — 펀드(W9·X9)는 시스템 연율화위험·수정샤프 행과 '
+               '소수 12자리까지 일치합니다.')
+    out.append('· ★ BM(W16·X16)은 시스템과 **구조적으로 미세하게 다릅니다 — 시스템 값으로 '
+               '덮어쓰세요.** 원인은 오차가 아니라 규약 차이입니다: 이 빌더의 BM 은 '
+               'DT 전산 BM 지수(캘린더 T-1)를, 시스템은 컴포넌트 합성 BM(한국 영업일 T-1)을 '
+               '씁니다. 한국 휴장일에 해외가 열려 있으면 그 날 해외 종가를 전산은 다음 '
+               '영업일에 반영하고 시스템은 건너뛰었다가 그 다음 날 반영합니다. '
+               '누적수익률은 사실상 같고(2주 복리 0.0003%) 주간 분산만 갈립니다. '
+               '2026-08 실측: 34주 중 31주 일치, 7/17·5/1 휴장 주만 ±38bp·±11bp, '
+               'YTD 변동성 5.8987 vs 5.8877(0.011%p). DT 전산지수 유지가 확정 방침입니다 '
+               '(2026-09-02 사용자 결정).')
     out.append('· 유동성 수익률(H9·V9)은 브린슨에 손익 라인이 없어 0 입니다 '
                '(2026-07 발송본은 0.03058·0.035 를 수기 기재).')
     out.append('· 해외주식 연초이후(R9)는 2026-07 발송본 11.42 vs 재현 10.12 로 '
